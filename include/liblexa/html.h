@@ -302,7 +302,9 @@ lxa_html_input_result_t lxa_html_input_report_malformed(
  * parser_result == UNSUPPORTED identifies candidate grammar gaps;
  * BAD_ARGUMENT identifies invalid arguments or an unknown encoding.
  * status distinguishes LIMIT/NO_MEMORY/OVERFLOW; reason identifies the
- * limited resource when known. Outputs may be NULL.
+ * limited resource when known. parser_result and reason may be NULL;
+ * out is required. Check status first: early resource failures may leave
+ * parser_result at BAD_ARGUMENT. See docs/html-api.md for the bx contract.
  */
 typedef struct lxa_html_document lxa_html_document_t;
 

@@ -40,8 +40,9 @@ lxa_status_t lxa_html_escape(lxa_span_t input, lxa_escape_context_t context,
 /* Serializes the currently supported HTML document subset.
  * The caller owns the sink and bounds its output. No mutation of the store
  * is permitted during serialization, including from the write callback.
- * Sink failure may leave a prefix written. Foreign nodes and template
- * contents require later typed payload support.
+ * Sink failure may leave a prefix written. Supported foreign nodes and
+ * template contents are included. The iterative walk charges the store's
+ * cumulative WORK budget. See docs/html-api.md for canonicalization details.
  */
 lxa_status_t lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t document, lxa_write_f write, void *context,

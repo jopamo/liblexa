@@ -118,6 +118,7 @@ lxa_status_t lxa_dom_nodes_character_read(const lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_append_html_element(lxa_dom_nodes_t *nodes,
                                                 lxa_span_t name,
                                                 lxa_dom_ref_t *out);
+/* Borrowed name bytes expire at the next string append/reset/destroy. */
 lxa_status_t lxa_dom_nodes_element_name(const lxa_dom_nodes_t *nodes,
                                          lxa_dom_ref_t element,
                                          lxa_span_t *out);
@@ -126,6 +127,8 @@ lxa_status_t lxa_dom_nodes_element_name(const lxa_dom_nodes_t *nodes,
  * document storage; input spans may alias that storage. */
 lxa_status_t lxa_dom_nodes_append_html_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out);
+/* Distinct, non-NULL outputs; both borrow document string storage and expire
+ * at the next string append/reset/destroy. Empty values are still present. */
 lxa_status_t lxa_dom_nodes_attribute_read(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t attribute, lxa_span_t *name, lxa_span_t *value);
 /* Replace the value of a live attached or detached attribute without
