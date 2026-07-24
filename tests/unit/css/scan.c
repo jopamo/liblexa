@@ -2,7 +2,7 @@
 #include "check.h"
 #include <stdlib.h>
 #include <string.h>
-#include "liblexa/css.h"
+#include "css/scan.h"
 
 static void
 check(lxa_css_tokens_t *tokens, size_t index, lxa_css_token_kind_t kind,

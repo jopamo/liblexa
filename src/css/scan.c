@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "liblexa/base.h"
-#include "liblexa/css.h"
+#include "css/scan.h"
 
 enum { CSS_MAX_UNITS = 1024 * 1024 };
 

@@ -188,6 +188,9 @@ def check(build, prefix, candidate_html=False):
     for package_flags in (flags, static_flags):
         check_package_flags("liblexa", package_flags, prefix, libdir)
     check_libraries(archive, shared, flags, static_flags, "Liblexa package")
+    if re.search(r"\blxa_css_(?:unit_t|scan_cursor\w*|scan_units)\b",
+                 (prefix / "include/liblexa/css.h").read_text()):
+        raise ValueError("CSS header exposes parser-private scalar scanning")
 
     candidate_archive = libdir / "liblexa-html-candidate.a"
     candidate_flags = []

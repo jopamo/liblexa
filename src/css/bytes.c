@@ -1,6 +1,6 @@
 /* Copyright (C) 2026 Paul Moses */
 #include <assert.h>
-#include "liblexa/css.h"
+#include "css/scan.h"
 #include "css/filter.h"
 #include "liblexa/encoding.h"
 
