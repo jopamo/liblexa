@@ -74,12 +74,6 @@ void lxa_dom_nodes_destroy(lxa_dom_nodes_t *nodes);
 lxa_status_t lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes);
 size_t lxa_dom_nodes_length(const lxa_dom_nodes_t *nodes);
 
-/* Only draft construction is available until typed payload stores and a
- * publication validator exist. Failure leaves length and earlier IDs valid.
- */
-lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
-                                        lxa_dom_kind_t kind,
-                                        lxa_dom_ref_t *out);
 /* Copies the record, avoiding a pointer into a relocatable array. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
                                 lxa_dom_ref_t handle,
@@ -177,14 +171,6 @@ lxa_status_t lxa_dom_nodes_find_attribute(lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t previous, lxa_dom_ref_t *out);
 
-/* Text-only construction boundary.
- * Accept only owned TEXT/COMMENT children of a document fragment. Validate
- * both handles and existing endpoints before an allocation-free link commit.
- * On failure no link changes. No public pointers or callbacks are involved.
- */
-lxa_status_t lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
-                                              lxa_dom_ref_t parent,
-                                              lxa_dom_ref_t child);
 /* Append a node's descendant TEXT bytes in tree order to caller-owned output.
  * A TEXT or COMMENT root yields its own data; descendant comments are skipped.
  * max_output_bytes bounds the whole result, including preexisting output.

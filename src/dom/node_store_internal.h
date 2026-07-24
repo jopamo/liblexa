@@ -5,6 +5,21 @@
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
 
+/* Parser-only draft construction. A draft has no typed payload or links.
+ * Failure leaves length and earlier references valid. */
+lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
+                                        lxa_dom_kind_t kind,
+                                        lxa_dom_ref_t *out);
+
+/* Text-only construction boundary used by DOM model tests.
+ * Accept only owned TEXT/COMMENT children of a document fragment. Validate
+ * both handles and existing endpoints before an allocation-free link commit.
+ * On failure no link changes. No public pointers or callbacks are involved.
+ */
+lxa_status_t lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
+                                              lxa_dom_ref_t parent,
+                                              lxa_dom_ref_t child);
+
 typedef struct {
     lxa_id_t element, fragment;
 } lxa_dom_template_t;

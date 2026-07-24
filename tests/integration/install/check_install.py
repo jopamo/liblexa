@@ -191,6 +191,9 @@ def check(build, prefix, candidate_html=False):
     if re.search(r"\blxa_css_(?:unit_t|scan_cursor\w*|scan_units)\b",
                  (prefix / "include/liblexa/css.h").read_text()):
         raise ValueError("CSS header exposes parser-private scalar scanning")
+    if re.search(r"\blxa_dom_nodes_append_(?:draft|text_child)\b",
+                 (prefix / "include/liblexa/dom.h").read_text()):
+        raise ValueError("DOM header exposes parser-private draft construction")
 
     candidate_archive = libdir / "liblexa-html-candidate.a"
     candidate_flags = []
