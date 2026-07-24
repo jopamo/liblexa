@@ -216,6 +216,9 @@ def check(build, prefix, candidate_html=False):
         if installed_candidate_headers != public_candidate_headers:
             difference = installed_candidate_headers ^ public_candidate_headers
             raise ValueError(f"unexpected HTML candidate header set: {sorted(difference)}")
+        if re.search(r"\blxa_html_(?:tokenizer|token|attribute|text_mode|input_result)\w*",
+                     candidate_header.read_text()):
+            raise ValueError("HTML candidate header exposes parser-private types")
         requires = run(["pkg-config", "--print-requires",
                         "liblexa-html-candidate"], env=env).splitlines()
         if not any(line.split()[0] == "liblexa" for line in requires if line.split()):

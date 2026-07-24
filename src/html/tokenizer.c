@@ -2,7 +2,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "liblexa/html.h"
+#include "html/tokenizer.h"
 #include "liblexa/base.h"
 #include "liblexa/encoding.h"
 #include "html-charref-overrides.h"

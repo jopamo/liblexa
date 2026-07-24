@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "liblexa/html.h"
-#include "liblexa/html.h"
+#include "html/tokenizer.h"
+#include "html/input_encoding.h"
 
 #define CHECK(expression) do { \
     if (!(expression)) { \

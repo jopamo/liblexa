@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "liblexa/html.h"
+#include "html/input_encoding.h"
 
 typedef struct {
     size_t calls, fail_at, live;

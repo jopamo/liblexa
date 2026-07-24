@@ -1,6 +1,7 @@
 /* Copyright (C) 2026 Paul Moses */
 #include "liblexa/html.h"
 #include "html/tree.h"
+#include "html/input_encoding.h"
 #include <string.h>
 
 struct lxa_html_document {

@@ -1,5 +1,5 @@
 /* Copyright (C) 2026 Paul Moses */
-#include "liblexa/html.h"
+#include "html/input_encoding.h"
 
 static lxa_html_input_result_t
 input_status(lxa_status_t status)

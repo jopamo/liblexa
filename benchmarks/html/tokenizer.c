@@ -7,8 +7,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "liblexa/html.h"
-#include "liblexa/html.h"
+#include "html/tokenizer.h"
+#include "html/input_encoding.h"
 
 typedef struct {
     lxa_budget_t *budget;

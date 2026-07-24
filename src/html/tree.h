@@ -2,7 +2,7 @@
 #ifndef LIBLEXA_HTML_TREE_H
 #define LIBLEXA_HTML_TREE_H
 
-#include "liblexa/html.h"
+#include "html/tokenizer.h"
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
 
