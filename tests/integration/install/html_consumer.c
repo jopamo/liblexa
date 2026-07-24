@@ -42,6 +42,7 @@ main(void)
     lxa_limit_reason_t reason;
     lxa_dom_nodes_t *nodes;
     lxa_dom_ref_t anchor, href;
+    lxa_dom_kind_t kind;
     lxa_span_t name, value;
     output_t output = {{0}, 0};
     lxa_limits_t limits = lxa_limits_default();
@@ -57,6 +58,8 @@ main(void)
     nodes = lxa_html_document_nodes(document);
     failed = lxa_dom_nodes_first_child(nodes,
                  lxa_html_document_body(document), &anchor) != LXA_OK
+        || lxa_dom_nodes_kind(nodes, anchor, &kind) != LXA_OK
+        || kind != LXA_DOM_KIND_ELEMENT
         || lxa_dom_nodes_find_attribute(nodes, anchor,
              (lxa_span_t){(const unsigned char *)"href", 4}, &href) != LXA_OK
         || href.handle == LXA_HANDLE_NONE

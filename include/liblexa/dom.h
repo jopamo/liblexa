@@ -23,20 +23,6 @@ typedef enum {
     LXA_DOM_KIND_COUNT
 } lxa_dom_kind_t;
 
-/* The engine record contains IDs only. Drafts have no published links or
- * payload; typed payload construction and tree publication are separate.
- * No caller may retain an address into the growing node array.
- */
-typedef struct {
-    lxa_id_t parent, first_child, last_child, prev, next;
-    lxa_id_t payload;
-    uint16_t kind, flags;
-    uint32_t generation;
-} lxa_dom_record_t;
-
-typedef char lxa_dom_record_size_must_be_32[
-    sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
-
 typedef struct lxa_dom_nodes lxa_dom_nodes_t;
 
 /* Packed handles are document-local. A reference supplies document identity
@@ -74,10 +60,10 @@ void lxa_dom_nodes_destroy(lxa_dom_nodes_t *nodes);
 lxa_status_t lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes);
 size_t lxa_dom_nodes_length(const lxa_dom_nodes_t *nodes);
 
-/* Copies the record, avoiding a pointer into a relocatable array. */
-lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
-                                lxa_dom_ref_t handle,
-                                lxa_dom_record_t *out);
+/* Return a live node's kind without exposing storage IDs or payload layout.
+ * out is required and is set to INVALID on failure. */
+lxa_status_t lxa_dom_nodes_kind(const lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t node, lxa_dom_kind_t *out);
 /* Checked traversal; a zero handle means the relation is absent. A returned
  * handle is document-scoped and expires on reset or destruction. */
 lxa_status_t lxa_dom_nodes_first_child(lxa_dom_nodes_t *nodes,

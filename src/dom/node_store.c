@@ -427,6 +427,21 @@ lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
     return LXA_OK;
 }
 
+lxa_status_t
+lxa_dom_nodes_kind(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t node,
+                   lxa_dom_kind_t *out)
+{
+    lxa_dom_record_t record;
+    lxa_status_t status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = LXA_DOM_KIND_INVALID;
+    status = lxa_dom_nodes_read(nodes, node, &record);
+    if (status != LXA_OK) return status;
+    if (!valid_kind((lxa_dom_kind_t) record.kind)) return LXA_ERROR_ARGUMENT;
+    *out = (lxa_dom_kind_t) record.kind;
+    return LXA_OK;
+}
+
 typedef enum {
     LXA_REL_FIRST, LXA_REL_NEXT, LXA_REL_LAST, LXA_REL_PREV, LXA_REL_PARENT
 } lxa_relation_t;

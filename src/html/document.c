@@ -46,7 +46,7 @@ head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
                    bool *unknown, lxa_limit_reason_t *reason)
 {
     lxa_dom_ref_t child, next, attribute;
-    lxa_dom_record_t record;
+    lxa_dom_kind_t kind;
     lxa_span_t name, value;
     size_t visited = 0;
     lxa_status_t status;
@@ -57,11 +57,11 @@ head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
         if (++visited > lxa_dom_nodes_length(nodes)) return LXA_ERROR_ARGUMENT;
         status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
         if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_read(nodes, child, &record);
-        if (status == LXA_OK && record.kind == LXA_DOM_KIND_ELEMENT)
+        status = lxa_dom_nodes_kind(nodes, child, &kind);
+        if (status == LXA_OK && kind == LXA_DOM_KIND_ELEMENT)
             status = lxa_dom_nodes_element_name(nodes, child, &name);
         if (status != LXA_OK) return status;
-        if (record.kind == LXA_DOM_KIND_ELEMENT && name.length == 4
+        if (kind == LXA_DOM_KIND_ELEMENT && name.length == 4
             && memcmp(name.data, "meta", 4) == 0) {
             status = lxa_dom_nodes_find_attribute(nodes, child,
                 (lxa_span_t){(const uint8_t *) "charset", 7}, &attribute);

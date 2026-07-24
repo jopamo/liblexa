@@ -82,6 +82,7 @@ main(void)
     lxa_dom_nodes_t *a = NULL, *b = NULL;
     lxa_dom_ref_t first, last, invalid, fragment, second;
     lxa_dom_record_t record;
+    lxa_dom_kind_t kind;
     lxa_span_t input = {(const uint8_t *) "a\0b", 3}, view;
     unsigned int i, failure;
     bool failed = false;
@@ -89,6 +90,15 @@ main(void)
     TEST_CHECK(lxa_dom_nodes_create(&allocator, &a) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create(&allocator, &b) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_append_draft(a, LXA_DOM_KIND_TEXT, &first) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_kind(a, first, &kind) == LXA_OK
+               && kind == LXA_DOM_KIND_TEXT);
+    TEST_CHECK(lxa_dom_nodes_kind(b, first, &kind) == LXA_ERROR_ARGUMENT
+               && kind == LXA_DOM_KIND_INVALID);
+    TEST_CHECK(lxa_dom_nodes_kind(a, (lxa_dom_ref_t){0}, &kind)
+               == LXA_ERROR_ARGUMENT && kind == LXA_DOM_KIND_INVALID);
+    TEST_CHECK(lxa_dom_nodes_kind(NULL, first, &kind) == LXA_ERROR_ARGUMENT
+               && kind == LXA_DOM_KIND_INVALID);
+    TEST_CHECK(lxa_dom_nodes_kind(a, first, NULL) == LXA_ERROR_ARGUMENT);
     TEST_CHECK(test_slot(first) == 0 && first.epoch == 1);
     for (i = 0; i < 4096; ++i) {
         TEST_CHECK(lxa_dom_nodes_append_draft(a, LXA_DOM_KIND_COMMENT, &last)
@@ -194,6 +204,8 @@ main(void)
     invalid.epoch = last.epoch;
     TEST_CHECK(lxa_dom_nodes_read(a, invalid, &record) == LXA_ERROR_ARGUMENT);
     TEST_CHECK(lxa_dom_nodes_read(a, first, &record) == LXA_ERROR_ARGUMENT);
+    TEST_CHECK(lxa_dom_nodes_kind(a, first, &kind) == LXA_ERROR_ARGUMENT
+               && kind == LXA_DOM_KIND_INVALID);
     TEST_CHECK(lxa_dom_nodes_read(a, last, &record) == LXA_OK);
     TEST_CHECK(record.kind == LXA_DOM_KIND_DOCUMENT);
     TEST_CHECK(lxa_dom_nodes_character_read(a, invalid, &view) == LXA_ERROR_ARGUMENT);

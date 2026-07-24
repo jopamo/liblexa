@@ -5,6 +5,24 @@
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
 
+/* The engine record contains IDs only. Drafts have no published links or
+ * payload; typed payload construction and tree publication are separate.
+ * No caller may retain an address into the growing node array.
+ */
+typedef struct {
+    lxa_id_t parent, first_child, last_child, prev, next;
+    lxa_id_t payload;
+    uint16_t kind, flags;
+    uint32_t generation;
+} lxa_dom_record_t;
+
+typedef char lxa_dom_record_size_must_be_32[
+    sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
+
+/* Copies the record, avoiding a pointer into a relocatable array. */
+lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
+                                lxa_dom_ref_t handle,
+                                lxa_dom_record_t *out);
 /* Parser-only draft construction. A draft has no typed payload or links.
  * Failure leaves length and earlier references valid. */
 lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
