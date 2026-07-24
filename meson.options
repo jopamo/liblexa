@@ -1,0 +1,2 @@
+option('candidate_html', type: 'boolean', value: true,
+       description: 'Build and install the HTML parser candidate')

@@ -1,0 +1,38 @@
+{
+  "upstream": "https://github.com/w3c/svgwg",
+  "revision": "513eb752b75f4250ce68edf28e7817d66726c840",
+  "inputs": [
+    {
+      "file": "definitions.xml",
+      "url": "https://raw.githubusercontent.com/w3c/svgwg/513eb752b75f4250ce68edf28e7817d66726c840/master/definitions.xml",
+      "sha256": "7db42f32f4c2c3c5d6395737dd20cd91e91a41efccf6b9d545cc5abc7400e34b"
+    },
+    {
+      "file": "definitions-filters.xml",
+      "url": "https://raw.githubusercontent.com/w3c/svgwg/513eb752b75f4250ce68edf28e7817d66726c840/master/definitions-filters.xml",
+      "sha256": "f96968584136839df0770a6f09049f780b066f1a4b0821dd6664dc50992c696c"
+    },
+    {
+      "file": "definitions-compositing.xml",
+      "url": "https://raw.githubusercontent.com/w3c/svgwg/513eb752b75f4250ce68edf28e7817d66726c840/master/definitions-compositing.xml",
+      "sha256": "c055f400e90888d9f107da62e470c750ba2dcd1d205bfa52f2a29d15f9ed844e"
+    },
+    {
+      "file": "definitions-masking.xml",
+      "url": "https://raw.githubusercontent.com/w3c/svgwg/513eb752b75f4250ce68edf28e7817d66726c840/master/definitions-masking.xml",
+      "sha256": "50a0769cbc0855fa91b3323876a3a8005cd59ffcb6521d7c13cdf936a4de3ac8"
+    }
+  ],
+  "license": [
+    {
+      "file": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/w3c/svgwg/513eb752b75f4250ce68edf28e7817d66726c840/LICENSE.md",
+      "sha256": "6bb0235e84e19f807f271b54459eb494742a421e1c5c36a1de702c151ecb15f3"
+    },
+    {
+      "file": "document-license.html",
+      "url": "https://www.w3.org/copyright/document-license-2023/",
+      "sha256": "4bc849ad8fc856e93478400332f409d209bdb7ab3ec0f346e88e9c23b6d2b9ae"
+    }
+  ]
+}

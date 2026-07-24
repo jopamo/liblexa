@@ -1,0 +1,21 @@
+{
+  "upstream": "https://www.w3.org/TR/2014/REC-MathML3-20140410/",
+  "version": "MathML 3.0 Second Edition (10 April 2014)",
+  "inputs": [
+    {
+      "file": "index.html",
+      "url": "https://www.w3.org/TR/2014/REC-MathML3-20140410/",
+      "sha256": "e6693bdffd95e695f5d642de563de9bcfb9aab8f7653ba02f54fac8c14f31e00"
+    },
+    {
+      "file": "chapter3.html",
+      "url": "https://www.w3.org/TR/2014/REC-MathML3-20140410/chapter3.html",
+      "sha256": "3a5ea916b387c7d1d4cee4274233af2517efa6ec4de5b85c4f193cb748a5c6ed"
+    }
+  ],
+  "license": {
+    "file": "document-license.html",
+    "url": "https://www.w3.org/copyright/document-license-2002/",
+    "sha256": "62e6df0a226bfed9de8996e4e896113cdfb33cb33f80038e56f761abdc70d8f5"
+  }
+}

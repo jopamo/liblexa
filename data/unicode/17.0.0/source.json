@@ -1,0 +1,56 @@
+{
+  "upstream": "https://www.unicode.org/Public/17.0.0/",
+  "version": "17.0.0",
+  "inputs": [
+    {
+      "file": "ucd/ReadMe.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/ReadMe.txt",
+      "sha256": "9fe1a90bd32659d7953616283dc2bffaa165518aae9ace026040c42c559ba606"
+    },
+    {
+      "file": "ucd/UnicodeData.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/UnicodeData.txt",
+      "sha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c"
+    },
+    {
+      "file": "ucd/DerivedNormalizationProps.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/DerivedNormalizationProps.txt",
+      "sha256": "71fd6a206a2c0cdd41feb6b7f656aa31091db45e9cedc926985d718397f9e488"
+    },
+    {
+      "file": "ucd/CompositionExclusions.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/CompositionExclusions.txt",
+      "sha256": "2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f"
+    },
+    {
+      "file": "ucd/extracted/DerivedJoiningType.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedJoiningType.txt",
+      "sha256": "f39ebe974825d6736aee15582250307aa532b2cfab3caf3f86bd23fddc9c5c4d"
+    },
+    {
+      "file": "ucd/NormalizationTest.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/NormalizationTest.txt",
+      "sha256": "5019ffd530751a741900c849c0e010332f142a3612234639bd200b82138a87db"
+    },
+    {
+      "file": "idna/ReadMe.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/idna/ReadMe.txt",
+      "sha256": "626a5adbd460a740e02078f09ded01b5b4183459a171fd69843d0163c1318fc0"
+    },
+    {
+      "file": "idna/IdnaMappingTable.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/idna/IdnaMappingTable.txt",
+      "sha256": "87f05505dc026fdb2bff16132bdc68a8014675836882a9a2b1844540ad3be382"
+    },
+    {
+      "file": "idna/IdnaTestV2.txt",
+      "url": "https://www.unicode.org/Public/17.0.0/idna/IdnaTestV2.txt",
+      "sha256": "beb5d0be20e896189b03209a82fdc34f06351502bbd4b8e2523583fc2954d9cf"
+    }
+  ],
+  "license": {
+    "file": "LICENSE",
+    "url": "https://www.unicode.org/license.txt",
+    "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+  }
+}

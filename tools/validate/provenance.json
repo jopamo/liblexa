@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "id": "core",
+      "sources": [
+        "src/base/memory.c",
+        "src/base/region.c",
+        "src/base/bytes.c",
+        "src/base/vector.c",
+        "src/base/budget.c",
+        "src/base/entropy.c",
+        "src/base/siphash.c",
+        "src/base/table.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [],
+      "public_inputs": [
+        "C17 and documented platform entropy APIs",
+        "SipHash-2-4 (Aumasson and Bernstein, 2012)"
+      ]
+    },
+    {
+      "id": "encoding",
+      "sources": [
+        "src/encoding/stream.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/whatwg/encoding/source.json"
+      ],
+      "public_inputs": [
+        "WHATWG Encoding Standard and indexes.json at a985b62a9b45c17da3e17a9f0a0b4e30c34c4a8a"
+      ]
+    },
+    {
+      "id": "unicode",
+      "sources": [
+        "src/unicode/lookup.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/unicode/17.0.0/source.json"
+      ],
+      "public_inputs": [
+        "Unicode Character Database and UTS #46, version 17.0.0"
+      ]
+    },
+    {
+      "id": "dom-store",
+      "sources": [
+        "src/dom/node_store.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [],
+      "public_inputs": [
+        "C17 and the ID/typed-store contract in liblexa/dom.h"
+      ]
+    },
+    {
+      "id": "css",
+      "sources": [
+        "src/css/token.c",
+        "src/css/filter.c",
+        "src/css/scan.c",
+        "src/css/bytes.c",
+        "src/css/components.c",
+        "src/css/declaration.c",
+        "src/css/declarations.c",
+        "src/css/import.c",
+        "src/css/media.c",
+        "src/css/rule.c",
+        "src/css/selector_key.c",
+        "src/css/selector_list.c",
+        "src/css/value_text.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/csswg/source.json",
+        "data/webref/source.json"
+      ],
+      "public_inputs": [
+        "CSS Syntax Level 3; CSSWG snapshot d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86",
+        "Selected WebRef CSS extracts e1d8c140231112a46561898d2750e58ba42dcac9"
+      ]
+    }
+  ],
+  "candidate_components": [
+    {
+      "id": "html-tokenizer",
+      "sources": [
+        "src/html/tokenizer.c",
+        "src/html/input_encoding.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/whatwg/html/source.json"
+      ],
+      "public_inputs": [
+        "WHATWG HTML Standard at 2f441941fc523877bd9d5cd7de3b91a81a00ca2e",
+        "WHATWG html-build entities.json at 283a3531a61106d07d9a7d9fb3e6f3b9bfd33d70"
+      ]
+    },
+    {
+      "id": "html-foreign-names",
+      "sources": [
+        "src/html/foreign_names.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/whatwg/html/source.json"
+      ],
+      "public_inputs": [
+        "WHATWG HTML Standard at 2f441941fc523877bd9d5cd7de3b91a81a00ca2e"
+      ]
+    },
+    {
+      "id": "html-document-tree-serializer",
+      "sources": [
+        "src/html/tree.c",
+        "src/html/document.c",
+        "src/serialize/escape.c",
+        "src/serialize/document.c"
+      ],
+      "origin": "independently authored",
+      "copyright": "Copyright (C) 2026 Paul Moses",
+      "license": "MIT",
+      "data_manifests": [
+        "data/whatwg/html/source.json"
+      ],
+      "public_inputs": [
+        "WHATWG HTML Standard at 2f441941fc523877bd9d5cd7de3b91a81a00ca2e",
+        "ID/typed-store contract in liblexa/dom.h"
+      ]
+    }
+  ]
+}

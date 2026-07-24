@@ -1,0 +1,48 @@
+{
+  "upstream": "https://github.com/w3c/csswg-drafts",
+  "revision": "d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86",
+  "specification_url": "https://drafts.csswg.org/css-syntax-3/",
+  "license_url": "https://www.w3.org/Consortium/Legal/copyright-software",
+  "files": [
+    {
+      "file": "css-syntax-3.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css-syntax-3/Overview.bs",
+      "sha256": "b3b69f509779b1af89d8f299e2b250f27f17896c2dd3d486665117073e6a32cf"
+    },
+    {
+      "file": "css-backgrounds-3.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css-backgrounds-3/Overview.bs",
+      "sha256": "5119e57464695b40659e52bb19dbab978f3440c1665b63e952d158d0474ffb08",
+      "specification_url": "https://drafts.csswg.org/css-backgrounds-3/"
+    },
+    {
+      "file": "css-color-4.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css-color-4/Overview.bs",
+      "sha256": "00201c213bf7265ca2321b69c05b8217151418b56614e9167a93424f2cf531ed",
+      "specification_url": "https://drafts.csswg.org/css-color-4/"
+    },
+    {
+      "file": "css-display-4.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css-display-4/Overview.bs",
+      "sha256": "979593ab2dff0d4557fd27ba9723a163ea81c8ee535ab4a38181d7acfd06cc17",
+      "specification_url": "https://drafts.csswg.org/css-display-4/"
+    },
+    {
+      "file": "css-fonts-4.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css-fonts-4/Overview.bs",
+      "sha256": "e14b846c6bb3b543cb921fd0beee03cb9895c80dab5ee9f00d04b98bcd157f4b",
+      "specification_url": "https://drafts.csswg.org/css-fonts-4/"
+    },
+    {
+      "file": "css2-overview.bs",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/css2/Overview.bs",
+      "sha256": "60dc5b8df0d1b97c82998bd05016ac4ec3146a160d79017071c18df41309186e",
+      "specification_url": "https://drafts.csswg.org/css2/"
+    },
+    {
+      "file": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d1232f978ae92d4b4c04c9b4d5fe82cd0f5ddf86/LICENSE.md",
+      "sha256": "232da9c6c2b9f7e19e5d85cc7cf43760d80b7c4174406ac6404fa2c1b51d531b"
+    }
+  ]
+}

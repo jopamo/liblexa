@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/w3c/mathml-core",
+  "revision": "f69212ad1f21bbfb7cde24264608c23b96b0e1b7",
+  "inputs": [
+    {
+      "file": "spec.html",
+      "url": "https://raw.githubusercontent.com/w3c/mathml-core/f69212ad1f21bbfb7cde24264608c23b96b0e1b7/spec.html",
+      "sha256": "ca57b2feeb4715b7991b5ab9176faf0b733658c2c83bb423e7b3dc60afb54b28"
+    }
+  ],
+  "license": {
+    "file": "document-license.html",
+    "url": "https://www.w3.org/copyright/document-license-2023/",
+    "sha256": "4bc849ad8fc856e93478400332f409d209bdb7ab3ec0f346e88e9c23b6d2b9ae"
+  }
+}
