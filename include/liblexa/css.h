@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-/* CSS Syntax token identity. */
+/* CSS Syntax token identity. See docs/css-api.md for the librsvg contract. */
 typedef enum {
     LXA_CSS_IDENT,
     LXA_CSS_FUNCTION,
