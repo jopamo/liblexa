@@ -278,22 +278,23 @@ lxa_status_t lxa_css_rule_parse(lxa_css_tokens_t *tokens,
  * declarations. Token indices require an unchanged source and block index.
  * The block index and its budget must outlive this list.
  */
-typedef struct {
-    lxa_vector_t entries;
-    lxa_budget_t *budget;
-    lxa_budget_kind_t limit_reason;
-    bool count_limit;
-    bool ready;
-} lxa_css_declarations_t;
+typedef struct lxa_css_declarations lxa_css_declarations_t;
 
-lxa_status_t lxa_css_declarations_init(lxa_css_declarations_t *list,
-                                       const lxa_allocator_t *allocator,
-                                       lxa_css_blocks_t *blocks);
+/* Allocate an empty list; clear *out on every failure. The allocator context
+ * and block budget must outlive destroy. Object and backing storage charge
+ * MEMORY; destroy accepts NULL and releases both. */
+lxa_status_t lxa_css_declarations_create(const lxa_allocator_t *allocator,
+    lxa_css_blocks_t *blocks, lxa_css_declarations_t **out);
+/* Zero for NULL, unbuilt or rejected output. Queries do not charge WORK. */
+size_t lxa_css_declarations_length(const lxa_css_declarations_t *list);
+/* Last build limit: COUNT/false for NULL or no matching failure. */
+lxa_budget_kind_t lxa_css_declarations_limit_reason(const lxa_css_declarations_t *list);
+bool lxa_css_declarations_count_limit(const lxa_css_declarations_t *list);
 /* [first, after) excludes the enclosing braces. max_count is a caller-owned
  * remaining allowance (e.g. for an entire imported stylesheet graph).
  * Invalid arguments leave previous output unchanged; after build starts,
  * any failure clears logical output while retaining charged capacity.
- * A count rejection returns LIMIT with count_limit=true. */
+ * A count rejection returns LIMIT with the count_limit query true. */
 lxa_status_t lxa_css_declarations_build(lxa_css_declarations_t *list,
                                         lxa_css_tokens_t *tokens,
                                         lxa_css_blocks_t *blocks,
@@ -348,19 +349,21 @@ typedef struct {
 
 /* Split a rule prelude at top-level commas; functions and blocks are opaque.
  * The caller decides whether a selector is supported. An empty segment makes
- * the whole list syntactically invalid (OK with valid=false). Indices borrow
+ * the whole list syntactically invalid (OK with length zero). Indices borrow
  * an unchanged token list and block index. The bound budget outlives destroy.
  */
-typedef struct {
-    lxa_vector_t ranges;
-    lxa_budget_t *budget;
-    lxa_budget_kind_t limit_reason;
-    bool count_limit;
-    bool valid;
-} lxa_css_selector_list_t;
+typedef struct lxa_css_selector_list lxa_css_selector_list_t;
 
-lxa_status_t lxa_css_selector_list_init(lxa_css_selector_list_t *list,
-    const lxa_allocator_t *allocator, lxa_css_blocks_t *blocks);
+/* Allocate an empty list; clear *out on every failure. The allocator context
+ * and block budget must outlive destroy. Object and backing storage charge
+ * MEMORY; destroy accepts NULL and releases both. */
+lxa_status_t lxa_css_selector_list_create(const lxa_allocator_t *allocator,
+    lxa_css_blocks_t *blocks, lxa_css_selector_list_t **out);
+/* Zero for NULL, unbuilt or rejected output. Queries do not charge WORK. */
+size_t lxa_css_selector_list_length(const lxa_css_selector_list_t *list);
+/* Last build limit: COUNT/false for NULL or no matching failure. */
+lxa_budget_kind_t lxa_css_selector_list_limit_reason(const lxa_css_selector_list_t *list);
+bool lxa_css_selector_list_count_limit(const lxa_css_selector_list_t *list);
 /* Invalid arguments leave the previous output alone; all other failures
  * clear logical output, retaining charged capacity until destruction. */
 lxa_status_t lxa_css_selector_list_build(lxa_css_selector_list_t *list,

@@ -1,23 +1,60 @@
 /* Copyright (C) 2026 Paul Moses */
 #include "liblexa/css.h"
 
+struct lxa_css_selector_list {
+    lxa_vector_t ranges;
+    lxa_budget_t *budget;
+    lxa_budget_kind_t limit_reason;
+    bool count_limit;
+    bool valid;
+};
+
 lxa_status_t
-lxa_css_selector_list_init(lxa_css_selector_list_t *list,
-                           const lxa_allocator_t *allocator,
-                           lxa_css_blocks_t *blocks)
+lxa_css_selector_list_create(const lxa_allocator_t *allocator,
+    lxa_css_blocks_t *blocks, lxa_css_selector_list_t **out)
 {
+    lxa_css_selector_list_t *list;
+    lxa_vector_t storage;
     lxa_status_t status;
-    if (list == NULL || blocks == NULL || blocks->budget == NULL)
-        return LXA_ERROR_ARGUMENT;
-    *list = (lxa_css_selector_list_t) {0};
-    list->budget = blocks->budget;
-    list->limit_reason = LXA_BUDGET_COUNT;
-    status = lxa_vector_init(&list->ranges, allocator,
-                             sizeof(lxa_css_selector_range_t));
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = NULL;
+    if (blocks == NULL || blocks->budget == NULL) return LXA_ERROR_ARGUMENT;
+    status = lxa_vector_init(&storage, allocator, sizeof(lxa_css_selector_range_t));
     if (status != LXA_OK) return status;
-    status = lxa_vector_bind_budget(&list->ranges, list->budget);
-    if (status != LXA_OK) lxa_vector_destroy(&list->ranges);
-    return status;
+    status = lxa_vector_bind_budget(&storage, blocks->budget);
+    if (status != LXA_OK) return status;
+    status = lxa_budget_charge(blocks->budget, LXA_BUDGET_MEMORY,
+                               sizeof(*list), NULL);
+    if (status != LXA_OK) return status;
+    status = lxa_alloc(allocator, sizeof(*list), (void **) &list);
+    if (status != LXA_OK) {
+        lxa_budget_release(blocks->budget, LXA_BUDGET_MEMORY, sizeof(*list));
+        return status;
+    }
+    *list = (lxa_css_selector_list_t) {
+        .ranges = storage, .budget = blocks->budget,
+        .limit_reason = LXA_BUDGET_COUNT
+    };
+    *out = list;
+    return LXA_OK;
+}
+
+size_t
+lxa_css_selector_list_length(const lxa_css_selector_list_t *list)
+{
+    return list == NULL || !list->valid ? 0 : lxa_vector_length(&list->ranges);
+}
+
+lxa_budget_kind_t
+lxa_css_selector_list_limit_reason(const lxa_css_selector_list_t *list)
+{
+    return list == NULL ? LXA_BUDGET_COUNT : list->limit_reason;
+}
+
+bool
+lxa_css_selector_list_count_limit(const lxa_css_selector_list_t *list)
+{
+    return list != NULL && list->count_limit;
 }
 
 lxa_status_t
@@ -108,8 +145,9 @@ void
 lxa_css_selector_list_destroy(lxa_css_selector_list_t *list)
 {
     if (list != NULL) {
+        lxa_allocator_t allocator = list->ranges.bytes.allocator;
         lxa_vector_destroy(&list->ranges);
-        list->budget = NULL;
-        list->valid = false;
+        lxa_budget_release(list->budget, LXA_BUDGET_MEMORY, sizeof(*list));
+        lxa_free(&allocator, list);
     }
 }

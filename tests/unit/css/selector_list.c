@@ -9,7 +9,7 @@ check(const char *source, size_t expected)
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_css_tokens_t tokens;
     lxa_css_blocks_t blocks;
-    lxa_css_selector_list_t list;
+    lxa_css_selector_list_t *list = NULL;
     lxa_css_rule_t rule;
     size_t first, after;
     CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
@@ -21,44 +21,55 @@ check(const char *source, size_t expected)
               == LXA_OK && rule.has_block);
     first = rule.prelude_first;
     after = rule.prelude_after;
-    CSS_CHECK(lxa_css_selector_list_init(&list, &allocator, &blocks) == LXA_OK);
-    CSS_CHECK(lxa_css_selector_list_build(&list, &tokens, &blocks,
+    CSS_CHECK(lxa_css_selector_list_create(&allocator, &blocks, &list) == LXA_OK);
+    CSS_CHECK(lxa_css_selector_list_build(list, &tokens, &blocks,
               first, after, 5000) == LXA_OK);
-    CSS_CHECK(list.valid == (expected != 0));
-    CSS_CHECK(lxa_vector_length(&list.ranges) == expected);
+    CSS_CHECK(lxa_css_selector_list_length(list) == expected);
+    CSS_CHECK(lxa_css_selector_list_get(list, expected,
+              &(lxa_css_selector_range_t){0}) == LXA_ERROR_ARGUMENT);
     for (size_t i = 0; i < expected; i++) {
         lxa_css_selector_range_t range;
-        CSS_CHECK(lxa_css_selector_list_get(&list, i, &range) == LXA_OK
+        CSS_CHECK(lxa_css_selector_list_get(list, i, &range) == LXA_OK
                   && range.first >= first && range.after <= after
                   && range.first < range.after);
     }
     if (expected) {
-        CSS_CHECK(lxa_css_selector_list_build(&list, &tokens, &blocks,
+        CSS_CHECK(lxa_css_selector_list_build(list, &tokens, &blocks,
                   first, after, expected - 1) == LXA_ERROR_LIMIT
-                  && list.count_limit && !list.valid
-                  && lxa_vector_length(&list.ranges) == 0);
-        CSS_CHECK(lxa_css_selector_list_build(&list, &tokens, &blocks,
-                  first, after, expected) == LXA_OK && list.valid);
-        lxa_css_selector_list_destroy(&list);
+                  && lxa_css_selector_list_count_limit(list)
+                  && lxa_css_selector_list_length(list) == 0);
+        CSS_CHECK(lxa_css_selector_list_build(list, &tokens, &blocks,
+                  first, after, expected) == LXA_OK);
+        lxa_css_selector_list_destroy(list);
         size_t retained = blocks.local_budget.used[LXA_BUDGET_MEMORY];
         blocks.local_budget.limits.max_memory_bytes = retained;
-        CSS_CHECK(lxa_css_selector_list_init(&list, &allocator, &blocks) == LXA_OK);
-        CSS_CHECK(lxa_css_selector_list_build(&list, &tokens, &blocks,
-                  first, after, expected) == LXA_ERROR_LIMIT
-                  && list.limit_reason == LXA_BUDGET_MEMORY && !list.valid
-                  && lxa_vector_length(&list.ranges) == 0);
-        lxa_css_selector_list_destroy(&list);
+        CSS_CHECK(lxa_css_selector_list_create(&allocator, &blocks, &list)
+                  == LXA_ERROR_LIMIT && list == NULL);
+        CSS_CHECK(lxa_css_selector_list_length(NULL) == 0
+                  && lxa_css_selector_list_limit_reason(NULL) == LXA_BUDGET_COUNT
+                  && !lxa_css_selector_list_count_limit(NULL));
+        lxa_css_selector_list_destroy(list);
         CSS_CHECK(blocks.local_budget.used[LXA_BUDGET_MEMORY] == retained);
         blocks.local_budget.limits.max_memory_bytes = UINT64_MAX;
-        CSS_CHECK(lxa_css_selector_list_init(&list, &allocator, &blocks) == LXA_OK);
+        CSS_CHECK(lxa_css_selector_list_create(&allocator, &blocks, &list) == LXA_OK);
+        blocks.local_budget.limits.max_memory_bytes =
+            blocks.local_budget.used[LXA_BUDGET_MEMORY];
+        CSS_CHECK(lxa_css_selector_list_build(list, &tokens, &blocks,
+                  first, after, expected) == LXA_ERROR_LIMIT
+                  && lxa_css_selector_list_limit_reason(list) == LXA_BUDGET_MEMORY
+                  && lxa_css_selector_list_length(list) == 0);
+        lxa_css_selector_list_destroy(list);
+        CSS_CHECK(blocks.local_budget.used[LXA_BUDGET_MEMORY] == retained);
+        blocks.local_budget.limits.max_memory_bytes = UINT64_MAX;
+        CSS_CHECK(lxa_css_selector_list_create(&allocator, &blocks, &list) == LXA_OK);
         blocks.local_budget.limits.max_work =
             blocks.local_budget.used[LXA_BUDGET_WORK];
-        CSS_CHECK(lxa_css_selector_list_build(&list, &tokens, &blocks,
+        CSS_CHECK(lxa_css_selector_list_build(list, &tokens, &blocks,
                   first, after, expected) == LXA_ERROR_LIMIT
-                  && list.limit_reason == LXA_BUDGET_WORK && !list.valid
-                  && lxa_vector_length(&list.ranges) == 0);
+                  && lxa_css_selector_list_limit_reason(list) == LXA_BUDGET_WORK
+                  && lxa_css_selector_list_length(list) == 0);
     }
-    lxa_css_selector_list_destroy(&list);
+    lxa_css_selector_list_destroy(list);
     lxa_css_blocks_destroy(&blocks);
     lxa_css_tokens_destroy(&tokens);
 }
