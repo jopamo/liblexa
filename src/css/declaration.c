@@ -1,5 +1,5 @@
 /* Copyright (C) 2026 Paul Moses */
-#include "liblexa/css.h"
+#include "css/blocks.h"
 
 static lxa_status_t
 read_token(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks, size_t at,

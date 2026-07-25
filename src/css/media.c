@@ -1,5 +1,5 @@
 /* Copyright (C) 2026 Paul Moses */
-#include "liblexa/css.h"
+#include "css/blocks.h"
 
 static bool
 word(lxa_span_t text, const char *ascii, size_t size)

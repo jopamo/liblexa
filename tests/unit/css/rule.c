@@ -9,14 +9,14 @@ parse(const char *source, lxa_css_rule_kind_t kind, bool valid,
 {
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_css_tokens_t *tokens = NULL;
-    lxa_css_blocks_t blocks;
+    lxa_css_blocks_t *blocks = NULL;
     lxa_css_rule_t rule;
     CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) source,
         strlen(source)}, tokens) == LXA_CSS_SCAN_OK);
-    CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
-    CSS_CHECK(lxa_css_rule_parse(tokens, &blocks, 0, blocks.end, &rule)
+    CSS_CHECK(lxa_css_blocks_create(&allocator, NULL, &blocks) == LXA_OK);
+    CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_rule_parse(tokens, blocks, 0, lxa_css_blocks_end(blocks), &rule)
               == LXA_OK);
     CSS_CHECK(rule.valid == valid && rule.kind == kind);
     if (valid) {
@@ -24,17 +24,17 @@ parse(const char *source, lxa_css_rule_kind_t kind, bool valid,
         if (block) {
             CSS_CHECK(rule.block_open == before_block);
             CSS_CHECK(rule.block_after == (strchr(source, '}')
-                ? after - 1 : blocks.end));
+                ? after - 1 : lxa_css_blocks_end(blocks)));
         }
         else {
             CSS_CHECK(rule.prelude_after == before_block);
         }
-        blocks.local_budget.limits.max_work = blocks.local_budget.used[LXA_BUDGET_WORK];
-        CSS_CHECK(lxa_css_rule_parse(tokens, &blocks, 0, blocks.end, &rule)
+        lxa_css_blocks_budget(blocks)->limits.max_work = lxa_css_blocks_budget(blocks)->used[LXA_BUDGET_WORK];
+        CSS_CHECK(lxa_css_rule_parse(tokens, blocks, 0, lxa_css_blocks_end(blocks), &rule)
                   == LXA_ERROR_LIMIT);
-        CSS_CHECK(blocks.limit_reason == LXA_BUDGET_WORK && !rule.valid);
+        CSS_CHECK(lxa_css_blocks_limit_reason(blocks) == LXA_BUDGET_WORK && !rule.valid);
     }
-    lxa_css_blocks_destroy(&blocks);
+    lxa_css_blocks_destroy(blocks);
     lxa_css_tokens_destroy(tokens);
 }
 
@@ -52,7 +52,7 @@ main(void)
         /* A token list without an explicit EOF can end on a matched close. */
         lxa_allocator_t allocator = lxa_allocator_default();
         lxa_css_tokens_t *tokens = NULL;
-        lxa_css_blocks_t blocks;
+        lxa_css_blocks_t *blocks = NULL;
         lxa_css_rule_t rule;
         lxa_css_token_t token = {0};
         CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
@@ -65,13 +65,13 @@ main(void)
         token.kind = LXA_CSS_RIGHT_BRACE;
         CSS_CHECK(lxa_css_tokens_append(tokens, token,
                   (lxa_span_t) {NULL, 0}) == LXA_OK);
-        CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-        CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
-        CSS_CHECK(lxa_css_rule_parse(tokens, &blocks, 0, 3, &rule)
+        CSS_CHECK(lxa_css_blocks_create(&allocator, NULL, &blocks) == LXA_OK);
+        CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_OK);
+        CSS_CHECK(lxa_css_rule_parse(tokens, blocks, 0, 3, &rule)
                   == LXA_OK && rule.valid && rule.has_block
                   && rule.block_open == 1 && rule.block_after == 2
                   && rule.after == 3);
-        lxa_css_blocks_destroy(&blocks);
+        lxa_css_blocks_destroy(blocks);
         lxa_css_tokens_destroy(tokens);
     }
     return 0;

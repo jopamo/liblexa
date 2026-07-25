@@ -1,7 +1,7 @@
 /* Copyright (C) 2026 Paul Moses */
 #include "css/tokens.h"
 #include <assert.h>
-#include "liblexa/css.h"
+#include "css/blocks.h"
 
 static lxa_css_token_kind_t
 closing(lxa_css_token_kind_t kind)
@@ -25,27 +25,60 @@ release_depth(lxa_budget_t *budget, size_t depth)
 }
 
 lxa_status_t
-lxa_css_blocks_init(lxa_css_blocks_t *blocks,
-                    const lxa_allocator_t *allocator, lxa_budget_t *budget)
+lxa_css_blocks_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
+                      lxa_css_blocks_t **out)
 {
+    lxa_css_blocks_t *blocks;
+    lxa_vector_t entries;
+    lxa_budget_t local;
+    lxa_budget_t *active = budget;
     lxa_status_t status;
-    if (blocks == NULL) {
-        return LXA_ERROR_ARGUMENT;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = NULL;
+    status = lxa_vector_init(&entries, allocator, sizeof(lxa_css_block_t));
+    if (status != LXA_OK) return status;
+    if (active == NULL) {
+        status = lxa_budget_init(&local, NULL);
+        if (status != LXA_OK) return status;
+        active = &local;
     }
-    *blocks = (lxa_css_blocks_t) {0};
-    lxa_budget_init(&blocks->local_budget, NULL);
-    blocks->budget = budget == NULL ? &blocks->local_budget : budget;
-    blocks->limit_reason = LXA_BUDGET_COUNT;
-    status = lxa_vector_init(&blocks->entries, allocator,
-                             sizeof(lxa_css_block_t));
+    status = lxa_budget_charge(active, LXA_BUDGET_MEMORY, sizeof(*blocks), NULL);
+    if (status != LXA_OK) return status;
+    status = lxa_alloc(allocator, sizeof(*blocks), (void **) &blocks);
     if (status != LXA_OK) {
+        lxa_budget_release(active, LXA_BUDGET_MEMORY, sizeof(*blocks));
         return status;
     }
+    *blocks = (lxa_css_blocks_t) {
+        .entries = entries, .limit_reason = LXA_BUDGET_COUNT
+    };
+    if (budget == NULL) blocks->local_budget = local;
+    blocks->budget = budget == NULL ? &blocks->local_budget : budget;
     status = lxa_vector_bind_budget(&blocks->entries, blocks->budget);
     if (status != LXA_OK) {
-        lxa_vector_destroy(&blocks->entries);
+        lxa_css_blocks_destroy(blocks);
+        return status;
     }
-    return status;
+    *out = blocks;
+    return LXA_OK;
+}
+
+size_t
+lxa_css_blocks_end(const lxa_css_blocks_t *blocks)
+{
+    return blocks == NULL || !blocks->ready ? 0 : blocks->end;
+}
+
+lxa_budget_t *
+lxa_css_blocks_budget(lxa_css_blocks_t *blocks)
+{
+    return blocks == NULL ? NULL : blocks->budget;
+}
+
+lxa_budget_kind_t
+lxa_css_blocks_limit_reason(const lxa_css_blocks_t *blocks)
+{
+    return blocks == NULL ? LXA_BUDGET_COUNT : blocks->limit_reason;
 }
 
 lxa_status_t
@@ -272,9 +305,9 @@ void
 lxa_css_blocks_destroy(lxa_css_blocks_t *blocks)
 {
     if (blocks != NULL) {
+        lxa_allocator_t allocator = blocks->entries.bytes.allocator;
         lxa_vector_destroy(&blocks->entries);
-        blocks->budget = NULL;
-        blocks->ready = false;
-        blocks->end = 0;
+        lxa_budget_release(blocks->budget, LXA_BUDGET_MEMORY, sizeof(*blocks));
+        lxa_free(&allocator, blocks);
     }
 }

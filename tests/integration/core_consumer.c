@@ -94,25 +94,25 @@ main(void)
     if (lxa_css_tokens_create(&allocator, NULL, &tokens) != LXA_OK) abort();
     if (lxa_css_scan_bytes((lxa_span_t) {css, sizeof(css) - 1}, tokens)
         != LXA_CSS_SCAN_OK || lxa_css_tokens_length(tokens) < 5) abort();
-    lxa_css_blocks_t blocks;
+    lxa_css_blocks_t *blocks = NULL;
     lxa_css_rule_t rule;
     lxa_css_declarations_t *declarations = NULL;
     lxa_css_selector_list_t *selectors = NULL;
-    if (lxa_css_blocks_init(&blocks, &allocator, NULL) != LXA_OK
-        || lxa_css_blocks_build(&blocks, tokens) != LXA_OK
-        || lxa_css_rule_parse(tokens, &blocks, 0, blocks.end, &rule) != LXA_OK
+    if (lxa_css_blocks_create(&allocator, NULL, &blocks) != LXA_OK
+        || lxa_css_blocks_build(blocks, tokens) != LXA_OK
+        || lxa_css_rule_parse(tokens, blocks, 0, lxa_css_blocks_end(blocks), &rule) != LXA_OK
         || !rule.valid || !rule.has_block
-        || lxa_css_declarations_create(&allocator, &blocks, &declarations) != LXA_OK
-        || lxa_css_declarations_build(declarations, tokens, &blocks,
+        || lxa_css_declarations_create(&allocator, blocks, &declarations) != LXA_OK
+        || lxa_css_declarations_build(declarations, tokens, blocks,
             rule.block_open + 1, rule.block_after, 1) != LXA_OK
         || lxa_css_declarations_length(declarations) != 1
-        || lxa_css_selector_list_create(&allocator, &blocks, &selectors) != LXA_OK
-        || lxa_css_selector_list_build(selectors, tokens, &blocks,
+        || lxa_css_selector_list_create(&allocator, blocks, &selectors) != LXA_OK
+        || lxa_css_selector_list_build(selectors, tokens, blocks,
             rule.prelude_first, rule.prelude_after, 1) != LXA_OK
         || lxa_css_selector_list_length(selectors) != 1) abort();
     lxa_css_selector_list_destroy(selectors);
     lxa_css_declarations_destroy(declarations);
-    lxa_css_blocks_destroy(&blocks);
+    lxa_css_blocks_destroy(blocks);
     lxa_css_tokens_destroy(tokens);
     return 0;
 }

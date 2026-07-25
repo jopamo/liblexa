@@ -188,9 +188,9 @@ def check(build, prefix, candidate_html=False):
     for package_flags in (flags, static_flags):
         check_package_flags("liblexa", package_flags, prefix, libdir)
     check_libraries(archive, shared, flags, static_flags, "Liblexa package")
-    if re.search(r"\blxa_css_(?:unit_t|scan_cursor\w*|scan_units|tokens_append)\b",
+    if re.search(r"\blxa_css_(?:unit_t|scan_cursor\w*|scan_units|tokens_append|block_t|blocks_get)\b",
                  (prefix / "include/liblexa/css.h").read_text()):
-        raise ValueError("CSS header exposes parser-private scalar scanning")
+        raise ValueError("CSS header exposes parser-private scanning or storage")
     if re.search(r"\blxa_dom_(?:nodes_append_(?:draft|text_child)|record_t|nodes_read)\b",
                  (prefix / "include/liblexa/dom.h").read_text()):
         raise ValueError("DOM header exposes private record storage or construction")

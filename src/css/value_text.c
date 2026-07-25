@@ -1,5 +1,5 @@
 /* Copyright (C) 2026 Paul Moses */
-#include "liblexa/css.h"
+#include "css/blocks.h"
 #include "liblexa/base.h"
 
 static lxa_status_t

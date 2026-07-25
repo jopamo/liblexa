@@ -151,28 +151,7 @@ void lxa_css_byte_stream_destroy(lxa_css_byte_stream_t *stream);
 lxa_css_scan_result_t lxa_css_scan_bytes(lxa_span_t bytes,
                                          lxa_css_tokens_t *tokens);
 
-#define LXA_CSS_BLOCK_NONE UINT32_MAX
-
-/* Flat, append-only simple-block/function index over immutable tokens.
- * open/close are token indices; an unclosed block ends at the EOF token
- * index, or at token count when the list has no explicit EOF.
- * Children belong to their parent's token interval and carry its block ID.
- * No input or token-text pointer is retained. */
-typedef struct {
-    size_t open;
-    size_t close;
-    uint32_t parent;
-    lxa_css_token_kind_t opener;
-} lxa_css_block_t;
-
-typedef struct {
-    lxa_vector_t entries;
-    lxa_budget_t local_budget;
-    lxa_budget_t *budget;
-    lxa_budget_kind_t limit_reason;
-    size_t end; /* first EOF index, or token count without explicit EOF */
-    bool ready;
-} lxa_css_blocks_t;
+typedef struct lxa_css_blocks lxa_css_blocks_t;
 
 /* budget, when supplied, must outlive destroy and must be the same budget
  * backing the input token list. NULL selects an owned bounded profile.
@@ -180,16 +159,22 @@ typedef struct {
  * retaining charged backing capacity until destroy. Work is never refunded.
  * Input must remain immutable through build and all subsequent queries;
  * clear/rebuild the index before changing the source list. One writer.
- * Do not copy/move an initialized index: its owned budget may point inside it.
- * Destroy before reinitializing.
+ * Destroy accepts NULL; all derived budget users must be destroyed first.
  */
-lxa_status_t lxa_css_blocks_init(lxa_css_blocks_t *blocks,
-                                 const lxa_allocator_t *allocator,
-                                 lxa_budget_t *budget);
+/* Allocate an empty index, clearing the required out on failure. Object and
+ * retained capacity charge MEMORY. The allocator context outlives destroy. */
+lxa_status_t lxa_css_blocks_create(const lxa_allocator_t *allocator,
+    lxa_budget_t *budget, lxa_css_blocks_t **out);
+/* First EOF index (or token count), zero for NULL/unbuilt output. */
+size_t lxa_css_blocks_end(const lxa_css_blocks_t *blocks);
+/* Borrowed budget for derived lists/output buffers. Do not reset it while
+ * any user is live. A default owned budget expires at index destruction. */
+lxa_budget_t *lxa_css_blocks_budget(lxa_css_blocks_t *blocks);
+lxa_budget_kind_t lxa_css_blocks_limit_reason(const lxa_css_blocks_t *blocks);
+
 lxa_status_t lxa_css_blocks_build(lxa_css_blocks_t *blocks,
                                   lxa_css_tokens_t *tokens);
-lxa_status_t lxa_css_blocks_get(lxa_css_blocks_t *blocks, size_t index,
-                                lxa_css_block_t *out);
+
 /* CSS Syntax component values: an opener consumes through its matching close
  * (or EOF); an ordinary token consumes one token. Indices exclude EOF. Query
  * only after a successful build and before changing its source token list.
