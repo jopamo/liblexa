@@ -49,17 +49,16 @@ run(const uint8_t *input, size_t length, size_t chunk, size_t *token_count,
     lxa_budget_t budget;
     measurements_t m = {0};
     lxa_allocator_t allocator = {&m, allocate, resize, release};
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_css_byte_stream_t *stream = NULL;
     lxa_css_scan_result_t result;
     int error = 0;
     m.budget = &budget;
     if (lxa_budget_init(&budget, NULL) != LXA_OK
-        || lxa_css_tokens_init(&tokens, &allocator) != LXA_OK) {
+        || lxa_css_tokens_create(&allocator, &budget, &tokens) != LXA_OK) {
         return 1;
     }
-    if (lxa_css_tokens_bind_budget(&tokens, &budget) != LXA_OK
-        || lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
+    if (lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
            != LXA_CSS_SCAN_OK) {
         error = 1;
         goto done;
@@ -75,16 +74,16 @@ run(const uint8_t *input, size_t length, size_t chunk, size_t *token_count,
         }
         at += n;
     }
-    if (lxa_css_byte_stream_finish(stream, &tokens) != LXA_CSS_SCAN_OK) {
+    if (lxa_css_byte_stream_finish(stream, tokens) != LXA_CSS_SCAN_OK) {
         error = 1;
         goto done;
     }
-    *token_count = lxa_css_tokens_length(&tokens);
+    *token_count = lxa_css_tokens_length(tokens);
     *digest = 0;
     for (size_t i = 0; i < *token_count; i++) {
         lxa_css_token_t token;
         lxa_span_t text;
-        if (lxa_css_tokens_get(&tokens, i, &token, &text) != LXA_OK) {
+        if (lxa_css_tokens_get(tokens, i, &token, &text) != LXA_OK) {
             error = 1;
             goto done;
         }
@@ -95,7 +94,7 @@ run(const uint8_t *input, size_t length, size_t chunk, size_t *token_count,
     *peak = m.peak;
 done:
     lxa_css_byte_stream_destroy(stream);
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
     return error || budget.used[LXA_BUDGET_MEMORY] != 0;
 }
 

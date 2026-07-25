@@ -7,15 +7,15 @@ static void
 parse(const char *source, bool valid, bool important, size_t value_count)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_css_blocks_t blocks;
     lxa_css_declaration_t decl;
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) source,
-        strlen(source)}, &tokens) == LXA_CSS_SCAN_OK);
+        strlen(source)}, tokens) == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
-    CSS_CHECK(lxa_css_declaration_parse(&tokens, &blocks, 0, blocks.end, &decl)
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_declaration_parse(tokens, &blocks, 0, blocks.end, &decl)
               == LXA_OK);
     CSS_CHECK(decl.valid == valid);
     if (valid) {
@@ -24,16 +24,16 @@ parse(const char *source, bool valid, bool important, size_t value_count)
         CSS_CHECK(decl.important == important);
         CSS_CHECK(decl.value_after >= decl.value_first);
         CSS_CHECK(decl.value_after - decl.value_first == value_count);
-        CSS_CHECK(lxa_css_tokens_get(&tokens, decl.name, &token, &spelling)
+        CSS_CHECK(lxa_css_tokens_get(tokens, decl.name, &token, &spelling)
                   == LXA_OK && token.kind == LXA_CSS_IDENT);
         blocks.local_budget.limits.max_work = blocks.local_budget.used[LXA_BUDGET_WORK];
-        CSS_CHECK(lxa_css_declaration_parse(&tokens, &blocks, 0, blocks.end,
+        CSS_CHECK(lxa_css_declaration_parse(tokens, &blocks, 0, blocks.end,
                                             &decl) == LXA_ERROR_LIMIT);
         CSS_CHECK(blocks.limit_reason == LXA_BUDGET_WORK);
         CSS_CHECK(!decl.valid);
     }
     lxa_css_blocks_destroy(&blocks);
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
 }
 
 int
@@ -51,24 +51,24 @@ main(void)
     parse("color:", true, false, 0);
     {
         lxa_allocator_t allocator = lxa_allocator_default();
-        lxa_css_tokens_t tokens;
+        lxa_css_tokens_t *tokens = NULL;
         lxa_css_blocks_t blocks;
         lxa_css_declaration_t decl;
         const char *source = "color: red; width: 3px";
-        CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
         CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) source,
-            strlen(source)}, &tokens) == LXA_CSS_SCAN_OK);
+            strlen(source)}, tokens) == LXA_CSS_SCAN_OK);
         CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-        CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
-        CSS_CHECK(lxa_css_declaration_parse(&tokens, &blocks, 0, 4, &decl)
+        CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
+        CSS_CHECK(lxa_css_declaration_parse(tokens, &blocks, 0, 4, &decl)
                   == LXA_OK && decl.valid && decl.name == 0
                   && decl.value_first == 3 && decl.value_after == 4);
-        CSS_CHECK(lxa_css_declaration_parse(&tokens, &blocks, 5,
+        CSS_CHECK(lxa_css_declaration_parse(tokens, &blocks, 5,
                                             blocks.end, &decl)
                   == LXA_OK && decl.valid && decl.name == 6
                   && decl.value_first == 9 && decl.value_after == 10);
         lxa_css_blocks_destroy(&blocks);
-        lxa_css_tokens_destroy(&tokens);
+        lxa_css_tokens_destroy(tokens);
     }
     return 0;
 }

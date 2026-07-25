@@ -2,54 +2,60 @@
 #include <string.h>
 
 #include "liblexa/base.h"
-#include "liblexa/css.h"
+#include "css/tokens.h"
 
 lxa_status_t
-lxa_css_tokens_init(lxa_css_tokens_t *tokens, const lxa_allocator_t *allocator)
+lxa_css_tokens_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
+                      lxa_css_tokens_t **out)
 {
+    lxa_css_tokens_t *tokens;
+    lxa_buffer_t text;
+    lxa_vector_t entries;
     lxa_status_t status;
-    if (tokens == NULL) {
-        return LXA_ERROR_ARGUMENT;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = NULL;
+    status = lxa_buffer_init(&text, allocator);
+    if (status != LXA_OK) return status;
+    status = lxa_vector_init(&entries, allocator, sizeof(lxa_css_token_entry_t));
+    if (status != LXA_OK) return status;
+    if (budget != NULL) {
+        status = lxa_buffer_bind_budget(&text, budget);
+        if (status == LXA_OK) status = lxa_vector_bind_budget(&entries, budget);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY,
+                                       sizeof(*tokens), NULL);
+        if (status != LXA_OK) return status;
     }
-    tokens->charged_tokens = 0;
-    tokens->limit_reason = LXA_BUDGET_COUNT;
-    status = lxa_buffer_init(&tokens->text, allocator);
+    status = lxa_alloc(allocator, sizeof(*tokens), (void **) &tokens);
     if (status != LXA_OK) {
+        if (budget != NULL)
+            lxa_budget_release(budget, LXA_BUDGET_MEMORY, sizeof(*tokens));
         return status;
     }
-    status = lxa_vector_init(&tokens->entries, allocator, sizeof(lxa_css_token_t));
-    if (status != LXA_OK) {
-        lxa_buffer_destroy(&tokens->text);
-    }
-    return status;
+    *tokens = (lxa_css_tokens_t) {
+        .text = text, .entries = entries, .limit_reason = LXA_BUDGET_COUNT
+    };
+    *out = tokens;
+    return LXA_OK;
 }
 
-lxa_status_t
-lxa_css_tokens_bind_budget(lxa_css_tokens_t *tokens, lxa_budget_t *budget)
+lxa_budget_kind_t
+lxa_css_tokens_limit_reason(const lxa_css_tokens_t *tokens)
 {
-    if (tokens == NULL || budget == NULL || tokens->entries.element_size == 0
-        || tokens->text.budget != NULL || tokens->entries.bytes.budget != NULL
-        || tokens->text.capacity != 0 || tokens->entries.bytes.capacity != 0
-        || tokens->text.length != 0 || tokens->entries.bytes.length != 0
-        || tokens->text.data != NULL || tokens->entries.bytes.data != NULL
-        || tokens->charged_tokens != 0) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    /* Both binds are infallible after validating the initialized buffers. */
-    if (lxa_buffer_bind_budget(&tokens->text, budget) != LXA_OK) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    return lxa_vector_bind_budget(&tokens->entries, budget);
+    return tokens == NULL ? LXA_BUDGET_COUNT : tokens->limit_reason;
 }
 
 void
 lxa_css_tokens_destroy(lxa_css_tokens_t *tokens)
 {
     if (tokens != NULL) {
+        lxa_allocator_t allocator = tokens->text.allocator;
+        lxa_budget_t *budget = tokens->text.budget;
         lxa_vector_destroy(&tokens->entries);
         lxa_buffer_destroy(&tokens->text);
-        tokens->charged_tokens = 0;
-        tokens->limit_reason = LXA_BUDGET_COUNT;
+        if (budget != NULL)
+            lxa_budget_release(budget, LXA_BUDGET_MEMORY, sizeof(*tokens));
+        lxa_free(&allocator, tokens);
     }
 }
 
@@ -145,9 +151,8 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
             return status;
         }
     }
-    token.text_offset = original;
-    token.text_length = text.length;
-    status = lxa_vector_push(&tokens->entries, &token);
+    lxa_css_token_entry_t entry = {token, original, text.length};
+    status = lxa_vector_push(&tokens->entries, &entry);
     if (status != LXA_OK) {
         lxa_buffer_truncate(&tokens->text, original);
         return status;
@@ -183,10 +188,11 @@ lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
     }
     status = lxa_vector_at(&tokens->entries, index, &entry);
     if (status == LXA_OK) {
-        *token = *(const lxa_css_token_t *) entry;
-        if (token->text_length != 0) {
-            text->data = tokens->text.data + token->text_offset;
-            text->length = token->text_length;
+        const lxa_css_token_entry_t *stored = entry;
+        *token = stored->token;
+        if (stored->text_length != 0) {
+            text->data = tokens->text.data + stored->text_offset;
+            text->length = stored->text_length;
         }
     }
     return status;

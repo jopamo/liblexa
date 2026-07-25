@@ -2,7 +2,7 @@
 #include "check.h"
 #include <stdlib.h>
 #include <string.h>
-#include "liblexa/css.h"
+#include "css/tokens.h"
 
 static void
 check(lxa_css_tokens_t *tokens, size_t index, lxa_css_token_kind_t kind,
@@ -82,11 +82,11 @@ next_random(uint32_t *state)
 static void
 partitions(lxa_allocator_t *allocator)
 {
-    lxa_css_tokens_t reference, chunked;
+    lxa_css_tokens_t *reference = NULL, *chunked = NULL;
     uint32_t rng = 0x81d283c5;
     uint8_t bytes[96];
-    CSS_CHECK(lxa_css_tokens_init(&reference, allocator) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_init(&chunked, allocator) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(allocator, NULL, &reference) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(allocator, NULL, &chunked) == LXA_OK);
     for (size_t trial = 0; trial < 128; trial++) {
         size_t length = next_random(&rng) % sizeof(bytes);
         size_t position = 0;
@@ -95,7 +95,7 @@ partitions(lxa_allocator_t *allocator)
         for (size_t i = 0; i < length; i++) {
             bytes[i] = (uint8_t) next_random(&rng);
         }
-        expected = lxa_css_scan_bytes((lxa_span_t) {bytes, length}, &reference);
+        expected = lxa_css_scan_bytes((lxa_span_t) {bytes, length}, reference);
         CSS_CHECK(lxa_css_byte_stream_create(allocator, &stream) == LXA_CSS_SCAN_OK);
         while (position < length) {
             size_t size = 1 + next_random(&rng) % 7;
@@ -109,11 +109,11 @@ partitions(lxa_allocator_t *allocator)
             position += size;
         }
         CSS_CHECK(lxa_css_byte_stream_seal(stream) == LXA_CSS_SCAN_OK);
-        lxa_css_tokens_clear(&chunked);
+        lxa_css_tokens_clear(chunked);
         for (;;) {
             size_t produced;
             size_t capacity = 1 + next_random(&rng) % 5;
-            actual = lxa_css_byte_stream_drain(stream, &chunked, capacity, &produced);
+            actual = lxa_css_byte_stream_drain(stream, chunked, capacity, &produced);
             CSS_CHECK(produced <= capacity);
             if (actual != LXA_CSS_SCAN_OUTPUT_FULL) {
                 break;
@@ -122,12 +122,12 @@ partitions(lxa_allocator_t *allocator)
         }
         CSS_CHECK(actual == expected);
         if (actual == LXA_CSS_SCAN_OK) {
-            compare(&reference, &chunked);
+            compare(reference, chunked);
         }
         lxa_css_byte_stream_destroy(stream);
     }
-    lxa_css_tokens_destroy(&chunked);
-    lxa_css_tokens_destroy(&reference);
+    lxa_css_tokens_destroy(chunked);
+    lxa_css_tokens_destroy(reference);
 }
 
 /* A long token split at every byte must do the same scanner work as a
@@ -137,22 +137,20 @@ long_partitions(lxa_allocator_t *allocator)
 {
     uint8_t input[32768];
     lxa_budget_t whole_budget, split_budget;
-    lxa_css_tokens_t whole, split;
+    lxa_css_tokens_t *whole = NULL, *split = NULL;
     lxa_css_byte_stream_t *stream;
     size_t consumed;
     memset(input, 'a', sizeof(input));
     CSS_CHECK(lxa_budget_init(&whole_budget, NULL) == LXA_OK);
     CSS_CHECK(lxa_budget_init(&split_budget, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_init(&whole, allocator) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_init(&split, allocator) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_bind_budget(&whole, &whole_budget) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_bind_budget(&split, &split_budget) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(allocator, &whole_budget, &whole) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(allocator, &split_budget, &split) == LXA_OK);
     CSS_CHECK(lxa_css_byte_stream_create_budget(allocator, &whole_budget,
                                                  &stream) == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_byte_stream_feed(stream,
         (lxa_span_t) {input, sizeof(input)}, &consumed) == LXA_CSS_SCAN_OK
         && consumed == sizeof(input));
-    CSS_CHECK(lxa_css_byte_stream_finish(stream, &whole) == LXA_CSS_SCAN_OK);
+    CSS_CHECK(lxa_css_byte_stream_finish(stream, whole) == LXA_CSS_SCAN_OK);
     lxa_css_byte_stream_destroy(stream);
     CSS_CHECK(lxa_css_byte_stream_create_budget(allocator, &split_budget,
                                                  &stream) == LXA_CSS_SCAN_OK);
@@ -161,15 +159,15 @@ long_partitions(lxa_allocator_t *allocator)
             (lxa_span_t) {input + i, 1}, &consumed) == LXA_CSS_SCAN_OK
             && consumed == 1);
     }
-    CSS_CHECK(lxa_css_byte_stream_finish(stream, &split) == LXA_CSS_SCAN_OK);
+    CSS_CHECK(lxa_css_byte_stream_finish(stream, split) == LXA_CSS_SCAN_OK);
     lxa_css_byte_stream_destroy(stream);
-    compare(&whole, &split);
+    compare(whole, split);
     CSS_CHECK(whole_budget.used[LXA_BUDGET_WORK]
               == split_budget.used[LXA_BUDGET_WORK]);
     CSS_CHECK(whole_budget.used[LXA_BUDGET_INPUT] == sizeof(input)
               && split_budget.used[LXA_BUDGET_INPUT] == sizeof(input));
-    lxa_css_tokens_destroy(&whole);
-    lxa_css_tokens_destroy(&split);
+    lxa_css_tokens_destroy(whole);
+    lxa_css_tokens_destroy(split);
     CSS_CHECK(whole_budget.used[LXA_BUDGET_MEMORY] == 0
               && split_budget.used[LXA_BUDGET_MEMORY] == 0);
 }
@@ -177,7 +175,7 @@ long_partitions(lxa_allocator_t *allocator)
 int
 main(void)
 {
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_allocator_t allocator = lxa_allocator_default();
     const uint8_t src[] = {
         0xef, 0xbb, 0xbf, 'a', '\r', '\n', 'b', ':', 0xf0, 0x9f, 0x98, 0x80,
@@ -186,26 +184,26 @@ main(void)
     const uint8_t replay[] = {0xed, 0xcb, '%', 0xf2, 0x90, '2'};
     const uint8_t incomplete[] = {'a', 0xe2, 0x82};
     const uint8_t error[] = {'1', 'e', '2'};
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {src, sizeof(src)}, &tokens)
+    CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {src, sizeof(src)}, tokens)
            == LXA_CSS_SCAN_OK);
-    check(&tokens, 0, LXA_CSS_IDENT, 3, 1, "a");
-    check(&tokens, 1, LXA_CSS_WHITESPACE, 4, 2, "");
-    check(&tokens, 2, LXA_CSS_IDENT, 6, 1, "b");
-    check(&tokens, 3, LXA_CSS_COLON, 7, 1, "");
-    check(&tokens, 4, LXA_CSS_IDENT, 8, 5, "\xf0\x9f\x98\x80\xef\xbf\xbd");
-    check(&tokens, 5, LXA_CSS_WHITESPACE, 13, 1, "");
-    check(&tokens, 6, LXA_CSS_IDENT, 14, 1, "\xef\xbf\xbd");
-    check(&tokens, 7, LXA_CSS_WHITESPACE, 15, 1, "");
-    check(&tokens, 8, LXA_CSS_IDENT, 16, 1, "z");
-    check(&tokens, 9, LXA_CSS_WHITESPACE, 17, 1, "");
-    check(&tokens, 10, LXA_CSS_EOF, 18, 0, "");
+    check(tokens, 0, LXA_CSS_IDENT, 3, 1, "a");
+    check(tokens, 1, LXA_CSS_WHITESPACE, 4, 2, "");
+    check(tokens, 2, LXA_CSS_IDENT, 6, 1, "b");
+    check(tokens, 3, LXA_CSS_COLON, 7, 1, "");
+    check(tokens, 4, LXA_CSS_IDENT, 8, 5, "\xf0\x9f\x98\x80\xef\xbf\xbd");
+    check(tokens, 5, LXA_CSS_WHITESPACE, 13, 1, "");
+    check(tokens, 6, LXA_CSS_IDENT, 14, 1, "\xef\xbf\xbd");
+    check(tokens, 7, LXA_CSS_WHITESPACE, 15, 1, "");
+    check(tokens, 8, LXA_CSS_IDENT, 16, 1, "z");
+    check(tokens, 9, LXA_CSS_WHITESPACE, 17, 1, "");
+    check(tokens, 10, LXA_CSS_EOF, 18, 0, "");
 
     {
-        lxa_css_tokens_t split;
+        lxa_css_tokens_t *split = NULL;
         lxa_css_byte_stream_t *stream;
         size_t count;
-        CSS_CHECK(lxa_css_tokens_init(&split, &allocator) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &split) == LXA_OK);
         for (size_t cut = 0; cut <= sizeof(src); cut++) {
             CSS_CHECK(lxa_css_byte_stream_create(&allocator, &stream) == LXA_CSS_SCAN_OK);
             CSS_CHECK(lxa_css_byte_stream_feed(stream, (lxa_span_t) {src, cut}, &count)
@@ -213,8 +211,8 @@ main(void)
             CSS_CHECK(lxa_css_byte_stream_feed(stream,
                 (lxa_span_t) {src + cut, sizeof(src) - cut}, &count)
                    == LXA_CSS_SCAN_OK && count == sizeof(src) - cut);
-            CSS_CHECK(lxa_css_byte_stream_finish(stream, &split) == LXA_CSS_SCAN_OK);
-            compare(&tokens, &split);
+            CSS_CHECK(lxa_css_byte_stream_finish(stream, split) == LXA_CSS_SCAN_OK);
+            compare(tokens, split);
             CSS_CHECK(lxa_css_byte_stream_feed(stream,
                 (lxa_span_t) {src, sizeof(src)}, &count) == LXA_CSS_SCAN_INVALID
                    && count == 0);
@@ -228,20 +226,20 @@ main(void)
             CSS_CHECK(lxa_css_byte_stream_seal(stream) == LXA_CSS_SCAN_OK);
             CSS_CHECK(lxa_css_byte_stream_feed(stream,
                 (lxa_span_t) {src, sizeof(src)}, &count) == LXA_CSS_SCAN_INVALID);
-            CSS_CHECK(lxa_css_byte_stream_drain(stream, &split, 0, &produced)
+            CSS_CHECK(lxa_css_byte_stream_drain(stream, split, 0, &produced)
                    == LXA_CSS_SCAN_OUTPUT_FULL && produced == 0);
-            lxa_css_tokens_clear(&split);
+            lxa_css_tokens_clear(split);
             for (;;) {
                 lxa_css_scan_result_t r = lxa_css_byte_stream_drain(stream,
-                    &split, capacity, &produced);
+                    split, capacity, &produced);
                 CSS_CHECK(produced >= 1 && produced <= capacity);
                 total += produced;
                 if (r == LXA_CSS_SCAN_OK) break;
                 CSS_CHECK(r == LXA_CSS_SCAN_OUTPUT_FULL);
             }
-            CSS_CHECK(total == lxa_css_tokens_length(&tokens));
-            compare(&tokens, &split);
-            CSS_CHECK(lxa_css_byte_stream_drain(stream, &split, 1, &produced)
+            CSS_CHECK(total == lxa_css_tokens_length(tokens));
+            compare(tokens, split);
+            CSS_CHECK(lxa_css_byte_stream_drain(stream, split, 1, &produced)
                    == LXA_CSS_SCAN_INVALID && produced == 0);
             lxa_css_byte_stream_destroy(stream);
         }
@@ -250,46 +248,46 @@ main(void)
             CSS_CHECK(lxa_css_byte_stream_feed(stream, (lxa_span_t) {src + j, 1}, &count)
                    == LXA_CSS_SCAN_OK && count == 1);
         }
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &split) == LXA_CSS_SCAN_OK);
-        compare(&tokens, &split);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, split) == LXA_CSS_SCAN_OK);
+        compare(tokens, split);
         lxa_css_byte_stream_destroy(stream);
-        lxa_css_tokens_destroy(&split);
+        lxa_css_tokens_destroy(split);
     }
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {replay, sizeof(replay)}, &tokens)
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {replay, sizeof(replay)}, tokens)
               == LXA_CSS_SCAN_OK);
-    check(&tokens, 0, LXA_CSS_IDENT, 0, 2,
+    check(tokens, 0, LXA_CSS_IDENT, 0, 2,
           "\xef\xbf\xbd\xef\xbf\xbd");
-    check(&tokens, 1, LXA_CSS_DELIM, 2, 1, "");
-    check(&tokens, 2, LXA_CSS_IDENT, 3, 3, "\xef\xbf\xbd" "2");
-    check(&tokens, 3, LXA_CSS_EOF, 6, 0, "");
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {incomplete, sizeof(incomplete)}, &tokens)
+    check(tokens, 1, LXA_CSS_DELIM, 2, 1, "");
+    check(tokens, 2, LXA_CSS_IDENT, 3, 3, "\xef\xbf\xbd" "2");
+    check(tokens, 3, LXA_CSS_EOF, 6, 0, "");
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {incomplete, sizeof(incomplete)}, tokens)
            == LXA_CSS_SCAN_OK);
-    check(&tokens, 0, LXA_CSS_IDENT, 0, 3, "a\xef\xbf\xbd");
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {error, sizeof(error)}, &tokens)
+    check(tokens, 0, LXA_CSS_IDENT, 0, 3, "a\xef\xbf\xbd");
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {error, sizeof(error)}, tokens)
            == LXA_CSS_SCAN_OK);
-    check(&tokens, 0, LXA_CSS_NUMBER, 0, 3, "");
+    check(tokens, 0, LXA_CSS_NUMBER, 0, 3, "");
     {
         lxa_css_token_t number;
         lxa_span_t text;
-        CSS_CHECK(lxa_css_tokens_get(&tokens, 0, &number, &text) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &number, &text) == LXA_OK);
         CSS_CHECK(number.number == 100 && number.flags == 0);
     }
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {NULL, 0}, &tokens) == LXA_CSS_SCAN_OK);
-    check(&tokens, 0, LXA_CSS_EOF, 0, 0, "");
-    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {NULL, 2}, &tokens) == LXA_CSS_SCAN_INVALID);
-    CSS_CHECK(lxa_css_tokens_length(&tokens) == 0);
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {NULL, 0}, tokens) == LXA_CSS_SCAN_OK);
+    check(tokens, 0, LXA_CSS_EOF, 0, 0, "");
+    CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {NULL, 2}, tokens) == LXA_CSS_SCAN_INVALID);
+    CSS_CHECK(lxa_css_tokens_length(tokens) == 0);
     {
         failure_t f = {0};
         lxa_allocator_t a = {&f, allocate, resize, release};
-        lxa_css_tokens_t tmp;
+        lxa_css_tokens_t *tmp = NULL;
         const uint8_t text[] = "red:blue";
-        CSS_CHECK(lxa_css_tokens_init(&tmp, &a) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&a, NULL, &tmp) == LXA_OK);
         for (size_t i = 1; i <= 5; i++) {
             f.calls = 0;
             f.fail_at = i;
-            CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {text, sizeof(text) - 1}, &tmp)
+            CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {text, sizeof(text) - 1}, tmp)
                    == LXA_CSS_SCAN_NO_MEMORY);
-            CSS_CHECK(lxa_css_tokens_length(&tmp) == 0);
+            CSS_CHECK(lxa_css_tokens_length(tmp) == 0);
         }
         {
             lxa_css_byte_stream_t *stream;
@@ -300,8 +298,8 @@ main(void)
             CSS_CHECK(lxa_css_byte_stream_feed(stream,
                 (lxa_span_t) {text, sizeof(text) - 1}, &consumed)
                    == LXA_CSS_SCAN_NO_MEMORY && consumed == 1);
-            CSS_CHECK(lxa_css_byte_stream_finish(stream, &tmp) == LXA_CSS_SCAN_INVALID);
-            CSS_CHECK(lxa_css_tokens_length(&tmp) == 0);
+            CSS_CHECK(lxa_css_byte_stream_finish(stream, tmp) == LXA_CSS_SCAN_INVALID);
+            CSS_CHECK(lxa_css_tokens_length(tmp) == 0);
             lxa_css_byte_stream_destroy(stream);
         }
         {
@@ -314,29 +312,29 @@ main(void)
                 (lxa_span_t) {long_name, sizeof(long_name) - 1}, &consumed)
                    == LXA_CSS_SCAN_OK && consumed == sizeof(long_name) - 1);
             CSS_CHECK(lxa_css_byte_stream_seal(stream) == LXA_CSS_SCAN_OK);
-            CSS_CHECK(lxa_css_byte_stream_drain(stream, &tmp, 1, &produced)
+            CSS_CHECK(lxa_css_byte_stream_drain(stream, tmp, 1, &produced)
                    == LXA_CSS_SCAN_OUTPUT_FULL && produced == 1);
             f.fail_at = f.calls + 1;
-            CSS_CHECK(lxa_css_byte_stream_drain(stream, &tmp, 2, &produced)
+            CSS_CHECK(lxa_css_byte_stream_drain(stream, tmp, 2, &produced)
                    == LXA_CSS_SCAN_NO_MEMORY);
-            CSS_CHECK(lxa_css_tokens_length(&tmp) == 1 + produced);
-            check(&tmp, 0, LXA_CSS_IDENT, 0, 1, "a");
-            CSS_CHECK(lxa_css_byte_stream_drain(stream, &tmp, 2, &produced)
+            CSS_CHECK(lxa_css_tokens_length(tmp) == 1 + produced);
+            check(tmp, 0, LXA_CSS_IDENT, 0, 1, "a");
+            CSS_CHECK(lxa_css_byte_stream_drain(stream, tmp, 2, &produced)
                    == LXA_CSS_SCAN_INVALID && produced == 0);
             lxa_css_byte_stream_destroy(stream);
-            lxa_css_tokens_clear(&tmp);
+            lxa_css_tokens_clear(tmp);
         }
         f.fail_at = 0;
-        CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {text, sizeof(text) - 1}, &tmp)
+        CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {text, sizeof(text) - 1}, tmp)
                == LXA_CSS_SCAN_OK);
-        check(&tmp, 0, LXA_CSS_IDENT, 0, 3, "red");
-        lxa_css_tokens_destroy(&tmp);
+        check(tmp, 0, LXA_CSS_IDENT, 0, 3, "red");
+        lxa_css_tokens_destroy(tmp);
     }
     {
         lxa_limits_t limits = lxa_limits_default();
         lxa_budget_t budget;
         lxa_css_byte_stream_t *stream;
-        lxa_css_tokens_t bounded;
+        lxa_css_tokens_t *bounded = NULL;
         const uint8_t input[] = {'a', 'b', 'c'};
         size_t consumed;
         limits.max_input_bytes = 2;
@@ -356,18 +354,18 @@ main(void)
             (lxa_span_t) {input + 2, 1}, &consumed) == LXA_CSS_SCAN_LIMIT
             && consumed == 0);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_INPUT);
-        size_t prior = lxa_css_tokens_length(&tokens);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &tokens)
+        size_t prior = lxa_css_tokens_length(tokens);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, tokens)
                   == LXA_CSS_SCAN_INVALID);
-        CSS_CHECK(lxa_css_tokens_length(&tokens) == prior);
-        CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &bounded) == LXA_CSS_SCAN_OK);
-        check(&bounded, 0, LXA_CSS_IDENT, 0, 2, "ab");
+        CSS_CHECK(lxa_css_tokens_length(tokens) == prior);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, bounded) == LXA_CSS_SCAN_OK);
+        check(bounded, 0, LXA_CSS_IDENT, 0, 2, "ab");
         lxa_css_byte_stream_destroy(stream);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY]
-                  == bounded.text.capacity + bounded.entries.bytes.capacity);
-        lxa_css_tokens_destroy(&bounded);
+                  == sizeof(*bounded) + bounded->text.capacity
+                     + bounded->entries.bytes.capacity);
+        lxa_css_tokens_destroy(bounded);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
         limits.max_input_bytes = 256;
         limits.initial_work_credit = 0;
@@ -379,60 +377,57 @@ main(void)
             (lxa_span_t) {input, 1}, &consumed) == LXA_CSS_SCAN_LIMIT
             && consumed == 0 && budget.used[LXA_BUDGET_INPUT] == 0);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_WORK);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &tokens) == LXA_CSS_SCAN_INVALID);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, tokens) == LXA_CSS_SCAN_INVALID);
         lxa_css_byte_stream_destroy(stream);
     }
     {
         lxa_limits_t limits = lxa_limits_default();
         lxa_budget_t budget;
         lxa_css_byte_stream_t *stream;
-        lxa_css_tokens_t bounded;
+        lxa_css_tokens_t *bounded = NULL;
         const uint8_t name[] = "color";
         const uint8_t value[] = "\"hello\"";
         size_t consumed;
         limits.max_name_bytes = 3;
         CSS_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
         CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
                   == LXA_CSS_SCAN_OK);
         CSS_CHECK(lxa_css_byte_stream_feed(stream,
             (lxa_span_t) {name, sizeof(name) - 1}, &consumed) == LXA_CSS_SCAN_OK);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &bounded) == LXA_CSS_SCAN_LIMIT);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, bounded) == LXA_CSS_SCAN_LIMIT);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_NAME_BYTES);
-        CSS_CHECK(lxa_css_tokens_length(&bounded) == 0);
+        CSS_CHECK(lxa_css_tokens_length(bounded) == 0);
         lxa_css_byte_stream_destroy(stream);
-        lxa_css_tokens_destroy(&bounded);
+        lxa_css_tokens_destroy(bounded);
         limits.max_name_bytes = 64;
         limits.max_token_bytes = 3;
         CSS_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
         CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
                   == LXA_CSS_SCAN_OK);
         CSS_CHECK(lxa_css_byte_stream_feed(stream,
             (lxa_span_t) {value, sizeof(value) - 1}, &consumed) == LXA_CSS_SCAN_OK);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &bounded) == LXA_CSS_SCAN_LIMIT);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, bounded) == LXA_CSS_SCAN_LIMIT);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_TOKEN_BYTES);
-        CSS_CHECK(lxa_css_tokens_length(&bounded) == 0);
+        CSS_CHECK(lxa_css_tokens_length(bounded) == 0);
         lxa_css_byte_stream_destroy(stream);
-        lxa_css_tokens_destroy(&bounded);
+        lxa_css_tokens_destroy(bounded);
         {
             const uint8_t number[] = "12345";
             CSS_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
-            CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-            CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
+            CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
             CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
                       == LXA_CSS_SCAN_OK);
             CSS_CHECK(lxa_css_byte_stream_feed(stream,
                 (lxa_span_t) {number, sizeof(number) - 1}, &consumed)
                 == LXA_CSS_SCAN_OK);
-            CSS_CHECK(lxa_css_byte_stream_finish(stream, &bounded)
+            CSS_CHECK(lxa_css_byte_stream_finish(stream, bounded)
                       == LXA_CSS_SCAN_LIMIT);
             CSS_CHECK(lxa_css_byte_stream_limit_reason(stream)
                       == LXA_BUDGET_TOKEN_BYTES);
             lxa_css_byte_stream_destroy(stream);
-            lxa_css_tokens_destroy(&bounded);
+            lxa_css_tokens_destroy(bounded);
         }
     }
     {
@@ -451,7 +446,7 @@ main(void)
             == LXA_CSS_SCAN_OK && consumed == 3);
         CSS_CHECK(lxa_css_byte_stream_seal(stream) == LXA_CSS_SCAN_LIMIT);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_WORK);
-        CSS_CHECK(lxa_css_byte_stream_drain(stream, &tokens, 1, &produced)
+        CSS_CHECK(lxa_css_byte_stream_drain(stream, tokens, 1, &produced)
                   == LXA_CSS_SCAN_INVALID && produced == 0);
         lxa_css_byte_stream_destroy(stream);
     }
@@ -459,7 +454,7 @@ main(void)
         lxa_limits_t limits = lxa_limits_default();
         lxa_budget_t budget;
         lxa_css_byte_stream_t *stream;
-        lxa_css_tokens_t bounded;
+        lxa_css_tokens_t *bounded = NULL;
         const uint8_t input[] = "color";
         size_t consumed, produced, baseline;
         limits.max_memory_bytes = 0;
@@ -517,49 +512,48 @@ main(void)
         CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
                   == LXA_CSS_SCAN_OK);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == baseline);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
+        baseline = budget.used[LXA_BUDGET_MEMORY];
         budget.limits.max_memory_bytes = baseline + 128;
         CSS_CHECK(lxa_css_byte_stream_feed(stream,
             (lxa_span_t) {input, sizeof(input) - 1}, &consumed)
             == LXA_CSS_SCAN_OK && consumed == 5);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == baseline + 128);
         CSS_CHECK(lxa_css_byte_stream_seal(stream) == LXA_CSS_SCAN_OK);
-        CSS_CHECK(lxa_css_byte_stream_drain(stream, &tokens, 2, &produced)
+        CSS_CHECK(lxa_css_byte_stream_drain(stream, tokens, 2, &produced)
                   == LXA_CSS_SCAN_INVALID && produced == 0);
-        CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
-        CSS_CHECK(lxa_css_byte_stream_drain(stream, &bounded, 2, &produced)
+        CSS_CHECK(lxa_css_byte_stream_drain(stream, bounded, 2, &produced)
                   == LXA_CSS_SCAN_LIMIT && produced == 0);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_MEMORY);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == baseline + 128);
         lxa_css_byte_stream_destroy(stream);
-        lxa_css_tokens_destroy(&bounded);
+        lxa_css_tokens_destroy(bounded);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
     }
     {
         lxa_limits_t limits = lxa_limits_default();
         lxa_budget_t budget;
-        lxa_css_tokens_t bounded;
+        lxa_css_tokens_t *bounded = NULL;
         lxa_css_byte_stream_t *stream;
         const uint8_t input[] = "a b";
         size_t consumed;
         limits.max_tokens = 1;
         CSS_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_init(&bounded, &allocator) == LXA_OK);
-        CSS_CHECK(lxa_css_tokens_bind_budget(&bounded, &budget) == LXA_OK);
+        CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &bounded) == LXA_OK);
         CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
                   == LXA_CSS_SCAN_OK);
         CSS_CHECK(lxa_css_byte_stream_feed(stream,
             (lxa_span_t) {input, sizeof(input) - 1}, &consumed)
             == LXA_CSS_SCAN_OK && consumed == sizeof(input) - 1);
-        CSS_CHECK(lxa_css_byte_stream_finish(stream, &bounded) == LXA_CSS_SCAN_LIMIT);
+        CSS_CHECK(lxa_css_byte_stream_finish(stream, bounded) == LXA_CSS_SCAN_LIMIT);
         CSS_CHECK(lxa_css_byte_stream_limit_reason(stream) == LXA_BUDGET_TOKENS);
-        CSS_CHECK(lxa_css_tokens_length(&bounded) == 0);
+        CSS_CHECK(lxa_css_tokens_length(bounded) == 0);
         CSS_CHECK(budget.used[LXA_BUDGET_TOKENS] == 1);
         lxa_css_byte_stream_destroy(stream);
-        lxa_css_tokens_destroy(&bounded);
+        lxa_css_tokens_destroy(bounded);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
     }
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
     partitions(&allocator);
     long_partitions(&allocator);
     return 0;

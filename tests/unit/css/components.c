@@ -45,7 +45,7 @@ main(void)
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_limits_t limits = lxa_limits_default();
     lxa_budget_t budget;
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_css_blocks_t blocks;
     lxa_css_component_range_t range;
     const uint8_t input[] = "f([)]a})";
@@ -53,17 +53,16 @@ main(void)
     lxa_css_byte_stream_t *stream;
     size_t consumed, retained;
     CSS_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
-    CSS_CHECK(lxa_css_tokens_bind_budget(&tokens, &budget) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(&allocator, &budget, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_byte_stream_create_budget(&allocator, &budget, &stream)
               == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_byte_stream_feed(stream,
         (lxa_span_t) {input, sizeof(input) - 1}, &consumed) == LXA_CSS_SCAN_OK
         && consumed == sizeof(input) - 1);
-    CSS_CHECK(lxa_css_byte_stream_finish(stream, &tokens) == LXA_CSS_SCAN_OK);
+    CSS_CHECK(lxa_css_byte_stream_finish(stream, tokens) == LXA_CSS_SCAN_OK);
     lxa_css_byte_stream_destroy(stream);
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, &budget) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 2);
     check(&blocks, 0, 0, 6, LXA_CSS_BLOCK_NONE, LXA_CSS_FUNCTION);
     check(&blocks, 1, 1, 3, 0, LXA_CSS_LEFT_SQUARE);
@@ -84,7 +83,7 @@ main(void)
     CSS_CHECK(blocks.limit_reason == LXA_BUDGET_WORK);
     CSS_CHECK(range.first == 99 && range.after == 99);
     budget.limits.max_work = UINT64_MAX;
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 2);
     CSS_CHECK(lxa_css_blocks_get(&blocks, 2, &(lxa_css_block_t){0})
               == LXA_ERROR_ARGUMENT);
@@ -93,7 +92,7 @@ main(void)
         size_t before = budget.used[LXA_BUDGET_MEMORY];
         CSS_CHECK(lxa_css_blocks_init(&fresh, &allocator, &budget) == LXA_OK);
         budget.limits.max_css_nesting = 0;
-        CSS_CHECK(lxa_css_blocks_build(&fresh, &tokens) == LXA_ERROR_LIMIT);
+        CSS_CHECK(lxa_css_blocks_build(&fresh, tokens) == LXA_ERROR_LIMIT);
         CSS_CHECK(fresh.limit_reason == LXA_BUDGET_CSS_NESTING);
         CSS_CHECK(lxa_vector_length(&fresh.entries) == 0);
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == before);
@@ -102,7 +101,7 @@ main(void)
     }
     retained = budget.used[LXA_BUDGET_MEMORY];
     budget.limits.max_css_nesting = 1;
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_ERROR_LIMIT);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_ERROR_LIMIT);
     CSS_CHECK(blocks.limit_reason == LXA_BUDGET_CSS_NESTING);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 0);
     CSS_CHECK(!blocks.ready && blocks.end == 0);
@@ -111,7 +110,7 @@ main(void)
     CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
     budget.limits.max_css_nesting = 4096;
     budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + 1;
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_ERROR_LIMIT);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_ERROR_LIMIT);
     CSS_CHECK(blocks.limit_reason == LXA_BUDGET_WORK);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 0);
     budget.limits.max_work = UINT64_MAX;
@@ -119,20 +118,20 @@ main(void)
     lxa_css_blocks_destroy(&blocks);
     /* After destroy, only the caller-owned token list retains capacity. */
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, &budget) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_ERROR_LIMIT);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_ERROR_LIMIT);
     CSS_CHECK(blocks.limit_reason == LXA_BUDGET_MEMORY);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 0);
     lxa_css_blocks_destroy(&blocks);
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
     CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
 
     /* Unclosed blocks close at EOF; closing tokens of the wrong kind remain
      * simple values rather than terminating a block. */
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) "{(", 2},
-                                  &tokens) == LXA_CSS_SCAN_OK);
+                                  tokens) == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
     check(&blocks, 0, 0, 2, LXA_CSS_BLOCK_NONE, LXA_CSS_LEFT_BRACE);
     check(&blocks, 1, 1, 2, 0, LXA_CSS_LEFT_PAREN);
     CSS_CHECK(lxa_css_blocks_next(&blocks, 0, &range) == LXA_OK);
@@ -141,7 +140,7 @@ main(void)
     CSS_CHECK(range.first == 1 && range.after == 2 && !range.closed);
     blocks.local_budget.limits.max_work = 4;
     /* Three tokens plus two EOF closures exceed four units of work. */
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_ERROR_LIMIT);
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_ERROR_LIMIT);
     CSS_CHECK(blocks.limit_reason == LXA_BUDGET_WORK);
     CSS_CHECK(lxa_vector_length(&blocks.entries) == 0);
     CSS_CHECK(blocks.local_budget.used[LXA_BUDGET_CSS_NESTING] == 0);
@@ -153,7 +152,7 @@ main(void)
             f.calls = 0;
             f.fail_at = attempt;
             CSS_CHECK(lxa_css_blocks_init(&blocks, &failing, NULL) == LXA_OK);
-            CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens)
+            CSS_CHECK(lxa_css_blocks_build(&blocks, tokens)
                       == LXA_ERROR_NO_MEMORY);
             CSS_CHECK(blocks.limit_reason == LXA_BUDGET_COUNT);
             CSS_CHECK(lxa_vector_length(&blocks.entries) == 0);
@@ -162,6 +161,6 @@ main(void)
             CSS_CHECK(blocks.local_budget.used[LXA_BUDGET_MEMORY] == 0);
         }
     }
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
     return 0;
 }

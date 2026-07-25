@@ -1,4 +1,5 @@
 /* Copyright (C) 2026 Paul Moses */
+#include "css/tokens.h"
 #include <assert.h>
 #include "liblexa/css.h"
 

@@ -31,16 +31,16 @@ static void
 run(const char *source, const char *names[], size_t expected)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_css_blocks_t blocks;
     lxa_css_declarations_t *list = NULL;
     lxa_css_rule_t rule;
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) source,
-        strlen(source)}, &tokens) == LXA_CSS_SCAN_OK);
+        strlen(source)}, tokens) == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
-    CSS_CHECK(lxa_css_rule_parse(&tokens, &blocks, 0, blocks.end, &rule)
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_rule_parse(tokens, &blocks, 0, blocks.end, &rule)
               == LXA_OK && rule.has_block);
     CSS_CHECK(lxa_css_declarations_create(NULL, &blocks, &list)
               == LXA_ERROR_ARGUMENT && list == NULL);
@@ -52,7 +52,7 @@ run(const char *source, const char *names[], size_t expected)
               && lxa_css_declarations_limit_reason(NULL) == LXA_BUDGET_COUNT
               && !lxa_css_declarations_count_limit(NULL));
     CSS_CHECK(lxa_css_declarations_create(&allocator, &blocks, &list) == LXA_OK);
-    CSS_CHECK(lxa_css_declarations_build(list, &tokens, &blocks,
+    CSS_CHECK(lxa_css_declarations_build(list, tokens, &blocks,
               rule.block_open + 1, rule.block_after, 50000) == LXA_OK);
     CSS_CHECK(lxa_css_declarations_length(list) == expected);
     for (size_t i = 0; i < expected; i++) {
@@ -61,7 +61,7 @@ run(const char *source, const char *names[], size_t expected)
         lxa_span_t text;
         CSS_CHECK(lxa_css_declarations_get(list, i, &decl) == LXA_OK
                   && decl.valid);
-        CSS_CHECK(lxa_css_tokens_get(&tokens, decl.name, &token, &text)
+        CSS_CHECK(lxa_css_tokens_get(tokens, decl.name, &token, &text)
                   == LXA_OK && text.length == strlen(names[i])
                   && memcmp(text.data, names[i], text.length) == 0);
         if (i == expected - 1 && expected == 3) CSS_CHECK(decl.important);
@@ -69,16 +69,16 @@ run(const char *source, const char *names[], size_t expected)
     CSS_CHECK(lxa_css_declarations_get(list, expected, &(lxa_css_declaration_t){0})
               != LXA_OK);
     if (expected != 0) {
-        CSS_CHECK(lxa_css_declarations_build(list, &tokens, &blocks,
+        CSS_CHECK(lxa_css_declarations_build(list, tokens, &blocks,
                   rule.block_open + 1, rule.block_after, expected - 1)
                   == LXA_ERROR_LIMIT);
         CSS_CHECK(lxa_css_declarations_count_limit(list)
                   && lxa_css_declarations_length(list) == 0);
-        CSS_CHECK(lxa_css_declarations_build(list, &tokens, &blocks,
+        CSS_CHECK(lxa_css_declarations_build(list, tokens, &blocks,
                   rule.block_open + 1, rule.block_after, expected) == LXA_OK);
         blocks.local_budget.limits.max_work =
             blocks.local_budget.used[LXA_BUDGET_WORK];
-        CSS_CHECK(lxa_css_declarations_build(list, &tokens, &blocks,
+        CSS_CHECK(lxa_css_declarations_build(list, tokens, &blocks,
                   rule.block_open + 1, rule.block_after, expected)
                   == LXA_ERROR_LIMIT);
         CSS_CHECK(lxa_css_declarations_limit_reason(list) == LXA_BUDGET_WORK
@@ -86,7 +86,7 @@ run(const char *source, const char *names[], size_t expected)
     }
     lxa_css_declarations_destroy(list);
     lxa_css_blocks_destroy(&blocks);
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
 }
 
 static void
@@ -96,18 +96,18 @@ allocation_failures(void)
     lxa_allocator_t allocator = lxa_allocator_default();
     failure_t f = {0};
     lxa_allocator_t failing = {&f, allocate, resize, release};
-    lxa_css_tokens_t tokens;
+    lxa_css_tokens_t *tokens = NULL;
     lxa_css_blocks_t blocks;
     lxa_css_declarations_t *list = NULL;
     lxa_css_rule_t rule;
     bool succeeded = false;
     size_t retained;
-    CSS_CHECK(lxa_css_tokens_init(&tokens, &allocator) == LXA_OK);
+    CSS_CHECK(lxa_css_tokens_create(&allocator, NULL, &tokens) == LXA_OK);
     CSS_CHECK(lxa_css_scan_bytes((lxa_span_t) {(const uint8_t *) source,
-              sizeof(source) - 1}, &tokens) == LXA_CSS_SCAN_OK);
+              sizeof(source) - 1}, tokens) == LXA_CSS_SCAN_OK);
     CSS_CHECK(lxa_css_blocks_init(&blocks, &allocator, NULL) == LXA_OK);
-    CSS_CHECK(lxa_css_blocks_build(&blocks, &tokens) == LXA_OK);
-    CSS_CHECK(lxa_css_rule_parse(&tokens, &blocks, 0, blocks.end, &rule)
+    CSS_CHECK(lxa_css_blocks_build(&blocks, tokens) == LXA_OK);
+    CSS_CHECK(lxa_css_rule_parse(tokens, &blocks, 0, blocks.end, &rule)
               == LXA_OK && rule.has_block);
     retained = blocks.local_budget.used[LXA_BUDGET_MEMORY];
     for (size_t attempt = 1; attempt <= 16; attempt++) {
@@ -115,7 +115,7 @@ allocation_failures(void)
         f.fail_at = attempt;
         lxa_status_t status = lxa_css_declarations_create(&failing, &blocks, &list);
         if (status == LXA_OK)
-            status = lxa_css_declarations_build(list, &tokens,
+            status = lxa_css_declarations_build(list, tokens,
                 &blocks, rule.block_open + 1, rule.block_after, 9);
         if (status == LXA_OK) {
             CSS_CHECK(lxa_css_declarations_length(list) == 9);
@@ -131,7 +131,7 @@ allocation_failures(void)
     }
     CSS_CHECK(succeeded);
     lxa_css_blocks_destroy(&blocks);
-    lxa_css_tokens_destroy(&tokens);
+    lxa_css_tokens_destroy(tokens);
 }
 
 int

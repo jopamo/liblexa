@@ -56,46 +56,33 @@ typedef struct {
     lxa_css_token_kind_t kind;
     size_t offset;
     size_t length;
-    size_t text_offset;
-    size_t text_length;
     double number;
     uint32_t codepoint;
     unsigned flags;
 } lxa_css_token_t;
 
 /*
- * One writer owns the list and the copied allocator descriptor. Append copies
- * cooked text and commits its token together; failure leaves the logical
+ * One writer owns the list and the copied allocator descriptor. The scanner
+ * copies cooked text and commits its token together; append failure leaves the logical
  * lengths and all previous tokens unchanged. The source bytes are never
  * retained: callers wanting raw slices must retain the input separately.
  * get copies the token and borrows its text. That view is invalid after a
  * successful append, clear, or destroy, even when the buffer does not move.
- * append requires external text that does not overlap this list's storage.
  * Token indices remain stable until clear. No concurrent mutation/read.
  */
-typedef struct {
-    lxa_buffer_t text;
-    lxa_vector_t entries;
-    size_t charged_tokens; /* high-water published count, never refunded */
-    lxa_budget_kind_t limit_reason;
-} lxa_css_tokens_t;
+typedef struct lxa_css_tokens lxa_css_tokens_t;
 
-lxa_status_t lxa_css_tokens_init(lxa_css_tokens_t *tokens,
-                                  const lxa_allocator_t *allocator);
-/* Optional: bind a freshly initialized, empty list before its first append.
- * The caller keeps the budget alive through destroy; both retained buffers
- * then charge their actual capacity to MEMORY and release it on destroy.
- * Raw/cooked token size and cooked-name size are checked before any reserve.
- * Published token high-water counts against TOKENS and is never refunded by
- * clear/destroy; reset the budget only after ending all its users.
- */
-lxa_status_t lxa_css_tokens_bind_budget(lxa_css_tokens_t *tokens,
-                                         lxa_budget_t *budget);
+/* Allocate an empty list. out is required and cleared on failure. A supplied
+ * budget must outlive destroy; the object and retained capacities charge
+ * MEMORY. NULL leaves token storage unbound, for the default byte scanner.
+ * The allocator context must outlive destroy. Choose the budget once here;
+ * it cannot be changed while tokens or borrowed views remain live. */
+lxa_status_t lxa_css_tokens_create(const lxa_allocator_t *allocator,
+    lxa_budget_t *budget, lxa_css_tokens_t **out);
+lxa_budget_kind_t lxa_css_tokens_limit_reason(const lxa_css_tokens_t *tokens);
 void lxa_css_tokens_destroy(lxa_css_tokens_t *tokens);
 void lxa_css_tokens_clear(lxa_css_tokens_t *tokens);
 size_t lxa_css_tokens_length(const lxa_css_tokens_t *tokens);
-lxa_status_t lxa_css_tokens_append(lxa_css_tokens_t *tokens,
-                                   lxa_css_token_t token, lxa_span_t text);
 lxa_status_t lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
                                 lxa_css_token_t *token, lxa_span_t *text);
 
@@ -127,8 +114,8 @@ lxa_css_scan_result_t lxa_css_byte_stream_create(
  * runs. Its configured limits and consumed work outlive stream destruction.
  * create without a budget uses a stream-owned default profile instead.
  * The stream, decoder, scalar vector and scanner scratch reserve MEMORY and
- * release it on destruction. With an external budget, bind the token list
- * to the same budget before finish/drain. The list and budget must both
+ * release it on destruction. With an external budget, create the token list
+ * with the same budget before finish/drain. The list and budget must both
  * outlive the stream; an unbound or differently bound list is rejected
  * without advancing the scanner. Default streams allow unbound lists under
  * their independent 1 MiB input cap.
