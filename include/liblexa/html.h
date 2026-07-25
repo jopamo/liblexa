@@ -20,7 +20,8 @@ typedef enum {
     LXA_HTML_OVERFLOW,
     LXA_HTML_NO_MEMORY,
     LXA_HTML_CALLBACK_FAILURE,
-    LXA_HTML_LIMIT
+    LXA_HTML_LIMIT,
+    LXA_HTML_ENTROPY
 } lxa_html_result_t;
 
 /* Malformed raw-input byte offset; a non-OK return aborts publication. */
@@ -38,10 +39,11 @@ typedef lxa_status_t (*lxa_html_input_error_callback_t)(void *context,
  *
  * parser_result == UNSUPPORTED identifies candidate grammar gaps;
  * BAD_ARGUMENT identifies invalid arguments or an unknown encoding.
- * status distinguishes LIMIT/NO_MEMORY/OVERFLOW; reason identifies the
+ * status and parser_result distinguish LIMIT/NO_MEMORY/OVERFLOW/ENTROPY;
+ * CALLBACK_FAILURE instead identifies a diagnostic callback rejection,
+ * whose exact status is returned. reason identifies the
  * limited resource when known. parser_result and reason may be NULL;
- * out is required. Check status first: early resource failures may leave
- * parser_result at BAD_ARGUMENT. See docs/html-api.md for the bx contract.
+ * out is required. See docs/html-api.md for the bx contract.
  */
 typedef struct lxa_html_document lxa_html_document_t;
 

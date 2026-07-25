@@ -11877,7 +11877,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     for (i = 0; i < 128; ++i) {
@@ -11893,7 +11894,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
@@ -11929,7 +11931,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
 
@@ -12381,7 +12384,8 @@ main(void)
     limits.max_input_bytes = 3;
     TEST_CHECK(lxa_html_document_parse(&allocator, &limits, span("<p>x</p>"),
         &parse_result, &reason, &document) == LXA_ERROR_LIMIT);
-    TEST_CHECK(document == NULL && reason == LXA_BUDGET_INPUT);
+    TEST_CHECK(document == NULL && reason == LXA_BUDGET_INPUT
+               && parse_result == LXA_HTML_LIMIT);
     {
         const uint8_t broken[] = {0xef, 0xbb, 0xbf, '<','p','>',0xff,'<','/','p','>'};
         lxa_dom_ref_t paragraph, text_node;
@@ -13026,14 +13030,26 @@ main(void)
             TEST_CHECK(value.length == 4
                        && memcmp(value.data, "\xef\xbf\xbdZ", 4) == 0);
             lxa_html_document_destroy(document);
-            diagnostic.count = 0;
-            diagnostic.response = LXA_ERROR_NO_MEMORY;
-            TEST_CHECK(lxa_html_document_parse_report(&allocator, NULL,
-                (lxa_span_t){late, 1025 + sizeof(malformed) - 1},
-                on_malformed, &diagnostic, &parse_result, &reason, &document)
-                == LXA_ERROR_NO_MEMORY);
-            TEST_CHECK(document == NULL && diagnostic.count == 1
-                       && diagnostic.offset == bad_offset);
+            {
+                const lxa_status_t failures[] = {
+                    LXA_ERROR_ARGUMENT, LXA_ERROR_NO_MEMORY, LXA_ERROR_LIMIT,
+                    LXA_ERROR_OVERFLOW, LXA_ERROR_ENTROPY
+                };
+                size_t failure;
+                for (failure = 0; failure < sizeof(failures) / sizeof(*failures);
+                     ++failure) {
+                    diagnostic.count = 0;
+                    diagnostic.response = failures[failure];
+                    TEST_CHECK(lxa_html_document_parse_report(&allocator, NULL,
+                        (lxa_span_t){late, 1025 + sizeof(malformed) - 1},
+                        on_malformed, &diagnostic, &parse_result, &reason,
+                        &document) == failures[failure]);
+                    TEST_CHECK(document == NULL && diagnostic.count == 1
+                               && diagnostic.offset == bad_offset
+                               && parse_result == LXA_HTML_CALLBACK_FAILURE
+                               && reason == LXA_BUDGET_COUNT);
+                }
+            }
             diagnostic.response = LXA_OK;
             memcpy(late + 1025, known, sizeof(known) - 1);
         }
@@ -13056,6 +13072,7 @@ main(void)
                 break;
             }
             TEST_CHECK(injected_status == LXA_ERROR_NO_MEMORY
+                       && parse_result == LXA_HTML_NO_MEMORY
                        && document == NULL);
         }
         TEST_CHECK(i < 256);
@@ -13134,10 +13151,29 @@ main(void)
     TEST_CHECK(lxa_html_document_parse(&allocator, &limits,
         (lxa_span_t){(const uint8_t *) "xx", 2},
         &parse_result, &reason, &document) == LXA_ERROR_LIMIT);
-    TEST_CHECK(document == NULL && reason == LXA_BUDGET_INPUT);
+    TEST_CHECK(document == NULL && reason == LXA_BUDGET_INPUT
+               && parse_result == LXA_HTML_LIMIT);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         (lxa_span_t){NULL, 1}, &parse_result, &reason, &document)
         == LXA_ERROR_ARGUMENT && document == NULL);
+    TEST_CHECK(parse_result == LXA_HTML_BAD_ARGUMENT);
+    {
+        const lxa_limit_reason_t reasons[] = {
+            LXA_BUDGET_MEMORY, LXA_BUDGET_NODES, LXA_BUDGET_WORK
+        };
+        size_t limit;
+        for (limit = 0; limit < sizeof(reasons) / sizeof(*reasons); ++limit) {
+            limits = lxa_limits_default();
+            if (reasons[limit] == LXA_BUDGET_MEMORY) limits.max_memory_bytes = 0;
+            if (reasons[limit] == LXA_BUDGET_NODES) limits.max_nodes = 0;
+            if (reasons[limit] == LXA_BUDGET_WORK) limits.max_work = 0;
+            TEST_CHECK(lxa_html_document_parse(&allocator, &limits,
+                span("<p>x</p>"), &parse_result, &reason, &document)
+                == LXA_ERROR_LIMIT);
+            TEST_CHECK(document == NULL && parse_result == LXA_HTML_LIMIT
+                       && reason == reasons[limit]);
+        }
+    }
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<template><table><tr><td>x</td></tr></table></template>"),
         &parse_result, &reason, &document) == LXA_OK);
@@ -13174,7 +13210,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     for (i = 0; i < 128; ++i) {
@@ -13190,7 +13227,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     for (i = 0; i < 128; ++i) {
@@ -13204,7 +13242,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     for (i = 0; i < 128; ++i) {
@@ -13219,7 +13258,8 @@ main(void)
             lxa_html_document_destroy(document);
             break;
         }
-        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL);
+        TEST_CHECK(status == LXA_ERROR_NO_MEMORY && document == NULL
+                   && parse_result == LXA_HTML_NO_MEMORY);
     }
     TEST_CHECK(i < 128);
     lxa_html_document_destroy(NULL);

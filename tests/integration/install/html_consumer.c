@@ -81,7 +81,8 @@ main(void)
     if (lxa_html_document_parse(&allocator, &limits,
             (lxa_span_t){html, sizeof(html) - 1}, &parser_result,
             &reason, &document) != LXA_ERROR_LIMIT
-        || reason != LXA_BUDGET_INPUT || document != NULL)
+        || reason != LXA_BUDGET_INPUT || document != NULL
+        || parser_result != LXA_HTML_LIMIT)
         return 3;
 
     output.length = 0;

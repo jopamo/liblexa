@@ -19,9 +19,27 @@ parser_status(lxa_html_result_t result, lxa_html_tokenizer_t *tokenizer)
     case LXA_HTML_OVERFLOW: return LXA_ERROR_OVERFLOW;
     case LXA_HTML_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
     case LXA_HTML_LIMIT: return LXA_ERROR_LIMIT;
+    case LXA_HTML_ENTROPY: return LXA_ERROR_ENTROPY;
     case LXA_HTML_CALLBACK_FAILURE:
         return lxa_html_tokenizer_callback_status(tokenizer);
     default: return LXA_ERROR_ARGUMENT;
+    }
+}
+
+static lxa_html_result_t
+document_result(lxa_status_t status, lxa_html_result_t result)
+{
+    /* Only the caller's diagnostic callback retains CALLBACK_FAILURE.
+     * Tree callbacks are implementation details, including their failures. */
+    if (result == LXA_HTML_CALLBACK_FAILURE) return result;
+    switch (status) {
+    case LXA_OK: return LXA_HTML_OK;
+    case LXA_ERROR_LIMIT: return LXA_HTML_LIMIT;
+    case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
+    case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
+    case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
+    default: return result == LXA_HTML_UNSUPPORTED
+                    ? result : LXA_HTML_BAD_ARGUMENT;
     }
 }
 
@@ -184,22 +202,23 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     if (selected != LXA_HTML_INPUT_OK) {
         if (selected == LXA_HTML_INPUT_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_INPUT;
-        return input_status(selected);
+        status = input_status(selected);
+        goto report;
     }
     status = lxa_alloc(allocator, sizeof(*document), (void **) &document);
-    if (status != LXA_OK) return status;
+    if (status != LXA_OK) goto report;
     document->allocator = *allocator;
     document->nodes = NULL;
     status = lxa_budget_init(&document->budget, limits);
     if (status != LXA_OK) {
         lxa_free(allocator, document);
-        return status;
+        goto report;
     }
     status = lxa_budget_charge(&document->budget, LXA_BUDGET_MEMORY,
                                sizeof(*document), reason);
     if (status != LXA_OK) {
         lxa_free(allocator, document);
-        return status;
+        goto report;
     }
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
@@ -231,6 +250,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         status = lxa_html_tree_init(&tree, document->nodes);
         if (status != LXA_OK) {
+            if (status == LXA_ERROR_LIMIT && reason != NULL)
+                *reason = lxa_dom_nodes_limit_reason(document->nodes);
             lxa_buffer_destroy(&decoded);
             break;
         }
@@ -247,7 +268,12 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                 *reason = result == LXA_HTML_LIMIT
                           ? lxa_html_tokenizer_limit_reason(tokenizer)
                           : lxa_dom_nodes_limit_reason(document->nodes);
+            if (result == LXA_HTML_CALLBACK_FAILURE)
+                result = status == LXA_ERROR_ARGUMENT
+                         ? LXA_HTML_UNSUPPORTED : LXA_HTML_BAD_ARGUMENT;
         }
+        else if (status == LXA_ERROR_LIMIT && reason != NULL)
+            *reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK && prefix == 0) {
             const lxa_encoding_t *declared;
             bool unknown;
@@ -275,10 +301,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                 on_malformed, context, &callback_status, reason);
             status = selected == LXA_HTML_INPUT_CALLBACK_FAILURE
                      ? callback_status : input_status(selected);
-            if (status != LXA_OK)
-                result = selected == LXA_HTML_INPUT_LIMIT ? LXA_HTML_LIMIT
-                         : selected == LXA_HTML_INPUT_NO_MEMORY
-                           ? LXA_HTML_NO_MEMORY : LXA_HTML_BAD_ARGUMENT;
+            if (selected == LXA_HTML_INPUT_CALLBACK_FAILURE)
+                result = LXA_HTML_CALLBACK_FAILURE;
         }
         if (status == LXA_OK && !retry) {
             document->root = tree.document;
@@ -297,23 +321,13 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             *reason = lxa_dom_nodes_limit_reason(document->nodes);
         if (status != LXA_OK) break;
     }
-    if (status != LXA_OK && result == LXA_HTML_OK)
-        result = status == LXA_ERROR_LIMIT ? LXA_HTML_LIMIT
-                 : status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                 : status == LXA_ERROR_OVERFLOW ? LXA_HTML_OVERFLOW
-                 : LXA_HTML_BAD_ARGUMENT;
-    if (parser_result != NULL) {
-        if (result == LXA_HTML_CALLBACK_FAILURE
-            && status == LXA_ERROR_ARGUMENT)
-            *parser_result = LXA_HTML_UNSUPPORTED;
-        else
-            *parser_result = result;
-    }
-    if (status == LXA_OK) {
+    if (status == LXA_OK)
         *out = document;
-        return LXA_OK;
-    }
-    lxa_html_document_destroy(document);
+    else
+        lxa_html_document_destroy(document);
+report:
+    if (parser_result != NULL)
+        *parser_result = document_result(status, result);
     return status;
 }
 
