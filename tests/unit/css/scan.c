@@ -277,5 +277,11 @@ main(void)
         CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
     }
     lxa_css_tokens_destroy(tokens);
+#ifdef NDEBUG
+    /* Debug builds assert these impossible pipeline statuses. Release builds
+     * must reject them distinctly instead of reporting allocator failure. */
+    CSS_CHECK(lxa_css_scan_status(LXA_ERROR_ARGUMENT) == LXA_CSS_SCAN_INTERNAL);
+    CSS_CHECK(lxa_css_scan_status(LXA_ERROR_INTERNAL) == LXA_CSS_SCAN_INTERNAL);
+#endif
     return 0;
 }

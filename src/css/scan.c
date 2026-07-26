@@ -387,14 +387,6 @@ read_number(scanner_t *s, unsigned *flags)
 }
 
 static lxa_css_scan_result_t
-scan_error(lxa_status_t status)
-{
-    return status == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-           : status == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-           : LXA_CSS_SCAN_NO_MEMORY;
-}
-
-static lxa_css_scan_result_t
 scan(scanner_t *s, size_t capacity, size_t *produced)
 {
     while (s->pos < s->count) {
@@ -417,7 +409,7 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
                 if (s->work_status == LXA_ERROR_LIMIT) {
                     *s->limit_reason = LXA_BUDGET_WORK;
                 }
-                return scan_error(s->work_status);
+                return lxa_css_scan_status(s->work_status);
             }
             if (s->pos < s->count) {
                 s->pos += 2;
@@ -534,13 +526,13 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
             }
         }
         if (s->work_status != LXA_OK) {
-            return scan_error(s->work_status);
+            return lxa_css_scan_status(s->work_status);
         }
         if (status == LXA_OK) {
             status = emit(s, t, start);
         }
         if (status != LXA_OK) {
-            return scan_error(status);
+            return lxa_css_scan_status(status);
         }
         (*produced)++;
     }
@@ -556,7 +548,7 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
             (*produced)++;
             return LXA_CSS_SCAN_OK;
         }
-        return scan_error(status);
+        return lxa_css_scan_status(status);
     }
 }
 
@@ -585,7 +577,7 @@ lxa_css_scan_cursor_init_budget(lxa_css_scan_cursor_t *cursor,
             ? &cursor->local_budget : budget, LXA_BUDGET_WORK, 1,
             &cursor->limit_reason);
         if (work != LXA_OK) {
-            return scan_error(work);
+            return lxa_css_scan_status(work);
         }
         size_t end;
         uint32_t c = input[i].value;
@@ -640,12 +632,12 @@ lxa_css_scan_cursor_batch(lxa_css_scan_cursor_t *cursor,
     s.limit_reason = &cursor->limit_reason;
     if (lxa_buffer_init(&s.text, &tokens->text.allocator) != LXA_OK) {
         cursor->closed = true;
-        return LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
     if (lxa_buffer_bind_budget(&s.text, s.budget) != LXA_OK) {
         lxa_buffer_destroy(&s.text);
         cursor->closed = true;
-        return LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
     result = scan(&s, capacity, produced);
     lxa_buffer_destroy(&s.text);

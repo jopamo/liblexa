@@ -27,15 +27,13 @@ struct lxa_css_byte_stream {
 static lxa_css_scan_result_t
 append(lxa_css_byte_stream_t *stream, uint32_t cp, size_t start, size_t end)
 {
+    if (end <= start) return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     lxa_css_unit_t unit = {cp, start, end - start};
     lxa_status_t status = lxa_vector_push(&stream->units, &unit);
     if (status == LXA_ERROR_LIMIT) {
         stream->limit_reason = LXA_BUDGET_MEMORY;
     }
-    return status == LXA_OK ? LXA_CSS_SCAN_OK
-           : status == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-           : status == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-           : LXA_CSS_SCAN_NO_MEMORY;
+    return lxa_css_scan_status(status);
 }
 
 static lxa_css_scan_result_t
@@ -48,8 +46,11 @@ accept(lxa_css_byte_stream_t *stream, uint32_t cp, size_t start, size_t end)
     lxa_css_filter_result_t r = lxa_css_filter_feed(&stream->filter, &cp, 1,
         output, 2, &progress);
     size_t j = 0;
-    if (r != LXA_CSS_FILTER_OK || progress.consumed != 1) {
-        return LXA_CSS_SCAN_INVALID;
+    size_t expected = (had_cr ? 1 : 0)
+        + (cp != '\r' && !(had_cr && cp == '\n') ? 1 : 0);
+    if (r != LXA_CSS_FILTER_OK || progress.consumed != 1
+        || progress.produced != expected) {
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
     if (had_cr) {
         size_t cr_end = cp == '\n' ? end : stream->cr_end;
@@ -70,7 +71,8 @@ accept(lxa_css_byte_stream_t *stream, uint32_t cp, size_t start, size_t end)
         }
         j++;
     }
-    return j == progress.produced ? LXA_CSS_SCAN_OK : LXA_CSS_SCAN_INVALID;
+    assert(j == progress.produced);
+    return LXA_CSS_SCAN_OK;
 }
 
 lxa_css_scan_result_t
@@ -97,15 +99,12 @@ lxa_css_byte_stream_create_budget(const lxa_allocator_t *allocator,
     }
     status = lxa_budget_charge(active, LXA_BUDGET_MEMORY, sizeof(*stream), NULL);
     if (status != LXA_OK) {
-        return status == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-               : status == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-               : LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(status);
     }
     status = lxa_alloc(allocator, sizeof(*stream), (void **) &stream);
     if (status != LXA_OK) {
         lxa_budget_release(active, LXA_BUDGET_MEMORY, sizeof(*stream));
-        return status == LXA_ERROR_NO_MEMORY ? LXA_CSS_SCAN_NO_MEMORY
-               : LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(status);
     }
     *stream = (lxa_css_byte_stream_t) {0};
     stream->allocator = *allocator;
@@ -115,34 +114,20 @@ lxa_css_byte_stream_create_budget(const lxa_allocator_t *allocator,
     stream->budget = budget == NULL ? &stream->local_budget : budget;
     stream->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_vector_init(&stream->units, allocator, sizeof(lxa_css_unit_t));
-    if (status != LXA_OK) {
-        lxa_budget_release(stream->budget, LXA_BUDGET_MEMORY, sizeof(*stream));
-        lxa_free(allocator, stream);
-        return LXA_CSS_SCAN_INVALID;
-    }
+    if (status != LXA_OK) goto fail;
     status = lxa_vector_bind_budget(&stream->units, stream->budget);
-    if (status != LXA_OK) {
-        lxa_vector_destroy(&stream->units);
-        lxa_budget_release(stream->budget, LXA_BUDGET_MEMORY, sizeof(*stream));
-        lxa_free(allocator, stream);
-        return LXA_CSS_SCAN_INVALID;
-    }
+    if (status != LXA_OK) goto fail;
     lxa_css_filter_reset(&stream->filter);
     utf8 = lxa_encoding_lookup((lxa_span_t) {(const uint8_t *) "utf-8", 5});
     status = lxa_decoder_create_with_budget(utf8, LXA_ENCODING_REPLACE,
                                             allocator, stream->budget,
                                             &stream->decoder);
-    if (status != LXA_OK) {
-        lxa_vector_destroy(&stream->units);
-        lxa_budget_release(stream->budget, LXA_BUDGET_MEMORY, sizeof(*stream));
-        lxa_free(allocator, stream);
-        return status == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-               : status == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-               : status == LXA_ERROR_NO_MEMORY ? LXA_CSS_SCAN_NO_MEMORY
-               : LXA_CSS_SCAN_INVALID;
-    }
+    if (status != LXA_OK) goto fail;
     *out = stream;
     return LXA_CSS_SCAN_OK;
+fail:
+    lxa_css_byte_stream_destroy(stream);
+    return lxa_css_scan_status(status);
 }
 
 lxa_css_scan_result_t
@@ -186,9 +171,7 @@ lxa_css_byte_stream_feed(lxa_css_byte_stream_t *stream,
         lxa_status_t check = lxa_budget_accept_input(&prospective,
             bytes.length, &stream->limit_reason);
         if (check != LXA_OK) {
-            return check == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-                   : check == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-                   : LXA_CSS_SCAN_INVALID;
+            return lxa_css_scan_status(check);
         }
     }
     while (*consumed < bytes.length) {
@@ -196,17 +179,17 @@ lxa_css_byte_stream_feed(lxa_css_byte_stream_t *stream,
             LXA_BUDGET_WORK, 1, &stream->limit_reason);
         if (charge != LXA_OK) {
             stream->closed = true;
-            return charge == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-                   : charge == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-                   : LXA_CSS_SCAN_INVALID;
+            return lxa_css_scan_status(charge);
         }
         dec_result = lxa_decoder_feed(stream->decoder,
             (lxa_span_t) {bytes.data + *consumed, 1}, &cp, 1, &progress);
+        /* This owned UTF-8 replacement decoder allocates only at creation.
+         * Raw malformed bytes cannot explain a rejected call or bad progress. */
         if ((dec_result != LXA_ENCODING_OK
              && dec_result != LXA_ENCODING_OUTPUT_FULL) || progress.consumed > 1
             || progress.produced > 1 || (!progress.consumed && !progress.produced)) {
             stream->closed = true;
-            return LXA_CSS_SCAN_INVALID;
+            return lxa_css_scan_status(LXA_ERROR_INTERNAL);
         }
         if (progress.produced) {
             size_t end = stream->position + progress.consumed;
@@ -249,9 +232,7 @@ lxa_css_byte_stream_feed(lxa_css_byte_stream_t *stream,
                 stream->closed = true;
                 *consumed += progress.consumed;
                 stream->position += progress.consumed;
-                return charged == LXA_ERROR_LIMIT ? LXA_CSS_SCAN_LIMIT
-                       : charged == LXA_ERROR_OVERFLOW ? LXA_CSS_SCAN_OVERFLOW
-                       : LXA_CSS_SCAN_INVALID;
+                return lxa_css_scan_status(charged);
             }
         }
         *consumed += progress.consumed;
@@ -274,7 +255,7 @@ lxa_css_byte_stream_seal(lxa_css_byte_stream_t *stream)
     if (lxa_decoder_finish(stream->decoder, &cp, 1, &progress) != LXA_ENCODING_OK
         || progress.produced > 1) {
         stream->closed = true;
-        return LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
     if (progress.produced) {
         result = accept(stream, cp, stream->byte_start, stream->position);
@@ -284,9 +265,9 @@ lxa_css_byte_stream_seal(lxa_css_byte_stream_t *stream)
         }
     }
     if (lxa_css_filter_finish(&stream->filter, &out, 1, &filtered)
-        != LXA_CSS_FILTER_OK) {
+        != LXA_CSS_FILTER_OK || filtered.produced > 1) {
         stream->closed = true;
-        return LXA_CSS_SCAN_INVALID;
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
     if (filtered.produced) {
         result = append(stream, out, stream->cr_start, stream->cr_end);
@@ -304,6 +285,8 @@ lxa_css_byte_stream_seal(lxa_css_byte_stream_t *stream)
         }
         stream->closed = true;
     }
+    if (result == LXA_CSS_SCAN_INVALID)
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     return result;
 }
 
@@ -342,6 +325,8 @@ lxa_css_byte_stream_drain(lxa_css_byte_stream_t *stream,
     if (result == LXA_CSS_SCAN_LIMIT) {
         stream->limit_reason = stream->cursor.limit_reason;
     }
+    if (result == LXA_CSS_SCAN_INVALID)
+        return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     return result;
 }
 

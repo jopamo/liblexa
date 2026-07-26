@@ -86,10 +86,14 @@ size_t lxa_css_tokens_length(const lxa_css_tokens_t *tokens);
 lxa_status_t lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
                                 lxa_css_token_t *token, lxa_span_t *text);
 
+/* INVALID rejects caller arguments or stream lifecycle misuse. INTERNAL
+ * reports a failed private pipeline invariant (and asserts in debug builds).
+ * Malformed CSS is represented by recovered tokens, including BAD_* tokens,
+ * rather than by either of these operation failures. */
 typedef enum {
     LXA_CSS_SCAN_OK,
     LXA_CSS_SCAN_INVALID,
-    LXA_CSS_SCAN_UNSUPPORTED, /* syntax not implemented yet, not a CSS error */
+    LXA_CSS_SCAN_INTERNAL,
     LXA_CSS_SCAN_NO_MEMORY,
     LXA_CSS_SCAN_OVERFLOW,
     LXA_CSS_SCAN_OUTPUT_FULL,

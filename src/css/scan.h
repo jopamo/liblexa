@@ -2,7 +2,24 @@
 #ifndef LIBLEXA_CSS_SCAN_H
 #define LIBLEXA_CSS_SCAN_H
 
+#include <assert.h>
 #include "liblexa/css.h"
+
+/* Call only after validating caller arguments. Shared pipeline operations
+ * can fail for resources; any other status violates an internal invariant. */
+static inline lxa_css_scan_result_t
+lxa_css_scan_status(lxa_status_t status)
+{
+    switch (status) {
+    case LXA_OK: return LXA_CSS_SCAN_OK;
+    case LXA_ERROR_NO_MEMORY: return LXA_CSS_SCAN_NO_MEMORY;
+    case LXA_ERROR_OVERFLOW: return LXA_CSS_SCAN_OVERFLOW;
+    case LXA_ERROR_LIMIT: return LXA_CSS_SCAN_LIMIT;
+    default:
+        assert(0 && "unexpected status inside CSS scanner");
+        return LXA_CSS_SCAN_INTERNAL;
+    }
+}
 
 /* Already decoded and CSS-preprocessed scalar with its original byte range.
  * Adjacent source ranges may include folded CRLF (one scalar, two bytes).
