@@ -20,7 +20,8 @@ read(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     lxa_status_t status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
                                             1, &blocks->limit_reason);
     if (status != LXA_OK) return status;
-    return lxa_css_tokens_get(tokens, at, token, text);
+    status = lxa_css_tokens_get(tokens, at, token, text);
+    return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
 }
 
 lxa_status_t
@@ -43,8 +44,11 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     blocks->limit_reason = LXA_BUDGET_COUNT;
     status = read(tokens, blocks, rule->name, &token, &text);
     if (status != LXA_OK) return status;
-    if (token.kind != LXA_CSS_AT_KEYWORD || !ascii_equal(text, "import", 6))
+    if (token.kind != LXA_CSS_AT_KEYWORD) return LXA_ERROR_ARGUMENT;
+    if (!ascii_equal(text, "import", 6)) {
+        out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
         return LXA_OK;
+    }
     for (at = rule->prelude_first; at < rule->prelude_after; at++) {
         status = read(tokens, blocks, at, &token, &text);
         if (status != LXA_OK) return status;
@@ -74,18 +78,30 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         for (at++; at < component.after - 1; at++) {
             status = read(tokens, blocks, at, &token, &text);
             if (status != LXA_OK) return status;
-            if (token.kind != LXA_CSS_WHITESPACE) return LXA_OK;
+            if (token.kind != LXA_CSS_WHITESPACE) {
+                out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+                return LXA_OK;
+            }
         }
         at = component.after;
     }
-    else return LXA_OK;
-    if (uri.length == 0) return LXA_OK;
+    else {
+        if (token.kind == LXA_CSS_FUNCTION)
+            out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+        return LXA_OK;
+    }
+    if (uri.length == 0) {
+        out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+        return LXA_OK;
+    }
     while (at < rule->prelude_after) {
         status = read(tokens, blocks, at, &token, &text);
         if (status != LXA_OK) return status;
         if (token.kind != LXA_CSS_WHITESPACE) break;
         at++;
     }
-    *out = (lxa_css_import_t) {uri, at, rule->prelude_after, true};
+    *out = (lxa_css_import_t) {
+        uri, at, rule->prelude_after, LXA_CSS_SYNTAX_SUPPORTED
+    };
     return LXA_OK;
 }

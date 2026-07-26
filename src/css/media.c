@@ -17,12 +17,12 @@ word(lxa_span_t text, const char *ascii, size_t size)
  * query is still evaluated independently. */
 static lxa_status_t
 query(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-      size_t first, size_t after, bool *out)
+      size_t first, size_t after, lxa_css_media_t *out)
 {
-    size_t terms = 0;
-    bool negated = false, recognized = false, match = false;
+    enum { QUERY_START, QUERY_TYPE, QUERY_END } state = QUERY_START;
+    bool negated = false, match = false;
     lxa_status_t status;
-    *out = false;
+    *out = (lxa_css_media_t) {0};
     for (size_t i = first; i < after; i++) {
         lxa_css_token_t token;
         lxa_span_t text;
@@ -30,38 +30,68 @@ query(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_tokens_get(tokens, i, &token, &text);
-        if (status != LXA_OK) return status;
+        if (status != LXA_OK)
+            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
         if (token.kind == LXA_CSS_WHITESPACE) continue;
-        if (token.kind != LXA_CSS_IDENT) return LXA_OK;
-        if (terms == 0 && (word(text, "only", 4) || word(text, "not", 3))) {
+        if (token.kind != LXA_CSS_IDENT) {
+            if (token.kind == LXA_CSS_LEFT_PAREN
+                || token.kind == LXA_CSS_FUNCTION)
+                out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+            return LXA_OK;
+        }
+        if (state == QUERY_START
+            && (word(text, "only", 4) || word(text, "not", 3))) {
             negated = word(text, "not", 3);
-            terms++;
+            state = QUERY_TYPE;
             continue;
         }
-        if (terms > 1 || (terms == 1 && recognized)) return LXA_OK;
-        recognized = true; /* Unknown media types are false, then NOT flips. */
+        if (state == QUERY_END) {
+            if (word(text, "and", 3) || word(text, "or", 2))
+                out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+            return LXA_OK;
+        }
+        /* These grammar keywords are not unknown media types that NOT
+         * may turn into a match. */
+        if (word(text, "not", 3) || word(text, "only", 4)
+            || word(text, "and", 3) || word(text, "or", 2))
+            return LXA_OK;
+        /* Unknown media types are false, then NOT flips. */
         match = word(text, "screen", 6) || word(text, "all", 3);
-        terms++;
+        state = QUERY_END;
     }
-    *out = recognized && (negated ? !match : match);
+    if (state == QUERY_END) {
+        out->syntax = LXA_CSS_SYNTAX_SUPPORTED;
+        out->applies = negated ? !match : match;
+    }
     return LXA_OK;
+}
+
+static void
+merge(lxa_css_media_t *out, lxa_css_media_t group)
+{
+    out->applies |= group.applies;
+    if (group.syntax == LXA_CSS_SYNTAX_UNSUPPORTED)
+        out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+    else if (group.syntax == LXA_CSS_SYNTAX_INVALID
+             && out->syntax != LXA_CSS_SYNTAX_UNSUPPORTED)
+        out->syntax = LXA_CSS_SYNTAX_INVALID;
 }
 
 lxa_status_t
 lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                     size_t first, size_t after, bool *applies)
+                     size_t first, size_t after, lxa_css_media_t *out)
 {
     size_t start = first, at = first;
-    bool match = false, group;
+    lxa_css_media_t result = {.syntax = LXA_CSS_SYNTAX_SUPPORTED}, group;
     lxa_status_t status;
-    if (tokens == NULL || blocks == NULL || applies == NULL || !blocks->ready
+    if (tokens == NULL || blocks == NULL || out == NULL || !blocks->ready
         || first > after || after > blocks->end
         || lxa_css_tokens_length(tokens) < blocks->end)
         return LXA_ERROR_ARGUMENT;
-    *applies = false;
+    *out = (lxa_css_media_t) {0};
     blocks->limit_reason = LXA_BUDGET_COUNT;
     if (first == after) {
-        *applies = true;
+        *out = (lxa_css_media_t) {LXA_CSS_SYNTAX_SUPPORTED, true};
         return LXA_OK;
     }
     while (at < after) {
@@ -72,11 +102,12 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_tokens_get(tokens, at, &token, &text);
-        if (status != LXA_OK) return status;
+        if (status != LXA_OK)
+            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
         if (token.kind == LXA_CSS_COMMA) {
             status = query(tokens, blocks, start, at, &group);
             if (status != LXA_OK) return status;
-            match |= group;
+            merge(&result, group);
             start = ++at;
             continue;
         }
@@ -87,7 +118,7 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     }
     status = query(tokens, blocks, start, after, &group);
     if (status != LXA_OK) return status;
-    match |= group;
-    *applies = match;
+    merge(&result, group);
+    *out = result;
     return LXA_OK;
 }

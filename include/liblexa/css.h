@@ -276,31 +276,6 @@ lxa_status_t lxa_css_declarations_get(lxa_css_declarations_t *list,
                                       size_t at, lxa_css_declaration_t *out);
 void lxa_css_declarations_destroy(lxa_css_declarations_t *list);
 
-/* Parse only a top-level @import URI and retain the media prelude range for
- * the consumer to check. No resource is fetched here. URI is cooked token
- * text borrowed until the token list changes. Unsupported/invalid syntax
- * returns OK with valid=false; parser budget failures return an error. */
-typedef struct {
-    lxa_span_t uri;
-    size_t media_first;
-    size_t media_after;
-    bool valid;
-} lxa_css_import_t;
-
-lxa_status_t lxa_css_import_parse(lxa_css_tokens_t *tokens,
-                                   lxa_css_blocks_t *blocks,
-                                   const lxa_css_rule_t *rule,
-                                   lxa_css_import_t *out);
-
-/* Consumer's rendering medium is screen. Empty prelude (an unqualified
- * import) applies. Recognize plain screen/all/print and their only/not
- * qualifiers; unknown types are false before NOT, and unsupported
- * feature expressions are nonmatching. Comma groups
- * are ORed. No environment or resource loader lives in the parser. */
-lxa_status_t lxa_css_media_screen(lxa_css_tokens_t *tokens,
-                                   lxa_css_blocks_t *blocks,
-                                   size_t first, size_t after, bool *applies);
-
 /* Inspect only after an operation returns OK. UNSUPPORTED identifies a
  * feature boundary; it does not certify syntax beyond that boundary. */
 typedef enum {
@@ -308,6 +283,43 @@ typedef enum {
     LXA_CSS_SYNTAX_SUPPORTED,
     LXA_CSS_SYNTAX_UNSUPPORTED
 } lxa_css_syntax_t;
+
+/* Parse only a top-level @import URI and retain the media prelude range for
+ * the consumer to check. No resource is fetched here. URI is cooked token
+ * text borrowed until the token list changes. Unsupported/invalid syntax
+ * returns OK with distinct syntax results; budget failures return an error.
+ * Empty URIs and URL modifiers are unsupported. SUPPORTED describes URI
+ * extraction only: the remaining prelude still requires media evaluation. */
+typedef struct {
+    lxa_span_t uri;
+    size_t media_first;
+    size_t media_after;
+    lxa_css_syntax_t syntax;
+} lxa_css_import_t;
+
+lxa_status_t lxa_css_import_parse(lxa_css_tokens_t *tokens,
+                                   lxa_css_blocks_t *blocks,
+                                   const lxa_css_rule_t *rule,
+                                   lxa_css_import_t *out);
+
+typedef struct {
+    lxa_css_syntax_t syntax;
+    bool applies;
+} lxa_css_media_t;
+
+/* Consumer's rendering medium is screen. Empty prelude (an unqualified
+ * import) applies. Recognize plain screen/all/print and their only/not
+ * qualifiers; unknown types are false before NOT, and unsupported
+ * feature expressions are nonmatching. Comma groups
+ * are ORed, including when another group is malformed/unsupported.
+ * syntax summarizes the groups: UNSUPPORTED takes precedence over INVALID,
+ * then SUPPORTED. Use applies independently of this summary.
+ * After argument validation, failure clears out to INVALID/nonmatching.
+ * No environment or resource loader lives in the parser. */
+lxa_status_t lxa_css_media_screen(lxa_css_tokens_t *tokens,
+                                   lxa_css_blocks_t *blocks,
+                                   size_t first, size_t after,
+                                   lxa_css_media_t *out);
 
 /* Normalize one simple selector into the exact key used by librsvg's style
  * lookup: optional tag, one class, one ID, in that order. No matching is

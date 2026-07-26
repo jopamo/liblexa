@@ -4,7 +4,8 @@
 #include "liblexa/css.h"
 
 static void
-check(const char *source, const char *expected_uri, const char *media)
+check(const char *source, const char *expected_uri, const char *media,
+      lxa_css_syntax_t syntax)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_css_tokens_t *tokens = NULL;
@@ -19,7 +20,7 @@ check(const char *source, const char *expected_uri, const char *media)
     CSS_CHECK(lxa_css_rule_parse(tokens, blocks, 0, lxa_css_blocks_end(blocks), &rule)
               == LXA_OK && rule.kind == LXA_CSS_RULE_AT && !rule.has_block);
     CSS_CHECK(lxa_css_import_parse(tokens, blocks, &rule, &event) == LXA_OK);
-    CSS_CHECK(event.valid == (expected_uri != NULL));
+    CSS_CHECK(event.syntax == syntax);
     if (expected_uri != NULL) {
         CSS_CHECK(event.uri.length == strlen(expected_uri)
                   && memcmp(event.uri.data, expected_uri,
@@ -38,7 +39,7 @@ check(const char *source, const char *expected_uri, const char *media)
         lxa_css_blocks_budget(blocks)->used[LXA_BUDGET_WORK];
     CSS_CHECK(lxa_css_import_parse(tokens, blocks, &rule, &event)
               == LXA_ERROR_LIMIT && lxa_css_blocks_limit_reason(blocks) == LXA_BUDGET_WORK
-              && !event.valid);
+              && event.syntax == LXA_CSS_SYNTAX_INVALID);
     lxa_css_blocks_destroy(blocks);
     lxa_css_tokens_destroy(tokens);
 }
@@ -46,17 +47,22 @@ check(const char *source, const char *expected_uri, const char *media)
 int
 main(void)
 {
-    check("@import 'child.css';", "child.css", NULL);
-    check("@IMPORT url(child.css) screen;", "child.css", "screen");
-    check("@import url( 'a\\2d b.css' ) screen;", "a-b.css", "screen");
-    check("@import url(a\\)b.css);", "a)b.css", NULL);
-    check("@import 'child.css' /* c */ screen;", "child.css", "screen");
-    check("@import 'a.css'", "a.css", NULL);
-    check("@import url(a b);", NULL, NULL);
-    check("@import url('a.css' bad);", NULL, NULL);
-    check("@import url();", NULL, NULL);
-    check("@import '';", NULL, NULL);
-    check("@import ;", NULL, NULL);
-    check("@unknown 'a.css';", NULL, NULL);
+    check("@import 'child.css';", "child.css", NULL, LXA_CSS_SYNTAX_SUPPORTED);
+    check("@IMPORT url(child.css) screen;", "child.css", "screen",
+          LXA_CSS_SYNTAX_SUPPORTED);
+    check("@import url( 'a\\2d b.css' ) screen;", "a-b.css", "screen",
+          LXA_CSS_SYNTAX_SUPPORTED);
+    check("@import url(a\\)b.css);", "a)b.css", NULL, LXA_CSS_SYNTAX_SUPPORTED);
+    check("@import 'child.css' /* c */ screen;", "child.css", "screen",
+          LXA_CSS_SYNTAX_SUPPORTED);
+    check("@import 'a.css'", "a.css", NULL, LXA_CSS_SYNTAX_SUPPORTED);
+    check("@import url(a b);", NULL, NULL, LXA_CSS_SYNTAX_INVALID);
+    check("@import url('a.css' bad);", NULL, NULL, LXA_CSS_SYNTAX_UNSUPPORTED);
+    check("@import url();", NULL, NULL, LXA_CSS_SYNTAX_UNSUPPORTED);
+    check("@import '';", NULL, NULL, LXA_CSS_SYNTAX_UNSUPPORTED);
+    check("@import ;", NULL, NULL, LXA_CSS_SYNTAX_INVALID);
+    check("@unknown 'a.css';", NULL, NULL, LXA_CSS_SYNTAX_UNSUPPORTED);
+    check("@import src('a.css');", NULL, NULL, LXA_CSS_SYNTAX_UNSUPPORTED);
+    check("@import url('a.css'", NULL, NULL, LXA_CSS_SYNTAX_INVALID);
     return 0;
 }
