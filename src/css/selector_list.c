@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "css/blocks.h"
 
 struct lxa_css_selector_list {

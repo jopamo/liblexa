@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "liblexa/html.h"
 #include "html/tree.h"
 #include "html/input_encoding.h"

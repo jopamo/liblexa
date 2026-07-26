@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #ifndef LIBLEXA_CSS_BLOCKS_H
 #define LIBLEXA_CSS_BLOCKS_H
 

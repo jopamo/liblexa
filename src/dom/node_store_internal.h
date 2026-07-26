@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #ifndef LIBLEXA_DOM_NODE_STORE_INTERNAL_H
 #define LIBLEXA_DOM_NODE_STORE_INTERNAL_H
 

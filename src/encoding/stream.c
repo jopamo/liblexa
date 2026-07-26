@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "liblexa/encoding.h"
 
 #include <assert.h>

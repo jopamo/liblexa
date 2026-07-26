@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #ifndef LIBLEXA_SERIALIZE_H
 #define LIBLEXA_SERIALIZE_H
 

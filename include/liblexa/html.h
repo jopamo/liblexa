@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #ifndef LIBLEXA_HTML_H
 #define LIBLEXA_HTML_H
 

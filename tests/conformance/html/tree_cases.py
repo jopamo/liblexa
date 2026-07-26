@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 Paul Moses
 """Compare selected pinned html5lib document trees with the Liblexa DOM.
 
 Compile tree_dump.c against the opt-in candidate with -Isrc,

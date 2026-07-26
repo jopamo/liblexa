@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "check.h"
 #include <string.h>
 #include "liblexa/css.h"

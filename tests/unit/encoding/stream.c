@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

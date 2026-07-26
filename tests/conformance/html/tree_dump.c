@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 /* Bounded tree dump for selected upstream html5lib document cases. */
 #include <stdio.h>
 #include <string.h>

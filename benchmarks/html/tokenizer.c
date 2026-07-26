@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
 #include <inttypes.h>

@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "html/input_encoding.h"
 
 static lxa_html_input_result_t

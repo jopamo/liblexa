@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>

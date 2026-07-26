@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <stddef.h>
 
 #include "liblexa/base.h"

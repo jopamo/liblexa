@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "liblexa/base.h"
 
 static uint64_t

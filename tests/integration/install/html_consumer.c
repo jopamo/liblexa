@@ -1,5 +1,4 @@
-/* Copyright (C) 2026 Paul Moses
- * Compile only against the privately installed candidate headers/libraries.
+/* Compile only against the privately installed candidate headers/libraries.
  */
 #include <string.h>
 #include "liblexa/html.h"

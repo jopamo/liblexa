@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "css/blocks.h"
 
 lxa_status_t

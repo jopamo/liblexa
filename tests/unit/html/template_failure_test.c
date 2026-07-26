@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 /* Standalone failure sweep for a document-owned template fragment. */
 #include <stdio.h>
 #include <stdint.h>

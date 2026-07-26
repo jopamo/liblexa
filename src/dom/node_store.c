@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <stdbool.h>
 #include <string.h>
 #include "liblexa/dom.h"

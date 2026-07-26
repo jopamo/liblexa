@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "check.h"
 #include <stdlib.h>
 #include "css/blocks.h"

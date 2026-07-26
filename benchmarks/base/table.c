@@ -1,5 +1,4 @@
-/* Copyright (C) 2026 Paul Moses
- * Keyed core table: insertion, reverse-order lookup, deletion and traversal.
+/* Keyed core table: insertion, reverse-order lookup, deletion and traversal.
  */
 #include <errno.h>
 #include <stdint.h>

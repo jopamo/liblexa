@@ -1,5 +1,4 @@
-/* Copyright (C) 2026 Paul Moses
- * Also compiles as an external consumer using only installed headers.
+/* Also compiles as an external consumer using only installed headers.
  */
 #include <stdint.h>
 #include <stdlib.h>

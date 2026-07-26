@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <string.h>
 
 #include "html/foreign_names.h"

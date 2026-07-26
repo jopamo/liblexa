@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #ifndef LIBLEXA_CSS_TEST_CHECK_H
 #define LIBLEXA_CSS_TEST_CHECK_H
 

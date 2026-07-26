@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "css/tokens.h"
 #include <math.h>
 #include <string.h>

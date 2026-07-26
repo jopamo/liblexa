@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>

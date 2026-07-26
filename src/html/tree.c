@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include <string.h>
 #include "dom/node_store_internal.h"
 #include "html/foreign_names.h"

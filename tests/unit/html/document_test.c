@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "tests/support/test_check.h"
 #include "dom/node_store_internal.h"
 #include "liblexa/html.h"

@@ -1,4 +1,3 @@
-/* Copyright (C) 2026 Paul Moses */
 #include "liblexa/serialize.h"
 #include "tests/support/test_check.h"
 #include <string.h>
