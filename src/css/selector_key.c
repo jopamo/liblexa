@@ -2,22 +2,29 @@
 #include "css/blocks.h"
 #include "liblexa/base.h"
 
+static lxa_status_t
+unsupported(lxa_css_syntax_t *syntax)
+{
+    *syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                      size_t first, size_t after, size_t max_bytes,
-                     lxa_buffer_t *output, bool *supported)
+                     lxa_buffer_t *output, lxa_css_syntax_t *syntax)
 {
     lxa_span_t tag = {0}, klass = {0}, id = {0}, text;
     bool universal = false, dot = false, started = false;
     size_t size = 0;
     lxa_status_t status = LXA_OK;
     if (tokens == NULL || blocks == NULL || !blocks->ready || output == NULL
-        || supported == NULL || output->budget != blocks->budget
+        || syntax == NULL || output->budget != blocks->budget
         || first > after || after > blocks->end
         || lxa_css_tokens_length(tokens) < blocks->end) {
         return LXA_ERROR_ARGUMENT;
     }
-    *supported = false;
+    *syntax = LXA_CSS_SYNTAX_INVALID;
     lxa_buffer_clear(output);
     blocks->limit_reason = LXA_BUDGET_COUNT;
     for (size_t at = first; at < after; at++) {
@@ -26,8 +33,10 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_tokens_get(tokens, at, &token, &text);
-        if (status != LXA_OK) return status;
-        if (token.kind == LXA_CSS_WHITESPACE && !dot) {
+        if (status != LXA_OK)
+            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+        if (dot && token.kind != LXA_CSS_IDENT) return LXA_OK;
+        if (token.kind == LXA_CSS_WHITESPACE) {
             /* Whitespace is allowed at the edges, never between parts. */
             size_t next = at + 1;
             while (next < after) {
@@ -37,17 +46,19 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                                            1, &blocks->limit_reason);
                 if (status != LXA_OK) return status;
                 status = lxa_css_tokens_get(tokens, next, &look, &ignored);
-                if (status != LXA_OK) return status;
+                if (status != LXA_OK)
+                    return status == LXA_ERROR_ARGUMENT
+                           ? LXA_ERROR_INTERNAL : status;
                 if (look.kind != LXA_CSS_WHITESPACE) break;
                 next++;
             }
-            if (next < after && started) return LXA_OK;
+            if (next < after && started) return unsupported(syntax);
             at = next - 1;
             continue;
         }
         if (token.kind == LXA_CSS_IDENT) {
             if (dot) {
-                if (klass.length != 0) return LXA_OK;
+                if (klass.length != 0) return unsupported(syntax);
                 klass = text;
                 dot = false;
             }
@@ -55,7 +66,6 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             else return LXA_OK;
         }
         else if (token.kind == LXA_CSS_DELIM && token.codepoint == '.') {
-            if (dot || klass.length != 0) return LXA_OK;
             dot = true;
         }
         else if (token.kind == LXA_CSS_DELIM && token.codepoint == '*') {
@@ -63,15 +73,24 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             universal = true;
         }
         else if (token.kind == LXA_CSS_HASH && (token.flags & LXA_CSS_ID_HASH)) {
-            if (dot || id.length != 0) return LXA_OK;
+            if (id.length != 0) return unsupported(syntax);
             id = text;
         }
+        else if (token.kind == LXA_CSS_COLON
+                 || token.kind == LXA_CSS_LEFT_SQUARE
+                 || token.kind == LXA_CSS_COMMA
+                 || (token.kind == LXA_CSS_DELIM
+                     && (token.codepoint == '>' || token.codepoint == '+'
+                         || token.codepoint == '~' || token.codepoint == '|'
+                         || token.codepoint == '&')))
+            return unsupported(syntax);
         else return LXA_OK;
         started = true;
     }
-    if (!started || dot || (universal && (klass.length || id.length))) {
+    if (!started || dot) {
         return LXA_OK;
     }
+    if (universal && (klass.length || id.length)) return unsupported(syntax);
     size = tag.length;
     if (universal) size = 1;
     if (lxa_size_add(size, klass.length, &size) != LXA_OK
@@ -101,6 +120,6 @@ fail:
         if (status == LXA_ERROR_LIMIT) blocks->limit_reason = LXA_BUDGET_MEMORY;
         lxa_buffer_clear(output);
     }
-    else *supported = true;
+    else *syntax = LXA_CSS_SYNTAX_SUPPORTED;
     return status;
 }

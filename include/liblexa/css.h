@@ -301,9 +301,18 @@ lxa_status_t lxa_css_media_screen(lxa_css_tokens_t *tokens,
                                    lxa_css_blocks_t *blocks,
                                    size_t first, size_t after, bool *applies);
 
+/* Inspect only after an operation returns OK. UNSUPPORTED identifies a
+ * feature boundary; it does not certify syntax beyond that boundary. */
+typedef enum {
+    LXA_CSS_SYNTAX_INVALID,
+    LXA_CSS_SYNTAX_SUPPORTED,
+    LXA_CSS_SYNTAX_UNSUPPORTED
+} lxa_css_syntax_t;
+
 /* Normalize one simple selector into the exact key used by librsvg's style
  * lookup: optional tag, one class, one ID, in that order. No matching is
- * performed here. Unsupported syntax returns OK with supported=false.
+ * performed here. Malformed and unsupported syntax return OK with distinct
+ * syntax results. Failure after argument validation sets syntax to INVALID.
  * Output is caller-owned, NUL-terminated (length excludes terminator) and
  * empty on rejection or failure after argument validation (invalid arguments
  * leave it unchanged). The caller owns an unchanged token list,
@@ -312,7 +321,7 @@ lxa_status_t lxa_css_selector_key(lxa_css_tokens_t *tokens,
                                    lxa_css_blocks_t *blocks,
                                    size_t first, size_t after,
                                    size_t max_bytes, lxa_buffer_t *output,
-                                   bool *supported);
+                                   lxa_css_syntax_t *syntax);
 
 typedef struct {
     size_t first;
