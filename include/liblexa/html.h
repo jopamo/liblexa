@@ -21,7 +21,8 @@ typedef enum {
     LXA_HTML_NO_MEMORY,
     LXA_HTML_CALLBACK_FAILURE,
     LXA_HTML_LIMIT,
-    LXA_HTML_ENTROPY
+    LXA_HTML_ENTROPY,
+    LXA_HTML_INTERNAL
 } lxa_html_result_t;
 
 /* Malformed raw-input byte offset; a non-OK return aborts publication. */
@@ -37,8 +38,10 @@ typedef lxa_status_t (*lxa_html_input_error_callback_t)(void *context,
  * tokenization finishes. Scripting mode is disabled. A failed parse publishes
  * no document.
  *
- * parser_result == UNSUPPORTED identifies candidate grammar gaps;
- * BAD_ARGUMENT identifies invalid arguments or an unknown encoding.
+ * status and parser_result == UNSUPPORTED identify candidate grammar gaps,
+ * unrepresentable names or unsupported encodings;
+ * BAD_ARGUMENT identifies invalid arguments.
+ * INTERNAL identifies a violated implementation invariant.
  * status and parser_result distinguish LIMIT/NO_MEMORY/OVERFLOW/ENTROPY;
  * CALLBACK_FAILURE instead identifies a diagnostic callback rejection,
  * whose exact status is returned. reason identifies the

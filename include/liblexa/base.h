@@ -76,7 +76,9 @@ typedef enum {
     LXA_ERROR_OVERFLOW,
     LXA_ERROR_NO_MEMORY,
     LXA_ERROR_LIMIT,
-    LXA_ERROR_ENTROPY
+    LXA_ERROR_ENTROPY,
+    LXA_ERROR_UNSUPPORTED,
+    LXA_ERROR_INTERNAL
 } lxa_status_t;
 
 /*
@@ -87,10 +89,13 @@ typedef enum {
  * propagates the first error and does not treat a partial result as committed.
  * Output defaults and rollback guarantees are stated
  * by each operation. Parser-specific continuation, malformed input and
- * output-full results belong to those modules, not this allocation enum.
+ * output-full results belong to those modules.
  * ENTROPY means the OS or caller could not provide a new hash key; callers
  * must abort secure initialization rather than substitute a predictable key.
- * These statuses belong to the allocation interface.
+ * UNSUPPORTED rejects a deliberate implementation boundary; it is not an
+ * internal failure or a recoverable grammar diagnostic. INTERNAL means an
+ * implementation invariant failed under valid API use. Discard the failed
+ * operation's output; do not retry by weakening resource limits.
  * Mutable core objects are confined to one caller at a time. Allocator
  * callbacks must not reenter the object whose allocation is in progress;
  * observers may only read a container during its iteration callback when

@@ -601,7 +601,7 @@ adopt_anchor_blocks(lxa_html_tree_t *tree)
             status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
             if (status != LXA_OK || first.handle == clone.handle) break;
             if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_INTERNAL;
             status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                         1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
@@ -737,16 +737,16 @@ close_crossed_paragraph(lxa_html_tree_t *tree,
         return LXA_OK;
     status = lxa_dom_nodes_parent(tree->nodes, outer, &actual);
     if (status != LXA_OK || actual.handle != parent.handle)
-        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
     status = lxa_dom_nodes_parent(tree->nodes, inner, &actual);
     if (status != LXA_OK || actual.handle != outer.handle)
-        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
     status = lxa_dom_nodes_parent(tree->nodes, paragraph, &actual);
     if (status != LXA_OK || actual.handle != inner.handle)
-        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
     if (tree->pending_formatting.handle != LXA_HANDLE_NONE
         || tree->active_anchor.handle != LXA_HANDLE_NONE)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                2, &tree->nodes->limit_reason);
     if (status == LXA_OK)
@@ -769,7 +769,7 @@ close_crossed_paragraph(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_first_child(tree->nodes, paragraph, &first);
         if (status != LXA_OK || first.handle == clone.handle) break;
         if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                     1, &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -821,7 +821,7 @@ close_crossed_formatting(lxa_html_tree_t *tree,
         || memcmp(outer.data, target.data, outer.length) != 0)
         return LXA_OK;
     if (tree->pending_formatting.handle != LXA_HANDLE_NONE)
-        return LXA_ERROR_ARGUMENT; /* A second entry needs a formatting list. */
+        return LXA_ERROR_UNSUPPORTED; /* A second entry needs a formatting list. */
     status = lxa_budget_check(tree->nodes->budget,
         LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
@@ -1136,7 +1136,7 @@ foster_location(lxa_html_tree_t *tree,
     lxa_status_t status;
     for (;;) {
         lxa_span_t name;
-        if (i <= 1) return LXA_ERROR_ARGUMENT;
+        if (i <= 1) return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                     1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -1147,7 +1147,7 @@ foster_location(lxa_html_tree_t *tree,
     }
     status = lxa_dom_nodes_parent(tree->nodes, *table, parent);
     return status == LXA_OK && parent->handle == LXA_HANDLE_NONE
-           ? LXA_ERROR_ARGUMENT : status;
+           ? LXA_ERROR_INTERNAL : status;
 }
 
 static lxa_status_t
@@ -1433,10 +1433,10 @@ consume_foreign(lxa_html_tree_t *tree,
                : known && !named(token->name, "svg")
                        && !named(token->name, "math")
                        && !named(token->name, "span")
-                 ? LXA_ERROR_ARGUMENT : LXA_OK;
+                 ? LXA_ERROR_UNSUPPORTED : LXA_OK;
     }
     if (token->kind != LXA_HTML_START_TAG)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     /* HTML breakout starts must be reprocessed outside the foreign stack;
      * until that algorithm exists, reject rather than construct false SVG/
      * MathML descendants. A foreign <a> is allowed too. */
@@ -1455,7 +1455,7 @@ consume_foreign(lxa_html_tree_t *tree,
              && (named(token->name, "desc")
                  || named(token->name, "title")
                  || named(token->name, "template"))))
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = reserve_open_elements(tree, 1);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -1492,7 +1492,7 @@ close_select(lxa_html_tree_t *tree)
             return LXA_OK;
         }
     }
-    return LXA_ERROR_ARGUMENT;
+    return LXA_ERROR_INTERNAL;
 }
 
 static lxa_status_t
@@ -1603,7 +1603,7 @@ consume_select(lxa_html_tree_t *tree,
                    || named(token->name, "keygen")
                    || named(token->name, "script")
                    || named(token->name, "template")
-                   ? LXA_ERROR_ARGUMENT : LXA_OK;
+                   ? LXA_ERROR_UNSUPPORTED : LXA_OK;
         }
         status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
@@ -1648,7 +1648,7 @@ consume_select(lxa_html_tree_t *tree,
         /* Other end tags are parse errors in select mode. Table and
          * template endings still require their own insertion-mode rules. */
         return table_part(token->name) || named(token->name, "template")
-               ? LXA_ERROR_ARGUMENT : LXA_OK;
+               ? LXA_ERROR_UNSUPPORTED : LXA_OK;
     }
     return LXA_OK;
 }
@@ -1732,7 +1732,7 @@ close_open_table_part(lxa_html_tree_t *tree,
             || (group == TABLE_ROW && table_section(name)))
             break;
     }
-    return LXA_ERROR_ARGUMENT;
+    return LXA_ERROR_UNSUPPORTED;
 }
 
 static lxa_status_t
@@ -1877,7 +1877,7 @@ open_table_part(lxa_html_tree_t *tree,
         top = literal("table");
     }
     if (named(token->name, "colgroup")) {
-        if (!named(top, "table")) return LXA_ERROR_ARGUMENT;
+        if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
         status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -1886,7 +1886,7 @@ open_table_part(lxa_html_tree_t *tree,
     }
     if (named(token->name, "col")) {
         if (!named(top, "table") && !named(top, "colgroup"))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         if (named(top, "table")) {
             status = reserve_open_elements(tree, 1);
             if (status == LXA_OK)
@@ -1901,7 +1901,7 @@ open_table_part(lxa_html_tree_t *tree,
         return append_void(tree, current_element(tree), token);
     }
     if (named(token->name, "caption")) {
-        if (!named(top, "table")) return LXA_ERROR_ARGUMENT;
+        if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
         status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -1924,7 +1924,7 @@ open_table_part(lxa_html_tree_t *tree,
     if (!((named(top, "table") && (section || row || cell))
           || (table_section(top) && (row || cell))
           || (named(top, "tr") && cell)))
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     if (named(top, "table")) {
         if (row) extra = 2;
         if (cell) extra = 3;
@@ -2011,6 +2011,7 @@ enter_text_mode(lxa_html_tree_t *tree,
     if (result != LXA_HTML_OK)
         return result == LXA_HTML_LIMIT ? LXA_ERROR_LIMIT
                : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
+               : result == LXA_HTML_OVERFLOW ? LXA_ERROR_OVERFLOW
                : LXA_ERROR_ARGUMENT;
     tree->text_element = element;
     tree->text_return_mode = tree->mode;
@@ -2219,7 +2220,7 @@ template_foster_element(lxa_html_tree_t *tree,
         if (named(name, "table")) {
             status = lxa_dom_nodes_parent(tree->nodes, table, &parent);
             if (status != LXA_OK) return status;
-            if (parent.handle == LXA_HANDLE_NONE) return LXA_ERROR_ARGUMENT;
+            if (parent.handle == LXA_HANDLE_NONE) return LXA_ERROR_INTERNAL;
             before_table = true;
             break;
         }
@@ -2230,7 +2231,7 @@ template_foster_element(lxa_html_tree_t *tree,
         if (length != template_boundary(tree) + 1
             && !(length == template_boundary(tree) + 2
                  && tree->template_insertion_mode == LXA_TEMPLATE_TABLE))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         status = lxa_dom_nodes_element_name(tree->nodes,
             open[template_boundary(tree)], &name);
         if (status != LXA_OK) return status;
@@ -2243,13 +2244,13 @@ template_foster_element(lxa_html_tree_t *tree,
                     open[template_boundary(tree) + 1], &row);
             if (status != LXA_OK) return status;
             if (!table_section(name) || !named(row, "tr"))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_UNSUPPORTED;
         }
         else if (!((tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
                && named(name, "tr"))
               || (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
                   && table_section(name))))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         parent = tree->template_fragment;
     }
     if (keep_open) {
@@ -2264,7 +2265,7 @@ template_foster_element(lxa_html_tree_t *tree,
         if (status == LXA_OK
             && tree->template_return_mode == LXA_TREE_IN_BODY) {
             size_t body = lxa_vector_length(&tree->open_elements);
-            if (body == 0) return LXA_ERROR_ARGUMENT;
+            if (body == 0) return LXA_ERROR_INTERNAL;
             status = lxa_size_add(depth, body - 1, &depth);
         }
         if (status == LXA_OK)
@@ -2326,7 +2327,7 @@ flush_template_table_text(lxa_html_tree_t *tree)
     bool colgroup = false;
     lxa_status_t status;
     if (bytes.length == 0) return LXA_OK;
-    if (i <= template_boundary(tree)) return LXA_ERROR_ARGUMENT;
+    if (i <= template_boundary(tree)) return LXA_ERROR_INTERNAL;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                 bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
@@ -2357,7 +2358,7 @@ flush_template_table_text(lxa_html_tree_t *tree)
         else {
             status = lxa_dom_nodes_parent(tree->nodes, table, &parent);
             if (status != LXA_OK || parent.handle == LXA_HANDLE_NONE)
-                return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+                return status == LXA_OK ? LXA_ERROR_INTERNAL : status;
         }
         if (colgroup) {
             while (prefix < bytes.length
@@ -2477,12 +2478,12 @@ template_close_crossed_block(lxa_html_tree_t *tree,
     lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, block, &name);
     if (status != LXA_OK) return status;
     if (!template_adoption_block(name))
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = lxa_dom_nodes_parent(tree->nodes, outer, &parent);
     if (status == LXA_OK)
         status = lxa_dom_nodes_parent(tree->nodes, block, &actual);
     if (status != LXA_OK) return status;
-    if (actual.handle != outer.handle) return LXA_ERROR_ARGUMENT;
+    if (actual.handle != outer.handle) return LXA_ERROR_UNSUPPORTED;
     status = clone_formatting_element(tree, outer, &clone);
     if (status == LXA_OK)
         status = template_reparent_after(tree, parent, block, outer);
@@ -2493,7 +2494,7 @@ template_close_crossed_block(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
         if (status != LXA_OK || first.handle == clone.handle) break;
         if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                     1, &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -2570,7 +2571,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                                                       &name);
     if (status != LXA_OK) return status;
     if (!named(name, "menu") && !named(name, "ul") && !named(name, "ol"))
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = lxa_dom_nodes_element_name(tree->nodes, item, &name);
     if (status == LXA_OK)
         status = lxa_dom_nodes_parent(tree->nodes, outer, &parent);
@@ -2578,19 +2579,19 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_parent(tree->nodes, list, &actual);
     if (status != LXA_OK) return status;
     if (!named(name, "li") || actual.handle != outer.handle)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = lxa_dom_nodes_parent(tree->nodes, item, &actual);
     if (status == LXA_OK)
         status = lxa_dom_nodes_first_child(tree->nodes, list, &first);
     if (status != LXA_OK) return status;
-    if (actual.handle != list.handle) return LXA_ERROR_ARGUMENT;
+    if (actual.handle != list.handle) return LXA_ERROR_UNSUPPORTED;
     if (direct_block) {
         if (preblock_length != 0) {
             if (count < 4 || preblock_length > count - 4
                 || count - 4 - preblock_length != block_span_count
                 || span_count != 0 || formatting_count != 0
                 || nested_blocks != 0)
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_UNSUPPORTED;
             for (j = 0; j < preblock_length; ++j) {
                 status = lxa_budget_charge(tree->nodes->budget,
                     LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
@@ -2601,7 +2602,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                 if ((j == 0 && !template_formatting(name))
                     || (!template_formatting(name)
                         && !template_crossed_inline(name)))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 if (j >= formatting_start && template_formatting(name))
                     ++kept_formatting;
                 status = lxa_dom_nodes_parent(tree->nodes,
@@ -2609,7 +2610,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                 if (status != LXA_OK) return status;
                 if (actual.handle
                     != open[outer_index + 2 + j].handle)
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
             }
         }
         block = open[outer_index + 3 + span_count + preblock_length];
@@ -2617,7 +2618,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                                              block, &name);
         if (status == LXA_OK
             && !template_crossed_list_furthest_block(name))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         if (status == LXA_OK)
             status = lxa_dom_nodes_parent(tree->nodes,
                                            block, &actual);
@@ -2626,18 +2627,18 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                                 ? open[outer_index + 2 + preblock_length].handle
                                 : span_count == 0 ? item.handle
                                 : open[outer_index + 2 + span_count].handle))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         if (nested_blocks != 0
             && !named(name, "div") && !named(name, "section"))
-            return LXA_ERROR_ARGUMENT;
-        if (nested_blocks > 4) return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
+        if (nested_blocks > 4) return LXA_ERROR_UNSUPPORTED;
         continuation = block;
         {
             size_t k = 4 + span_count + preblock_length;
             size_t gap_total = 0, n;
             for (n = 0; n < nested_blocks; ++n) {
                 if (inline_gaps[n] > block_span_count - gap_total)
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_INTERNAL;
                 gap_total += inline_gaps[n];
                 for (j = 0; j < inline_gaps[n]; ++j, ++k) {
                     status = lxa_budget_charge(tree->nodes->budget,
@@ -2646,13 +2647,13 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_name(tree->nodes,
                             open[outer_index + k], &name);
                     if (status == LXA_OK && !template_crossed_inline(name))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     if (status == LXA_OK)
                         status = lxa_dom_nodes_parent(tree->nodes,
                             open[outer_index + k], &actual);
                     if (status != LXA_OK) return status;
                     if (actual.handle != continuation.handle)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     continuation = open[outer_index + k];
                 }
                 nested[n] = open[outer_index + k++];
@@ -2664,13 +2665,13 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                 if (status != LXA_OK) return status;
                 if (!named(name, "section") && !named(name, "div")
                     && !named(name, "p"))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 if (n + 1 < nested_blocks && named(name, "p"))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 status = lxa_dom_nodes_parent(tree->nodes, nested[n], &actual);
                 if (status != LXA_OK) return status;
                 if (actual.handle != continuation.handle)
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 continuation = nested[n];
             }
             j = k;
@@ -2687,12 +2688,12 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                           + preblock_length
                     ? !template_crossed_inline(name)
                     : !template_formatting(name)))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_UNSUPPORTED;
             if (status == LXA_OK)
                 status = lxa_dom_nodes_parent(tree->nodes,
                                                open[outer_index + j], &actual);
             if (status != LXA_OK) return status;
-            if (actual.handle != continuation.handle) return LXA_ERROR_ARGUMENT;
+            if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
             continuation = open[outer_index + j];
         }
     }
@@ -2707,12 +2708,12 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                                                  open[outer_index + 3 + j],
                                                  &name);
         if (status == LXA_OK && !template_crossed_inline(name))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         if (status == LXA_OK)
             status = lxa_dom_nodes_parent(tree->nodes,
                                            open[outer_index + 3 + j], &actual);
         if (status != LXA_OK) return status;
-        if (actual.handle != continuation.handle) return LXA_ERROR_ARGUMENT;
+        if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
         continuation = open[outer_index + 3 + j];
     }
     for (j = 0; !direct_block && j < count - 3 - span_count; ++j) {
@@ -2724,13 +2725,13 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                                     &name);
         if (status == LXA_OK && !template_formatting(name)
             && !template_crossed_inline(name))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         if (status == LXA_OK)
             status = lxa_dom_nodes_parent(tree->nodes,
                                     open[outer_index + 3 + span_count + j],
                                     &actual);
         if (status != LXA_OK) return status;
-        if (actual.handle != continuation.handle) return LXA_ERROR_ARGUMENT;
+        if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
         continuation = open[outer_index + 3 + span_count + j];
     }
     cursor = first;
@@ -2739,7 +2740,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
         lxa_dom_record_t record;
         if (cursor.handle == LXA_HANDLE_NONE
             || ++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
                                     &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -2752,7 +2753,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
         if (record.kind != LXA_DOM_KIND_TEXT
             && record.kind != LXA_DOM_KIND_COMMENT
             && (record.kind != LXA_DOM_KIND_ELEMENT || !named(name, "li")))
-            return LXA_ERROR_ARGUMENT; /* Other prior content needs more recovery. */
+            return LXA_ERROR_UNSUPPORTED; /* Other prior content needs more recovery. */
         status = lxa_dom_nodes_next_sibling(tree->nodes, cursor, &next);
         if (status != LXA_OK) return status;
         cursor = next;
@@ -2775,7 +2776,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_first_child(tree->nodes, list, &first);
         if (status != LXA_OK || first.handle == list_clone.handle) break;
         if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
                                     &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -2790,7 +2791,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_first_child(tree->nodes, item, &first);
         if (status != LXA_OK || first.handle == item_clone.handle) break;
         if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
                                     &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -2840,7 +2841,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
             status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
             if (status != LXA_OK || first.handle == clone.handle) break;
             if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_INTERNAL;
             status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                         1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
@@ -2864,7 +2865,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
             status = lxa_dom_nodes_first_child(tree->nodes, inner, &first);
             if (status != LXA_OK || first.handle == clone.handle) break;
             if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_INTERNAL;
             status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                         1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
@@ -2888,7 +2889,7 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
                 ++next_formatting;
             }
             if (next_formatting == outer_index + count)
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_INTERNAL;
         }
         status = clone_formatting_element(tree,
                                           open[direct_block
@@ -2949,7 +2950,7 @@ template_open_paragraph(lxa_html_tree_t *tree, size_t *index)
         else if (*index != length && template_formatting(name))
             formatting_after = true;
     }
-    return formatting_after ? LXA_ERROR_ARGUMENT : LXA_OK;
+    return formatting_after ? LXA_ERROR_UNSUPPORTED : LXA_OK;
 }
 
 static lxa_status_t
@@ -2968,7 +2969,7 @@ template_open_list_item(lxa_html_tree_t *tree, size_t *index)
         status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &name);
         if (status != LXA_OK) return status;
         if (named(name, "li")) {
-            if (formatting_above) return LXA_ERROR_ARGUMENT;
+            if (formatting_above) return LXA_ERROR_UNSUPPORTED;
             *index = i;
             return LXA_OK;
         }
@@ -3041,7 +3042,7 @@ begin_template(lxa_html_tree_t *tree,
         && (tree->mode == LXA_TREE_IN_BODY
             || (nested && tree->template_return_mode == LXA_TREE_IN_BODY))) {
         size_t open = lxa_vector_length(&tree->open_elements);
-        if (open == 0) return LXA_ERROR_ARGUMENT;
+        if (open == 0) return LXA_ERROR_INTERNAL;
         status = lxa_size_add(slots, open - 1, &slots);
     }
     if (status == LXA_OK)
@@ -3144,7 +3145,7 @@ template_open_foreign(lxa_html_tree_t *tree,
     if (status == LXA_OK
         && tree->template_return_mode == LXA_TREE_IN_BODY) {
         size_t body = lxa_vector_length(&tree->open_elements);
-        if (body == 0) return LXA_ERROR_ARGUMENT;
+        if (body == 0) return LXA_ERROR_INTERNAL;
         status = lxa_size_add(depth, body - 1, &depth);
     }
     if (status == LXA_OK)
@@ -3250,7 +3251,7 @@ template_open_table_part(lxa_html_tree_t *tree,
     lxa_span_t top;
     lxa_status_t status;
     if (!section && !row && !cell && !caption && !group)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     while (i > template_boundary(tree)) {
         lxa_span_t name;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
@@ -3264,12 +3265,12 @@ template_open_table_part(lxa_html_tree_t *tree,
             break;
         }
         if (named(name, "caption")) {
-            if (caption_open) return LXA_ERROR_ARGUMENT;
+            if (caption_open) return LXA_ERROR_UNSUPPORTED;
             caption_open = true;
             caption_index = i;
         }
         else if (caption_open)
-            return LXA_ERROR_ARGUMENT; /* Caption must be inside table. */
+            return LXA_ERROR_UNSUPPORTED; /* Caption must be inside table. */
         else if (named(name, "colgroup"))
             group_open = true;
         else if (named(name, "td") || named(name, "th"))
@@ -3301,7 +3302,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (status != LXA_OK) return status;
                     if (template_formatting(name)) clearable = false;
                 }
-                if (!clearable) return LXA_ERROR_ARGUMENT;
+                if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, cell ? 3 : row ? 2 : 1,
                     &tree->nodes->limit_reason);
@@ -3324,7 +3325,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree)], &root);
                 if (status != LXA_OK) return status;
-                if (!named(root, "tr")) return LXA_ERROR_ARGUMENT;
+                if (!named(root, "tr")) return LXA_ERROR_UNSUPPORTED;
                 for (; j < length; ++j) {
                     lxa_span_t name;
                     lxa_dom_namespace_t ns;
@@ -3344,7 +3345,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = template_fostered_descendant(tree, open[j],
                         name, ns, &clearable);
                     if (status != LXA_OK) return status;
-                    if (!clearable) return LXA_ERROR_ARGUMENT;
+                    if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 }
                 template_pop_elements(tree, template_boundary(tree));
                 return LXA_OK; /* No table remains to receive this part. */
@@ -3357,7 +3358,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                             == LXA_TEMPLATE_TABLE))
                 && !(tree->template_insertion_mode == LXA_TEMPLATE_TABLE
                      && (section || caption || group)))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_UNSUPPORTED;
             status = lxa_dom_nodes_element_name(tree->nodes,
                                                 open[length - 1], &top);
             if (status != LXA_OK) return status;
@@ -3404,7 +3405,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[template_boundary(tree)], &top);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_ARGUMENT;
+                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
                 if (row) replace_at = length - 1;
             }
             else if (length == template_boundary(tree) + 2
@@ -3418,7 +3419,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree)], &parent);
                 if (status != LXA_OK) return status;
-                if (!named(parent, "tr")) return LXA_ERROR_ARGUMENT;
+                if (!named(parent, "tr")) return LXA_ERROR_UNSUPPORTED;
                 replace_at = template_boundary(tree) + (cell ? 1 : 0);
             }
             else if (length == template_boundary(tree) + 3
@@ -3436,7 +3437,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                         open[template_boundary(tree)], &top);
                 if (status != LXA_OK) return status;
                 if (!named(parent, "tr") || !table_section(top))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 replace_at = length - (row ? 2 : 1);
             }
             else if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
@@ -3453,7 +3454,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree) + 1], &row_name);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_ARGUMENT;
+                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
                 j = template_boundary(tree) + 1;
                 if (named(row_name, "tr")) {
                     ++j;
@@ -3486,7 +3487,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                             name, ns, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                 }
                 replace_section = true;
             }
@@ -3569,7 +3570,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                             name, ns, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                 }
                 if (direct_cell)
                     replace_at = template_boundary(tree) + (cell ? 1 : 0);
@@ -3585,7 +3586,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (!fostered_section
                         && !(tree->template_insertion_mode
                              == LXA_TEMPLATE_TABLE_BODY && named(top, "tr")))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     if (fostered_section && cell) {
                         implied_row = true;
                         extra = 2;
@@ -3603,12 +3604,12 @@ template_open_table_part(lxa_html_tree_t *tree,
                          && (tree->template_insertion_mode
                              != LXA_TEMPLATE_TABLE
                              || (!cell && !section && !caption && !group))))
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_UNSUPPORTED;
             else if (length == template_boundary(tree) + 2) {
                 status = lxa_dom_nodes_element_name(tree->nodes,
                                                     open[length - 2], &top);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_ARGUMENT;
+                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
                 replace_section = section || caption || group;
             }
         }
@@ -3647,7 +3648,7 @@ template_open_table_part(lxa_html_tree_t *tree,
     clear_ordinary = ordinary_above && !caption_open
                      && cell_index == SIZE_MAX;
     if (caption_open && caption_index != table + 1)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     /* Table-part starts clear fostered open descendants back to the nearest
      * table context. Size preflight uses the resulting stack before popping. */
     status = lxa_dom_nodes_element_name(tree->nodes,
@@ -3666,7 +3667,7 @@ template_open_table_part(lxa_html_tree_t *tree,
         else if (cell_index != SIZE_MAX) keep = table + 1;
         else if (group_open || table_section(top) || named(top, "tr"))
             keep = table + 1;
-        else if (!named(top, "table")) return LXA_ERROR_ARGUMENT;
+        else if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
     }
     else if (section)
         keep = table + 1;
@@ -3678,7 +3679,7 @@ template_open_table_part(lxa_html_tree_t *tree,
         else if (named(top, "tr")) keep = clear_ordinary
                                             ? context : length - 1;
         else if (cell_index != SIZE_MAX) keep = cell_index - 1;
-        else if (!table_section(top)) return LXA_ERROR_ARGUMENT;
+        else if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
     }
     else {
         if (named(top, "table") || caption_open || group_open) {
@@ -3687,9 +3688,9 @@ template_open_table_part(lxa_html_tree_t *tree,
         }
         else if (table_section(top)) extra = 2;
         else if (cell_index != SIZE_MAX) keep = cell_index;
-        else if (!named(top, "tr")) return LXA_ERROR_ARGUMENT;
+        else if (!named(top, "tr")) return LXA_ERROR_UNSUPPORTED;
     }
-    if (keep <= table) return LXA_ERROR_ARGUMENT;
+    if (keep <= table) return LXA_ERROR_INTERNAL;
 reserve_part:
     status = lxa_size_add(keep, extra, &after);
     if (status == LXA_OK)
@@ -3701,7 +3702,7 @@ reserve_part:
     if (status == LXA_OK
         && tree->template_return_mode == LXA_TREE_IN_BODY) {
         size_t body = lxa_vector_length(&tree->open_elements);
-        if (body == 0) return LXA_ERROR_ARGUMENT;
+        if (body == 0) return LXA_ERROR_INTERNAL;
         status = lxa_size_add(depth, body - 1, &depth);
     }
     if (status == LXA_OK)
@@ -3865,7 +3866,7 @@ template_open_column(lxa_html_tree_t *tree,
     if (status == LXA_OK
         && tree->template_return_mode == LXA_TREE_IN_BODY) {
         size_t body = lxa_vector_length(&tree->open_elements);
-        if (body == 0) return LXA_ERROR_ARGUMENT;
+        if (body == 0) return LXA_ERROR_INTERNAL;
         status = lxa_size_add(depth, body - 1, &depth);
     }
     if (status == LXA_OK)
@@ -4187,7 +4188,7 @@ reconstruct_template_formatting(lxa_html_tree_t *tree)
     if (status == LXA_OK
         && tree->template_return_mode == LXA_TREE_IN_BODY) {
         size_t body = lxa_vector_length(&tree->open_elements);
-        if (body == 0) return LXA_ERROR_ARGUMENT;
+        if (body == 0) return LXA_ERROR_INTERNAL;
         status = lxa_size_add(depth, body - 1, &depth);
     }
     if (status == LXA_OK)
@@ -4245,7 +4246,7 @@ template_retain_formatting_chain(lxa_html_tree_t *tree,
     lxa_status_t status;
     if (count == 0 || tree->pending_template_formatting.handle
                      != LXA_HANDLE_NONE)
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, count,
                                &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
@@ -4259,7 +4260,7 @@ template_retain_formatting_chain(lxa_html_tree_t *tree,
             last = j;
         }
         else if (format_count == 0 || !template_crossed_inline(name))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
     }
     status = lxa_size_add(length, format_count - 1, &after);
     if (status == LXA_OK)
@@ -4319,6 +4320,7 @@ consume(lxa_html_tree_t *tree,
     bool pending_section_start = false, pending_row_start = false;
     size_t template_select_close = SIZE_MAX;
     if (token == NULL
+        || (unsigned int) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
         || (token->name.data == NULL && token->name.length != 0)
         || (token->data.data == NULL && token->data.length != 0)
         || (token->attribute_count != 0 && token->attributes == NULL)
@@ -4558,7 +4560,7 @@ reprocess_template_token:
                      || ((named(token->name, "colgroup")
                           || named(token->name, "table"))
                          && pending_table_context))))
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         bool pending_block_list = false;
         bool pending_list_block = false;
         bool pending_nested_list = false;
@@ -4718,7 +4720,7 @@ reprocess_template_token:
                 if (list == SIZE_MAX || count > list + 3
                     || (count == list + 3
                         && !template_pending_at_top(tree)))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 if (count > list + 1) {
                     status = lxa_budget_charge(tree->nodes->budget,
                         LXA_BUDGET_WORK, count - list - 1,
@@ -4727,7 +4729,7 @@ reprocess_template_token:
                         status = lxa_dom_nodes_element_name(tree->nodes,
                             open[list + 1], &item_name);
                     if (status != LXA_OK) return status;
-                    if (!named(item_name, "li")) return LXA_ERROR_ARGUMENT;
+                    if (!named(item_name, "li")) return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, list + 1);
                 }
             }
@@ -4799,7 +4801,7 @@ reprocess_template_token:
                  && pending_cell_context)
             && !named(token->name, "li")) {
             /* Other starts need formatting-list rules. */
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         }
         if (lxa_vector_length(&tree->template_elements)
             > template_boundary(tree)
@@ -4859,7 +4861,7 @@ reprocess_template_token:
                             if (integrated) break;
                         }
                         else if (ancestor_ns != LXA_DOM_NS_SVG)
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         else if (named(ancestor, "foreignObject")
                                  || named(ancestor, "title")
                                  || named(ancestor, "desc"))
@@ -4891,7 +4893,7 @@ reprocess_template_token:
                         status = supported_container(tree, token->name,
                                                       &ordinary);
                         if (status != LXA_OK) return status;
-                        if (!ordinary) return LXA_ERROR_ARGUMENT;
+                        if (!ordinary) return LXA_ERROR_UNSUPPORTED;
                     }
                 }
                 else {
@@ -5006,12 +5008,12 @@ reprocess_template_token:
                         if (status != LXA_OK) return status;
                         if (ancestor_ns == LXA_DOM_NS_HTML) break;
                         if (ancestor_ns != LXA_DOM_NS_MATHML)
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         status = lxa_dom_nodes_element_name(tree->nodes,
                             open[keep - 1], &ancestor);
                         if (status != LXA_OK) return status;
                         if (mathml_text_integration(ancestor))
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         --keep;
                     }
                     template_pop_elements(tree, keep);
@@ -5034,7 +5036,7 @@ reprocess_template_token:
                     status = supported_container(tree, token->name,
                                                   &ordinary);
                     if (status != LXA_OK) return status;
-                    if (!ordinary) return LXA_ERROR_ARGUMENT;
+                    if (!ordinary) return LXA_ERROR_UNSUPPORTED;
                 }
             }
         }
@@ -5490,7 +5492,7 @@ reprocess_template_token:
                     }
                     if (!found)
                         return named(top, "tr") || table_section(top)
-                            ? LXA_OK : LXA_ERROR_ARGUMENT;
+                            ? LXA_OK : LXA_ERROR_UNSUPPORTED;
                     /* Reprocess as an ordinary table start in the fragment. */
                 }
                 if (token->kind == LXA_HTML_START_TAG
@@ -5502,7 +5504,7 @@ reprocess_template_token:
                     status = supported_container(tree, token->name,
                                                   &ordinary);
                     if (status != LXA_OK) return status;
-                    if (!ordinary) return LXA_ERROR_ARGUMENT;
+                    if (!ordinary) return LXA_ERROR_UNSUPPORTED;
                     if (named(top, "colgroup"))
                         template_pop_elements(tree, last);
                     return template_foster_element(tree, token, true, NULL,
@@ -5569,7 +5571,7 @@ reprocess_template_token:
                     && !named(token->name, "colgroup")
                     && !table_section(token->name)
                     && !named(token->name, "tr"))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
             }
             else if ((named(top, "caption")
                       || named(top, "td") || named(top, "th"))
@@ -5801,7 +5803,7 @@ reprocess_template_token:
                             status = template_fostered_descendant(tree,
                                 open[j], name, ns, &clearable);
                             if (status != LXA_OK) return status;
-                            if (!clearable) return LXA_ERROR_ARGUMENT;
+                            if (!clearable) return LXA_ERROR_UNSUPPORTED;
                         }
                         template_pop_elements(tree, section + 1);
                         return LXA_OK;
@@ -5916,14 +5918,14 @@ reprocess_template_token:
                                     if (status != LXA_OK) return status;
                                     if (!template_pending_chain_block(
                                         parent_name))
-                                        return LXA_ERROR_ARGUMENT;
+                                        return LXA_ERROR_UNSUPPORTED;
                                     ++chain_start;
                                 }
                             }
                             if (i - chain_start < extra_count + 1
                                 || open[chain_start + extra_count].handle
                                    != tree->pending_template_formatting.handle)
-                                return LXA_ERROR_ARGUMENT;
+                                return LXA_ERROR_UNSUPPORTED;
                             status = lxa_budget_charge(tree->nodes->budget,
                                 LXA_BUDGET_WORK, i - chain_start - 1,
                                 &tree->nodes->limit_reason);
@@ -5931,7 +5933,7 @@ reprocess_template_token:
                             for (j = 0; j < extra_count; ++j)
                                 if (open[chain_start + j].handle
                                     != extras[j].handle)
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                             for (j = chain_start + extra_count + 1;
                                  j < i; ++j) {
                                 lxa_span_t name;
@@ -5939,7 +5941,7 @@ reprocess_template_token:
                                     tree->nodes, open[j], &name);
                                 if (status != LXA_OK) return status;
                                 if (!named(name, "span"))
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                             }
                             template_pop_elements(tree, chain_start + matched);
                         }
@@ -5953,11 +5955,11 @@ reprocess_template_token:
                 if (pending_name.length != token->name.length
                     || memcmp(pending_name.data, token->name.data,
                               pending_name.length) != 0)
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 status = template_pending_on_stack(tree, &pending_open);
                 if (status != LXA_OK) return status;
                 if (pending_open && !template_pending_at_top(tree))
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 if (pending_open) template_pop_elements(tree, i - 1);
                 forget_pending_template_formatting(tree);
                 tree->pending_template_formatting =
@@ -5986,7 +5988,7 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                     if (name.length != target.length
                         || memcmp(name.data, target.data, name.length) != 0)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, i - 1);
                     return LXA_OK;
                 }
@@ -6139,7 +6141,7 @@ reprocess_template_token:
                             if (block_name.length != token->name.length
                                 || memcmp(block_name.data, token->name.data,
                                           block_name.length) != 0)
-                                return LXA_ERROR_ARGUMENT;
+                                return LXA_ERROR_UNSUPPORTED;
                             template_pop_elements(tree, i - 1);
                             return LXA_OK;
                         }
@@ -6156,7 +6158,7 @@ reprocess_template_token:
                         if (block_name.length != token->name.length
                             || memcmp(block_name.data, token->name.data,
                                       block_name.length) != 0)
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         template_pop_elements(tree, i - 1);
                         return LXA_OK;
                     }
@@ -6164,7 +6166,7 @@ reprocess_template_token:
                         && (i != boundary + 2
                             || open[i - 1].handle
                                != tree->pending_template_formatting.handle))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     status = lxa_budget_charge(tree->nodes->budget,
                         LXA_BUDGET_WORK, i - boundary,
                         &tree->nodes->limit_reason);
@@ -6175,7 +6177,7 @@ reprocess_template_token:
                     if (block_name.length != token->name.length
                         || memcmp(block_name.data, token->name.data,
                                   block_name.length) != 0)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, boundary);
                     return LXA_OK;
                 }
@@ -6280,7 +6282,7 @@ reprocess_template_token:
                         || (i == list + 3
                             && open[i - 1].handle
                                != tree->pending_template_formatting.handle))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     status = lxa_budget_charge(tree->nodes->budget,
                         LXA_BUDGET_WORK, i - list,
                         &tree->nodes->limit_reason);
@@ -6295,7 +6297,7 @@ reprocess_template_token:
                         || memcmp(list_name.data, token->name.data,
                                   list_name.length) != 0
                         || (i > list + 1 && !named(item_name, "li")))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, list);
                     return LXA_OK;
                 }
@@ -6359,7 +6361,7 @@ reprocess_template_token:
                             && (i != list + 3
                             || open[i - 1].handle
                                != tree->pending_template_formatting.handle)))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     status = lxa_budget_charge(tree->nodes->budget,
                         LXA_BUDGET_WORK, i - list - 1,
                         &tree->nodes->limit_reason);
@@ -6368,7 +6370,7 @@ reprocess_template_token:
                             open[list + 1], &item_name);
                     if (status != LXA_OK) return status;
                     if (!named(item_name, "li"))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, list + 1);
                     return LXA_OK;
                 }
@@ -6376,7 +6378,7 @@ reprocess_template_token:
                     size_t ancestor;
                     status = template_pending_span_chain(tree, i, &ancestor);
                     if (status != LXA_OK) return status;
-                    if (ancestor == SIZE_MAX) return LXA_ERROR_ARGUMENT;
+                    if (ancestor == SIZE_MAX) return LXA_ERROR_UNSUPPORTED;
                     if (i == ancestor + 1) return LXA_OK;
                     template_pop_elements(tree, i - 1);
                     return LXA_OK;
@@ -6386,7 +6388,7 @@ reprocess_template_token:
                     if (i != template_boundary(tree) + 2
                         || open[i - 2].handle
                            != tree->pending_template_formatting.handle)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     status = lxa_budget_charge(tree->nodes->budget,
                         LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
                     if (status == LXA_OK)
@@ -6396,12 +6398,12 @@ reprocess_template_token:
                     if (top_name.length != token->name.length
                         || memcmp(top_name.data, token->name.data,
                                   top_name.length) != 0)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     template_pop_elements(tree, i - 1);
                     return LXA_OK;
                 }
                 else
-                    return LXA_ERROR_ARGUMENT; /* Other ends need list rules. */
+                    return LXA_ERROR_UNSUPPORTED; /* Other ends need list rules. */
             }
             while (i > template_boundary(tree)) {
                 lxa_span_t name, target = token->name;
@@ -6469,12 +6471,12 @@ reprocess_template_token:
                                     open[i - 1], &parent);
                             if (status != LXA_OK) return status;
                             if (parent.handle != open[i - 2].handle)
-                                return LXA_ERROR_ARGUMENT;
+                                return LXA_ERROR_UNSUPPORTED;
                             status = lxa_dom_nodes_parent(tree->nodes,
                                 open[i], &parent);
                             if (status != LXA_OK) return status;
                             if (parent.handle != open[i - 1].handle)
-                                return LXA_ERROR_ARGUMENT;
+                                return LXA_ERROR_UNSUPPORTED;
                             for (j = 1; j < count; ++j) {
                                 lxa_span_t descendant;
                                 status = lxa_dom_nodes_element_name(
@@ -6491,13 +6493,13 @@ reprocess_template_token:
                                 else if (formatting_count == 0
                                          || !template_crossed_inline(
                                              descendant))
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                                 status = lxa_dom_nodes_parent(tree->nodes,
                                     open[i + j], &parent);
                                 if (status != LXA_OK) return status;
                                 if (parent.handle
                                     != open[i + j - 1].handle)
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                             }
                             return template_retain_formatting_chain(tree,
                                 i + 1, count - 1, i);
@@ -6536,13 +6538,13 @@ reprocess_template_token:
                                 if (template_formatting(top))
                                     formatting_offsets[reconstruct_count++] = j;
                                 else if (!template_crossed_inline(top))
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                                 status = lxa_dom_nodes_parent(tree->nodes,
                                     open[i + j], &inline_parent);
                                 if (status != LXA_OK) return status;
                                 if (inline_parent.handle
                                     != open[i + j - 1].handle)
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                             }
                             return template_close_crossed_block(tree, i,
                                 formatting_offsets, reconstruct_count);
@@ -6613,7 +6615,7 @@ reprocess_template_token:
                                             ++nested_blocks;
                                         }
                                         else if (!template_formatting(top))
-                                            return LXA_ERROR_ARGUMENT;
+                                            return LXA_ERROR_UNSUPPORTED;
                                         continue;
                                     }
                                     if (template_crossed_inline(top)
@@ -6626,13 +6628,13 @@ reprocess_template_token:
                                     else if (template_formatting(top))
                                         ++list_formatting;
                                     else if (!template_crossed_inline(top))
-                                        return LXA_ERROR_ARGUMENT;
+                                        return LXA_ERROR_UNSUPPORTED;
                                 }
                                 if (nested_blocks == 0 && formatting_above
                                     != (count > (direct_block
                                                  ? 4 + spans + block_spans
                                                  : 3 + spans)))
-                                    return LXA_ERROR_ARGUMENT;
+                                    return LXA_ERROR_UNSUPPORTED;
                                 return template_close_crossed_list_item(
                                     tree, i, spans,
                                     direct_block
@@ -6670,9 +6672,9 @@ reprocess_template_token:
                                 direct_chain = false;
                         }
                         if (pending.handle == LXA_HANDLE_NONE)
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         if (format_count > 1 && !direct_chain)
-                            return LXA_ERROR_ARGUMENT;
+                            return LXA_ERROR_UNSUPPORTED;
                         if (format_count > 1)
                             return template_retain_formatting_chain(tree,
                                 i + 2, format_count, i);
@@ -6724,7 +6726,7 @@ reprocess_template_token:
                     }
                     if (formatting_above
                         || (template_formatting(name) && count != 1))
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     if (open[i].handle
                         == tree->pending_template_formatting.handle)
                         forget_pending_template_formatting(tree);
@@ -6776,7 +6778,7 @@ reprocess_template_token:
                 }
             }
             if (tree->template_fragment.handle == LXA_HANDLE_NONE)
-                return LXA_ERROR_ARGUMENT;
+                return LXA_ERROR_INTERNAL;
             status = reconstruct_template_formatting(tree);
             if (status != LXA_OK) return status;
             return insert_data_text(tree, template_parent(tree),
@@ -6797,11 +6799,11 @@ reprocess_template_token:
                 size_t paragraph;
                 bool pending_chain;
                 status = template_open_paragraph(tree, &paragraph);
-                if (status == LXA_ERROR_ARGUMENT) {
+                if (status == LXA_ERROR_UNSUPPORTED) {
                     status = template_pending_paragraph_chain(tree, paragraph,
                                                               &pending_chain);
                     if (status != LXA_OK) return status;
-                    if (!pending_chain) return LXA_ERROR_ARGUMENT;
+                    if (!pending_chain) return LXA_ERROR_UNSUPPORTED;
                 }
                 if (status == LXA_OK)
                     status = lxa_budget_check(tree->nodes->budget,
@@ -7075,7 +7077,7 @@ reprocess_template_token:
                     else if (!named(top, "ruby")) {
                         size_t j = close_at - 1;
                         bool ruby = false;
-                        if (!named(top, "span")) return LXA_ERROR_ARGUMENT;
+                        if (!named(top, "span")) return LXA_ERROR_UNSUPPORTED;
                         while (j > template_boundary(tree)) {
                             lxa_span_t ancestor;
                             status = lxa_budget_charge(tree->nodes->budget,
@@ -7090,7 +7092,7 @@ reprocess_template_token:
                                 break;
                             }
                         }
-                        if (!ruby) return LXA_ERROR_ARGUMENT;
+                        if (!ruby) return LXA_ERROR_UNSUPPORTED;
                     }
                 }
             }
@@ -7149,7 +7151,7 @@ reprocess_template_token:
                      || block_container(token->name)
                      || heading(token->name)) {
                 status = template_open_paragraph(tree, &close_at);
-                if (status == LXA_ERROR_ARGUMENT
+                if (status == LXA_ERROR_UNSUPPORTED
                     && (named(token->name, "p")
                         || template_pending_chain_block(token->name)
                         || template_pending_direct_block(token->name))) {
@@ -7157,7 +7159,7 @@ reprocess_template_token:
                     status = template_pending_paragraph_chain(tree, close_at,
                                                               &pending_chain);
                     if (status != LXA_OK) return status;
-                    if (!pending_chain) return LXA_ERROR_ARGUMENT;
+                    if (!pending_chain) return LXA_ERROR_UNSUPPORTED;
                 }
                 if (status != LXA_OK) return status;
                 if (heading(token->name)
@@ -7182,7 +7184,7 @@ reprocess_template_token:
                     status = lxa_dom_nodes_element_name(tree->nodes, open[i],
                                                          &name);
                     if (status != LXA_OK) return status;
-                    if (named(name, "a")) return LXA_ERROR_ARGUMENT;
+                    if (named(name, "a")) return LXA_ERROR_UNSUPPORTED;
                 }
             }
             status = lxa_size_add(close_at, 1, &count);
@@ -7195,7 +7197,7 @@ reprocess_template_token:
             if (status == LXA_OK
                 && tree->template_return_mode == LXA_TREE_IN_BODY) {
                 size_t open_count = lxa_vector_length(&tree->open_elements);
-                if (open_count == 0) return LXA_ERROR_ARGUMENT;
+                if (open_count == 0) return LXA_ERROR_INTERNAL;
                 status = lxa_size_add(depth, open_count - 1, &depth);
             }
             if (status == LXA_OK)
@@ -7248,7 +7250,7 @@ reprocess_template_token:
         if (token->kind != LXA_HTML_EOF
             && token->kind != LXA_HTML_COMMENT
             && token->kind != LXA_HTML_PROCESSING_INSTRUCTION)
-            return LXA_ERROR_ARGUMENT; /* Element modes still needed. */
+            return LXA_ERROR_UNSUPPORTED; /* Element modes still needed. */
         if (token->kind == LXA_HTML_EOF) {
             size_t work;
             status = lxa_size_add(lxa_vector_length(&tree->template_stack),
@@ -7296,7 +7298,7 @@ reprocess_template_token:
         }
         if (tree->mode == LXA_TREE_AFTER_FRAMESET)
             return token->kind == LXA_HTML_END_TAG
-                && named(token->name, "html") ? LXA_OK : LXA_ERROR_ARGUMENT;
+                && named(token->name, "html") ? LXA_OK : LXA_ERROR_UNSUPPORTED;
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "frameset")) {
             status = reserve_open_elements(tree, 1);
@@ -7324,7 +7326,7 @@ reprocess_template_token:
             && (named(token->name, "template")
                 || named(token->name, "frame")))
             return LXA_OK;
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     }
     if (token->kind == LXA_HTML_START_TAG
         && named(token->name, "frameset")
@@ -7401,7 +7403,7 @@ reprocess_template_token:
                                            &name) != LXA_OK
             || name.length != token->name.length
             || memcmp(name.data, token->name.data, name.length) != 0)
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_INTERNAL;
         tree->mode = tree->text_return_mode;
         tree->text_element = (lxa_dom_ref_t){0};
         return LXA_OK;
@@ -7581,7 +7583,7 @@ reprocess_template_token:
                     break;
                 }
             }
-            if (!found_html) return LXA_ERROR_ARGUMENT;
+            if (!found_html) return LXA_ERROR_INTERNAL;
             while (lxa_vector_length(&tree->open_elements) > i + 1)
                 pop_element(tree);
         }
@@ -7817,7 +7819,7 @@ reprocess_body_start:
                 pop_element(tree);
             }
             return container ? foster_element(tree, token, false)
-                             : LXA_ERROR_ARGUMENT;
+                             : LXA_ERROR_UNSUPPORTED;
         }
     }
     if (tree->mode == LXA_TREE_IN_BODY
@@ -7933,7 +7935,7 @@ reprocess_body_start:
                     }
                     goto reprocess_body_start;
                 }
-                if (in_table) return LXA_ERROR_ARGUMENT;
+                if (in_table) return LXA_ERROR_UNSUPPORTED;
             }
             if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "input")
@@ -8024,7 +8026,7 @@ after_select_mode:
                 || (table_context(top)
                     && !named(top, "table")
                     && !table_section(top) && !named(top, "tr"))) {
-                return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+                return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
             }
             /* Element construction can relocate the string buffer holding
              * top; retain only this decision across that mutation. */
@@ -8181,7 +8183,7 @@ after_select_mode:
                 if (named(name, "nobr")) {
                     /* A crossed entry needs adoption-agency reconstruction.
                      * Only the current element can be closed in place. */
-                    if (i != length - 1) return LXA_ERROR_ARGUMENT;
+                    if (i != length - 1) return LXA_ERROR_UNSUPPORTED;
                     close_previous = true;
                     break;
                 }
@@ -8262,7 +8264,7 @@ after_select_mode:
                 tree->skip_pre_newline = true;
             return status;
         }
-        return LXA_ERROR_ARGUMENT;
+        return LXA_ERROR_UNSUPPORTED;
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "head")
         && tree->mode == LXA_TREE_IN_HEAD) {
@@ -8309,7 +8311,7 @@ after_select_mode:
         }
         else if (tree->mode != LXA_TREE_IN_BODY
                  && tree->mode != LXA_TREE_AFTER_BODY)
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         tree->mode = LXA_TREE_AFTER_HTML;
         return LXA_OK;
     }
@@ -8334,7 +8336,7 @@ after_select_mode:
             status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i],
                                                       &ns);
             if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+            if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_UNSUPPORTED;
         }
         return LXA_OK;
     }
@@ -8360,7 +8362,7 @@ after_select_mode:
             if (status != LXA_OK) return status;
             if (named(top, "nobr")) {
                 if (i != lxa_vector_length(&tree->open_elements) - 1)
-                    return LXA_ERROR_ARGUMENT;
+                    return LXA_ERROR_UNSUPPORTED;
                 pop_element(tree);
                 return LXA_OK;
             }
@@ -8386,7 +8388,7 @@ after_select_mode:
                 if (pending_open) {
                     if (current_element(tree).handle
                         != tree->pending_formatting.handle)
-                        return LXA_ERROR_ARGUMENT;
+                        return LXA_ERROR_UNSUPPORTED;
                     pop_element(tree);
                 }
                 forget_pending_formatting(tree);
@@ -8521,13 +8523,13 @@ after_select_mode:
         bool container;
         status = supported_container(tree, token->name, &container);
         if (status != LXA_OK) return status;
-        if (!container) return LXA_ERROR_ARGUMENT;
+        if (!container) return LXA_ERROR_UNSUPPORTED;
         status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree),
                                              &top_name);
         if (status != LXA_OK) return status;
         if (top_name.length != token->name.length
             || memcmp(top_name.data, token->name.data, top_name.length) != 0)
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         pop_element(tree);
         return LXA_OK;
     }
@@ -8560,7 +8562,7 @@ after_select_mode:
         return insert_data_text(tree, current_element(tree), token->data,
                                 false, false);
     }
-    return LXA_ERROR_ARGUMENT;
+    return LXA_ERROR_UNSUPPORTED;
 }
 
 lxa_status_t
@@ -8598,7 +8600,11 @@ lxa_html_tree_on_token(void *context,
         if (tree->failure == LXA_OK
             && lxa_html_tokenizer_allow_cdata(tokenizer,
                 ns != LXA_DOM_NS_HTML && !integration) != LXA_HTML_OK)
-            tree->failure = LXA_ERROR_ARGUMENT;
+            tree->failure = LXA_ERROR_INTERNAL;
     }
+    /* All deliberate grammar boundaries return UNSUPPORTED. A rejected
+     * store reference or token from our tokenizer is a pipeline failure. */
+    if (tree->failure == LXA_ERROR_ARGUMENT)
+        tree->failure = LXA_ERROR_INTERNAL;
     return tree->failure;
 }

@@ -1183,5 +1183,20 @@ main(void)
     lxa_dom_nodes_destroy(nodes);
     TEST_CHECK(budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
                && budget.used[LXA_BUDGET_MEMORY] == 0);
+    TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                 &nodes) == LXA_OK);
+    TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+    /* A missing parser-owned parent is not unsupported input grammar. */
+    tree.document = (lxa_dom_ref_t){0};
+    token = (lxa_html_token_t){.kind = LXA_HTML_COMMENT, .data = span("x")};
+    TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &token)
+               == LXA_ERROR_INTERNAL);
+    token = (lxa_html_token_t){.kind = LXA_HTML_EOF};
+    TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &token)
+               == LXA_ERROR_INTERNAL);
+    lxa_html_tree_destroy(&tree);
+    lxa_dom_nodes_destroy(nodes);
+    TEST_CHECK(budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+               && budget.used[LXA_BUDGET_MEMORY] == 0);
     return 0;
 }

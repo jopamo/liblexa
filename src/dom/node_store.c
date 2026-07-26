@@ -752,10 +752,11 @@ lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
     }
     memset(out, 0, sizeof(*out));
     if (nodes == NULL || ns < LXA_DOM_NS_HTML || ns > LXA_DOM_NS_SVG
-        || name.data == NULL || name.length == 0
-        || name.data[0] < 'a' || name.data[0] > 'z') {
+        || name.data == NULL || name.length == 0) {
         return LXA_ERROR_ARGUMENT;
     }
+    if (name.data[0] < 'a' || name.data[0] > 'z')
+        return LXA_ERROR_UNSUPPORTED;
     status = string_source(nodes, name, &self, &self_offset);
     if (status != LXA_OK) {
         return status;
@@ -782,7 +783,7 @@ lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
         }
         if (!html_name_byte(c)
             && !(ns != LXA_DOM_NS_HTML && c >= 'A' && c <= 'Z')) {
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         }
     }
     status = lxa_table_find(nodes->atom_lookup, name, &found, &atom_value);
@@ -1235,7 +1236,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         }
         if (!html_name_byte(c)
             && !(foreign && c >= 'A' && c <= 'Z')) {
-            return LXA_ERROR_ARGUMENT;
+            return LXA_ERROR_UNSUPPORTED;
         }
     }
     status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, value.length,

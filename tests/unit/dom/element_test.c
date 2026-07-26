@@ -82,9 +82,9 @@ main(void)
     TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
     before = lxa_dom_nodes_length(nodes);
     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("Bad"), &next)
-               == LXA_ERROR_ARGUMENT);
+               == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("a b"), &next)
-               == LXA_ERROR_ARGUMENT);
+               == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name(""), &next)
                == LXA_ERROR_ARGUMENT);
     TEST_CHECK(lxa_dom_nodes_length(nodes) == before);

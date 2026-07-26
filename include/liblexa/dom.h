@@ -94,6 +94,7 @@ lxa_status_t lxa_dom_nodes_character_read(const lxa_dom_nodes_t *nodes,
  * constructor also accepts canonical mixed-case foreign names.
  * Names are copied into document storage; borrowed names from that storage
  * survive its growth.
+ * A nonempty name outside this representation returns UNSUPPORTED.
  * No record/string length changes on failure. */
 lxa_status_t lxa_dom_nodes_append_html_element(lxa_dom_nodes_t *nodes,
                                                 lxa_span_t name,
@@ -104,7 +105,8 @@ lxa_status_t lxa_dom_nodes_element_name(const lxa_dom_nodes_t *nodes,
                                          lxa_span_t *out);
 /* Detached HTML attribute: normalized nonempty name excludes markup
  * delimiters and ASCII uppercase; values are binary. Both are copied into
- * document storage; input spans may alias that storage. */
+ * document storage; input spans may alias that storage.
+ * A nonempty name outside this representation returns UNSUPPORTED. */
 lxa_status_t lxa_dom_nodes_append_html_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out);
 /* Distinct, non-NULL outputs; both borrow document string storage and expire

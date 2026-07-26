@@ -198,9 +198,9 @@ main(void)
     TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
     before = lxa_dom_nodes_length(nodes);
     TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, span("Bad"),
-        span("v"), &next) == LXA_ERROR_ARGUMENT);
+        span("v"), &next) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, span("a\"b"),
-        span("v"), &next) == LXA_ERROR_ARGUMENT);
+        span("v"), &next) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, span("id"),
         (lxa_span_t){NULL, 1}, &next) == LXA_ERROR_ARGUMENT);
     budget.limits.max_name_bytes = 1;

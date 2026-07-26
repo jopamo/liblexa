@@ -20,9 +20,12 @@ parser_status(lxa_html_result_t result, lxa_html_tokenizer_t *tokenizer)
     case LXA_HTML_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
     case LXA_HTML_LIMIT: return LXA_ERROR_LIMIT;
     case LXA_HTML_ENTROPY: return LXA_ERROR_ENTROPY;
-    case LXA_HTML_CALLBACK_FAILURE:
-        return lxa_html_tokenizer_callback_status(tokenizer);
-    default: return LXA_ERROR_ARGUMENT;
+    case LXA_HTML_UNSUPPORTED: return LXA_ERROR_UNSUPPORTED;
+    case LXA_HTML_CALLBACK_FAILURE: {
+        lxa_status_t status = lxa_html_tokenizer_callback_status(tokenizer);
+        return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+    }
+    default: return LXA_ERROR_INTERNAL;
     }
 }
 
@@ -38,8 +41,9 @@ document_result(lxa_status_t status, lxa_html_result_t result)
     case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
     case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
     case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
-    default: return result == LXA_HTML_UNSUPPORTED
-                    ? result : LXA_HTML_BAD_ARGUMENT;
+    case LXA_ERROR_UNSUPPORTED: return LXA_HTML_UNSUPPORTED;
+    case LXA_ERROR_ARGUMENT: return LXA_HTML_BAD_ARGUMENT;
+    default: return LXA_HTML_INTERNAL;
     }
 }
 
@@ -51,6 +55,7 @@ input_status(lxa_html_input_result_t result)
     case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
     case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
     case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
+    case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
     default: return LXA_ERROR_ARGUMENT;
     }
 }
@@ -61,7 +66,7 @@ input_status(lxa_html_input_result_t result)
 static lxa_status_t
 head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
                    lxa_dom_ref_t head, const lxa_encoding_t **out,
-                   bool *unknown, lxa_limit_reason_t *reason)
+                   lxa_limit_reason_t *reason)
 {
     lxa_dom_ref_t child, next, attribute;
     lxa_dom_kind_t kind;
@@ -69,10 +74,9 @@ head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
     size_t visited = 0;
     lxa_status_t status;
     *out = NULL;
-    *unknown = false;
     status = lxa_dom_nodes_first_child(nodes, head, &child);
     while (status == LXA_OK && child.handle != LXA_HANDLE_NONE) {
-        if (++visited > lxa_dom_nodes_length(nodes)) return LXA_ERROR_ARGUMENT;
+        if (++visited > lxa_dom_nodes_length(nodes)) return LXA_ERROR_INTERNAL;
         status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
         if (status != LXA_OK) return status;
         status = lxa_dom_nodes_kind(nodes, child, &kind);
@@ -90,8 +94,6 @@ head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
                                                        &name, &value);
                 if (status != LXA_OK) return status;
                 result = lxa_html_input_resolve_label(value, out);
-                if (result == LXA_HTML_INPUT_UNKNOWN_ENCODING)
-                    *unknown = true;
                 return input_status(result);
             }
             status = lxa_dom_nodes_find_attribute(nodes, child,
@@ -142,8 +144,6 @@ head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
                         if (found) {
                             lxa_html_input_result_t result =
                                 lxa_html_input_resolve_label(label, out);
-                            if (result == LXA_HTML_INPUT_UNKNOWN_ENCODING)
-                                *unknown = true;
                             return input_status(result);
                         }
                     }
@@ -205,6 +205,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         status = input_status(selected);
         goto report;
     }
+    result = LXA_HTML_INTERNAL;
     status = lxa_alloc(allocator, sizeof(*document), (void **) &document);
     if (status != LXA_OK) goto report;
     document->allocator = *allocator;
@@ -269,29 +270,26 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                           ? lxa_html_tokenizer_limit_reason(tokenizer)
                           : lxa_dom_nodes_limit_reason(document->nodes);
             if (result == LXA_HTML_CALLBACK_FAILURE)
-                result = status == LXA_ERROR_ARGUMENT
-                         ? LXA_HTML_UNSUPPORTED : LXA_HTML_BAD_ARGUMENT;
+                result = document_result(status, LXA_HTML_INTERNAL);
         }
         else if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK && prefix == 0) {
             const lxa_encoding_t *declared;
-            bool unknown;
             status = head_meta_encoding(document->nodes, &document->budget,
-                                        tree.head, &declared, &unknown, reason);
+                                        tree.head, &declared, reason);
             if (status == LXA_ERROR_LIMIT && reason != NULL
                 && *reason == LXA_BUDGET_COUNT)
                 *reason = lxa_dom_nodes_limit_reason(document->nodes);
-            if (unknown) result = LXA_HTML_BAD_ARGUMENT;
-            else if (status == LXA_OK && declared != NULL
-                     && declared != encoding) {
+            if (status == LXA_OK && declared != NULL
+                && declared != encoding) {
                 if (attempt == 0) {
                     encoding = declared;
                     retry = true;
                 }
                 else {
                     result = LXA_HTML_UNSUPPORTED;
-                    status = LXA_ERROR_ARGUMENT;
+                    status = LXA_ERROR_UNSUPPORTED;
                 }
             }
         }
@@ -326,6 +324,9 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     else
         lxa_html_document_destroy(document);
 report:
+    if (status == LXA_ERROR_ARGUMENT && result != LXA_HTML_BAD_ARGUMENT
+        && result != LXA_HTML_CALLBACK_FAILURE)
+        status = LXA_ERROR_INTERNAL;
     if (parser_result != NULL)
         *parser_result = document_result(status, result);
     return status;

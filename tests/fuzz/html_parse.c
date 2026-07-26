@@ -49,7 +49,10 @@ main(void)
             (lxa_span_t){bytes, length}, &result, &reason, &document);
         if ((status == LXA_OK) != (document != NULL)
             || (status == LXA_OK && result != LXA_HTML_OK)
-            || (status != LXA_OK && status != LXA_ERROR_ARGUMENT
+            || (status == LXA_ERROR_UNSUPPORTED
+                && result != LXA_HTML_UNSUPPORTED)
+            || (status == LXA_ERROR_LIMIT && result != LXA_HTML_LIMIT)
+            || (status != LXA_OK && status != LXA_ERROR_UNSUPPORTED
                 && status != LXA_ERROR_LIMIT)) {
             fprintf(stderr, "case %u: status %d, result %d, reason %d\n",
                 case_id, status, result, reason);

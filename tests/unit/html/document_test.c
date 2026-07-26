@@ -416,8 +416,16 @@ main(void)
     limits = lxa_limits_default();
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<nobr><span><nobr>"), &parse_result, &reason, &document)
-        == LXA_ERROR_ARGUMENT);
-    TEST_CHECK(document == NULL);
+        == LXA_ERROR_UNSUPPORTED);
+    TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
+    TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
+        span("<a\"b>"), &parse_result, &reason, &document)
+        == LXA_ERROR_UNSUPPORTED);
+    TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
+    TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
+        span("<p a\"b=x>"), &parse_result, &reason, &document)
+        == LXA_ERROR_UNSUPPORTED);
+    TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<body><b><i data-x=y>two</b>after</i>"
              "<a href=/next>next</a>"),
@@ -4402,11 +4410,11 @@ main(void)
     lxa_html_document_destroy(document);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><p><b>x</p>y</b></template>"),
-        &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
+        &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><b><em>x</b>y</em></template>"),
-        &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
+        &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><ul><li><p>one<li>two<ul><li>inner"
@@ -4541,7 +4549,7 @@ main(void)
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><ul><li>x<section><b>t<li>later</b>"
              "</template>"),
-        &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
+        &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><p>before<h1>A<h2>B</h3>"
@@ -8925,7 +8933,7 @@ main(void)
     lxa_html_document_destroy(document);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><p><a href=/old>x<p>overlap</template>"),
-        &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
+        &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     limits.max_nodes = 4; /* document/html/head/template; fragment needs one */
     TEST_CHECK(lxa_html_document_parse(&allocator, &limits,
@@ -10076,7 +10084,7 @@ main(void)
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><table><li><b>one<li>two"
              "</table></template>"),
-        &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
+        &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
     TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<head><template><table><li>one<tr><td>A</td>"
@@ -12972,8 +12980,8 @@ main(void)
     }
     TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
         span("<meta charset='unknown-encoding'><p>x</p>"), &parse_result,
-        &reason, &document) == LXA_ERROR_ARGUMENT);
-    TEST_CHECK(document == NULL && parse_result == LXA_HTML_BAD_ARGUMENT);
+        &reason, &document) == LXA_ERROR_UNSUPPORTED);
+    TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
     {
         uint8_t late[1150];
         const char unknown[] = "<meta charset='not-a-real-encoding'><p>x</p>";
@@ -12982,8 +12990,8 @@ main(void)
         memcpy(late + 1025, unknown, sizeof(unknown) - 1);
         TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
             (lxa_span_t){late, 1025 + sizeof(unknown) - 1},
-            &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
-        TEST_CHECK(document == NULL && parse_result == LXA_HTML_BAD_ARGUMENT);
+            &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
+        TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
         memcpy(late + 1025, known, sizeof(known) - 1);
         diagnostic.count = 0;
         diagnostic.response = LXA_OK;
@@ -13033,7 +13041,8 @@ main(void)
             {
                 const lxa_status_t failures[] = {
                     LXA_ERROR_ARGUMENT, LXA_ERROR_NO_MEMORY, LXA_ERROR_LIMIT,
-                    LXA_ERROR_OVERFLOW, LXA_ERROR_ENTROPY
+                    LXA_ERROR_OVERFLOW, LXA_ERROR_ENTROPY,
+                    LXA_ERROR_UNSUPPORTED, LXA_ERROR_INTERNAL
                 };
                 size_t failure;
                 for (failure = 0; failure < sizeof(failures) / sizeof(*failures);
@@ -13106,8 +13115,8 @@ main(void)
             memcpy(late + 1025, pragma, sizeof(pragma) - 1);
             TEST_CHECK(lxa_html_document_parse(&allocator, NULL,
                 (lxa_span_t){late, 1025 + sizeof(pragma) - 1},
-                &parse_result, &reason, &document) == LXA_ERROR_ARGUMENT);
-            TEST_CHECK(document == NULL && parse_result == LXA_HTML_BAD_ARGUMENT);
+                &parse_result, &reason, &document) == LXA_ERROR_UNSUPPORTED);
+            TEST_CHECK(document == NULL && parse_result == LXA_HTML_UNSUPPORTED);
         }
         {
             const char irrelevant[] =
