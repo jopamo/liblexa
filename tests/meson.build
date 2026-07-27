@@ -36,6 +36,13 @@ if get_option('candidate_html')
   test('HTML pinned trees', find_program('python3'),
     args: [files('conformance/html/tree_cases.py'), tree_dump],
     suite: 'conformance', timeout: 30)
+  token_dump = executable('liblexa_html_token_dump',
+    files('conformance/html/token_dump.c'),
+    include_directories: lxa_public_inc,
+    link_with: [lxa_html_candidate, lxa_library])
+  test('HTML pinned tokens', find_program('python3'),
+    args: [files('conformance/html/token_cases.py'), token_dump],
+    suite: 'conformance', timeout: 60)
   foreach name : ['tokenizer', 'input_encoding']
     html_unit_test = executable('liblexa_html_' + name + '_test',
       files('unit/html/' + name + '.c'),
