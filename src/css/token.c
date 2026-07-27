@@ -205,6 +205,7 @@ lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
         const lxa_css_token_entry_t *stored = entry;
         status = lxa_css_invariant(stored->token.kind >= LXA_CSS_IDENT
             && stored->token.kind < LXA_CSS_TOKEN_COUNT
+            && stored->token.length <= SIZE_MAX - stored->token.offset
             && stored->text_offset <= tokens->text.length
             && stored->text_length <= tokens->text.length - stored->text_offset);
         if (status != LXA_OK) return status;

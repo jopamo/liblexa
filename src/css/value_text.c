@@ -63,6 +63,8 @@ lxa_css_value_text(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         return LXA_ERROR_ARGUMENT;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     lxa_buffer_clear(output);
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     for (size_t at = first; at < after; at++) {
         lxa_css_token_t token;
         lxa_span_t text, spelling;
@@ -70,7 +72,8 @@ lxa_css_value_text(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
                                    &blocks->limit_reason);
         if (status != LXA_OK) goto fail;
-        status = lxa_css_tokens_get(tokens, at, &token, &text);
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, at, &token, &text));
         if (status != LXA_OK) goto fail;
         status = lxa_size_add(token.offset, token.length, &end);
         if (status != LXA_OK) goto fail;

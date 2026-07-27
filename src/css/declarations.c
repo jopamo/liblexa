@@ -17,7 +17,9 @@ lxa_css_declarations_create(const lxa_allocator_t *allocator,
     lxa_status_t status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = NULL;
-    if (blocks == NULL || blocks->budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (blocks == NULL) return LXA_ERROR_ARGUMENT;
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     status = lxa_vector_init(&storage, allocator, sizeof(lxa_css_declaration_t));
     if (status != LXA_OK) return status;
     status = lxa_vector_bind_budget(&storage, blocks->budget);
@@ -64,7 +66,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
     size_t at = first;
     lxa_status_t status = LXA_OK;
     if (list == NULL || tokens == NULL || blocks == NULL || !blocks->ready
-        || list->budget != blocks->budget || list->entries.element_size == 0
+        || list->budget != blocks->budget
         || first > after || after > blocks->end
         || lxa_css_tokens_length(tokens) < blocks->end) {
         return LXA_ERROR_ARGUMENT;
@@ -72,6 +74,14 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
     list->ready = false;
     list->count_limit = false;
     list->limit_reason = LXA_BUDGET_COUNT;
+    status = lxa_css_blocks_check(blocks);
+    if (status == LXA_OK)
+        status = lxa_css_vector_check(&list->entries,
+                                      sizeof(lxa_css_declaration_t));
+    if (status != LXA_OK) {
+        lxa_vector_clear(&list->entries);
+        return status;
+    }
     lxa_vector_clear(&list->entries);
     while (at < after) {
         lxa_css_token_t token;
@@ -83,7 +93,8 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
         status = lxa_budget_charge(list->budget, LXA_BUDGET_WORK, 1,
                                    &list->limit_reason);
         if (status != LXA_OK) break;
-        status = lxa_css_tokens_get(tokens, at, &token, &text);
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, at, &token, &text));
         if (status != LXA_OK) break;
         if (token.kind == LXA_CSS_WHITESPACE
             || token.kind == LXA_CSS_SEMICOLON) {
@@ -97,7 +108,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
                 break;
             }
             if (rule.after <= at || rule.after > after) {
-                status = LXA_ERROR_ARGUMENT;
+                status = lxa_css_invariant(false);
                 break;
             }
             at = rule.after;
@@ -110,10 +121,12 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
             status = lxa_budget_charge(list->budget, LXA_BUDGET_WORK, 1,
                                        &list->limit_reason);
             if (status != LXA_OK) break;
-            status = lxa_css_tokens_get(tokens, end, &token, &text);
+            status = lxa_css_internal_status(
+                lxa_css_tokens_get(tokens, end, &token, &text));
             if (status != LXA_OK) break;
             if (token.kind == LXA_CSS_SEMICOLON) break;
-            status = lxa_css_blocks_next(blocks, end, &range);
+            status = lxa_css_internal_status(
+                lxa_css_blocks_next(blocks, end, &range));
             if (status != LXA_OK) {
                 list->limit_reason = blocks->limit_reason;
                 break;
@@ -140,7 +153,8 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
                 status = LXA_ERROR_LIMIT;
                 break;
             }
-            status = lxa_vector_push(&list->entries, &decl);
+            status = lxa_css_internal_status(
+                lxa_vector_push(&list->entries, &decl));
             if (status == LXA_ERROR_LIMIT) {
                 list->limit_reason = LXA_BUDGET_MEMORY;
             }
@@ -178,6 +192,8 @@ lxa_css_declarations_get(lxa_css_declarations_t *list, size_t at,
     void *slot;
     lxa_status_t status;
     if (list == NULL || out == NULL || !list->ready) return LXA_ERROR_ARGUMENT;
+    status = lxa_css_vector_check(&list->entries, sizeof(lxa_css_declaration_t));
+    if (status != LXA_OK) return status;
     status = lxa_vector_at(&list->entries, at, &slot);
     if (status == LXA_OK) *out = *(const lxa_css_declaration_t *) slot;
     return status;

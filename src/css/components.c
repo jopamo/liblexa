@@ -1,6 +1,5 @@
 #include "css/tokens.h"
 #include "css/blocks.h"
-#include "css/invariant.h"
 
 static lxa_css_token_kind_t
 closing(lxa_css_token_kind_t kind)
@@ -90,12 +89,7 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
     blocks->end = 0;
     blocks->ready = false;
     blocks->limit_reason = LXA_BUDGET_COUNT;
-    status = lxa_css_invariant(blocks->budget != NULL);
-    if (status != LXA_OK) {
-        lxa_vector_clear(&blocks->entries);
-        return status;
-    }
-    status = lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t));
+    status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) {
         lxa_vector_clear(&blocks->entries);
         return status;
@@ -297,9 +291,7 @@ lxa_css_blocks_next(lxa_css_blocks_t *blocks, size_t from,
     if (blocks == NULL || out == NULL || !blocks->ready || from >= blocks->end) {
         return LXA_ERROR_ARGUMENT;
     }
-    status = lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t));
-    if (status != LXA_OK) return status;
-    status = lxa_css_invariant(blocks->budget != NULL);
+    status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     /* Block entries are appended in token order. Search the stable opener

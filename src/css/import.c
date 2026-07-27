@@ -19,8 +19,8 @@ read(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     lxa_status_t status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
                                             1, &blocks->limit_reason);
     if (status != LXA_OK) return status;
-    status = lxa_css_tokens_get(tokens, at, token, text);
-    return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+    return lxa_css_internal_status(
+        lxa_css_tokens_get(tokens, at, token, text));
 }
 
 lxa_status_t
@@ -40,6 +40,8 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         || rule->prelude_after > blocks->end)
         return LXA_ERROR_ARGUMENT;
     *out = (lxa_css_import_t) {0};
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     status = read(tokens, blocks, rule->name, &token, &text);
     if (status != LXA_OK) return status;
@@ -60,7 +62,8 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     }
     else if (token.kind == LXA_CSS_FUNCTION
              && ascii_equal(text, "url", 3)) {
-        status = lxa_css_blocks_next(blocks, at, &component);
+        status = lxa_css_internal_status(
+            lxa_css_blocks_next(blocks, at, &component));
         if (status != LXA_OK) return status;
         if (!component.closed || component.after > rule->prelude_after)
             return LXA_OK;

@@ -9,7 +9,8 @@ read_token(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks, size_t at,
     if (status != LXA_OK) {
         return status;
     }
-    return lxa_css_tokens_get(tokens, at, token, text);
+    return lxa_css_internal_status(
+        lxa_css_tokens_get(tokens, at, token, text));
 }
 
 static bool
@@ -46,6 +47,8 @@ lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
         return LXA_ERROR_ARGUMENT;
     }
     *out = (lxa_css_declaration_t) {0};
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     while (at < after) {
         status = read_token(tokens, blocks, at, &token, &text);
@@ -78,7 +81,8 @@ lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
         if (token.kind == LXA_CSS_SEMICOLON || token.kind == LXA_CSS_EOF) {
             return LXA_OK;
         }
-        status = lxa_css_blocks_next(blocks, at, &range);
+        status = lxa_css_internal_status(
+            lxa_css_blocks_next(blocks, at, &range));
         if (status != LXA_OK) return status;
         if (range.after > after) return LXA_ERROR_ARGUMENT;
         if (token.kind == LXA_CSS_WHITESPACE) continue;

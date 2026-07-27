@@ -15,7 +15,7 @@ encoding_test = executable('liblexa_encoding_stream_test',
 test('encoding stream', encoding_test)
 
 foreach name : ['bytes', 'components', 'declaration', 'declarations',
-                'filter', 'import', 'media', 'rule', 'scan', 'selector_key',
+                'errors', 'filter', 'import', 'media', 'rule', 'scan', 'selector_key',
                 'selector_list', 'token', 'value_text']
   css_test = executable('liblexa_css_' + name + '_test',
     files('unit/css/' + name + '.c'),

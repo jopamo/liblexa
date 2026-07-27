@@ -17,12 +17,15 @@ lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         return LXA_ERROR_ARGUMENT;
     }
     *out = (lxa_css_rule_t) {0};
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     for (at = first; at < limit; at = range.after) {
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
-        status = lxa_css_tokens_get(tokens, at, &token, &text);
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, at, &token, &text));
         if (status != LXA_OK) return status;
         if (at == first) {
             rule.kind = token.kind == LXA_CSS_AT_KEYWORD
@@ -31,7 +34,8 @@ lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             rule.prelude_first = at + (rule.kind == LXA_CSS_RULE_AT);
         }
         if (token.kind == LXA_CSS_LEFT_BRACE) {
-            status = lxa_css_blocks_next(blocks, at, &range);
+            status = lxa_css_internal_status(
+                lxa_css_blocks_next(blocks, at, &range));
             if (status != LXA_OK) return status;
             if (range.after > limit) return LXA_ERROR_ARGUMENT;
             rule.prelude_after = at;
@@ -62,7 +66,8 @@ lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             }
             significant++;
         }
-        status = lxa_css_blocks_next(blocks, at, &range);
+        status = lxa_css_internal_status(
+            lxa_css_blocks_next(blocks, at, &range));
         if (status != LXA_OK) return status;
         if (range.after > limit) return LXA_ERROR_ARGUMENT;
     }

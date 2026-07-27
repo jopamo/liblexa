@@ -28,9 +28,9 @@ query(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
-        status = lxa_css_tokens_get(tokens, i, &token, &text);
-        if (status != LXA_OK)
-            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, i, &token, &text));
+        if (status != LXA_OK) return status;
         if (token.kind == LXA_CSS_WHITESPACE) continue;
         if (token.kind != LXA_CSS_IDENT) {
             if (token.kind == LXA_CSS_LEFT_PAREN
@@ -88,6 +88,8 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         || lxa_css_tokens_length(tokens) < blocks->end)
         return LXA_ERROR_ARGUMENT;
     *out = (lxa_css_media_t) {0};
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     if (first == after) {
         *out = (lxa_css_media_t) {LXA_CSS_SYNTAX_SUPPORTED, true};
@@ -100,9 +102,9 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
-        status = lxa_css_tokens_get(tokens, at, &token, &text);
-        if (status != LXA_OK)
-            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, at, &token, &text));
+        if (status != LXA_OK) return status;
         if (token.kind == LXA_CSS_COMMA) {
             status = query(tokens, blocks, start, at, &group);
             if (status != LXA_OK) return status;
@@ -110,7 +112,8 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             start = ++at;
             continue;
         }
-        status = lxa_css_blocks_next(blocks, at, &component);
+        status = lxa_css_internal_status(
+            lxa_css_blocks_next(blocks, at, &component));
         if (status != LXA_OK) return status;
         if (component.after > after) return LXA_ERROR_ARGUMENT;
         at = component.after;

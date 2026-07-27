@@ -25,15 +25,17 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     }
     *syntax = LXA_CSS_SYNTAX_INVALID;
     lxa_buffer_clear(output);
+    status = lxa_css_blocks_check(blocks);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     for (size_t at = first; at < after; at++) {
         lxa_css_token_t token;
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
                                    &blocks->limit_reason);
         if (status != LXA_OK) return status;
-        status = lxa_css_tokens_get(tokens, at, &token, &text);
-        if (status != LXA_OK)
-            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, at, &token, &text));
+        if (status != LXA_OK) return status;
         if (dot && token.kind != LXA_CSS_IDENT) return LXA_OK;
         if (token.kind == LXA_CSS_WHITESPACE) {
             /* Whitespace is allowed at the edges, never between parts. */
@@ -44,10 +46,9 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
                 status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
                                            1, &blocks->limit_reason);
                 if (status != LXA_OK) return status;
-                status = lxa_css_tokens_get(tokens, next, &look, &ignored);
-                if (status != LXA_OK)
-                    return status == LXA_ERROR_ARGUMENT
-                           ? LXA_ERROR_INTERNAL : status;
+                status = lxa_css_internal_status(
+                    lxa_css_tokens_get(tokens, next, &look, &ignored));
+                if (status != LXA_OK) return status;
                 if (look.kind != LXA_CSS_WHITESPACE) break;
                 next++;
             }
