@@ -1140,6 +1140,18 @@ main(void)
     CHECK(lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK);
     CHECK(f.count == 2 && f.kind[0] == LXA_HTML_START_TAG
            && strcmp(f.bytes[0], "a") == 0);
+    {
+        static const char *inputs[] = {
+            "<a x=\"a\r\nb\rc&#13;d\">", "<a x='a\r\nb\rc&#13;d'>"
+        };
+        for (size_t j = 0; j < sizeof(inputs) / sizeof(inputs[0]); j++) {
+            check_partition(tkz, &f, inputs[j], strlen(inputs[j]));
+            CHECK(f.count == 2 && f.kind[0] == LXA_HTML_START_TAG
+                  && f.attribute_count[0] == 1 && f.errors == 1
+                  && strcmp(f.error_code, "control-character-reference") == 0
+                  && strcmp(f.attribute_values[0][0], "a\nb\nc\rd") == 0);
+        }
+    }
     lxa_html_tokenizer_reset(tkz);
     f.count = 0;
     CHECK(lxa_html_tokenizer_feed(tkz, span("a\r<b>\r</b>\r"))

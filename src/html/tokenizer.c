@@ -2170,17 +2170,17 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             if (!tokenizer->utf8_pending) {
                 size_t start = i;
                 while (i < input.length) {
-                    c = input.data[i];
-                    if (c == '&' || c == 0 || c == '\r' || c >= 0x7f
-                        || (c < ' ' && !space(c))
+                    uint8_t raw = input.data[i];
+                    if (raw == '&' || raw == 0 || raw == '\r' || raw >= 0x7f
+                        || (raw < ' ' && !space(raw))
                         || (tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
-                            && c == '"')
+                            && raw == '"')
                         || (tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-                            && c == '\'')
+                            && raw == '\'')
                         || (tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
-                            && (space(c) || c == '>' || c == '"'
-                                || c == '\'' || c == '<' || c == '='
-                                || c == '`'))) {
+                            && (space(raw) || raw == '>' || raw == '"'
+                                || raw == '\'' || raw == '<' || raw == '='
+                                || raw == '`'))) {
                         break;
                     }
                     i++;
