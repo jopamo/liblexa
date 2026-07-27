@@ -2,6 +2,17 @@
 
 #include "liblexa/base.h"
 #include "css/tokens.h"
+#include "css/invariant.h"
+
+static lxa_status_t
+check_storage(lxa_css_tokens_t *tokens)
+{
+    lxa_status_t status = lxa_css_vector_check(&tokens->entries,
+                                               sizeof(lxa_css_token_entry_t));
+    if (status != LXA_OK) return status;
+    return lxa_css_invariant(tokens->text.length <= tokens->text.capacity
+        && (tokens->text.capacity == 0 || tokens->text.data != NULL));
+}
 
 lxa_status_t
 lxa_css_tokens_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
@@ -87,6 +98,8 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
         || (text.data == NULL && text.length != 0)) {
         return LXA_ERROR_ARGUMENT;
     }
+    status = check_storage(tokens);
+    if (status != LXA_OK) return status;
     status = lxa_size_add(token.offset, token.length, &end);
     if (status != LXA_OK) {
         return status;
@@ -185,9 +198,16 @@ lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
     if (tokens == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
+    status = check_storage(tokens);
+    if (status != LXA_OK) return status;
     status = lxa_vector_at(&tokens->entries, index, &entry);
     if (status == LXA_OK) {
         const lxa_css_token_entry_t *stored = entry;
+        status = lxa_css_invariant(stored->token.kind >= LXA_CSS_IDENT
+            && stored->token.kind < LXA_CSS_TOKEN_COUNT
+            && stored->text_offset <= tokens->text.length
+            && stored->text_length <= tokens->text.length - stored->text_offset);
+        if (status != LXA_OK) return status;
         *token = stored->token;
         if (stored->text_length != 0) {
             text->data = tokens->text.data + stored->text_offset;

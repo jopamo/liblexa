@@ -67,6 +67,33 @@ main(void)
     CSS_CHECK(out.kind == LXA_CSS_IDENT && out.offset == 4 && out.length == 5);
     CSS_CHECK(text.length == 5 && memcmp(text.data, "color", 5) == 0);
 
+#ifdef NDEBUG
+    {
+        void *slot;
+        CSS_CHECK(lxa_vector_at(&tokens->entries, 0, &slot) == LXA_OK);
+        lxa_css_token_entry_t *entry = slot;
+        lxa_css_token_entry_t saved = *entry;
+        entry->text_offset = SIZE_MAX;
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &out, &text)
+                  == LXA_ERROR_INTERNAL);
+        CSS_CHECK(text.data == NULL && text.length == 0);
+        *entry = saved;
+        entry->text_length = SIZE_MAX;
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &out, &text)
+                  == LXA_ERROR_INTERNAL);
+        *entry = saved;
+        entry->token.kind = LXA_CSS_TOKEN_COUNT;
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &out, &text)
+                  == LXA_ERROR_INTERNAL);
+        *entry = saved;
+        tokens->entries.element_size = 0;
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &out, &text)
+                  == LXA_ERROR_INTERNAL);
+        tokens->entries.element_size = sizeof(*entry);
+        CSS_CHECK(lxa_css_tokens_get(tokens, 0, &out, &text) == LXA_OK);
+    }
+#endif
+
     memset(long_text, 'a', sizeof(long_text));
     fixture.fail_at = fixture.calls + 1;
     CSS_CHECK(lxa_css_tokens_append(tokens, in,

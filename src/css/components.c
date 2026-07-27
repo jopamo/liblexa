@@ -1,6 +1,6 @@
 #include "css/tokens.h"
-#include <assert.h>
 #include "css/blocks.h"
+#include "css/invariant.h"
 
 static lxa_css_token_kind_t
 closing(lxa_css_token_kind_t kind)
@@ -14,13 +14,11 @@ closing(lxa_css_token_kind_t kind)
     }
 }
 
-static void
+static lxa_status_t
 release_depth(lxa_budget_t *budget, size_t depth)
 {
-    lxa_status_t status = lxa_budget_release(budget,
-        LXA_BUDGET_CSS_NESTING, depth);
-    assert(status == LXA_OK);
-    (void) status;
+    return lxa_css_internal_status(lxa_budget_release(budget,
+        LXA_BUDGET_CSS_NESTING, depth));
 }
 
 lxa_status_t
@@ -86,14 +84,29 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
     lxa_vector_t stack;
     size_t count, i;
     lxa_status_t status;
-    if (blocks == NULL || tokens == NULL || blocks->budget == NULL
-        || blocks->entries.element_size == 0) {
+    if (blocks == NULL || tokens == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
-    lxa_vector_clear(&blocks->entries);
     blocks->end = 0;
     blocks->ready = false;
     blocks->limit_reason = LXA_BUDGET_COUNT;
+    status = lxa_css_invariant(blocks->budget != NULL);
+    if (status != LXA_OK) {
+        lxa_vector_clear(&blocks->entries);
+        return status;
+    }
+    status = lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t));
+    if (status != LXA_OK) {
+        lxa_vector_clear(&blocks->entries);
+        return status;
+    }
+    status = lxa_css_vector_check(&tokens->entries,
+                                  sizeof(lxa_css_token_entry_t));
+    if (status != LXA_OK) {
+        lxa_vector_clear(&blocks->entries);
+        return status;
+    }
+    lxa_vector_clear(&blocks->entries);
     if (blocks->budget != &blocks->local_budget
         && (tokens->text.budget != blocks->budget
             || tokens->entries.bytes.budget != blocks->budget)) {
@@ -121,13 +134,14 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
         if (status != LXA_OK) {
             break;
         }
-        status = lxa_css_tokens_get(tokens, i, &token, &text);
+        status = lxa_css_internal_status(
+            lxa_css_tokens_get(tokens, i, &token, &text));
         if (status != LXA_OK) {
             break;
         }
         if (token.kind == LXA_CSS_EOF) {
             if (i + 1 != count) {
-                status = LXA_ERROR_ARGUMENT;
+                status = lxa_css_invariant(false);
             }
             break;
         }
@@ -135,20 +149,23 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
             void *slot;
             uint32_t id;
             lxa_css_block_t *block;
-            status = lxa_vector_at(&stack, depth - 1, &slot);
+            status = lxa_css_vector_at(&stack, depth - 1, &slot);
             if (status != LXA_OK) {
                 break;
             }
             id = *(const uint32_t *) slot;
-            status = lxa_vector_at(&blocks->entries, id, &slot);
+            status = lxa_css_vector_at(&blocks->entries, id, &slot);
             if (status != LXA_OK) {
                 break;
             }
             block = slot;
             if (closing(block->opener) == token.kind) {
                 block->close = i;
-                lxa_vector_erase(&stack, depth - 1, 1);
-                release_depth(blocks->budget, 1);
+                status = lxa_css_internal_status(
+                    lxa_vector_erase(&stack, depth - 1, 1));
+                if (status != LXA_OK) break;
+                status = release_depth(blocks->budget, 1);
+                if (status != LXA_OK) break;
                 continue;
             }
         }
@@ -158,7 +175,8 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
             lxa_css_block_t block = {i, count, parent, token.kind};
             void *slot;
             if (depth != 0) {
-                lxa_vector_at(&stack, depth - 1, &slot);
+                status = lxa_css_vector_at(&stack, depth - 1, &slot);
+                if (status != LXA_OK) break;
                 block.parent = *(const uint32_t *) slot;
             }
             /* Depth rejection must not grow retained arrays first. */
@@ -182,15 +200,20 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
             if (status != LXA_OK) {
                 break;
             }
-            status = lxa_vector_push(&blocks->entries, &block);
+            status = lxa_css_internal_status(
+                lxa_vector_push(&blocks->entries, &block));
             if (status != LXA_OK) {
-                release_depth(blocks->budget, 1);
+                lxa_status_t cleanup = release_depth(blocks->budget, 1);
+                if (cleanup != LXA_OK) status = cleanup;
                 break;
             }
-            status = lxa_vector_push(&stack, &id);
+            status = lxa_css_internal_status(lxa_vector_push(&stack, &id));
             if (status != LXA_OK) {
-                lxa_vector_erase(&blocks->entries, id, 1);
-                release_depth(blocks->budget, 1);
+                lxa_status_t cleanup = lxa_css_internal_status(
+                    lxa_vector_erase(&blocks->entries, id, 1));
+                if (cleanup != LXA_OK) status = cleanup;
+                cleanup = release_depth(blocks->budget, 1);
+                if (cleanup != LXA_OK) status = cleanup;
                 break;
             }
         }
@@ -206,17 +229,37 @@ lxa_css_blocks_build(lxa_css_blocks_t *blocks, lxa_css_tokens_t *tokens)
                 status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
                                            1, &blocks->limit_reason);
             }
-            lxa_vector_at(&stack, lxa_vector_length(&stack) - 1, &slot);
+            lxa_status_t access = lxa_css_vector_at(
+                &stack, lxa_vector_length(&stack) - 1, &slot);
+            if (access != LXA_OK) {
+                status = access;
+                break;
+            }
             id = *(const uint32_t *) slot;
-            lxa_vector_at(&blocks->entries, id, &slot);
+            access = lxa_css_vector_at(&blocks->entries, id, &slot);
+            if (access != LXA_OK) {
+                status = access;
+                break;
+            }
             ((lxa_css_block_t *) slot)->close = i;
-            lxa_vector_erase(&stack, lxa_vector_length(&stack) - 1, 1);
-            release_depth(blocks->budget, 1);
+            access = lxa_css_internal_status(lxa_vector_erase(
+                &stack, lxa_vector_length(&stack) - 1, 1));
+            if (access != LXA_OK) {
+                status = access;
+                break;
+            }
+            access = release_depth(blocks->budget, 1);
+            if (access != LXA_OK) {
+                status = access;
+                break;
+            }
         }
     }
 done:
     if (status != LXA_OK) {
-        release_depth(blocks->budget, lxa_vector_length(&stack));
+        lxa_status_t cleanup = release_depth(blocks->budget,
+                                             lxa_vector_length(&stack));
+        if (cleanup != LXA_OK) status = cleanup;
         lxa_vector_clear(&blocks->entries);
     }
     else {
@@ -236,6 +279,8 @@ lxa_css_blocks_get(lxa_css_blocks_t *blocks, size_t index,
     if (out == NULL || blocks == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
+    status = lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t));
+    if (status != LXA_OK) return status;
     status = lxa_vector_at(&blocks->entries, index, &entry);
     if (status == LXA_OK) {
         *out = *(const lxa_css_block_t *) entry;
@@ -252,6 +297,10 @@ lxa_css_blocks_next(lxa_css_blocks_t *blocks, size_t from,
     if (blocks == NULL || out == NULL || !blocks->ready || from >= blocks->end) {
         return LXA_ERROR_ARGUMENT;
     }
+    status = lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t));
+    if (status != LXA_OK) return status;
+    status = lxa_css_invariant(blocks->budget != NULL);
+    if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     /* Block entries are appended in token order. Search the stable opener
      * offsets; no pointer into the index survives a later build. */
@@ -265,7 +314,7 @@ lxa_css_blocks_next(lxa_css_blocks_t *blocks, size_t from,
         if (status != LXA_OK) {
             return status;
         }
-        status = lxa_vector_at(&blocks->entries, mid, &slot);
+        status = lxa_css_vector_at(&blocks->entries, mid, &slot);
         if (status != LXA_OK) {
             return status;
         }
@@ -283,12 +332,17 @@ lxa_css_blocks_next(lxa_css_blocks_t *blocks, size_t from,
     }
     if (lo < lxa_vector_length(&blocks->entries)) {
         void *slot;
-        status = lxa_vector_at(&blocks->entries, lo, &slot);
+        status = lxa_css_vector_at(&blocks->entries, lo, &slot);
         if (status != LXA_OK) {
             return status;
         }
         const lxa_css_block_t *block = slot;
         if (block->open == from) {
+            status = lxa_css_invariant(block->close > block->open
+                                       && block->close <= blocks->end
+                                       && closing(block->opener)
+                                          != LXA_CSS_TOKEN_COUNT);
+            if (status != LXA_OK) return status;
             *out = (lxa_css_component_range_t) {
                 from, block->close < blocks->end ? block->close + 1 : blocks->end,
                 block->close < blocks->end

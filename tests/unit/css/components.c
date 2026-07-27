@@ -1,6 +1,7 @@
 #include "check.h"
 #include <stdlib.h>
 #include "css/blocks.h"
+#include "css/tokens.h"
 
 typedef struct {
     size_t calls;
@@ -145,6 +146,20 @@ main(void)
     CSS_CHECK(lxa_css_blocks_limit_reason(blocks) == LXA_BUDGET_MEMORY);
     CSS_CHECK(lxa_vector_length(&blocks->entries) == 0);
     lxa_css_blocks_destroy(blocks);
+#ifdef NDEBUG
+    {
+        lxa_css_token_t extra = {.kind = LXA_CSS_LEFT_PAREN};
+        CSS_CHECK(lxa_css_tokens_append(tokens, extra, (lxa_span_t) {0})
+                  == LXA_OK);
+        CSS_CHECK(lxa_css_blocks_create(&allocator, NULL, &blocks) == LXA_OK);
+        CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_ERROR_INTERNAL);
+        CSS_CHECK(!blocks->ready && lxa_css_blocks_end(blocks) == 0);
+        CSS_CHECK(lxa_vector_length(&blocks->entries) == 0);
+        CSS_CHECK(lxa_css_blocks_budget(blocks)->used[LXA_BUDGET_CSS_NESTING]
+                  == 0);
+        lxa_css_blocks_destroy(blocks);
+    }
+#endif
     lxa_css_tokens_destroy(tokens);
     CSS_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
 
@@ -157,6 +172,24 @@ main(void)
     CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_OK);
     check(blocks, 0, 0, 2, LXA_CSS_BLOCK_NONE, LXA_CSS_LEFT_BRACE);
     check(blocks, 1, 1, 2, 0, LXA_CSS_LEFT_PAREN);
+#ifdef NDEBUG
+    {
+        void *slot;
+        CSS_CHECK(lxa_vector_at(&blocks->entries, 0, &slot) == LXA_OK);
+        lxa_css_block_t *entry = slot;
+        size_t close = entry->close;
+        entry->close = SIZE_MAX;
+        CSS_CHECK(lxa_css_blocks_next(blocks, 0, &range) == LXA_ERROR_INTERNAL);
+        entry->close = entry->open;
+        CSS_CHECK(lxa_css_blocks_next(blocks, 0, &range) == LXA_ERROR_INTERNAL);
+        entry->close = close;
+        blocks->entries.element_size = 0;
+        CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_ERROR_INTERNAL);
+        CSS_CHECK(!blocks->ready && lxa_css_blocks_end(blocks) == 0);
+        blocks->entries.element_size = sizeof(*entry);
+        CSS_CHECK(lxa_css_blocks_build(blocks, tokens) == LXA_OK);
+    }
+#endif
     CSS_CHECK(lxa_css_blocks_next(blocks, 0, &range) == LXA_OK);
     CSS_CHECK(range.first == 0 && range.after == 2 && !range.closed);
     CSS_CHECK(lxa_css_blocks_next(blocks, 1, &range) == LXA_OK);
