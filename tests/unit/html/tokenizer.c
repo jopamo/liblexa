@@ -1384,6 +1384,29 @@ main(void)
           && f.errors == 1 && f.error_offset == 4
           && strcmp(f.error_code,
                     "missing-semicolon-after-character-reference") == 0);
+    {
+        static const char *formats[] = {
+            "<a x=\"%s\">", "<a x='%s'>", "<a x=%s>"
+        };
+        static const size_t suffixes[] = {27, 28, 29, 40};
+        char literal[64], input[96];
+        /* WHATWG named character reference state: an attribute's legacy
+         * match followed by alphanumerics returns to the value state. */
+        for (size_t n = 0; n < sizeof(suffixes) / sizeof(suffixes[0]); n++) {
+            memcpy(literal, "&not", 4);
+            memset(literal + 4, 'a', suffixes[n]);
+            literal[4 + suffixes[n]] = ';';
+            literal[5 + suffixes[n]] = '\0';
+            for (size_t j = 0; j < sizeof(formats) / sizeof(formats[0]); j++) {
+                int length = snprintf(input, sizeof(input), formats[j], literal);
+                CHECK(length > 0 && (size_t) length < sizeof(input));
+                check_partition(tkz, &f, input, (size_t) length);
+                CHECK(f.count == 2 && f.kind[0] == LXA_HTML_START_TAG
+                      && f.attribute_count[0] == 1 && f.errors == 0
+                      && strcmp(f.attribute_values[0][0], literal) == 0);
+            }
+        }
+    }
     check_partition(tkz, &f, "&noti;", sizeof("&noti;") - 1);
     CHECK(f.count == 2 && strcmp(f.bytes[0], "\xc2\xac" "i;") == 0
           && f.errors == 1 && f.error_offset == 4

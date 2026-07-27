@@ -3376,8 +3376,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             else if ((c >= 'a' && c <= 'z')
                      || (c >= 'A' && c <= 'Z')
                      || (c >= '0' && c <= '9')) {
-                bool no_match = tokenizer->reference_match == NULL
-                                || reference_in_attribute(tokenizer);
+                bool no_match = tokenizer->reference_match == NULL;
                 result = resolve_name(tokenizer, false,
                                       tokenizer->offset + i, c);
                 if (result != LXA_HTML_OK) {
