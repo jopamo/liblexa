@@ -54,6 +54,7 @@ def main(executable):
                         print(f"{filename}:{index} {state} {chunk}: timeout")
                         continue
                     tokens, errors = [], []
+                    duplicate_attributes = False
                     for line in run.stdout.splitlines():
                         item = json.loads(line)
                         if item[0] == "Error":
@@ -62,17 +63,20 @@ def main(executable):
                             tokens[-1][1] += item[1]
                         else:
                             if item[0] == "StartTag":
-                                attributes = {}
-                                for name, value in item[2]:
-                                    attributes.setdefault(name, value)
+                                attributes = dict(item[2])
+                                duplicate_attributes |= len(attributes) != len(item[2])
                                 item[2] = attributes
                             tokens.append(item)
                     expected_errors = [error["code"] for error in case.get("errors", [])]
-                    if run.returncode or tokens != case["output"] or errors != expected_errors:
+                    if (run.returncode or duplicate_attributes
+                            or tokens != case["output"]
+                            or errors != expected_errors):
                         failures += 1
                         print(f"{filename}:{index} {state} {chunk}: FAIL")
                         print(f"expected {case['output']!r}, {expected_errors!r}")
                         print(f"actual {tokens!r}, {errors!r}, exit {run.returncode}")
+                        if duplicate_attributes:
+                            print("tokenizer emitted duplicate attributes")
                         if run.stderr:
                             print(run.stderr.decode("utf-8", errors="replace")[:512])
     print(f"{runs - failures}/{runs} tokenizer runs matched; {excluded} old PI cases excluded")

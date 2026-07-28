@@ -92,11 +92,19 @@ typedef struct {
     size_t name_start, name_length, value_start, value_length;
 } attribute_slot_t;
 
+/* A discarded duplicate remains the current parsing candidate for its value. */
+typedef enum {
+    ATTRIBUTE_NONE, ATTRIBUTE_KEEP, ATTRIBUTE_DISCARD
+} attribute_state_t;
+
 struct lxa_html_tokenizer {
     lxa_allocator_t allocator;
     lxa_buffer_t text, name, attribute_bytes, appropriate_end_tag, raw_candidate;
     lxa_buffer_t public_id, system_id;
     lxa_vector_t attribute_slots, attribute_views;
+    attribute_slot_t attribute;
+    attribute_state_t attribute_state;
+    size_t source_attribute_count; /* Includes duplicates for the source limit. */
     lxa_budget_t owned_budget, *budget;
     lxa_decoder_t *decoder;
     lxa_encoder_t *encoder;
@@ -746,11 +754,47 @@ emit_doctype(lxa_html_tokenizer_t *tokenizer)
 }
 
 static lxa_html_result_t
+finish_attribute(lxa_html_tokenizer_t *tokenizer)
+{
+    lxa_status_t status;
+    if (tokenizer->attribute_state == ATTRIBUTE_NONE) {
+        return LXA_HTML_OK;
+    }
+    if (tokenizer->attribute_state == ATTRIBUTE_DISCARD) {
+        status = lxa_buffer_truncate(&tokenizer->attribute_bytes,
+                                      tokenizer->attribute.name_start);
+    }
+    else if (tokenizer->attribute_state == ATTRIBUTE_KEEP) {
+        status = lxa_vector_push(&tokenizer->attribute_slots,
+                                  &tokenizer->attribute);
+    }
+    else {
+        assert(false);
+        return LXA_HTML_INTERNAL;
+    }
+    if (status == LXA_ERROR_ARGUMENT || status == LXA_ERROR_INTERNAL) {
+        assert(false);
+        return LXA_HTML_INTERNAL;
+    }
+    if (status != LXA_OK) {
+        return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+    }
+    tokenizer->attribute_state = ATTRIBUTE_NONE;
+    return LXA_HTML_OK;
+}
+
+static lxa_html_result_t
 emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
 {
     lxa_html_token_t token = {0};
     lxa_html_result_t result;
-    size_t i, count = lxa_vector_length(&tokenizer->attribute_slots);
+    size_t i, count;
+    result = finish_attribute(tokenizer);
+    if (result != LXA_HTML_OK) {
+        return result;
+    }
+    count = lxa_vector_length(&tokenizer->attribute_slots);
     token.kind = tokenizer->end_tag ? LXA_HTML_END_TAG : LXA_HTML_START_TAG;
     token.name.data = tokenizer->name.data;
     token.name.length = tokenizer->name.length;
@@ -799,6 +843,7 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
         lxa_buffer_clear(&tokenizer->attribute_bytes);
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
+        tokenizer->source_attribute_count = 0;
     }
     return result;
 }
@@ -806,12 +851,14 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
 static lxa_html_result_t
 begin_attribute(lxa_html_tokenizer_t *tokenizer)
 {
-    attribute_slot_t slot = {0};
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status;
     size_t count;
-    status = lxa_size_add(lxa_vector_length(&tokenizer->attribute_slots),
-                          1, &count);
+    lxa_html_result_t result = finish_attribute(tokenizer);
+    if (result != LXA_HTML_OK) {
+        return result;
+    }
+    status = lxa_size_add(tokenizer->source_attribute_count, 1, &count);
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
@@ -821,12 +868,11 @@ begin_attribute(lxa_html_tokenizer_t *tokenizer)
     if (status != LXA_OK) {
         return budget_result(tokenizer, status, reason);
     }
-    slot.name_start = slot.value_start = tokenizer->attribute_bytes.length;
-    status = lxa_vector_push(&tokenizer->attribute_slots, &slot);
-    if (status != LXA_OK) {
-        return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
-    }
+    tokenizer->source_attribute_count = count;
+    tokenizer->attribute = (attribute_slot_t) {0};
+    tokenizer->attribute.name_start = tokenizer->attribute.value_start
+                                    = tokenizer->attribute_bytes.length;
+    tokenizer->attribute_state = ATTRIBUTE_KEEP;
     tokenizer->state = STATE_ATTRIBUTE_NAME;
     return LXA_HTML_OK;
 }
@@ -834,13 +880,10 @@ begin_attribute(lxa_html_tokenizer_t *tokenizer)
 static attribute_slot_t *
 current_attribute(lxa_html_tokenizer_t *tokenizer)
 {
-    attribute_slot_t *slot = NULL;
-    size_t count = lxa_vector_length(&tokenizer->attribute_slots);
-    lxa_status_t status = lxa_vector_at(&tokenizer->attribute_slots,
-                                        count - 1, (void **) &slot);
-    assert(status == LXA_OK);
-    (void) status;
-    return slot;
+    bool valid = tokenizer->attribute_state == ATTRIBUTE_KEEP
+                 || tokenizer->attribute_state == ATTRIBUTE_DISCARD;
+    assert(valid);
+    return valid ? &tokenizer->attribute : NULL;
 }
 
 static lxa_html_result_t
@@ -850,6 +893,9 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status;
     size_t length, total;
+    if (slot == NULL) {
+        return LXA_HTML_INTERNAL;
+    }
     status = lxa_size_add(tokenizer->attribute_bytes.length, bytes.length,
                           &length);
     if (status != LXA_OK) {
@@ -889,8 +935,11 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
 {
     attribute_slot_t *slot = current_attribute(tokenizer);
     size_t i, count = lxa_vector_length(&tokenizer->attribute_slots);
+    if (slot == NULL) {
+        return LXA_HTML_INTERNAL;
+    }
     slot->value_start = tokenizer->attribute_bytes.length;
-    for (i = 0; i + 1 < count; i++) {
+    for (i = 0; i < count; i++) {
         attribute_slot_t *prior;
         lxa_html_result_t work = charge_work(tokenizer, 1);
         lxa_status_t status;
@@ -906,6 +955,7 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
             && memcmp(tokenizer->attribute_bytes.data + prior->name_start,
                       tokenizer->attribute_bytes.data + slot->name_start,
                       slot->name_length) == 0) {
+            tokenizer->attribute_state = ATTRIBUTE_DISCARD;
             return emit_error(tokenizer, "duplicate-attribute", offset);
         }
     }
@@ -1155,6 +1205,8 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->public_id);
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
+        tokenizer->attribute_state = ATTRIBUTE_NONE;
+        tokenizer->source_attribute_count = 0;
         lxa_decoder_reset(tokenizer->decoder);
         lxa_encoder_reset(tokenizer->encoder);
         tokenizer->state = STATE_DATA;
@@ -3712,7 +3764,12 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             decoder_finished = true;
             tokenizer->utf8_pending = false;
         }
-        result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
+        result = tokenizer->state == STATE_ATTRIBUTE_NAME
+                 ? end_attribute_name(tokenizer, tokenizer->offset)
+                 : LXA_HTML_OK;
+        if (result == LXA_HTML_OK) {
+            result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
+        }
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
@@ -3721,6 +3778,8 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->attribute_bytes);
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
+        tokenizer->attribute_state = ATTRIBUTE_NONE;
+        tokenizer->source_attribute_count = 0;
         tokenizer->state = STATE_DATA;
         tokenizer->end_tag = false;
     }
@@ -3820,6 +3879,8 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->attribute_bytes);
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
+        tokenizer->attribute_state = ATTRIBUTE_NONE;
+        tokenizer->source_attribute_count = 0;
         tokenizer->state = STATE_DATA;
         tokenizer->end_tag = false;
     }

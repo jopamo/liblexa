@@ -41,8 +41,8 @@ typedef struct {
  * into an input chunk after feed returns. Text is decoded (entities and
  * replacement characters). DATA U+0000 is diagnosed and delivered literally
  * so the tree can apply its context-specific null handling.
- * Duplicate attributes are delivered in source order; the tree
- * applies its required duplicate-attribute policy.
+ * Duplicate normalized attribute names retain only their first occurrence,
+ * in surviving source order. Discarded values still receive diagnostics.
  */
 typedef lxa_status_t (*lxa_html_token_callback_t)(
     void *context, lxa_html_tokenizer_t *tokenizer,

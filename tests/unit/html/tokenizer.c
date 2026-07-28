@@ -337,7 +337,8 @@ check_allocation_failures(void)
         result = lxa_html_tokenizer_feed(tkz,
                    span("<!DOCTYPE html PUBLIC 'p' 'x'><style>x</style>"
                         "<script><!--<script>x</script>--></script>"
-                        "<!--co-->x&#65;<A href='&#x80;&amp;'/>\xe2"));
+                        "<!--co-->x&#65;<A href='&#x80;&amp;'"
+                        " HREF='discard&amp;' src='last'/>\xe2"));
         if (result == LXA_HTML_OK) {
             result = lxa_html_tokenizer_finish(tkz);
         }
@@ -423,6 +424,17 @@ check_budget(void)
     CHECK(lxa_html_tokenizer_create_with_budget(&allocator, on_token,
           on_error, &f, &budget, &tkz) == LXA_OK);
     CHECK(lxa_html_tokenizer_feed(tkz, span("<a x=1 y=2>"))
+          == LXA_HTML_LIMIT);
+    CHECK(lxa_html_tokenizer_limit_reason(tkz)
+          == LXA_BUDGET_ATTRS_PER_ELEMENT);
+    lxa_html_tokenizer_destroy(tkz);
+    CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+
+    limits.max_attributes_per_element = 2;
+    CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
+    CHECK(lxa_html_tokenizer_create_with_budget(&allocator, on_token,
+          on_error, &f, &budget, &tkz) == LXA_OK);
+    CHECK(lxa_html_tokenizer_feed(tkz, span("<a x=1 X=2 x=3>"))
           == LXA_HTML_LIMIT);
     CHECK(lxa_html_tokenizer_limit_reason(tkz)
           == LXA_BUDGET_ATTRS_PER_ELEMENT);
@@ -1309,8 +1321,35 @@ main(void)
           && f.errors == 0);
     check_partition(tkz, &f, "<a href=x HREF='y'>",
                     sizeof("<a href=x HREF='y'>") - 1);
-    CHECK(f.count == 2 && f.attribute_count[0] == 2 && f.errors == 1
+    CHECK(f.count == 2 && f.attribute_count[0] == 1 && f.errors == 1
+          && strcmp(f.attribute_names[0][0], "href") == 0
+          && strcmp(f.attribute_values[0][0], "x") == 0
           && strcmp(f.error_code, "duplicate-attribute") == 0);
+    check_partition(tkz, &f, "<a src=1 href=x HREF='bad&bogus;' q=ok>",
+                    sizeof("<a src=1 href=x HREF='bad&bogus;' q=ok>") - 1);
+    CHECK(f.count == 2 && f.attribute_count[0] == 3 && f.errors == 2
+          && strcmp(f.first_error_code, "duplicate-attribute") == 0
+          && strcmp(f.error_code, "unknown-named-character-reference") == 0
+          && strcmp(f.attribute_names[0][0], "src") == 0
+          && strcmp(f.attribute_values[0][0], "1") == 0
+          && strcmp(f.attribute_names[0][1], "href") == 0
+          && strcmp(f.attribute_values[0][1], "x") == 0
+          && strcmp(f.attribute_names[0][2], "q") == 0
+          && strcmp(f.attribute_values[0][2], "ok") == 0);
+    check_partition(tkz, &f, "<a \0=x \xef\xbf\xbd=y href=z>",
+                    sizeof("<a \0=x \xef\xbf\xbd=y href=z>") - 1);
+    CHECK(f.count == 2 && f.attribute_count[0] == 2 && f.errors == 2
+          && strcmp(f.first_error_code, "unexpected-null-character") == 0
+          && strcmp(f.error_code, "duplicate-attribute") == 0
+          && strcmp(f.attribute_names[0][0], "\xef\xbf\xbd") == 0
+          && strcmp(f.attribute_values[0][0], "x") == 0
+          && strcmp(f.attribute_names[0][1], "href") == 0
+          && strcmp(f.attribute_values[0][1], "z") == 0);
+    check_partition(tkz, &f, "<a x=1 X", sizeof("<a x=1 X") - 1);
+    CHECK(f.count == 1 && f.kind[0] == LXA_HTML_EOF && f.errors == 2
+          && strcmp(f.first_error_code, "duplicate-attribute") == 0
+          && strcmp(f.error_code, "eof-in-tag") == 0
+          && f.error_offset == sizeof("<a x=1 X") - 1);
     check_partition(tkz, &f, "<a \xc3\xa9='\xc3\xa9' data-x=\xe2\x82\xac>",
                     sizeof("<a \xc3\xa9='\xc3\xa9' data-x=\xe2\x82\xac>") - 1);
     CHECK(f.count == 2 && f.attribute_count[0] == 2 && f.errors == 0
@@ -2133,6 +2172,21 @@ main(void)
           && f.count == 0
           && lxa_html_tokenizer_callback_status(tkz) == LXA_ERROR_NO_MEMORY);
     f.error_fail = false;
+    lxa_html_tokenizer_reset(tkz);
+    f.count = f.errors = 0;
+    f.error_fail = true;
+    CHECK(lxa_html_tokenizer_feed(tkz, span("<a x=1 X")) == LXA_HTML_OK);
+    CHECK(lxa_html_tokenizer_finish(tkz) == LXA_HTML_CALLBACK_FAILURE
+          && f.count == 0 && f.errors == 1
+          && strcmp(f.error_code, "duplicate-attribute") == 0
+          && lxa_html_tokenizer_callback_status(tkz) == LXA_ERROR_NO_MEMORY
+          && lxa_html_tokenizer_finish(tkz) == LXA_HTML_CALLBACK_FAILURE);
+    f.error_fail = false;
+    lxa_html_tokenizer_reset(tkz);
+    CHECK(lxa_html_tokenizer_feed(tkz, span("<a y=1>")) == LXA_HTML_OK);
+    CHECK(lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK);
+    CHECK(f.attribute_count[0] == 1
+          && strcmp(f.attribute_names[0][0], "y") == 0);
     lxa_html_tokenizer_reset(tkz);
     f.error_fail = true;
     CHECK(lxa_html_tokenizer_feed(tkz, span("&#0;"))
