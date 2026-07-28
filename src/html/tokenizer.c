@@ -703,6 +703,24 @@ emit_comment(lxa_html_tokenizer_t *tokenizer)
 }
 
 static lxa_html_result_t
+pi_to_comment(lxa_html_tokenizer_t *tokenizer)
+{
+    lxa_span_t question = {(const uint8_t *) "?", 1};
+    lxa_span_t target = {tokenizer->name.data, tokenizer->name.length};
+    lxa_html_result_t result = buffer_append(tokenizer, &tokenizer->text,
+                                             question, LXA_BUDGET_TOKEN_BYTES);
+    if (result == LXA_HTML_OK) {
+        result = buffer_append(tokenizer, &tokenizer->text,
+                               target, LXA_BUDGET_TOKEN_BYTES);
+    }
+    if (result == LXA_HTML_OK) {
+        lxa_buffer_clear(&tokenizer->name);
+        tokenizer->state = STATE_BOGUS_COMMENT;
+    }
+    return result;
+}
+
+static lxa_html_result_t
 emit_pi(lxa_html_tokenizer_t *tokenizer)
 {
     lxa_html_token_t token = {0};
@@ -3241,10 +3259,12 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             result = emit_error(tokenizer,
                         "invalid-first-character-of-processing-instruction-target",
                         tokenizer->offset + i);
+            if (result == LXA_HTML_OK) {
+                result = pi_to_comment(tokenizer);
+            }
             if (result != LXA_HTML_OK) {
                 goto fail;
             }
-            tokenizer->state = STATE_BOGUS_COMMENT;
             break;
         case STATE_PI_TARGET:
             if (name_first(c) || (c >= '0' && c <= '9')
@@ -3273,14 +3293,11 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
                                  : "invalid-processing-instruction-target";
                 result = emit_error(tokenizer, code, tokenizer->offset + i);
                 if (result == LXA_HTML_OK) {
-                    result = buffer_append(tokenizer, &tokenizer->text,
-                                           target, LXA_BUDGET_TOKEN_BYTES);
+                    result = pi_to_comment(tokenizer);
                 }
                 if (result != LXA_HTML_OK) {
                     goto fail;
                 }
-                lxa_buffer_clear(&tokenizer->name);
-                tokenizer->state = STATE_BOGUS_COMMENT;
             }
             break;
         case STATE_PI_AFTER_TARGET:

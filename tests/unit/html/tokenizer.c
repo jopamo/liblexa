@@ -335,7 +335,8 @@ check_allocation_failures(void)
             continue;
         }
         result = lxa_html_tokenizer_feed(tkz,
-                   span("<!DOCTYPE html PUBLIC 'p' 'x'><style>x</style>"
+                   span("<?!><?long_target:><!DOCTYPE html PUBLIC 'p' 'x'>"
+                        "<style>x</style>"
                         "<script><!--<script>x</script>--></script>"
                         "<!--co-->x&#65;<A href='&#x80;&amp;'"
                         " HREF='discard&amp;' src='last'/>\xe2"));
@@ -355,7 +356,7 @@ check_allocation_failures(void)
             CHECK(lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK);
         }
         else {
-            CHECK(result == LXA_HTML_OK && f.count == 12);
+            CHECK(result == LXA_HTML_OK && f.count == 14);
             completed = true;
         }
         lxa_html_tokenizer_destroy(tkz);
@@ -1805,7 +1806,7 @@ main(void)
           && strcmp(f.error_code, "incorrectly-opened-comment") == 0);
     check_partition(tkz, &f, "<?!x>", sizeof("<?!x>") - 1);
     CHECK(f.count == 2 && f.kind[0] == LXA_HTML_COMMENT
-          && strcmp(f.bytes[0], "!x") == 0 && f.errors == 1
+          && strcmp(f.bytes[0], "?!x") == 0 && f.errors == 1
           && f.error_offset == 2
           && strcmp(f.error_code,
               "invalid-first-character-of-processing-instruction-target") == 0);
@@ -1822,20 +1823,24 @@ main(void)
     check_partition(tkz, &f, "<?Ab-9_:\xc2\x85>",
                     sizeof("<?Ab-9_:\xc2\x85>") - 1);
     CHECK(f.count == 2 && f.kind[0] == LXA_HTML_COMMENT
-          && strcmp(f.bytes[0], "Ab-9_:\xc2\x85") == 0
+          && strcmp(f.bytes[0], "?Ab-9_:\xc2\x85") == 0
           && f.errors == 2 && f.error_offset == 8
           && strcmp(f.error_code, "control-character-in-input-stream") == 0);
     check_partition(tkz, &f, "<?XmL-StYleShEet foo?>",
                     sizeof("<?XmL-StYleShEet foo?>") - 1);
     CHECK(f.count == 2 && f.kind[0] == LXA_HTML_COMMENT
-          && strcmp(f.bytes[0], "XmL-StYleShEet foo?") == 0
+          && strcmp(f.bytes[0], "?XmL-StYleShEet foo?") == 0
           && f.errors == 1 && f.error_offset == 16
           && strcmp(f.error_code,
                     "disallowed-processing-instruction-target") == 0);
     check_partition(tkz, &f, "<?XML>", sizeof("<?XML>") - 1);
     CHECK(f.count == 2 && f.kind[0] == LXA_HTML_COMMENT
-          && strcmp(f.bytes[0], "XML") == 0 && f.errors == 1
+          && strcmp(f.bytes[0], "?XML") == 0 && f.errors == 1
           && f.error_offset == 5);
+    check_partition(tkz, &f, "<?a:", sizeof("<?a:") - 1);
+    CHECK(f.count == 2 && f.kind[0] == LXA_HTML_COMMENT
+          && strcmp(f.bytes[0], "?a:") == 0 && f.errors == 1
+          && strcmp(f.error_code, "invalid-processing-instruction-target") == 0);
     {
         static const char pi[] = "<?Ab-9_ x?" "?>tail";
         check_partition(tkz, &f, pi, sizeof(pi) - 1);

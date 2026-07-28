@@ -706,8 +706,8 @@ main(void)
                    && record.kind == LXA_DOM_KIND_COMMENT);
         TEST_CHECK(lxa_dom_nodes_character_read(nodes, pi_comment, &value)
                    == LXA_OK);
-        TEST_CHECK(value.length == sizeof("xml version=\"1.0\"?") - 1
-                   && memcmp(value.data, "xml version=\"1.0\"?",
+        TEST_CHECK(value.length == sizeof("?xml version=\"1.0\"?") - 1
+                   && memcmp(value.data, "?xml version=\"1.0\"?",
                              value.length) == 0);
         TEST_CHECK(lxa_dom_nodes_first_child(nodes,
             lxa_html_document_body(document), &link) == LXA_OK);
@@ -723,7 +723,7 @@ main(void)
         == LXA_OK);
     {
         const char sniffed[] =
-            "<!-- lead --><!--xml version=\"1.0\"?-->"
+            "<!-- lead --><!--?xml version=\"1.0\"?-->"
             "<!DOCTYPE html><html><head></head><body>"
             "<a href=\"next\">next</a></body></html>";
         TEST_CHECK(sink.length == sizeof(sniffed) - 1
