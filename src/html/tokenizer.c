@@ -7,9 +7,6 @@
 #include "html-charref-overrides.h"
 #include "html-entities.h"
 
-/* The first candidate deliberately stops at syntax it cannot tokenize.
- * It is not used by the public HTML parser until the other states qualify.
- */
 typedef enum {
     STATE_DATA,
     STATE_RCDATA,
