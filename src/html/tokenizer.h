@@ -103,7 +103,10 @@ typedef enum {
  * Do not promote this candidate until the consumed grammar and tree are qualified.
  * This candidate charges accepted input, scanner work and all retained
  * tokenizer/codec objects and text/name capacity to the shared budget; it
- * checks token/name sizes before append. Diagnostics are callback-only.
+ * checks token/name sizes before append. Large attribute sets use a temporary
+ * budgeted keyed-name index; key acquisition failure returns ENTROPY.
+ * The index owns copied names and is released after token delivery or during
+ * reset/destruction, including partial failure. Diagnostics are callback-only.
  */
 lxa_status_t lxa_html_tokenizer_create(
     const lxa_allocator_t *allocator, lxa_html_token_callback_t on_token,

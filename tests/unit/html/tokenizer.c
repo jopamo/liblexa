@@ -369,6 +369,153 @@ check_allocation_failures(void)
 }
 
 static void
+on_large_attributes_check(const lxa_html_token_t *token, size_t expected)
+{
+    CHECK(token->attribute_count == expected);
+    for (size_t i = 0; i < expected; i++) {
+        char name[16];
+        int length = snprintf(name, sizeof(name), "a%05zu", i ^ 32);
+        CHECK(length > 0 && (size_t) length < sizeof(name)
+              && token->attributes[i].name.length == (size_t) length
+              && memcmp(token->attributes[i].name.data, name, (size_t) length) == 0
+              && token->attributes[i].value.length == 1
+              && token->attributes[i].value.data[0] == 'x');
+    }
+}
+
+static lxa_status_t
+on_large_attributes(void *context, lxa_html_tokenizer_t *tokenizer,
+                    const lxa_html_token_t *token)
+{
+    fixture_t *f = context;
+    (void) tokenizer;
+    if (token->kind == LXA_HTML_START_TAG) {
+        CHECK(f->count < 2);
+        on_large_attributes_check(token, f->attribute_count[f->count]);
+    }
+    else {
+        CHECK(token->kind == LXA_HTML_EOF);
+    }
+    f->count++;
+    return LXA_OK;
+}
+
+static void
+check_large_attributes(void)
+{
+    char input[2048];
+    size_t used = 0, prefix = 0, n;
+    bool completed = false;
+    memcpy(input, "<a", 2);
+    used = 2;
+    for (size_t i = 0; i < 64; i++) {
+        int length = snprintf(input + used, sizeof(input) - used,
+                              " a%05zu=x", i ^ 32);
+        CHECK(length > 0 && (size_t) length < sizeof(input) - used);
+        used += (size_t) length;
+        if (i == 31) prefix = used;
+        if (i == 15 || i == 31 || i == 63) {
+            const char *duplicate = i == 31 ? " A00063=y" : " A00032=y";
+            size_t length = strlen(duplicate);
+            CHECK(length < sizeof(input) - used);
+            memcpy(input + used, duplicate, length);
+            used += length;
+        }
+    }
+    {
+        const char suffix[] = "><a a00032=x>";
+        CHECK(sizeof(suffix) <= sizeof(input) - used);
+        memcpy(input + used, suffix, sizeof(suffix));
+        used += sizeof(suffix) - 1;
+    }
+    for (n = 0; n < 256; n++) {
+        fault_t state = {.fail_at = n};
+        lxa_allocator_t allocator = {&state, fault_allocate, fault_resize,
+                                     fault_release};
+        lxa_budget_t budget;
+        lxa_html_tokenizer_t *tkz = NULL;
+        fixture_t f = {0};
+        lxa_status_t status;
+        lxa_html_result_t result;
+        f.attribute_count[0] = 64;
+        f.attribute_count[1] = 1;
+        CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        status = lxa_html_tokenizer_create_with_budget(&allocator,
+            on_large_attributes, on_error, &f, &budget, &tkz);
+        if (status != LXA_OK) {
+            CHECK(status == LXA_ERROR_NO_MEMORY && state.failed
+                  && tkz == NULL && state.live == 0
+                  && budget.used[LXA_BUDGET_MEMORY] == 0);
+            continue;
+        }
+        result = LXA_HTML_OK;
+        for (size_t offset = 0; result == LXA_HTML_OK && offset < used;) {
+            size_t length = used - offset < 7 ? used - offset : 7;
+            result = lxa_html_tokenizer_feed(tkz,
+                (lxa_span_t) {(const uint8_t *) input + offset, length});
+            offset += length;
+        }
+        if (result == LXA_HTML_OK) {
+            result = lxa_html_tokenizer_finish(tkz);
+        }
+        if (state.failed) {
+            CHECK(result == LXA_HTML_NO_MEMORY
+                  && lxa_html_tokenizer_finish(tkz) == result);
+            lxa_html_tokenizer_reset(tkz);
+            memset(&f, 0, sizeof(f));
+            f.attribute_count[0] = 1;
+            CHECK(lxa_html_tokenizer_feed(tkz, span("<a a00032=x>"))
+                  == LXA_HTML_OK);
+            CHECK(lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK && f.count == 2);
+        }
+        else {
+            CHECK(result == LXA_HTML_OK && f.count == 3 && f.errors == 3);
+            completed = true;
+        }
+        lxa_html_tokenizer_destroy(tkz);
+        CHECK(state.live == 0 && budget.used[LXA_BUDGET_MEMORY] == 0);
+        if (completed) break;
+    }
+    CHECK(completed && n >= 64);
+    {
+        lxa_allocator_t allocator = lxa_allocator_default();
+        lxa_budget_t budget;
+        lxa_html_tokenizer_t *tkz = NULL;
+        fixture_t f = {0};
+        CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+            on_large_attributes, on_error, &f, &budget, &tkz) == LXA_OK);
+        CHECK(lxa_html_tokenizer_feed(tkz,
+            (lxa_span_t) {(const uint8_t *) input, prefix}) == LXA_HTML_OK);
+        budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY];
+        CHECK(lxa_html_tokenizer_feed(tkz, span(" a00000=")) == LXA_HTML_LIMIT
+              && lxa_html_tokenizer_limit_reason(tkz) == LXA_BUDGET_MEMORY);
+        lxa_html_tokenizer_destroy(tkz);
+        CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+    {
+        char input[160];
+        lxa_allocator_t allocator = lxa_allocator_default();
+        lxa_limits_t limits = lxa_limits_default();
+        lxa_budget_t budget;
+        lxa_html_tokenizer_t *tkz = NULL;
+        fixture_t f = {0};
+        int length = snprintf(input, sizeof(input), "<a n%050d=x n%050d=y>", 0, 0);
+        CHECK(length > 0 && (size_t) length < sizeof(input));
+        limits.max_work = 170;
+        CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
+        CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+            on_large_attributes, on_error, &f, &budget, &tkz) == LXA_OK);
+        CHECK(lxa_html_tokenizer_feed(tkz,
+            (lxa_span_t) {(const uint8_t *) input, (size_t) length})
+            == LXA_HTML_LIMIT
+            && lxa_html_tokenizer_limit_reason(tkz) == LXA_BUDGET_WORK);
+        lxa_html_tokenizer_destroy(tkz);
+        CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+}
+
+static void
 check_budget(void)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -2243,6 +2390,7 @@ main(void)
     lxa_html_tokenizer_destroy(tkz);
 
     check_allocation_failures();
+    check_large_attributes();
     check_budget();
     check_prepaid_input();
 
