@@ -80,9 +80,17 @@ locate(lxa_table_t *table, lxa_span_t key, uint64_t hash,
                 candidate = position;
             }
         }
-        else if (slot->hash == hash && slot->length == key.length
-                 && (key.length == 0
-                     || memcmp(slot->key, key.data, key.length) == 0)) {
+        else if (slot->hash == hash && slot->length == key.length) {
+            if (key.length != 0) {
+                status = charge(table, LXA_BUDGET_WORK,
+                                 key.length / 8 + (key.length % 8 != 0));
+                if (status != LXA_OK) {
+                    return status;
+                }
+                if (memcmp(slot->key, key.data, key.length) != 0) {
+                    continue;
+                }
+            }
             *found = true;
             *index = position;
             return LXA_OK;

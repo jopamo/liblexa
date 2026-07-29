@@ -189,6 +189,58 @@ collision_sequence(const lxa_allocator_t *allocator)
 }
 
 static void
+comparison_sequence(const lxa_allocator_t *allocator)
+{
+    lxa_table_t *table = NULL;
+    lxa_budget_t budget;
+    lxa_limits_t limits = lxa_limits_default();
+    uint8_t bytes[17] = {0};
+    lxa_span_t key = {bytes, sizeof(bytes)};
+    int original = 1, replacement = 2;
+    size_t memory;
+    bool found;
+    void *value;
+    CHECK(lxa_budget_init(&budget, &limits), LXA_OK);
+    CHECK(lxa_table_create_with_budget(allocator, &budget, fixed_key, NULL,
+                                       &table), LXA_OK);
+    CHECK(lxa_table_set(table, key, &original, NULL, NULL), LXA_OK);
+    memory = budget.used[LXA_BUDGET_MEMORY];
+    for (size_t operation = 0; operation < 3; operation++) {
+        uint64_t used = budget.used[LXA_BUDGET_WORK];
+        /* Three hash blocks and one probe fit, but the comparison does not. */
+        budget.limits.max_work = used + 4;
+        found = true;
+        value = &replacement;
+        if (operation == 0) {
+            CHECK(lxa_table_find(table, key, &found, &value), LXA_ERROR_LIMIT);
+        }
+        else if (operation == 1) {
+            CHECK(lxa_table_set(table, key, &replacement, &found, &value),
+                  LXA_ERROR_LIMIT);
+        }
+        else {
+            CHECK(lxa_table_delete(table, key, &found, &value), LXA_ERROR_LIMIT);
+        }
+        REQUIRE(lxa_table_limit_reason(table) == LXA_BUDGET_WORK
+                && budget.used[LXA_BUDGET_WORK] == used + 4
+                && !found && value == NULL && lxa_table_length(table) == 1
+                && budget.used[LXA_BUDGET_MEMORY] == memory);
+        budget.limits.max_work = limits.max_work;
+        CHECK(lxa_table_find(table, key, &found, &value), LXA_OK);
+        REQUIRE(found && value == &original);
+    }
+    {
+        uint64_t used = budget.used[LXA_BUDGET_WORK];
+        budget.limits.max_work = used + 7;
+        CHECK(lxa_table_find(table, key, &found, &value), LXA_OK);
+        REQUIRE(found && value == &original
+                && budget.used[LXA_BUDGET_WORK] == used + 7);
+    }
+    lxa_table_destroy(table);
+    REQUIRE(budget.used[LXA_BUDGET_MEMORY] == 0);
+}
+
+static void
 failure_sequence(void)
 {
     unsigned fail_at;
@@ -421,6 +473,7 @@ main(void)
     REQUIRE(budget.used[LXA_BUDGET_MEMORY] == 0);
     random_sequence(&allocator);
     collision_sequence(&allocator);
+    comparison_sequence(&allocator);
     failure_sequence();
     clear_sequence();
     return 0;

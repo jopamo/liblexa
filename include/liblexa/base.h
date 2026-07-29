@@ -645,7 +645,8 @@ lxa_status_t lxa_table_create(const lxa_allocator_t *allocator,
                               lxa_table_t **out);
 /* budget is borrowed and must outlive the table. NULL uses a private bounded
  * default. A NULL entropy callback uses OS entropy and never falls back to
- * a predictable key. Budget WORK charges each hashed block and probed slot;
+ * a predictable key. Budget WORK charges each hashed block, compared
+ * eight-byte key block (including a partial tail), and probed slot;
  * MEMORY charges table, slot capacity and allocated key bytes. The caller
  * charges any separate document-level string/atom quotas.
  */
