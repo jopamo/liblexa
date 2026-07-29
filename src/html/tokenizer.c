@@ -3375,7 +3375,8 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
                 i++;
             }
             else if ((c >= 'a' && c <= 'z')
-                     || (c >= 'A' && c <= 'Z')) {
+                     || (c >= 'A' && c <= 'Z')
+                     || (c >= '0' && c <= '9')) {
                 tokenizer->reference_name[0] = '&';
                 tokenizer->reference_name[1] = (char) c;
                 tokenizer->reference_length = 2;

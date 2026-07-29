@@ -1399,6 +1399,31 @@ main(void)
                     sizeof("<a x='unterminated") - 1);
     CHECK(f.count == 1 && f.kind[0] == LXA_HTML_EOF && f.errors == 1
           && strcmp(f.error_code, "eof-in-tag") == 0);
+    check_partition(tkz, &f, "&1a;", sizeof("&1a;") - 1);
+    CHECK(f.count == 2 && strcmp(f.bytes[0], "&1a;") == 0
+          && f.errors == 1 && f.error_offset == 3
+          && strcmp(f.error_code, "unknown-named-character-reference") == 0);
+    check_partition(tkz, &f, "<title>&0;</title>",
+                    sizeof("<title>&0;</title>") - 1);
+    CHECK(f.count == 4 && strcmp(f.bytes[1], "&0;") == 0
+          && f.errors == 1 && f.error_offset == 9
+          && strcmp(f.error_code, "unknown-named-character-reference") == 0);
+    check_partition(tkz, &f, "<a x='&1;' y=&9;>",
+                    sizeof("<a x='&1;' y=&9;>") - 1);
+    CHECK(f.count == 2 && f.attribute_count[0] == 2 && f.errors == 2
+          && strcmp(f.attribute_values[0][0], "&1;") == 0
+          && strcmp(f.attribute_values[0][1], "&9;") == 0
+          && strcmp(f.error_code, "unknown-named-character-reference") == 0);
+    check_partition(tkz, &f, "&12 &3", sizeof("&12 &3") - 1);
+    CHECK(f.count == 2 && strcmp(f.bytes[0], "&12 &3") == 0 && f.errors == 0);
+    {
+        static const char long_digits[] =
+            "&1234567890123456789012345678901234567890;";
+        check_partition(tkz, &f, long_digits, sizeof(long_digits) - 1);
+        CHECK(f.count == 2 && strcmp(f.bytes[0], long_digits) == 0
+              && f.errors == 1 && f.error_offset == sizeof(long_digits) - 2
+              && strcmp(f.error_code, "unknown-named-character-reference") == 0);
+    }
     {
         static const char named_refs[] =
             "a&notit; &amp &bogus; &NotEqualTilde;"
