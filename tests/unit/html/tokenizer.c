@@ -516,6 +516,69 @@ check_large_attributes(void)
 }
 
 static void
+check_token_sizes(void)
+{
+    static const struct {
+        const char *input;
+        size_t length, maximum;
+        lxa_html_result_t expected;
+    } cases[] = {
+        {"<AbC>", sizeof("<AbC>") - 1, 3, LXA_HTML_OK},
+        {"<AbCD>", sizeof("<AbCD>") - 1, 3, LXA_HTML_LIMIT},
+        {"<a\xc3\xa9>", sizeof("<a\xc3\xa9>") - 1, 3, LXA_HTML_OK},
+        {"<a\xc3\xa9x>", sizeof("<a\xc3\xa9x>") - 1, 3, LXA_HTML_LIMIT},
+        {"<a\0>", sizeof("<a\0>") - 1, 3, LXA_HTML_LIMIT},
+        {"<!DOCTYPE abc>", sizeof("<!DOCTYPE abc>") - 1, 3, LXA_HTML_OK},
+        {"<!DOCTYPE abcd>", sizeof("<!DOCTYPE abcd>") - 1, 3, LXA_HTML_LIMIT},
+        {"<?abc>", sizeof("<?abc>") - 1, 3, LXA_HTML_OK},
+        {"<?abcd>", sizeof("<?abcd>") - 1, 3, LXA_HTML_LIMIT},
+        {"<?abc xyz>", sizeof("<?abc xyz>") - 1, 6, LXA_HTML_OK},
+        {"<?abc xyz>", sizeof("<?abc xyz>") - 1, 5, LXA_HTML_LIMIT},
+        {"<?abc x?x>", sizeof("<?abc x?x>") - 1, 5, LXA_HTML_LIMIT},
+        {"<?abc \xc3\xa9>", sizeof("<?abc \xc3\xa9>") - 1, 4, LXA_HTML_LIMIT},
+        {"<?abc \0>", sizeof("<?abc \0>") - 1, 3, LXA_HTML_LIMIT},
+        {"<?abc \xe2", sizeof("<?abc \xe2") - 1, 5, LXA_HTML_LIMIT}
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        for (size_t chunked = 0; chunked < 2; chunked++) {
+            lxa_limits_t limits = lxa_limits_default();
+            lxa_budget_t budget;
+            lxa_html_tokenizer_t *tkz = NULL;
+            fixture_t f = {0};
+            lxa_html_result_t result = LXA_HTML_OK;
+            f.fail_on = (lxa_html_token_kind_t) 255;
+            limits.max_token_bytes = cases[i].maximum;
+            CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
+            CHECK(lxa_html_tokenizer_create_with_budget(&allocator, on_token,
+                on_error, &f, &budget, &tkz) == LXA_OK);
+            for (size_t offset = 0;
+                 result == LXA_HTML_OK && offset < cases[i].length;) {
+                size_t length = chunked ? 1 : cases[i].length;
+                result = lxa_html_tokenizer_feed(tkz, (lxa_span_t) {
+                    (const uint8_t *) cases[i].input + offset, length
+                });
+                offset += length;
+            }
+            if (result == LXA_HTML_OK) {
+                result = lxa_html_tokenizer_finish(tkz);
+            }
+            CHECK(result == cases[i].expected);
+            if (result == LXA_HTML_LIMIT) {
+                CHECK(lxa_html_tokenizer_limit_reason(tkz)
+                      == LXA_BUDGET_TOKEN_BYTES
+                      && lxa_html_tokenizer_finish(tkz) == LXA_HTML_LIMIT);
+                lxa_html_tokenizer_reset(tkz);
+                CHECK(lxa_html_tokenizer_feed(tkz, span("ok")) == LXA_HTML_OK
+                      && lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK);
+            }
+            lxa_html_tokenizer_destroy(tkz);
+            CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+        }
+    }
+}
+
+static void
 check_budget(void)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -2391,6 +2454,7 @@ main(void)
 
     check_allocation_failures();
     check_large_attributes();
+    check_token_sizes();
     check_budget();
     check_prepaid_input();
 
