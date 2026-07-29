@@ -653,6 +653,25 @@ check_budget(void)
     CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
 
     limits = lxa_limits_default();
+    limits.max_name_bytes = 2;
+    CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
+    CHECK(lxa_html_tokenizer_create_with_budget(&allocator, on_token,
+          on_error, &f, &budget, &tkz) == LXA_OK);
+    CHECK(lxa_html_tokenizer_set_text_mode(tkz, LXA_HTML_RCDATA, span("ab1"))
+          == LXA_HTML_LIMIT);
+    CHECK(lxa_html_tokenizer_set_text_mode(tkz, LXA_HTML_RAWTEXT,
+          (lxa_span_t) {(const uint8_t *) "a", SIZE_MAX}) == LXA_HTML_LIMIT);
+    CHECK(lxa_html_tokenizer_set_text_mode(tkz, LXA_HTML_SCRIPT_DATA,
+          (lxa_span_t) {NULL, SIZE_MAX}) == LXA_HTML_BAD_ARGUMENT);
+    CHECK(lxa_html_tokenizer_limit_reason(tkz) == LXA_BUDGET_NAME_BYTES);
+    f.count = 0;
+    CHECK(lxa_html_tokenizer_feed(tkz, span("<b>")) == LXA_HTML_OK
+          && lxa_html_tokenizer_finish(tkz) == LXA_HTML_OK
+          && f.kind[0] == LXA_HTML_START_TAG && strcmp(f.bytes[0], "b") == 0);
+    lxa_html_tokenizer_destroy(tkz);
+    CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+
+    limits = lxa_limits_default();
     limits.max_token_bytes = 6;
     CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     CHECK(lxa_html_tokenizer_create_with_budget(&allocator, on_token,

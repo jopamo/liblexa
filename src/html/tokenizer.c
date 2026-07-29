@@ -1429,9 +1429,16 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
     if (mode == LXA_HTML_RCDATA || mode == LXA_HTML_RAWTEXT
         || mode == LXA_HTML_SCRIPT_DATA) {
         lxa_html_result_t result;
+        lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+        lxa_status_t status;
         size_t i;
         if (tokenizer->state != STATE_DATA || appropriate_end_tag.length == 0) {
             return LXA_HTML_BAD_ARGUMENT;
+        }
+        status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
+                                       appropriate_end_tag.length, &reason);
+        if (status != LXA_OK) {
+            return budget_result(tokenizer, status, reason);
         }
         for (i = 0; i < appropriate_end_tag.length; i++) {
             uint8_t c = appropriate_end_tag.data[i];
