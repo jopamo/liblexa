@@ -73,6 +73,326 @@ test_slot(lxa_dom_ref_t ref)
            ? slot : LXA_ID_NONE;
 }
 
+static lxa_span_t
+span(const char *text)
+{
+    return (lxa_span_t){(const uint8_t *) text, strlen(text)};
+}
+
+static bool
+equal_span(lxa_span_t a, lxa_span_t b)
+{
+    return a.length == b.length
+           && (a.length == 0 || memcmp(a.data, b.data, a.length) == 0);
+}
+
+static void
+prepare_child_clones(lxa_dom_nodes_t *nodes, lxa_dom_ref_t *source,
+                     lxa_dom_ref_t *target, lxa_dom_ref_t old[2])
+{
+    lxa_dom_ref_t child, attribute, parent, fragment;
+    uint8_t binary[512];
+    memset(binary, 'a', sizeof(binary));
+    binary[1] = 0;
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("option"), source)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("div"), &parent)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("selectedcontent"),
+                                                 target) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, *target)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+        (lxa_span_t){binary, sizeof(binary)}, &child) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, *source, child)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes,
+        span("linearGradient"), LXA_DOM_NS_SVG, &parent) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, *source, parent)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_foreign_attribute(nodes, span("xlink:href"),
+        span("x"), LXA_DOM_ATTR_NS_XLINK, &attribute) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, parent, attribute) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_COMMENT,
+                                              span("comment"), &child) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, child)
+               == LXA_OK);
+    parent = *source;
+    for (unsigned i = 0; i < 2; ++i) {
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("template"),
+                                                     &child) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, child)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_draft(nodes,
+            LXA_DOM_KIND_DOCUMENT_FRAGMENT, &fragment) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_bind_template(nodes, child, fragment) == LXA_OK);
+        parent = fragment;
+    }
+    TEST_CHECK(lxa_dom_nodes_append_pi(nodes, span("pi"), span("data"), &child)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, child)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+                                              span("nested"), &child) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, child)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("span"), &old[0])
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_COMMENT,
+                                              span("old"), &old[1]) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, *target, old[0])
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, *target, old[1])
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+                                              span("retained"), &child) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old[0], child)
+               == LXA_OK);
+}
+
+static void
+check_cloned_children(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
+                      lxa_dom_ref_t target)
+{
+    lxa_dom_ref_t a, b;
+    TEST_CHECK(lxa_dom_nodes_first_child(nodes, source, &a) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_first_child(nodes, target, &b) == LXA_OK);
+    while (a.handle != LXA_HANDLE_NONE) {
+        lxa_dom_record_t ar, br;
+        lxa_span_t av, bv, an, bn;
+        TEST_CHECK(b.handle != LXA_HANDLE_NONE && a.handle != b.handle);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, a, &ar) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, b, &br) == LXA_OK
+                   && ar.kind == br.kind);
+        if (ar.kind == LXA_DOM_KIND_ELEMENT) {
+            lxa_dom_namespace_t ans, bns;
+            lxa_dom_ref_t aa = {0}, ba = {0}, af, bf;
+            TEST_CHECK(lxa_dom_nodes_element_namespace(nodes, a, &ans) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_element_namespace(nodes, b, &bns) == LXA_OK
+                       && ans == bns);
+            TEST_CHECK(lxa_dom_nodes_element_name(nodes, a, &an) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_element_name(nodes, b, &bn) == LXA_OK
+                       && equal_span(an, bn));
+            do {
+                lxa_dom_attr_namespace_t a_ns, b_ns;
+                TEST_CHECK(lxa_dom_nodes_attribute_next(nodes, a, aa, &aa)
+                           == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_attribute_next(nodes, b, ba, &ba)
+                           == LXA_OK);
+                if (aa.handle == LXA_HANDLE_NONE) {
+                    TEST_CHECK(ba.handle == LXA_HANDLE_NONE);
+                    break;
+                }
+                TEST_CHECK(ba.handle != LXA_HANDLE_NONE && aa.handle != ba.handle);
+                TEST_CHECK(lxa_dom_nodes_attribute_namespace(nodes, aa, &a_ns,
+                                                              &an) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_attribute_namespace(nodes, ba, &b_ns,
+                    &bn) == LXA_OK && a_ns == b_ns && equal_span(an, bn));
+                TEST_CHECK(lxa_dom_nodes_attribute_read(nodes, aa, &an, &av)
+                           == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_attribute_read(nodes, ba, &bn, &bv)
+                           == LXA_OK && equal_span(an, bn) && equal_span(av, bv));
+            } while (true);
+            check_cloned_children(nodes, a, b);
+            TEST_CHECK(lxa_dom_nodes_template_contents(nodes, a, &af) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_template_contents(nodes, b, &bf) == LXA_OK);
+            if (af.handle != LXA_HANDLE_NONE) {
+                lxa_dom_ref_t owner;
+                TEST_CHECK(bf.handle != LXA_HANDLE_NONE && af.handle != bf.handle);
+                TEST_CHECK(lxa_dom_nodes_template_owner(nodes, bf, &owner)
+                           == LXA_OK && owner.handle == b.handle);
+                check_cloned_children(nodes, af, bf);
+            }
+            else TEST_CHECK(bf.handle == LXA_HANDLE_NONE);
+        }
+        else if (ar.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION) {
+            TEST_CHECK(lxa_dom_nodes_pi_read(nodes, a, &an, &av) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_pi_read(nodes, b, &bn, &bv) == LXA_OK
+                       && equal_span(an, bn) && equal_span(av, bv));
+        }
+        else {
+            TEST_CHECK(lxa_dom_nodes_character_read(nodes, a, &av) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_character_read(nodes, b, &bv) == LXA_OK
+                       && equal_span(av, bv));
+        }
+        TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, a, &a) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, b, &b) == LXA_OK);
+    }
+    TEST_CHECK(b.handle == LXA_HANDLE_NONE);
+}
+
+static void
+check_child_clones(void)
+{
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        bool success = false;
+        for (size_t failure = 0; failure < 4096 && !success; ++failure) {
+            test_alloc_t state = {0, SIZE_MAX, 0};
+            lxa_allocator_t allocator = {&state, allocate, resize, release};
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_dom_ref_t source, target, old[2];
+            lxa_dom_record_t before, after, old_records[2];
+            lxa_status_t status;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                        &nodes) == LXA_OK);
+            prepare_child_clones(nodes, &source, &target, old);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, target, &before) == LXA_OK);
+            for (unsigned i = 0; i < 2; ++i)
+                TEST_CHECK(lxa_dom_nodes_read(nodes, old[i], &old_records[i])
+                           == LXA_OK);
+            if (mode == 0) state.fail_at = state.calls + failure;
+            else budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + failure;
+            status = lxa_dom_nodes_replace_children_with_clones(nodes, target,
+                                                                 source);
+            state.fail_at = SIZE_MAX;
+            budget.limits = lxa_limits_default();
+            TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK);
+            if (status == LXA_OK) {
+                success = true;
+                TEST_CHECK(after.parent == before.parent
+                           && after.prev == before.prev && after.next == before.next);
+                check_cloned_children(nodes, source, target);
+                for (unsigned i = 0; i < 2; ++i) {
+                    TEST_CHECK(lxa_dom_nodes_read(nodes, old[i], &after) == LXA_OK
+                               && after.parent == LXA_ID_NONE
+                               && after.prev == LXA_ID_NONE && after.next == LXA_ID_NONE
+                               && after.first_child == old_records[i].first_child
+                               && after.last_child == old_records[i].last_child);
+                }
+                TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes,
+                    target, target) == LXA_OK);
+                check_cloned_children(nodes, source, target);
+                TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes,
+                    target, (lxa_dom_ref_t){0}) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK
+                           && after.first_child == LXA_ID_NONE
+                           && after.last_child == LXA_ID_NONE);
+            }
+            else {
+                TEST_CHECK(status == (mode == 0 ? LXA_ERROR_NO_MEMORY
+                                                : LXA_ERROR_LIMIT));
+                TEST_CHECK(memcmp(&before, &after, sizeof(before)) == 0);
+                for (unsigned i = 0; i < 2; ++i) {
+                    TEST_CHECK(lxa_dom_nodes_read(nodes, old[i], &after) == LXA_OK
+                               && memcmp(&old_records[i], &after, sizeof(after)) == 0);
+                }
+            }
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(state.active == 0 && budget.used[LXA_BUDGET_MEMORY] == 0);
+        }
+        TEST_CHECK(success);
+    }
+    {
+        test_alloc_t state = {0, SIZE_MAX, 0};
+        lxa_allocator_t allocator = {&state, allocate, resize, release};
+        lxa_budget_t budget;
+        lxa_dom_nodes_t *nodes, *other;
+        lxa_dom_ref_t source, target, old[2], first, owner, fragment;
+        lxa_dom_record_t before, after, saved;
+        TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                    &nodes) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_create(&allocator, &other) == LXA_OK);
+        prepare_child_clones(nodes, &source, &target, old);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, target, &before) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(other, target, source)
+                   == LXA_ERROR_ARGUMENT);
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes,
+            (lxa_dom_ref_t){0}, source) == LXA_ERROR_ARGUMENT);
+        TEST_CHECK(lxa_dom_nodes_first_child(nodes, source, &first) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, target, first)
+                   == LXA_ERROR_ARGUMENT);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, first, &saved) == LXA_OK);
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[test_slot(first)].next =
+            test_slot(first);
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, target, source)
+                   == LXA_ERROR_ARGUMENT);
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[test_slot(first)] = saved;
+        TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK
+                   && memcmp(&before, &after, sizeof(before)) == 0);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, old[1], &saved) == LXA_OK);
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[test_slot(old[1])].prev =
+            LXA_ID_NONE;
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, target, source)
+                   == LXA_ERROR_ARGUMENT);
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[test_slot(old[1])] = saved;
+        for (unsigned limit = 0; limit < 5; ++limit) {
+            lxa_budget_kind_t reason;
+            budget.limits = lxa_limits_default();
+            if (limit < 2) {
+                budget.limits.max_nodes = (uint32_t) budget.used[LXA_BUDGET_NODES]
+                                         + (limit == 0 ? 0 : 5);
+                reason = LXA_BUDGET_NODES;
+            }
+            else if (limit == 2) {
+                budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY];
+                reason = LXA_BUDGET_MEMORY;
+            }
+            else if (limit == 3) {
+                budget.limits.max_tree_depth = 6;
+                reason = LXA_BUDGET_TREE_DEPTH;
+            }
+            else {
+                budget.limits.max_work = budget.used[LXA_BUDGET_WORK];
+                reason = LXA_BUDGET_WORK;
+            }
+            TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, target,
+                limit == 4 ? (lxa_dom_ref_t){0} : source) == LXA_ERROR_LIMIT);
+            TEST_CHECK(nodes->limit_reason == reason);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK
+                       && memcmp(&before, &after, sizeof(before)) == 0);
+            budget.limits = lxa_limits_default();
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        }
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("template"),
+                                                     &owner) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_draft(nodes,
+            LXA_DOM_KIND_DOCUMENT_FRAGMENT, &fragment) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_bind_template(nodes, owner, fragment) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, owner, source)
+                   == LXA_ERROR_ARGUMENT);
+        TEST_CHECK(lxa_dom_nodes_reparent_constructed_child(nodes, fragment, target)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, target, &before) == LXA_OK);
+        budget.limits.max_tree_depth = 3;
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, target, source)
+                   == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_TREE_DEPTH);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK
+                   && memcmp(&before, &after, sizeof(before)) == 0);
+        budget.limits = lxa_limits_default();
+        budget.limits.max_tree_depth = 7;
+        TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, fragment,
+                                                              source) == LXA_OK);
+        check_cloned_children(nodes, source, fragment);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, target, &after) == LXA_OK
+                   && after.parent == LXA_ID_NONE
+                   && after.first_child == before.first_child);
+        {
+            lxa_dom_ref_t empty;
+            size_t count;
+            TEST_CHECK(lxa_dom_nodes_append_draft(nodes,
+                LXA_DOM_KIND_DOCUMENT_FRAGMENT, &empty) == LXA_OK);
+            count = lxa_dom_nodes_length(nodes);
+            budget.limits.max_nodes = (uint32_t) budget.used[LXA_BUDGET_NODES];
+            budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY];
+            TEST_CHECK(lxa_dom_nodes_replace_children_with_clones(nodes, fragment,
+                                                                  empty) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_length(nodes) == count);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, fragment, &after) == LXA_OK
+                       && after.first_child == LXA_ID_NONE
+                       && after.last_child == LXA_ID_NONE);
+        }
+        budget.limits = lxa_limits_default();
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_dom_nodes_destroy(other);
+        lxa_dom_nodes_destroy(nodes);
+        TEST_CHECK(state.active == 0 && budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+}
+
 int
 main(void)
 {
@@ -86,6 +406,7 @@ main(void)
     unsigned int i, failure;
     bool failed = false;
 
+    check_child_clones();
     TEST_CHECK(lxa_dom_nodes_create(&allocator, &a) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create(&allocator, &b) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_append_draft(a, LXA_DOM_KIND_TEXT, &first) == LXA_OK);

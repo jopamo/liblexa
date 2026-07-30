@@ -24,6 +24,104 @@ fixed_entropy(void *context, uint8_t key[16])
     return LXA_OK;
 }
 
+static void
+check_element_clone(void)
+{
+    static const struct {
+        const char *name;
+        lxa_dom_attr_namespace_t ns;
+    } attributes[] = {
+        {"viewBox", LXA_DOM_ATTR_NS_NONE},
+        {"xml:lang", LXA_DOM_ATTR_NS_XML},
+        {"xlink:href", LXA_DOM_ATTR_NS_XLINK},
+        {"xmlns", LXA_DOM_ATTR_NS_XMLNS}
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    lxa_budget_t budget;
+    lxa_dom_nodes_t *nodes, *other;
+    lxa_dom_ref_t source, clone, attribute, child, cursor = {0};
+    lxa_dom_record_t record;
+    lxa_dom_namespace_t ns;
+    lxa_span_t key, value;
+    size_t count;
+    TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                &nodes) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_create(&allocator, &other) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("linearGradient"),
+        LXA_DOM_NS_SVG, &source) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("span"), &child)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, source, child)
+               == LXA_OK);
+    for (size_t i = 0; i < sizeof(attributes) / sizeof(attributes[0]); ++i) {
+        TEST_CHECK(lxa_dom_nodes_append_foreign_attribute(nodes,
+            name(attributes[i].name), name("original"), attributes[i].ns,
+            &attribute) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, source, attribute)
+                   == LXA_OK);
+    }
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, source, &clone) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_read(nodes, clone, &record) == LXA_OK
+               && record.parent == LXA_ID_NONE
+               && record.first_child == LXA_ID_NONE
+               && record.last_child == LXA_ID_NONE);
+    TEST_CHECK(lxa_dom_nodes_element_namespace(nodes, clone, &ns) == LXA_OK
+               && ns == LXA_DOM_NS_SVG);
+    TEST_CHECK(lxa_dom_nodes_element_name(nodes, clone, &key) == LXA_OK
+               && key.length == 14 && memcmp(key.data, "linearGradient", 14) == 0);
+    for (size_t i = 0; i < sizeof(attributes) / sizeof(attributes[0]); ++i) {
+        lxa_dom_attr_namespace_t attr_ns;
+        lxa_span_t local_name;
+        TEST_CHECK(lxa_dom_nodes_attribute_next(nodes, clone, cursor, &cursor)
+                   == LXA_OK && cursor.handle != LXA_HANDLE_NONE);
+        TEST_CHECK(lxa_dom_nodes_attribute_namespace(nodes, cursor, &attr_ns,
+            &local_name) == LXA_OK && attr_ns == attributes[i].ns);
+        TEST_CHECK(lxa_dom_nodes_attribute_read(nodes, cursor, &key, &value)
+                   == LXA_OK);
+        TEST_CHECK(key.length == strlen(attributes[i].name)
+                   && memcmp(key.data, attributes[i].name, key.length) == 0
+                   && value.length == 8 && memcmp(value.data, "original", 8) == 0);
+        TEST_CHECK(lxa_dom_nodes_attribute_set_value(nodes, cursor, name("changed"))
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_find_attribute(nodes, source,
+            name(attributes[i].name), &attribute) == LXA_OK);
+        TEST_CHECK(attribute.handle != cursor.handle);
+        TEST_CHECK(lxa_dom_nodes_attribute_read(nodes, attribute, &key, &value)
+                   == LXA_OK && value.length == 8
+                   && memcmp(value.data, "original", 8) == 0);
+    }
+    TEST_CHECK(lxa_dom_nodes_attribute_next(nodes, clone, cursor, &cursor)
+               == LXA_OK && cursor.handle == LXA_HANDLE_NONE);
+    count = lxa_dom_nodes_length(nodes);
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, source, NULL)
+               == LXA_ERROR_ARGUMENT);
+    TEST_CHECK(lxa_dom_nodes_clone_element(other, source, &clone)
+               == LXA_ERROR_ARGUMENT && clone.handle == LXA_HANDLE_NONE);
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, attribute, &clone)
+               == LXA_ERROR_ARGUMENT && clone.handle == LXA_HANDLE_NONE);
+    TEST_CHECK(lxa_dom_nodes_length(nodes) == count);
+    budget.limits.max_nodes = (uint32_t) count;
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, source, &clone)
+               == LXA_ERROR_LIMIT && clone.handle == LXA_HANDLE_NONE
+               && nodes->limit_reason == LXA_BUDGET_NODES);
+    budget.limits.max_nodes = (uint32_t) count + 1;
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, source, &clone)
+               == LXA_ERROR_LIMIT && clone.handle == LXA_HANDLE_NONE
+               && nodes->limit_reason == LXA_BUDGET_NODES
+               && lxa_dom_nodes_length(nodes) == count + 1);
+    budget.limits = lxa_limits_default();
+    budget.limits.max_work = budget.used[LXA_BUDGET_WORK];
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, source, &clone)
+               == LXA_ERROR_LIMIT && clone.handle == LXA_HANDLE_NONE
+               && nodes->limit_reason == LXA_BUDGET_WORK);
+    budget.limits = lxa_limits_default();
+    TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+    lxa_dom_nodes_destroy(other);
+    lxa_dom_nodes_destroy(nodes);
+    TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+}
+
 int
 main(void)
 {
@@ -37,6 +135,7 @@ main(void)
     lxa_span_t view;
     char input[] = "custom-tag";
     size_t before, i;
+    check_element_clone();
     TEST_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create_with_entropy(&allocator, &budget,
         fixed_entropy, NULL, NULL, &nodes) == LXA_ERROR_ENTROPY);

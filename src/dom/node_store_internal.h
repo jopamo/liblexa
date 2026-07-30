@@ -95,6 +95,18 @@ lxa_status_t lxa_dom_nodes_append_foreign_attribute(lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_attribute_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t attribute, lxa_dom_attr_namespace_t *ns,
     lxa_span_t *local_name);
+/* Detached shallow copy, preserving element and attribute namespaces.
+ * Failed construction may retain document-owned unpublished nodes. */
+lxa_status_t lxa_dom_nodes_clone_element(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t source, lxa_dom_ref_t *out);
+/* Copy source children and their template contents before replacing an element
+ * or fragment's children. Associated templates use their content fragment as
+ * target. A zero or empty source clears the list. Failure leaves target links
+ * intact; unpublished candidates remain document-owned. Old children remain live as
+ * detached subtrees after success. Nonempty copying uses a store-owned staging
+ * fragment. No lifecycle callbacks run during copying. */
+lxa_status_t lxa_dom_nodes_replace_children_with_clones(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t target, lxa_dom_ref_t source);
 /* Parser-only association. The fragment remains detached from the tree and
  * is owned by the same document as its HTML template element. Bind once,
  * before inserting content; zero on lookup means no association. */
