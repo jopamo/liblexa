@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "html/tokenizer.h"
+#include "html/tokenizer_classes.h"
 #include "html/input_encoding.h"
 
 #define CHECK(expression) do { \
@@ -40,6 +41,37 @@ span(const char *text)
 {
     lxa_span_t result = {(const uint8_t *) text, strlen(text)};
     return result;
+}
+
+static void
+check_byte_classes(void)
+{
+    static const struct {
+        bool (*predicate)(uint8_t);
+        const char *members;
+        size_t count;
+    } classes[] = {
+#define CLASS_TEST(name, members) \
+        {lxa_html_byte_##name, members, sizeof(members) - 1}
+        CLASS_TEST(space, " \t\n\f"),
+        CLASS_TEST(lower, "abcdefghijklmnopqrstuvwxyz"),
+        CLASS_TEST(upper, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        CLASS_TEST(digit, "0123456789"),
+        CLASS_TEST(alpha, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        CLASS_TEST(alnum, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+        CLASS_TEST(hex, "0123456789abcdefABCDEF"),
+        CLASS_TEST(control, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0d"
+                            "\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18"
+                            "\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f")
+#undef CLASS_TEST
+    };
+    for (size_t i = 0; i < sizeof(classes) / sizeof(classes[0]); i++) {
+        for (unsigned c = 0; c <= UINT8_MAX; c++) {
+            CHECK(classes[i].predicate((uint8_t) c)
+                  == (memchr(classes[i].members, (int) c,
+                             classes[i].count) != NULL));
+        }
+    }
 }
 
 static lxa_status_t
@@ -2498,6 +2530,7 @@ main(void)
 
     lxa_html_tokenizer_destroy(tkz);
 
+    check_byte_classes();
     check_allocation_failures();
     check_large_attributes();
     check_token_sizes();

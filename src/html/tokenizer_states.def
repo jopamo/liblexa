@@ -97,7 +97,7 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED,
         i++;
         break;
     }
-    if ((c < ' ' && !space(c)) || c == 0x7f) {
+    if (lxa_html_byte_control(c)) {
         lxa_span_t character = {&c, 1};
         result = emit_error(tokenizer, "control-character-in-input-stream",
                             tokenizer->offset + i);
@@ -146,7 +146,7 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED,
             if ((c == '<' && tokenizer->state != STATE_PLAINTEXT)
                 || (rcdata && c == '&') || c == '\r'
                 || (escaped && c == '-')
-                || c >= 0x7f || (c < ' ' && !space(c))) {
+                || c >= 0x7f || (c < ' ' && !lxa_html_byte_space(c))) {
                 break;
             }
             i++;
@@ -194,7 +194,7 @@ LXA_HTML_STATE(RAW_LESS_THAN, 16, RAW_CANDIDATE,
         }
     }
     else if (tokenizer->raw_return_mode == STATE_SCRIPT_ESCAPED
-             && name_first(c)) {
+             && lxa_html_byte_alpha(c)) {
         lxa_span_t lt = {(const uint8_t *) "<", 1};
         result = buffer_append(tokenizer, &tokenizer->text, lt,
                                LXA_BUDGET_TOKEN_BYTES);
@@ -233,9 +233,9 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_LESS_THAN, 14, SCRIPT_ESCAPED,
 )
 LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_START, 10, SCRIPT_ESCAPED,)
 LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_END, 15, SCRIPT_ESCAPED,
-    if (name_first(c)) {
+    if (lxa_html_byte_alpha(c)) {
         static const char script[] = "script";
-        uint8_t lower = c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+        uint8_t lower = lxa_html_byte_upper(c) ? c + ('a' - 'A') : c;
         lxa_span_t letter = {&c, 1};
         if (tokenizer->script_word_matches
             && (tokenizer->script_word_length >= sizeof(script) - 1
@@ -256,7 +256,7 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_END, 15, SCRIPT_ESCAPED,
         bool matches = tokenizer->script_word_matches
                        && tokenizer->script_word_length == 6;
         bool ending = tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPE_END;
-        bool delimiter = space(c) || c == '/' || c == '>';
+        bool delimiter = lxa_html_byte_space(c) || c == '/' || c == '>';
         tokenizer->state = delimiter && matches
             ? (ending ? STATE_SCRIPT_ESCAPED : STATE_SCRIPT_DOUBLE_ESCAPED)
             : (ending ? STATE_SCRIPT_DOUBLE_ESCAPED : STATE_SCRIPT_ESCAPED);
@@ -293,7 +293,7 @@ LXA_HTML_STATE(SCRIPT_ESCAPE_START_DASH, 6, SCRIPT_ESCAPE_START,
     break;
 )
 LXA_HTML_STATE(RAW_END_TAG_OPEN, 17, RAW_CANDIDATE,
-    if (name_first(c)) {
+    if (lxa_html_byte_alpha(c)) {
         tokenizer->state = STATE_RAW_END_TAG_NAME;
     }
     else {
@@ -305,7 +305,7 @@ LXA_HTML_STATE(RAW_END_TAG_OPEN, 17, RAW_CANDIDATE,
     break;
 )
 LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE,
-    if (name_first(c)) {
+    if (lxa_html_byte_alpha(c)) {
         lxa_span_t character = {&c, 1};
         size_t pending, total;
         lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
@@ -340,7 +340,7 @@ LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE,
         }
         i++;
     }
-    else if ((space(c) || c == '/' || c == '>')
+    else if ((lxa_html_byte_space(c) || c == '/' || c == '>')
              && ascii_name_is((lxa_span_t) {
                  tokenizer->raw_candidate.data,
                  tokenizer->raw_candidate.length
@@ -359,7 +359,7 @@ LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE,
         }
         lxa_buffer_clear(&tokenizer->raw_candidate);
         tokenizer->end_tag = true;
-        if (space(c)) {
+        if (lxa_html_byte_space(c)) {
             tokenizer->state = STATE_AFTER_NAME;
         }
         else if (c == '/') {
@@ -422,7 +422,7 @@ LXA_HTML_STATE(DATA, 0, TEXT,
         i++;
         break;
     }
-    if ((c < ' ' && !space(c)) || c == 0x7f) {
+    if (lxa_html_byte_control(c)) {
         lxa_span_t character = {&c, 1};
         result = emit_error(tokenizer, "control-character-in-input-stream",
                             tokenizer->offset + i);
@@ -455,7 +455,7 @@ LXA_HTML_STATE(DATA, 0, TEXT,
         while (i < input.length) {
             c = input.data[i];
             if (c == '<' || c == '&' || c == '\r' || c >= 0x7f
-                || (c < ' ' && !space(c))) {
+                || (c < ' ' && !lxa_html_byte_space(c))) {
                 break;
             }
             i++;
@@ -500,7 +500,7 @@ LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX,
         i++;
         break;
     }
-    if (!name_first(c)) {
+    if (!lxa_html_byte_alpha(c)) {
         lxa_span_t less_than = {(const uint8_t *) "<", 1};
         result = emit_error(tokenizer,
                             "invalid-first-character-of-tag-name",
@@ -520,7 +520,7 @@ LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX,
     break;
 )
 LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX,
-    if (!name_first(c)) {
+    if (!lxa_html_byte_alpha(c)) {
         if (tokenizer->end_tag && c == '>') {
             result = emit_error(tokenizer, "missing-end-tag-name",
                                 tokenizer->offset + i);
@@ -564,9 +564,9 @@ LXA_HTML_STATE(NAME, 21, TAG,
             i++;
         }
     }
-    else if (c != 0 && !space(c)
+    else if (c != 0 && !lxa_html_byte_space(c)
         && c != '/' && c != '>') {
-        if ((c < ' ' && !space(c)) || c == 0x7f) {
+        if (lxa_html_byte_control(c)) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -595,7 +595,7 @@ LXA_HTML_STATE(NAME, 21, TAG,
         }
         i++;
     }
-    else if (space(c)) {
+    else if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_AFTER_NAME;
         i++;
     }
@@ -618,7 +618,7 @@ LXA_HTML_STATE(NAME, 21, TAG,
     break;
 )
 LXA_HTML_STATE(AFTER_NAME, 22, TAG,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '/') {
@@ -668,7 +668,7 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
         }
         break;
     }
-    if (space(c) || c == '/' || c == '>' || c == '=') {
+    if (lxa_html_byte_space(c) || c == '/' || c == '>' || c == '=') {
         result = end_attribute_name(tokenizer, tokenizer->offset + i);
         if (result != LXA_HTML_OK) {
             goto fail;
@@ -677,7 +677,7 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
         break;
     }
     if (c == 0 || c == '"' || c == '\'' || c == '<'
-        || (c < ' ' && !space(c)) || c == 0x7f)
+        || lxa_html_byte_control(c))
     {
         result = emit_error(tokenizer,
                             c == 0 ? "unexpected-null-character"
@@ -695,7 +695,7 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if (c >= 'A' && c <= 'Z') {
+        if (lxa_html_byte_upper(c)) {
             c += 'a' - 'A';
         }
         result = append_attribute(tokenizer, character, true);
@@ -707,7 +707,7 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
     break;
 )
 LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '=') {
@@ -734,7 +734,7 @@ LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG,
     break;
 )
 LXA_HTML_STATE(BEFORE_ATTRIBUTE_VALUE, 25, TAG,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '"') {
@@ -769,13 +769,13 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
         while (i < input.length) {
             uint8_t raw = input.data[i];
             if (raw == '&' || raw == 0 || raw == '\r' || raw >= 0x7f
-                || (raw < ' ' && !space(raw))
+                || (raw < ' ' && !lxa_html_byte_space(raw))
                 || (tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
                     && raw == '"')
                 || (tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
                     && raw == '\'')
                 || (tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
-                    && (space(raw) || raw == '>' || raw == '"'
+                    && (lxa_html_byte_space(raw) || raw == '>' || raw == '"'
                         || raw == '\'' || raw == '<' || raw == '='
                         || raw == '`'))) {
                 break;
@@ -823,7 +823,7 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
         break;
     }
     if (tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED) {
-        if (space(c)) {
+        if (lxa_html_byte_space(c)) {
             tokenizer->state = STATE_AFTER_NAME;
             i++;
             break;
@@ -855,7 +855,7 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if ((c < ' ' && !space(c)) || c == 0x7f) {
+        if (lxa_html_byte_control(c)) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -872,7 +872,7 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
     break;
 )
 LXA_HTML_STATE(AFTER_ATTRIBUTE_VALUE, 29, TAG,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_AFTER_NAME;
         i++;
     }
@@ -954,7 +954,7 @@ LXA_HTML_STATE(DECLARATION_DASH, 31, DECLARATION_DASH,
 LXA_HTML_STATE(DECLARATION_DOCTYPE, 32, DECLARATION_PREFIX,
     {
         static const char keyword[] = "doctype";
-        uint8_t lower = c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+        uint8_t lower = lxa_html_byte_upper(c) ? c + ('a' - 'A') : c;
         if (lower == (uint8_t) keyword[tokenizer->declaration_length]) {
             tokenizer->declaration[tokenizer->declaration_length++]
                 = (char) c;
@@ -1086,7 +1086,7 @@ LXA_HTML_STATE(CDATA_END, 36, CDATA,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if ((c < ' ' && c != 0 && !space(c)) || c == 0x7f) {
+        if ((c < ' ' && c != 0 && !lxa_html_byte_space(c)) || c == 0x7f) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -1104,7 +1104,7 @@ LXA_HTML_STATE(CDATA_END, 36, CDATA,
     break;
 )
 LXA_HTML_STATE(DOCTYPE, 37, DOCTYPE,
-    if (!space(c) && c != '>') {
+    if (!lxa_html_byte_space(c) && c != '>') {
         result = emit_error(tokenizer,
                         "missing-whitespace-before-doctype-name",
                         tokenizer->offset + i);
@@ -1113,13 +1113,13 @@ LXA_HTML_STATE(DOCTYPE, 37, DOCTYPE,
         }
     }
     tokenizer->state = STATE_BEFORE_DOCTYPE_NAME;
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     break;
 )
 LXA_HTML_STATE(BEFORE_DOCTYPE_NAME, 38, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '>') {
@@ -1153,7 +1153,7 @@ LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE,
             i++;
         }
     }
-    else if (space(c)) {
+    else if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_AFTER_DOCTYPE_NAME;
         i++;
     }
@@ -1180,7 +1180,7 @@ LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE,
         i++;
     }
     else {
-        if ((c < ' ' && !space(c)) || c == 0x7f) {
+        if (lxa_html_byte_control(c)) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -1197,7 +1197,7 @@ LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE,
     break;
 )
 LXA_HTML_STATE(AFTER_DOCTYPE_NAME, 40, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '>') {
@@ -1233,7 +1233,7 @@ LXA_HTML_STATE(DOCTYPE_KEYWORD, 41, DOCTYPE_KEYWORD,
             tokenizer->doctype_keyword[0] == 'p'
             || tokenizer->doctype_keyword[0] == 'P'
             ? "public" : "system";
-        uint8_t lower = c >= 'A' && c <= 'Z'
+        uint8_t lower = lxa_html_byte_upper(c)
                         ? c + ('a' - 'A') : c;
         if (lower == (uint8_t) keyword[tokenizer->doctype_keyword_length]) {
             tokenizer->doctype_keyword[
@@ -1260,7 +1260,7 @@ LXA_HTML_STATE(DOCTYPE_KEYWORD, 41, DOCTYPE_KEYWORD,
 )
 LXA_HTML_STATE(AFTER_PUBLIC_KEYWORD, 42, DOCTYPE,)
 LXA_HTML_STATE(BEFORE_PUBLIC_ID, 43, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BEFORE_PUBLIC_ID;
         i++;
     }
@@ -1346,7 +1346,7 @@ LXA_HTML_STATE(SYSTEM_ID_SINGLE, 51, DOCTYPE,
             i++;
         }
         else {
-            if (c == 0 || (c < ' ' && !space(c)) || c == 0x7f) {
+            if (c == 0 || lxa_html_byte_control(c)) {
                 result = emit_error(tokenizer,
                                     c == 0 ? "unexpected-null-character"
                                            : "control-character-in-input-stream",
@@ -1373,7 +1373,7 @@ LXA_HTML_STATE(SYSTEM_ID_SINGLE, 51, DOCTYPE,
 )
 LXA_HTML_STATE(AFTER_PUBLIC_ID, 46, DOCTYPE,)
 LXA_HTML_STATE(BETWEEN_PUBLIC_SYSTEM_IDS, 47, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BETWEEN_PUBLIC_SYSTEM_IDS;
         i++;
     }
@@ -1412,7 +1412,7 @@ LXA_HTML_STATE(BETWEEN_PUBLIC_SYSTEM_IDS, 47, DOCTYPE,
 )
 LXA_HTML_STATE(AFTER_SYSTEM_KEYWORD, 48, DOCTYPE,)
 LXA_HTML_STATE(BEFORE_SYSTEM_ID, 49, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BEFORE_SYSTEM_ID;
         i++;
     }
@@ -1455,7 +1455,7 @@ LXA_HTML_STATE(BEFORE_SYSTEM_ID, 49, DOCTYPE,
     break;
 )
 LXA_HTML_STATE(AFTER_SYSTEM_ID, 52, DOCTYPE,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else if (c == '>') {
@@ -1503,7 +1503,7 @@ LXA_HTML_STATE(BOGUS_DOCTYPE, 53, BOGUS_DOCTYPE,
             goto fail;
         }
     }
-    else if ((c < ' ' && !space(c)) || c == 0x7f) {
+    else if (lxa_html_byte_control(c)) {
         result = emit_error(tokenizer,
                             "control-character-in-input-stream",
                             tokenizer->offset + i);
@@ -1624,7 +1624,7 @@ LXA_HTML_STATE(COMMENT, 57, COMMENT,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if ((c < ' ' && !space(c)) || c == 0x7f) {
+        if (lxa_html_byte_control(c)) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -1794,7 +1794,7 @@ LXA_HTML_STATE(BOGUS_COMMENT, 65, BOGUS_COMMENT,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if ((c < ' ' && !space(c)) || c == 0x7f) {
+        if (lxa_html_byte_control(c)) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -1812,7 +1812,7 @@ LXA_HTML_STATE(BOGUS_COMMENT, 65, BOGUS_COMMENT,
     break;
 )
 LXA_HTML_STATE(PI_OPEN, 66, PI,
-    if (name_first(c) || c == '_') {
+    if (lxa_html_byte_alpha(c) || c == '_') {
         tokenizer->state = STATE_PI_TARGET;
         break;
     }
@@ -1828,8 +1828,7 @@ LXA_HTML_STATE(PI_OPEN, 66, PI,
     break;
 )
 LXA_HTML_STATE(PI_TARGET, 67, PI,
-    if (name_first(c) || (c >= '0' && c <= '9')
-        || c == '-' || c == '_') {
+    if (lxa_html_byte_alnum(c) || c == '-' || c == '_') {
         lxa_span_t character = {&c, 1};
         result = buffer_append(tokenizer, &tokenizer->name,
                                character, LXA_BUDGET_NAME_BYTES);
@@ -1839,7 +1838,7 @@ LXA_HTML_STATE(PI_TARGET, 67, PI,
         i++;
     }
     else {
-        bool delimiter = space(c) || c == '?' || c == '>';
+        bool delimiter = lxa_html_byte_space(c) || c == '?' || c == '>';
         lxa_span_t target = {tokenizer->name.data,
                              tokenizer->name.length};
         const char *code;
@@ -1863,7 +1862,7 @@ LXA_HTML_STATE(PI_TARGET, 67, PI,
     break;
 )
 LXA_HTML_STATE(PI_AFTER_TARGET, 68, PI,
-    if (space(c)) {
+    if (lxa_html_byte_space(c)) {
         i++;
     }
     else {
@@ -1898,7 +1897,7 @@ LXA_HTML_STATE(PI_DATA, 69, PI,
     }
     else {
         lxa_span_t character = {&c, 1};
-        if ((c < ' ' && c != 0 && !space(c)) || c == 0x7f) {
+        if ((c < ' ' && c != 0 && !lxa_html_byte_space(c)) || c == 0x7f) {
             result = emit_error(tokenizer,
                                 "control-character-in-input-stream",
                                 tokenizer->offset + i);
@@ -1939,9 +1938,7 @@ LXA_HTML_STATE(REFERENCE_MARK, 71, REFERENCE_MARK,
         tokenizer->state = STATE_REFERENCE_START;
         i++;
     }
-    else if ((c >= 'a' && c <= 'z')
-             || (c >= 'A' && c <= 'Z')
-             || (c >= '0' && c <= '9')) {
+    else if (lxa_html_byte_alnum(c)) {
         tokenizer->reference_name[0] = '&';
         tokenizer->reference_name[1] = (char) c;
         tokenizer->reference_length = 2;
@@ -1983,9 +1980,7 @@ LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
         }
         i++;
     }
-    else if (((c >= 'a' && c <= 'z')
-              || (c >= 'A' && c <= 'Z')
-              || (c >= '0' && c <= '9'))
+    else if (lxa_html_byte_alnum(c)
              && tokenizer->reference_length
                 < sizeof(tokenizer->reference_name) - 2) {
         tokenizer->reference_name[tokenizer->reference_length++]
@@ -2006,9 +2001,7 @@ LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
         }
         i++;
     }
-    else if ((c >= 'a' && c <= 'z')
-             || (c >= 'A' && c <= 'Z')
-             || (c >= '0' && c <= '9')) {
+    else if (lxa_html_byte_alnum(c)) {
         bool no_match = tokenizer->reference_match == NULL;
         result = resolve_name(tokenizer, false,
                               tokenizer->offset + i, c);
@@ -2029,8 +2022,7 @@ LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
     break;
 )
 LXA_HTML_STATE(REFERENCE_LONG_NAME, 73, REFERENCE_LONG_NAME,
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-        || (c >= '0' && c <= '9') || c == ';') {
+    if (lxa_html_byte_alnum(c) || c == ';') {
         lxa_span_t character = {&c, 1};
         if (c == ';') {
             result = emit_error(tokenizer,
@@ -2067,8 +2059,7 @@ LXA_HTML_STATE(REFERENCE_START, 74, REFERENCE_NO_DIGITS,
 )
 LXA_HTML_STATE(REFERENCE_HEX_START, 75, REFERENCE_NO_DIGITS,
     tokenizer->state = STATE_REFERENCE_HEX;
-    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
-          || (c >= 'A' && c <= 'F'))) {
+    if (!lxa_html_byte_hex(c)) {
         result = missing_numeric_digits(tokenizer,
                                         tokenizer->offset + i);
         if (result != LXA_HTML_OK) {
@@ -2092,7 +2083,7 @@ LXA_HTML_STATE(REFERENCE_HEX, 77, REFERENCE_NUMBER,
             i++;
             break;
         }
-        digit = c >= '0' && c <= '9' ? (unsigned) (c - '0')
+        digit = lxa_html_byte_digit(c) ? (unsigned) (c - '0')
               : base == 16 && c >= 'a' && c <= 'f'
                 ? (unsigned) (c - 'a' + 10)
               : base == 16 && c >= 'A' && c <= 'F'

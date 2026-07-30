@@ -2,6 +2,7 @@
 #include <assert.h>
 
 #include "html/tokenizer.h"
+#include "html/tokenizer_classes.h"
 #include "liblexa/base.h"
 #include "liblexa/encoding.h"
 #include "html-charref-overrides.h"
@@ -420,10 +421,7 @@ resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
                            : delimiter;
             /* A legacy semicolonless name followed by an attribute-name
              * character remains literal, including when it spans feeds. */
-            if ((next >= 'a' && next <= 'z')
-                || (next >= 'A' && next <= 'Z')
-                || (next >= '0' && next <= '9') || next == '=')
-            {
+            if (lxa_html_byte_alnum(next) || next == '=') {
                 match = NULL;
                 matched_length = 0;
                 ambiguous_legacy = true;
@@ -1037,12 +1035,6 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
 }
 
 static bool
-name_first(uint8_t c)
-{
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
-static bool
 ascii_name_is(lxa_span_t name, const char *lowercase, size_t length)
 {
     size_t i;
@@ -1051,7 +1043,7 @@ ascii_name_is(lxa_span_t name, const char *lowercase, size_t length)
     }
     for (i = 0; i < length; i++) {
         uint8_t c = name.data[i];
-        if (c >= 'A' && c <= 'Z') {
+        if (lxa_html_byte_upper(c)) {
             c += 'a' - 'A';
         }
         if (c != (uint8_t) lowercase[i]) {
@@ -1061,17 +1053,11 @@ ascii_name_is(lxa_span_t name, const char *lowercase, size_t length)
     return true;
 }
 
-static bool
-space(uint8_t c)
-{
-    return c == ' ' || c == '\t' || c == '\n' || c == '\f';
-}
-
 static lxa_html_result_t
 append_name(lxa_html_tokenizer_t *tokenizer, uint8_t c)
 {
     lxa_span_t character;
-    if (c >= 'A' && c <= 'Z') {
+    if (lxa_html_byte_upper(c)) {
         c += 'a' - 'A';
     }
     character.data = &c;
@@ -1388,7 +1374,7 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
         }
         for (i = 0; i < appropriate_end_tag.length; i++) {
             uint8_t c = appropriate_end_tag.data[i];
-            if (!name_first(c)) {
+            if (!lxa_html_byte_alpha(c)) {
                 return LXA_HTML_BAD_ARGUMENT;
             }
         }
@@ -1400,7 +1386,7 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
         }
         for (i = 0; i < tokenizer->appropriate_end_tag.length; i++) {
             uint8_t *c = &tokenizer->appropriate_end_tag.data[i];
-            if (*c >= 'A' && *c <= 'Z') {
+            if (lxa_html_byte_upper(*c)) {
                 *c += 'a' - 'A';
             }
         }
@@ -1538,7 +1524,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             && tokenizer->state != STATE_COMMENT_OPEN
             && tokenizer->state != STATE_DECLARATION_DOCTYPE
             && tokenizer->state != STATE_DECLARATION_CDATA
-            && ((c < ' ' && !space(c) && c != 0 && c != '\r')
+            && ((c < ' ' && !lxa_html_byte_space(c) && c != 0 && c != '\r')
                 || c == 0x7f)
             && (!tokenizer->control_reported
                 || tokenizer->control_offset != tokenizer->offset + i)) {
