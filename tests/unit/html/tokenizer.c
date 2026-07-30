@@ -2187,7 +2187,13 @@ main(void)
           && f.errors == 2 && f.error_offset == 3
           && strcmp(f.error_code, "eof-in-tag") == 0);
     {
-        const char *unfinished[] = {"x<a", "x<a ", "x<a/", "x</a"};
+        const char *unfinished[] = {
+            "x<a", "x<a ", "x<a/", "x</a", "x<a y", "x<a y ",
+            "x<a y=", "x<a y=\"", "x<a y='", "x<a y=z", "x<a y=\"z\"",
+            "x<a y=&", "x<a y='&", "x<a y=\"&",
+            "x<a y=&unknown",
+            "x<a y=&abcdefghijklmnopqrstuvwxyz123456789"
+        };
         size_t j;
         for (j = 0; j < sizeof(unfinished) / sizeof(unfinished[0]); j++) {
             check_partition(tkz, &f, unfinished[j], strlen(unfinished[j]));
@@ -2195,6 +2201,27 @@ main(void)
                   && strcmp(f.bytes[0], "x") == 0
                   && f.kind[1] == LXA_HTML_EOF && f.errors == 1
                   && f.error_offset == strlen(unfinished[j])
+                  && strcmp(f.error_code, "eof-in-tag") == 0);
+        }
+    }
+    {
+        const char *unfinished[] = {
+            "x<a y=&#", "x<a y='&#x", "x<a y=\"&#X",
+            "x<a y=&#65", "x<a y='&#x41", "x<a y=\"&#X41", "x<a y=&amp",
+            "x<a y=1 Y"
+        };
+        size_t j;
+        for (j = 0; j < sizeof(unfinished) / sizeof(unfinished[0]); j++) {
+            check_partition(tkz, &f, unfinished[j], strlen(unfinished[j]));
+            CHECK(f.count == 2 && f.kind[0] == LXA_HTML_TEXT
+                  && strcmp(f.bytes[0], "x") == 0
+                  && f.kind[1] == LXA_HTML_EOF && f.errors == 2
+                  && f.error_offset == strlen(unfinished[j])
+                  && strcmp(f.first_error_code, j < 3
+                      ? "absence-of-digits-in-numeric-character-reference"
+                      : j < 7
+                      ? "missing-semicolon-after-character-reference"
+                      : "duplicate-attribute") == 0
                   && strcmp(f.error_code, "eof-in-tag") == 0);
         }
     }

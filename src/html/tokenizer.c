@@ -3883,44 +3883,6 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->text);
         tokenizer->state = STATE_DATA;
     }
-    else if (tokenizer->state == STATE_NAME
-             || tokenizer->state == STATE_AFTER_NAME
-             || tokenizer->state == STATE_ATTRIBUTE_NAME
-             || tokenizer->state == STATE_AFTER_ATTRIBUTE_NAME
-             || tokenizer->state == STATE_BEFORE_ATTRIBUTE_VALUE
-             || tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
-             || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-             || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
-             || tokenizer->state == STATE_AFTER_ATTRIBUTE_VALUE
-             || tokenizer->state == STATE_SELF_CLOSING) {
-        if (tokenizer->utf8_pending) {
-            result = finish_decoder(tokenizer, true);
-            if (result != LXA_HTML_OK) {
-                tokenizer->stopped = result;
-                return result;
-            }
-            decoder_finished = true;
-            tokenizer->utf8_pending = false;
-        }
-        result = tokenizer->state == STATE_ATTRIBUTE_NAME
-                 ? end_attribute_name(tokenizer, tokenizer->offset)
-                 : LXA_HTML_OK;
-        if (result == LXA_HTML_OK) {
-            result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
-        }
-        if (result != LXA_HTML_OK) {
-            tokenizer->stopped = result;
-            return result;
-        }
-        lxa_buffer_clear(&tokenizer->name);
-        lxa_buffer_clear(&tokenizer->attribute_bytes);
-        lxa_vector_clear(&tokenizer->attribute_slots);
-        lxa_vector_clear(&tokenizer->attribute_views);
-        tokenizer->attribute_state = ATTRIBUTE_NONE;
-        tokenizer->source_attribute_count = 0;
-        tokenizer->state = STATE_DATA;
-        tokenizer->end_tag = false;
-    }
     if (tokenizer->state == STATE_REFERENCE_MARK) {
         lxa_span_t ampersand = {(const uint8_t *) "&", 1};
         result = append_reference_bytes(tokenizer, ampersand);
@@ -4004,11 +3966,32 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    if (tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
+    if (tokenizer->state == STATE_NAME
+        || tokenizer->state == STATE_AFTER_NAME
+        || tokenizer->state == STATE_ATTRIBUTE_NAME
+        || tokenizer->state == STATE_AFTER_ATTRIBUTE_NAME
+        || tokenizer->state == STATE_BEFORE_ATTRIBUTE_VALUE
+        || tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
         || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-        || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED)
+        || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
+        || tokenizer->state == STATE_AFTER_ATTRIBUTE_VALUE
+        || tokenizer->state == STATE_SELF_CLOSING)
     {
-        result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
+        if (tokenizer->utf8_pending) {
+            result = finish_decoder(tokenizer, true);
+            if (result != LXA_HTML_OK) {
+                tokenizer->stopped = result;
+                return result;
+            }
+            decoder_finished = true;
+            tokenizer->utf8_pending = false;
+        }
+        result = tokenizer->state == STATE_ATTRIBUTE_NAME
+                 ? end_attribute_name(tokenizer, tokenizer->offset)
+                 : LXA_HTML_OK;
+        if (result == LXA_HTML_OK) {
+            result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
+        }
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
