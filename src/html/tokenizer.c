@@ -8,85 +8,31 @@
 #include "html-entities.h"
 
 typedef enum {
-    STATE_DATA,
-    STATE_RCDATA,
-    STATE_RAWTEXT,
-    STATE_PLAINTEXT,
-    STATE_SCRIPT_DATA,
-    STATE_SCRIPT_ESCAPE_START,
-    STATE_SCRIPT_ESCAPE_START_DASH,
-    STATE_SCRIPT_ESCAPED,
-    STATE_SCRIPT_ESCAPED_DASH,
-    STATE_SCRIPT_ESCAPED_DASH_DASH,
-    STATE_SCRIPT_DOUBLE_ESCAPE_START,
-    STATE_SCRIPT_DOUBLE_ESCAPED,
-    STATE_SCRIPT_DOUBLE_ESCAPED_DASH,
-    STATE_SCRIPT_DOUBLE_ESCAPED_DASH_DASH,
-    STATE_SCRIPT_DOUBLE_LESS_THAN,
-    STATE_SCRIPT_DOUBLE_ESCAPE_END,
-    STATE_RAW_LESS_THAN,
-    STATE_RAW_END_TAG_OPEN,
-    STATE_RAW_END_TAG_NAME,
-    STATE_TAG_OPEN,
-    STATE_NAME_BEGIN,
-    STATE_NAME,
-    STATE_AFTER_NAME,
-    STATE_ATTRIBUTE_NAME,
-    STATE_AFTER_ATTRIBUTE_NAME,
-    STATE_BEFORE_ATTRIBUTE_VALUE,
-    STATE_ATTRIBUTE_VALUE_DOUBLE,
-    STATE_ATTRIBUTE_VALUE_SINGLE,
-    STATE_ATTRIBUTE_VALUE_UNQUOTED,
-    STATE_AFTER_ATTRIBUTE_VALUE,
-    STATE_SELF_CLOSING,
-    STATE_DECLARATION_DASH,
-    STATE_DECLARATION_DOCTYPE,
-    STATE_DECLARATION_CDATA,
-    STATE_CDATA,
-    STATE_CDATA_BRACKET,
-    STATE_CDATA_END,
-    STATE_DOCTYPE,
-    STATE_BEFORE_DOCTYPE_NAME,
-    STATE_DOCTYPE_NAME,
-    STATE_AFTER_DOCTYPE_NAME,
-    STATE_DOCTYPE_KEYWORD,
-    STATE_AFTER_PUBLIC_KEYWORD,
-    STATE_BEFORE_PUBLIC_ID,
-    STATE_PUBLIC_ID_DOUBLE,
-    STATE_PUBLIC_ID_SINGLE,
-    STATE_AFTER_PUBLIC_ID,
-    STATE_BETWEEN_PUBLIC_SYSTEM_IDS,
-    STATE_AFTER_SYSTEM_KEYWORD,
-    STATE_BEFORE_SYSTEM_ID,
-    STATE_SYSTEM_ID_DOUBLE,
-    STATE_SYSTEM_ID_SINGLE,
-    STATE_AFTER_SYSTEM_ID,
-    STATE_BOGUS_DOCTYPE,
-    STATE_COMMENT_OPEN,
-    STATE_COMMENT_START,
-    STATE_COMMENT_START_DASH,
-    STATE_COMMENT,
-    STATE_COMMENT_LESS_THAN,
-    STATE_COMMENT_LESS_THAN_BANG,
-    STATE_COMMENT_LESS_THAN_BANG_DASH,
-    STATE_COMMENT_LESS_THAN_BANG_DASH_DASH,
-    STATE_COMMENT_DASH,
-    STATE_COMMENT_END,
-    STATE_COMMENT_END_BANG,
-    STATE_BOGUS_COMMENT,
-    STATE_PI_OPEN,
-    STATE_PI_TARGET,
-    STATE_PI_AFTER_TARGET,
-    STATE_PI_DATA,
-    STATE_PI_QUESTIONABLE,
-    STATE_REFERENCE_MARK,
-    STATE_REFERENCE_NAME,
-    STATE_REFERENCE_LONG_NAME,
-    STATE_REFERENCE_START,
-    STATE_REFERENCE_HEX_START,
-    STATE_REFERENCE_DECIMAL,
-    STATE_REFERENCE_HEX
+#define LXA_HTML_STATE(name, eof_action) STATE_##name,
+#include "html/tokenizer_states.def"
+#undef LXA_HTML_STATE
 } tokenizer_state_t;
+
+typedef enum {
+    EOF_TEXT, EOF_TAG_PREFIX, EOF_DECLARATION_DASH, EOF_COMMENT_OPEN,
+    EOF_DECLARATION_PREFIX, EOF_CDATA, EOF_DOCTYPE, EOF_DOCTYPE_KEYWORD,
+    EOF_BOGUS_DOCTYPE, EOF_PI, EOF_TAG, EOF_REFERENCE_MARK, EOF_REFERENCE_NAME,
+    EOF_REFERENCE_LONG_NAME, EOF_REFERENCE_NO_DIGITS, EOF_REFERENCE_NUMBER,
+    EOF_BOGUS_COMMENT, EOF_COMMENT, EOF_RAW_CANDIDATE, EOF_SCRIPT_ESCAPED,
+    EOF_SCRIPT_ESCAPE_START, EOF_INVALID
+} tokenizer_eof_action_t;
+
+static tokenizer_eof_action_t
+eof_action(tokenizer_state_t state)
+{
+    switch (state) {
+#define LXA_HTML_STATE(name, action) case STATE_##name: return EOF_##action;
+#include "html/tokenizer_states.def"
+#undef LXA_HTML_STATE
+    }
+    assert(!"invalid tokenizer state");
+    return EOF_INVALID;
+}
 
 typedef struct {
     size_t name_start, name_length, value_start, value_length;
@@ -3712,8 +3658,8 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
     if (tokenizer->closed) {
         return LXA_HTML_BAD_ARGUMENT;
     }
-    if (tokenizer->state == STATE_TAG_OPEN
-        || (tokenizer->state == STATE_NAME_BEGIN && tokenizer->end_tag)) {
+    if (eof_action(tokenizer->state) == EOF_TAG_PREFIX
+        && (tokenizer->state == STATE_TAG_OPEN || tokenizer->end_tag)) {
         bool end_tag = tokenizer->state == STATE_NAME_BEGIN;
         lxa_span_t prefix = {
             (const uint8_t *) (end_tag ? "</" : "<"),
@@ -3731,8 +3677,8 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         tokenizer->state = STATE_DATA;
         tokenizer->end_tag = false;
     }
-    else if (tokenizer->state == STATE_DECLARATION_DASH
-             || tokenizer->state == STATE_COMMENT_OPEN) {
+    else if (eof_action(tokenizer->state) == EOF_DECLARATION_DASH
+             || eof_action(tokenizer->state) == EOF_COMMENT_OPEN) {
         bool dash = tokenizer->state == STATE_COMMENT_OPEN;
         result = emit_error(tokenizer, "incorrectly-opened-comment",
                             tokenizer->offset - (dash ? 1 : 0));
@@ -3747,8 +3693,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         }
         tokenizer->state = STATE_BOGUS_COMMENT;
     }
-    else if (tokenizer->state == STATE_DECLARATION_DOCTYPE
-             || tokenizer->state == STATE_DECLARATION_CDATA) {
+    else if (eof_action(tokenizer->state) == EOF_DECLARATION_PREFIX) {
         lxa_span_t prefix = {
             (const uint8_t *) tokenizer->declaration,
             tokenizer->declaration_length
@@ -3767,9 +3712,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_CDATA
-             || tokenizer->state == STATE_CDATA_BRACKET
-             || tokenizer->state == STATE_CDATA_END) {
+    else if (eof_action(tokenizer->state) == EOF_CDATA) {
         lxa_span_t brackets = {
             (const uint8_t *) "]]",
             tokenizer->state == STATE_CDATA ? 0
@@ -3795,7 +3738,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         }
         tokenizer->state = STATE_DATA;
     }
-    else if (tokenizer->state == STATE_BOGUS_DOCTYPE) {
+    else if (eof_action(tokenizer->state) == EOF_BOGUS_DOCTYPE) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -3811,7 +3754,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_DOCTYPE_KEYWORD) {
+    else if (eof_action(tokenizer->state) == EOF_DOCTYPE_KEYWORD) {
         result = emit_error(tokenizer,
                             "invalid-character-sequence-after-doctype-name",
                             tokenizer->doctype_keyword_offset);
@@ -3824,21 +3767,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_DOCTYPE
-             || tokenizer->state == STATE_BEFORE_DOCTYPE_NAME
-             || tokenizer->state == STATE_DOCTYPE_NAME
-             || tokenizer->state == STATE_AFTER_DOCTYPE_NAME
-             || tokenizer->state == STATE_AFTER_PUBLIC_KEYWORD
-             || tokenizer->state == STATE_BEFORE_PUBLIC_ID
-             || tokenizer->state == STATE_PUBLIC_ID_DOUBLE
-             || tokenizer->state == STATE_PUBLIC_ID_SINGLE
-             || tokenizer->state == STATE_AFTER_PUBLIC_ID
-             || tokenizer->state == STATE_BETWEEN_PUBLIC_SYSTEM_IDS
-             || tokenizer->state == STATE_AFTER_SYSTEM_KEYWORD
-             || tokenizer->state == STATE_BEFORE_SYSTEM_ID
-             || tokenizer->state == STATE_SYSTEM_ID_DOUBLE
-             || tokenizer->state == STATE_SYSTEM_ID_SINGLE
-             || tokenizer->state == STATE_AFTER_SYSTEM_ID) {
+    else if (eof_action(tokenizer->state) == EOF_DOCTYPE) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer,
                         tokenizer->state == STATE_DOCTYPE_NAME);
@@ -3859,11 +3788,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_PI_OPEN
-             || tokenizer->state == STATE_PI_TARGET
-             || tokenizer->state == STATE_PI_AFTER_TARGET
-             || tokenizer->state == STATE_PI_DATA
-             || tokenizer->state == STATE_PI_QUESTIONABLE) {
+    else if (eof_action(tokenizer->state) == EOF_PI) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -3883,7 +3808,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->text);
         tokenizer->state = STATE_DATA;
     }
-    if (tokenizer->state == STATE_REFERENCE_MARK) {
+    if (eof_action(tokenizer->state) == EOF_REFERENCE_MARK) {
         lxa_span_t ampersand = {(const uint8_t *) "&", 1};
         result = append_reference_bytes(tokenizer, ampersand);
         if (result != LXA_HTML_OK) {
@@ -3892,20 +3817,18 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         }
         tokenizer->state = tokenizer->reference_return_state;
     }
-    else if (tokenizer->state == STATE_REFERENCE_NAME) {
+    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NAME) {
         result = resolve_name(tokenizer, false, tokenizer->offset, 0);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
         }
     }
-    else if (tokenizer->state == STATE_REFERENCE_LONG_NAME) {
+    else if (eof_action(tokenizer->state) == EOF_REFERENCE_LONG_NAME) {
         tokenizer->state = tokenizer->reference_return_state;
     }
-    else if (tokenizer->state == STATE_REFERENCE_START
-             || tokenizer->state == STATE_REFERENCE_HEX_START
-             || ((tokenizer->state == STATE_REFERENCE_DECIMAL
-                  || tokenizer->state == STATE_REFERENCE_HEX)
+    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NO_DIGITS
+             || (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
                  && !tokenizer->reference_digits)) {
         result = missing_numeric_digits(tokenizer, tokenizer->offset);
         if (result != LXA_HTML_OK) {
@@ -3913,8 +3836,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if ((tokenizer->state == STATE_REFERENCE_DECIMAL
-              || tokenizer->state == STATE_REFERENCE_HEX)
+    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
              && tokenizer->reference_digits) {
         result = resolve_numeric(tokenizer, false, tokenizer->offset);
         if (result != LXA_HTML_OK) {
@@ -3922,7 +3844,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_BOGUS_COMMENT) {
+    else if (eof_action(tokenizer->state) == EOF_BOGUS_COMMENT) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -3938,16 +3860,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    else if (tokenizer->state == STATE_COMMENT_START
-             || tokenizer->state == STATE_COMMENT_START_DASH
-             || tokenizer->state == STATE_COMMENT
-             || tokenizer->state == STATE_COMMENT_LESS_THAN
-             || tokenizer->state == STATE_COMMENT_LESS_THAN_BANG
-             || tokenizer->state == STATE_COMMENT_LESS_THAN_BANG_DASH
-             || tokenizer->state == STATE_COMMENT_LESS_THAN_BANG_DASH_DASH
-             || tokenizer->state == STATE_COMMENT_DASH
-             || tokenizer->state == STATE_COMMENT_END
-             || tokenizer->state == STATE_COMMENT_END_BANG) {
+    else if (eof_action(tokenizer->state) == EOF_COMMENT) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -3966,17 +3879,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    if (tokenizer->state == STATE_NAME
-        || tokenizer->state == STATE_AFTER_NAME
-        || tokenizer->state == STATE_ATTRIBUTE_NAME
-        || tokenizer->state == STATE_AFTER_ATTRIBUTE_NAME
-        || tokenizer->state == STATE_BEFORE_ATTRIBUTE_VALUE
-        || tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
-        || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-        || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
-        || tokenizer->state == STATE_AFTER_ATTRIBUTE_VALUE
-        || tokenizer->state == STATE_SELF_CLOSING)
-    {
+    if (eof_action(tokenizer->state) == EOF_TAG) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, true);
             if (result != LXA_HTML_OK) {
@@ -4005,10 +3908,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         tokenizer->state = STATE_DATA;
         tokenizer->end_tag = false;
     }
-    if (tokenizer->state == STATE_RAW_LESS_THAN
-        || tokenizer->state == STATE_RAW_END_TAG_OPEN
-        || tokenizer->state == STATE_RAW_END_TAG_NAME)
-    {
+    if (eof_action(tokenizer->state) == EOF_RAW_CANDIDATE) {
         result = flush_raw_candidate(tokenizer,
                     tokenizer->state != STATE_RAW_LESS_THAN);
         if (result != LXA_HTML_OK) {
@@ -4016,15 +3916,7 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
     }
-    if (tokenizer->state == STATE_SCRIPT_ESCAPED
-        || tokenizer->state == STATE_SCRIPT_ESCAPED_DASH
-        || tokenizer->state == STATE_SCRIPT_ESCAPED_DASH_DASH
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPE_START
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED_DASH
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED_DASH_DASH
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_LESS_THAN
-        || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPE_END) {
+    if (eof_action(tokenizer->state) == EOF_SCRIPT_ESCAPED) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -4042,16 +3934,12 @@ lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer)
         }
         tokenizer->state = STATE_SCRIPT_DATA;
     }
-    if (tokenizer->state == STATE_SCRIPT_ESCAPE_START
-        || tokenizer->state == STATE_SCRIPT_ESCAPE_START_DASH) {
+    if (eof_action(tokenizer->state) == EOF_SCRIPT_ESCAPE_START) {
         tokenizer->state = STATE_SCRIPT_DATA;
     }
-    if (tokenizer->state != STATE_DATA
-        && tokenizer->state != STATE_RCDATA
-        && tokenizer->state != STATE_RAWTEXT
-        && tokenizer->state != STATE_PLAINTEXT
-        && tokenizer->state != STATE_SCRIPT_DATA) {
-        tokenizer->stopped = LXA_HTML_UNSUPPORTED;
+    if (eof_action(tokenizer->state) != EOF_TEXT) {
+        assert(!"unhandled tokenizer EOF state");
+        tokenizer->stopped = LXA_HTML_INTERNAL;
         return tokenizer->stopped;
     }
     if (!decoder_finished) {

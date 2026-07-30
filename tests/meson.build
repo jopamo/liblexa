@@ -24,6 +24,8 @@ foreach name : ['bytes', 'components', 'declaration', 'declarations',
 endforeach
 
 if get_option('candidate_html')
+  test('HTML tokenizer state definition', find_program('python3'),
+    args: files('unit/html/tokenizer_states.py'), suite: 'data')
   html_fuzz_smoke = executable('liblexa_html_fuzz_smoke',
     files('fuzz/html_parse.c'),
     include_directories: lxa_public_inc,

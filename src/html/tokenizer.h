@@ -81,7 +81,9 @@ typedef enum {
  * change the token stream.
  *
  * finish emits one EOF token after flushing pending input. Further feed or
- * finish calls are invalid until reset. A fatal error (including a non-OK
+ * finish calls are invalid until reset. An unhandled internal EOF state
+ * asserts in debug builds and returns INTERNAL in release builds.
+ * A fatal error (including a non-OK
  * token callback return, OOM or overflow) is returned by feed/finish and
  * latched: no further callbacks run until reset. reset discards pending
  * bytes, errors and mode and restores DATA; it retains reusable capacity
