@@ -1464,6 +1464,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
                 continue;
             }
         }
+        /* Text-run states normalize CR when they consume the source byte. */
         if (c == '\r' && !tokenizer->utf8_pending
             && (tokenizer->state == STATE_NAME
                 || tokenizer->state == STATE_AFTER_NAME
@@ -1493,13 +1494,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
                 || tokenizer->state == STATE_AFTER_SYSTEM_ID
                 || tokenizer->state == STATE_SCRIPT_ESCAPE_START
                 || tokenizer->state == STATE_SCRIPT_ESCAPE_START_DASH
-                || tokenizer->state == STATE_SCRIPT_ESCAPED
-                || tokenizer->state == STATE_SCRIPT_ESCAPED_DASH
-                || tokenizer->state == STATE_SCRIPT_ESCAPED_DASH_DASH
                 || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPE_START
-                || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED
-                || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED_DASH
-                || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED_DASH_DASH
                 || tokenizer->state == STATE_SCRIPT_DOUBLE_LESS_THAN
                 || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPE_END
                 || tokenizer->state == STATE_DECLARATION_CDATA

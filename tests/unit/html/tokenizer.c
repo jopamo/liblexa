@@ -1512,6 +1512,42 @@ main(void)
     CHECK(f.count == 4 && strcmp(f.bytes[1],
                                  "<!-- ignored <?> -->end") == 0
           && f.errors == 0);
+    {
+        static const struct {
+            const char *input, *text;
+        } cases[] = {
+            {"<script><!--a\rb--></script>", "<!--a\nb-->"},
+            {"<script><!--a\r\nb--></script>", "<!--a\nb-->"},
+            {"<script><!--a-\rb--></script>", "<!--a-\nb-->"},
+            {"<script><!--a--\rb--></script>", "<!--a--\nb-->"},
+            {"<script><!--<script>a\rb</script>--></script>",
+             "<!--<script>a\nb</script>-->"},
+            {"<script><!--<script>a\r\nb</script>--></script>",
+             "<!--<script>a\nb</script>-->"},
+            {"<script><!--<script>a-\rb</script>--></script>",
+             "<!--<script>a-\nb</script>-->"},
+            {"<script><!--<script>a--\rb</script>--></script>",
+             "<!--<script>a--\nb</script>-->"}
+        };
+        for (size_t j = 0; j < sizeof(cases) / sizeof(cases[0]); j++) {
+            check_partition(tkz, &f, cases[j].input, strlen(cases[j].input));
+            CHECK(f.count == 4 && f.kind[0] == LXA_HTML_START_TAG
+                  && f.kind[1] == LXA_HTML_TEXT
+                  && strcmp(f.bytes[1], cases[j].text) == 0
+                  && f.kind[2] == LXA_HTML_END_TAG
+                  && f.kind[3] == LXA_HTML_EOF && f.errors == 0);
+        }
+    }
+    check_partition(tkz, &f, "<script><!--a\xe2\r\nb--></script>",
+                    sizeof("<script><!--a\xe2\r\nb--></script>") - 1);
+    CHECK(f.count == 4 && strcmp(f.bytes[1], "<!--a\xef\xbf\xbd\nb-->") == 0
+          && f.errors == 1 && f.error_offset == 13
+          && strcmp(f.error_code, "invalid-utf-8") == 0);
+    check_partition(tkz, &f, "<script><!--a\r", sizeof("<script><!--a\r") - 1);
+    CHECK(f.count == 3 && f.kind[2] == LXA_HTML_EOF
+          && strcmp(f.bytes[1], "<!--a\n") == 0 && f.errors == 1
+          && f.error_offset == sizeof("<script><!--a\r") - 1
+          && strcmp(f.error_code, "eof-in-script-html-comment-like-text") == 0);
     check_partition(tkz, &f, "<script><!-- a</ScRiPt>z",
                     sizeof("<script><!-- a</ScRiPt>z") - 1);
     CHECK(f.count == 5 && strcmp(f.bytes[1], "<!-- a") == 0
