@@ -251,6 +251,8 @@ main(void)
         "</table></template>";
     static const unsigned char table[] =
         "<body><template><table><tr><td>x</td></tr></table></template>";
+    static const unsigned char virtual_foreign_recovery[] =
+        "<template><tbody><math><unknown><mtext><tr><td>y</template>";
     static const unsigned char section_list[] =
         "<head><template><ul><li>x<section><li>later</template>";
     static const unsigned char formatted_section_list[] =
@@ -1278,6 +1280,10 @@ main(void)
     if (status == 0)
         status = sweep(nested_frameset, sizeof(nested_frameset) - 1,
                        "nested frameset");
+    if (status == 0)
+        status = sweep(virtual_foreign_recovery,
+                       sizeof(virtual_foreign_recovery) - 1,
+                       "virtual table foreign recovery");
     if (status == 0)
         status = sweep(frameset_noframes,
                        sizeof(frameset_noframes) - 1, "frameset noframes");

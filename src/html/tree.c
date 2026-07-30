@@ -3187,13 +3187,14 @@ template_open_foreign(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-template_fostered_descendant(lxa_html_tree_t *tree,
-                             lxa_dom_ref_t element, lxa_span_t name,
+template_fostered_descendant(lxa_span_t name,
                              lxa_dom_namespace_t ns, bool *result)
 {
-    *result = (ns == LXA_DOM_NS_MATHML
-            && (named(name, "math") || mathml_text_integration(name)))
-        || block_container(name) || heading(name)
+    if (ns != LXA_DOM_NS_HTML) {
+        *result = true;
+        return LXA_OK;
+    }
+    *result = block_container(name) || heading(name)
         || named(name, "p") || named(name, "li")
         || named(name, "dt") || named(name, "dd")
         || template_crossed_inline(name)
@@ -3214,9 +3215,6 @@ template_fostered_descendant(lxa_html_tree_t *tree,
         || named(name, "kbd") || named(name, "sub")
         || named(name, "sup") || named(name, "var")
         || template_formatting(name);
-    if (!*result && ns == LXA_DOM_NS_MATHML
-        && named(name, "annotation-xml"))
-        return annotation_html_integration(tree, element, result);
     return LXA_OK;
 }
 
@@ -3341,8 +3339,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (j == template_boundary(tree) + 1
                         && (named(name, "td") || named(name, "th")))
                         continue;
-                    status = template_fostered_descendant(tree, open[j],
-                        name, ns, &clearable);
+                    status = template_fostered_descendant(name, ns, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 }
@@ -3482,8 +3479,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(tree, open[j],
-                            name, ns, &clearable);
+                        status = template_fostered_descendant(name, ns, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
                         return LXA_ERROR_UNSUPPORTED;
@@ -3565,8 +3561,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(tree, open[j],
-                            name, ns, &clearable);
+                        status = template_fostered_descendant(name, ns, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
                         return LXA_ERROR_UNSUPPORTED;
@@ -5799,8 +5794,7 @@ reprocess_template_token:
                             if (status != LXA_OK) return status;
                             if (named(name, "td") || named(name, "th"))
                                 return LXA_OK; /* End inside a cell is ignored. */
-                            status = template_fostered_descendant(tree,
-                                open[j], name, ns, &clearable);
+                            status = template_fostered_descendant(name, ns, &clearable);
                             if (status != LXA_OK) return status;
                             if (!clearable) return LXA_ERROR_UNSUPPORTED;
                         }
