@@ -93,11 +93,115 @@ static lxa_status_t
 error(void *context, const char *code, size_t offset)
 {
     lxa_status_t status = literal("[\"Error\",");
+    char number[32];
+    int length;
     (void) context;
-    (void) offset;
     if (status == LXA_OK)
         status = quoted((lxa_span_t) {(const uint8_t *) code, strlen(code)});
+    length = snprintf(number, sizeof(number), ",%zu", offset);
+    if (length < 0 || (size_t) length >= sizeof(number))
+        return LXA_ERROR_OVERFLOW;
+    if (status == LXA_OK) status = append(number, (size_t) length);
     return status == LXA_OK ? literal("]\n") : status;
+}
+
+typedef enum {
+    CHUNK_WHOLE, CHUNK_BYTE, CHUNK_SEVEN, CHUNK_STRUCTURAL, CHUNK_RANDOM,
+    CHUNK_COUNT
+} chunk_mode_t;
+
+static bool
+structural(uint8_t c)
+{
+    return c == '<' || c == '>' || c == '&' || c == '=' || c == '/'
+        || c == '?' || c == '!' || c == '"' || c == '\'' || c <= ' '
+        || c >= 0x7f;
+}
+
+static lxa_html_result_t
+run(size_t state, const char *tag, size_t length, chunk_mode_t mode)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    lxa_html_tokenizer_t *tokenizer = NULL;
+    lxa_html_result_t result;
+    lxa_status_t status;
+    uint32_t random = UINT32_C(0x1782ec49);
+    status = lxa_html_tokenizer_create(&allocator, token, error, NULL, &tokenizer);
+    if (status != LXA_OK) {
+        fprintf(stderr, "tokenizer create status %d\n", (int) status);
+        return LXA_HTML_INTERNAL;
+    }
+    if (state == 5) {
+        result = lxa_html_tokenizer_allow_cdata(tokenizer, true);
+        if (result == LXA_HTML_OK)
+            result = lxa_html_tokenizer_feed(tokenizer,
+                (lxa_span_t) {(const uint8_t *) "<![CDATA[", 9});
+    }
+    else {
+        const char *name = state == 0 || state == 4 ? "" : tag;
+        result = lxa_html_tokenizer_set_text_mode(tokenizer,
+            (lxa_html_text_mode_t) state,
+            (lxa_span_t) {(const uint8_t *) name, strlen(name)});
+    }
+    for (size_t at = 0; result == LXA_HTML_OK && at < length;) {
+        size_t count = length - at;
+        if (mode == CHUNK_BYTE) count = 1;
+        else if (mode == CHUNK_SEVEN && count > 7) count = 7;
+        else if (mode == CHUNK_RANDOM) {
+            size_t chunk;
+            random ^= random << 13;
+            random ^= random >> 17;
+            random ^= random << 5;
+            chunk = 1 + random % 23;
+            if (count > chunk) count = chunk;
+        }
+        else if (mode == CHUNK_STRUCTURAL) {
+            count = 1;
+            if (!structural(input[at]))
+                while (count < length - at && !structural(input[at + count]))
+                    count++;
+        }
+        result = lxa_html_tokenizer_feed(tokenizer, (lxa_span_t) {input + at, count});
+        at += count;
+    }
+    if (result == LXA_HTML_OK) result = lxa_html_tokenizer_finish(tokenizer);
+    lxa_html_tokenizer_destroy(tokenizer);
+    return result;
+}
+
+static uint32_t
+little_endian(const uint8_t bytes[4])
+{
+    return (uint32_t) bytes[0] | (uint32_t) bytes[1] << 8
+        | (uint32_t) bytes[2] << 16 | (uint32_t) bytes[3] << 24;
+}
+
+static int
+batch(chunk_mode_t mode)
+{
+    uint8_t header[12];
+    char tag[128];
+    size_t count;
+    /* Each record is three LE u32s (state, input size, tag size), then bytes. */
+    while ((count = fread(header, 1, sizeof(header), stdin)) != 0) {
+        size_t state, length, tag_length;
+        lxa_html_result_t result;
+        if (count != sizeof(header)) return 2;
+        state = little_endian(header);
+        length = little_endian(header + 4);
+        tag_length = little_endian(header + 8);
+        if (state > 5 || length > sizeof(input) || tag_length >= sizeof(tag))
+            return 2;
+        if (fread(input, 1, length, stdin) != length
+            || fread(tag, 1, tag_length, stdin) != tag_length
+            || memchr(tag, 0, tag_length) != NULL) return 2;
+        tag[tag_length] = 0;
+        used = 0;
+        result = run(state, tag, length, mode);
+        if (fwrite(output, 1, used, stdout) != used
+            || fprintf(stdout, "[\"Result\",%d]\n", (int) result) < 0) return 1;
+    }
+    return ferror(stdin) || fflush(stdout) != 0 ? 1 : 0;
 }
 
 int
@@ -107,40 +211,21 @@ main(int argc, char **argv)
         "Data state", "RCDATA state", "RAWTEXT state",
         "Script data state", "PLAINTEXT state", "CDATA section state"
     };
-    lxa_allocator_t allocator = lxa_allocator_default();
-    lxa_html_tokenizer_t *tokenizer = NULL;
+    static const char *chunks[] = {"whole", "byte", "seven", "structural", "random"};
+    size_t length, state, mode;
     lxa_html_result_t result;
-    size_t length, state, chunk;
-    int extra;
-    if (argc != 4 || (strcmp(argv[3], "whole") != 0 && strcmp(argv[3], "byte") != 0))
-        return 2;
+    if (argc != 3 && argc != 4) return 2;
+    for (mode = 0; mode < CHUNK_COUNT; mode++)
+        if (strcmp(argv[argc - 1], chunks[mode]) == 0) break;
+    if (mode == CHUNK_COUNT) return 2;
+    if (argc == 3)
+        return strcmp(argv[1], "--batch") == 0 ? batch((chunk_mode_t) mode) : 2;
     for (state = 0; state < sizeof(states) / sizeof(states[0]); state++)
         if (strcmp(argv[1], states[state]) == 0) break;
     if (state == sizeof(states) / sizeof(states[0])) return 2;
     length = fread(input, 1, sizeof(input), stdin);
-    extra = fgetc(stdin);
-    if (ferror(stdin) || extra != EOF) return 2;
-    if (lxa_html_tokenizer_create(&allocator, token, error, NULL, &tokenizer)
-        != LXA_OK) return 1;
-    if (state == 5) {
-        result = lxa_html_tokenizer_allow_cdata(tokenizer, true);
-        if (result == LXA_HTML_OK)
-            result = lxa_html_tokenizer_feed(tokenizer,
-                (lxa_span_t) {(const uint8_t *) "<![CDATA[", 9});
-    }
-    else {
-        const char *name = state == 0 || state == 4 ? "" : argv[2];
-        result = lxa_html_tokenizer_set_text_mode(tokenizer,
-            (lxa_html_text_mode_t) state,
-            (lxa_span_t) {(const uint8_t *) name, strlen(name)});
-    }
-    chunk = strcmp(argv[3], "byte") == 0 ? 1 : sizeof(input);
-    for (size_t at = 0; result == LXA_HTML_OK && at < length; at += chunk) {
-        size_t count = length - at < chunk ? length - at : chunk;
-        result = lxa_html_tokenizer_feed(tokenizer, (lxa_span_t) {input + at, count});
-    }
-    if (result == LXA_HTML_OK) result = lxa_html_tokenizer_finish(tokenizer);
-    lxa_html_tokenizer_destroy(tokenizer);
+    if (fgetc(stdin) != EOF || ferror(stdin)) return 2;
+    result = run(state, argv[2], length, (chunk_mode_t) mode);
     if (result != LXA_HTML_OK) {
         fprintf(stderr, "tokenizer result %d\n", (int) result);
         return 1;
