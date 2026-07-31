@@ -2377,7 +2377,11 @@ typedef struct {
     lxa_dom_ref_t option, parent, before;
 } select_option_insertion_t;
 
+typedef enum { SELECT_SCAN_RESET, SELECT_SCAN_EXCLUSION } select_scan_kind_t;
+
 typedef struct {
+    select_scan_kind_t kind;
+    bool found_excluded;
     select_reset_plan_t *plan;
     lxa_dom_ref_t last, first;
     size_t selected;
@@ -2418,39 +2422,16 @@ select_scan_option(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option,
 }
 
 static lxa_status_t
-plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
-                   lxa_handle_t excluded, const select_option_insertion_t *insertion,
-                   select_reset_plan_t *plan)
+scan_select_options(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
+                      lxa_handle_t excluded, const select_option_insertion_t *insertion,
+                      select_reset_scan_t *scan)
 {
     lxa_dom_ref_t cursor, group = {0}, attribute;
-    select_reset_scan_t scan = {.plan = plan, .size_one = true};
     select_tag_t tag;
     size_t length = lxa_vector_length(&nodes->records);
     size_t steps = 0, ascents = 0;
-    bool disabled_group = false, inserted = false;
-    lxa_status_t status;
-    plan->choice = LXA_ID_NONE;
-    status = lxa_vector_init(&plan->options, &nodes->allocator, sizeof(lxa_id_t));
-    if (status == LXA_OK)
-        status = lxa_vector_bind_budget(&plan->options, nodes->budget);
-    if (status != LXA_OK) return status;
-    status = lxa_dom_nodes_find_attribute(nodes, select,
-        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
-    if (status != LXA_OK || attribute.handle != LXA_HANDLE_NONE) return status;
-    status = lxa_dom_nodes_find_attribute(nodes, select,
-        (lxa_span_t){(const uint8_t *) "size", 4}, &attribute);
-    if (status == LXA_OK && attribute.handle != LXA_HANDLE_NONE) {
-        lxa_span_t name, value;
-        status = lxa_dom_nodes_attribute_read(nodes, attribute, &name, &value);
-        if (status == LXA_OK)
-            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK,
-                                       value.length, &nodes->limit_reason);
-        if (status == LXA_OK) scan.size_one = select_display_size_one(value);
-    }
-    if (status != LXA_OK) return status;
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_first_child(nodes, select, &cursor);
-    steps = 0;
+    bool disabled_group = false, inserted = false, excluding = false;
+    lxa_status_t status = lxa_dom_nodes_first_child(nodes, select, &cursor);
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
         lxa_dom_ref_t next;
         bool descend;
@@ -2459,26 +2440,35 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
                                    &nodes->limit_reason);
         if (status == LXA_OK) status = select_tag(nodes, cursor, &tag);
         if (status != LXA_OK) break;
-        descend = cursor.handle != excluded
+        if (cursor.handle == excluded) excluding = true;
+        descend = (scan->kind == SELECT_SCAN_EXCLUSION || cursor.handle != excluded)
             && tag != SELECT_LEAF && tag != SELECT_SELECT && tag != SELECT_OPTION
             && tag != SELECT_HR && tag != SELECT_DATALIST
             && !(tag == SELECT_OPTGROUP && group.handle != LXA_HANDLE_NONE);
         if (insertion != NULL && cursor.handle == insertion->before.handle) {
             status = select_scan_option(nodes, insertion->option,
-                                         disabled_group, &scan);
+                                         disabled_group, scan);
             if (status != LXA_OK) break;
             inserted = true;
         }
-        if (tag == SELECT_OPTION && cursor.handle != excluded) {
-            status = select_scan_option(nodes, cursor, disabled_group, &scan);
-            if (status != LXA_OK) break;
+        if (tag == SELECT_OPTION) {
+            if (scan->kind == SELECT_SCAN_EXCLUSION && excluding) {
+                scan->found_excluded = true;
+                return LXA_OK;
+            }
+            if (scan->kind == SELECT_SCAN_RESET && !excluding) {
+                status = select_scan_option(nodes, cursor, disabled_group, scan);
+                if (status != LXA_OK) break;
+            }
         }
         if (descend && tag == SELECT_OPTGROUP) {
             group = cursor;
-            status = lxa_dom_nodes_find_attribute(nodes, group,
-                (lxa_span_t){(const uint8_t *) "disabled", 8}, &attribute);
-            if (status != LXA_OK) break;
-            disabled_group = attribute.handle != LXA_HANDLE_NONE;
+            if (scan->kind == SELECT_SCAN_RESET) {
+                status = lxa_dom_nodes_find_attribute(nodes, group,
+                    (lxa_span_t){(const uint8_t *) "disabled", 8}, &attribute);
+                if (status != LXA_OK) break;
+                disabled_group = attribute.handle != LXA_HANDLE_NONE;
+            }
         }
         if (descend) {
             status = lxa_dom_nodes_first_child(nodes, cursor, &next);
@@ -2497,9 +2487,13 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
                 && insertion->before.handle == LXA_HANDLE_NONE
                 && cursor.handle == insertion->parent.handle) {
                 status = select_scan_option(nodes, insertion->option,
-                                             disabled_group, &scan);
+                                             disabled_group, scan);
                 if (status != LXA_OK) break;
                 inserted = true;
+            }
+            if (cursor.handle == excluded) {
+                if (scan->kind == SELECT_SCAN_EXCLUSION) return LXA_OK;
+                excluding = false;
             }
             if (cursor.handle == group.handle) {
                 group = (lxa_dom_ref_t){0};
@@ -2527,8 +2521,39 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
         if (insertion->parent.handle != select.handle
             || insertion->before.handle != LXA_HANDLE_NONE)
             status = LXA_ERROR_ARGUMENT;
-        else status = select_scan_option(nodes, insertion->option, false, &scan);
+        else status = select_scan_option(nodes, insertion->option, false, scan);
     }
+    return status;
+}
+
+static lxa_status_t
+plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
+                   lxa_handle_t excluded, const select_option_insertion_t *insertion,
+                   select_reset_plan_t *plan)
+{
+    lxa_dom_ref_t attribute;
+    select_reset_scan_t scan = {.plan = plan, .size_one = true};
+    lxa_status_t status;
+    plan->choice = LXA_ID_NONE;
+    status = lxa_vector_init(&plan->options, &nodes->allocator, sizeof(lxa_id_t));
+    if (status == LXA_OK)
+        status = lxa_vector_bind_budget(&plan->options, nodes->budget);
+    if (status != LXA_OK) return status;
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
+    if (status != LXA_OK || attribute.handle != LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "size", 4}, &attribute);
+    if (status == LXA_OK && attribute.handle != LXA_HANDLE_NONE) {
+        lxa_span_t name, value;
+        status = lxa_dom_nodes_attribute_read(nodes, attribute, &name, &value);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK,
+                                       value.length, &nodes->limit_reason);
+        if (status == LXA_OK) scan.size_one = select_display_size_one(value);
+    }
+    if (status != LXA_OK) return status;
+    status = scan_select_options(nodes, select, excluded, insertion, &scan);
     if (status == LXA_OK) {
         if (scan.selected > 1) plan->choice = (lxa_id_t) scan.last.handle;
         else if (scan.selected == 0 && scan.size_one
@@ -2959,11 +2984,22 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
                                    &nodes->limit_reason);
     if (status != LXA_OK) return status;
     status = html_option(nodes, element, &option);
-    if (status == LXA_OK && option) {
+    if (status == LXA_OK) {
         lxa_dom_ref_t select;
-        status = option_select(nodes, element, &select);
-        if (status == LXA_OK && select.handle != LXA_HANDLE_NONE)
-            status = plan_select_reset(nodes, select, element.handle, NULL, &plan);
+        if (option) status = option_select(nodes, element, &select);
+        else status = option_select_at(nodes, element, &select);
+        if (status == LXA_OK && select.handle != LXA_HANDLE_NONE
+            && select.handle != element.handle) {
+            bool affected = option;
+            if (!affected) {
+                select_reset_scan_t scan = {.kind = SELECT_SCAN_EXCLUSION};
+                status = scan_select_options(nodes, select, element.handle,
+                                               NULL, &scan);
+                affected = scan.found_excluded;
+            }
+            if (status == LXA_OK && affected)
+                status = plan_select_reset(nodes, select, element.handle, NULL, &plan);
+        }
     }
     if (status != LXA_OK) goto done;
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
