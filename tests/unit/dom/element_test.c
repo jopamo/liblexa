@@ -369,6 +369,136 @@ check_option_detach(void)
 }
 
 static void
+check_option_move(void)
+{
+    enum {
+        APPEND, BEFORE, NESTED_BEFORE, NESTED_AFTER, DISABLED_GROUP,
+        SAME_OWNER, BLOCKED, FOREIGN, UNOWNED, TEXT_BEFORE, MULTIPLE, CASE_COUNT
+    };
+    const uint16_t chosen = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned path = 0; path < CASE_COUNT; ++path) {
+        lxa_budget_t budget;
+        lxa_dom_nodes_t *nodes;
+        lxa_dom_ref_t old_select, new_select, old_host, parent, moved, remaining;
+        lxa_dom_ref_t existing, text, attribute, before_ref = {0};
+        lxa_dom_record_t before[16], *records;
+        lxa_limits_t limits;
+        uint16_t moved_flags = path == FOREIGN ? 0
+            : path == DISABLED_GROUP || path == UNOWNED || path == TEXT_BEFORE
+                ? LXA_DOM_OPTION_DIRTY : chosen;
+        uint16_t old_flags = path == SAME_OWNER || path == DISABLED_GROUP
+            || path == TEXT_BEFORE ? chosen : 0;
+        uint16_t new_flags = path == FOREIGN || path == DISABLED_GROUP
+            || path == UNOWNED || path == TEXT_BEFORE ? 0 : chosen;
+        size_t retained, count;
+        bool success = false;
+        bool coalescing = path <= NESTED_AFTER;
+        TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        limits = budget.limits;
+        TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                   &nodes) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"),
+                                                      &old_select) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"),
+                                                      &new_select) == LXA_OK);
+        old_host = old_select;
+        if (path == UNOWNED) {
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("datalist"),
+                                                          &old_host) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old_select,
+                                                               old_host) == LXA_OK);
+        }
+        TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("option"),
+            path == FOREIGN ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &moved) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old_host, moved)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"),
+                                                      &remaining) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old_select,
+                                                          remaining) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"),
+                                                      &existing) == LXA_OK);
+        if (path == NESTED_AFTER)
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, new_select,
+                                                              existing) == LXA_OK);
+        parent = new_select;
+        if (path == NESTED_BEFORE || path == NESTED_AFTER || path == SAME_OWNER
+            || path == DISABLED_GROUP || path == BLOCKED) {
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
+                name(path == DISABLED_GROUP ? "optgroup" : path == BLOCKED
+                     ? "datalist" : "div"), &parent) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                path == SAME_OWNER ? old_select : new_select, parent) == LXA_OK);
+        }
+        TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+            name("text"), &text) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, text)
+                   == LXA_OK);
+        if (path != NESTED_AFTER && path != UNOWNED)
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, new_select,
+                                                              existing) == LXA_OK);
+        if (path == DISABLED_GROUP || path == MULTIPLE) {
+            TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes,
+                name(path == MULTIPLE ? "multiple" : "disabled"), name("false"),
+                &attribute) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, parent, attribute)
+                       == LXA_OK);
+        }
+        if (path == BEFORE) before_ref = existing;
+        if (path == TEXT_BEFORE) before_ref = text;
+        records = (lxa_dom_record_t *) nodes->records.bytes.data;
+        records[(lxa_id_t) moved.handle].flags = moved_flags;
+        records[(lxa_id_t) remaining.handle].flags = old_flags;
+        records[(lxa_id_t) existing.handle].flags = new_flags;
+        count = lxa_dom_nodes_length(nodes);
+        TEST_CHECK(count <= sizeof(before) / sizeof(before[0]));
+        memcpy(before, records, count * sizeof(before[0]));
+        retained = budget.used[LXA_BUDGET_MEMORY];
+        if (coalescing) {
+            lxa_status_t status;
+            budget.limits.max_memory_bytes = retained;
+            status = before_ref.handle == LXA_HANDLE_NONE
+                ? lxa_dom_nodes_reparent_constructed_child(nodes, parent, moved)
+                : lxa_dom_nodes_reparent_constructed_before(nodes, parent, moved,
+                                                             before_ref);
+            TEST_CHECK(status == LXA_ERROR_LIMIT
+                       && nodes->limit_reason == LXA_BUDGET_MEMORY
+                       && memcmp(records, before, count * sizeof(before[0])) == 0);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
+            budget.limits = limits;
+        }
+        for (size_t allowance = 0; allowance < 512; ++allowance) {
+            lxa_status_t status;
+            budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
+            status = before_ref.handle == LXA_HANDLE_NONE
+                ? lxa_dom_nodes_reparent_constructed_child(nodes, parent, moved)
+                : lxa_dom_nodes_reparent_constructed_before(nodes, parent, moved,
+                                                             before_ref);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
+            if (status == LXA_OK) { success = true; break; }
+            TEST_CHECK(status == LXA_ERROR_LIMIT
+                       && nodes->limit_reason == LXA_BUDGET_WORK
+                       && memcmp(records, before, count * sizeof(before[0])) == 0);
+        }
+        TEST_CHECK(success);
+        budget.limits = limits;
+        check_option_state(nodes, moved, path == BEFORE || path == NESTED_BEFORE
+            ? LXA_DOM_OPTION_DIRTY : path == UNOWNED || path == TEXT_BEFORE
+                ? chosen : moved_flags);
+        check_option_state(nodes, remaining, path == SAME_OWNER
+            || path == DISABLED_GROUP || path == TEXT_BEFORE ? old_flags
+                : path == FOREIGN || path == UNOWNED ? 0 : LXA_DOM_OPTION_SELECTED);
+        check_option_state(nodes, existing, path == APPEND || path == NESTED_AFTER
+            ? LXA_DOM_OPTION_DIRTY : path == DISABLED_GROUP
+                ? LXA_DOM_OPTION_SELECTED : new_flags);
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_dom_nodes_destroy(nodes);
+        TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+}
+
+static void
 check_element_clone(void)
 {
     static const struct {
@@ -483,6 +613,7 @@ main(void)
     check_option_selected_attributes();
     check_option_select_reset();
     check_option_detach();
+    check_option_move();
     TEST_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create_with_entropy(&allocator, &budget,
         fixed_entropy, NULL, NULL, &nodes) == LXA_ERROR_ENTROPY);
