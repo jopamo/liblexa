@@ -154,8 +154,9 @@ lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Move an attached parser-owned subtree to the end of an element or fragment,
  * or immediately before a child of that parent. Validate link symmetry,
- * cycles, subtree depth and budget before commit. A direct HTML option changing
- * owners resets both selects at the link commit. Failure preserves links/state. */
+ * cycles, subtree depth and budget before commit. HTML options changing owners,
+ * including descendants, reset affected selects at the link commit. Failure
+ * preserves links/state. */
 lxa_status_t lxa_dom_nodes_reparent_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child);
 lxa_status_t lxa_dom_nodes_reparent_constructed_before(lxa_dom_nodes_t *nodes,
