@@ -15,6 +15,12 @@ typedef struct {
     uint32_t generation;
 } lxa_dom_record_t;
 
+/* HTML option state starts clear; the selected attribute supplies its default. */
+enum {
+    LXA_DOM_OPTION_SELECTED = 1u << 0,
+    LXA_DOM_OPTION_DIRTY = 1u << 1
+};
+
 typedef char lxa_dom_record_size_must_be_32[
     sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
 

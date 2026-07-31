@@ -25,6 +25,108 @@ fixed_entropy(void *context, uint8_t key[16])
 }
 
 static void
+check_option_state(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option, uint16_t flags)
+{
+    lxa_dom_record_t record;
+    TEST_CHECK(lxa_dom_nodes_read(nodes, option, &record) == LXA_OK
+               && record.flags == flags);
+}
+
+static void
+check_option_selected_attributes(void)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    lxa_budget_t budget;
+    lxa_dom_nodes_t *nodes;
+    lxa_dom_ref_t option, selected, replacement, title, clone, found;
+    lxa_dom_record_t *records;
+    uint64_t max_work;
+    TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+    max_work = budget.limits.max_work;
+    TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                               &nodes) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &option)
+               == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("selected"),
+        name("false"), &selected) == LXA_OK);
+    check_option_state(nodes, option, 0);
+    budget.limits.max_work = budget.used[LXA_BUDGET_WORK];
+    TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, option, selected)
+               == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_WORK);
+    check_option_state(nodes, option, 0);
+    budget.limits.max_work = max_work;
+    TEST_CHECK(lxa_dom_nodes_find_attribute(nodes, option, name("selected"),
+        &found) == LXA_OK && found.handle == LXA_HANDLE_NONE);
+    TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, option, selected) == LXA_OK);
+    check_option_state(nodes, option, LXA_DOM_OPTION_SELECTED);
+    TEST_CHECK(lxa_dom_nodes_attribute_set_value(nodes, selected, name(""))
+               == LXA_OK);
+    check_option_state(nodes, option, LXA_DOM_OPTION_SELECTED);
+    TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("selected"),
+        name("other"), &replacement) == LXA_OK);
+    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+    records[(lxa_id_t) option.handle].flags = 0; /* Model select reset. */
+    TEST_CHECK(lxa_dom_nodes_replace_attribute(nodes, option, selected,
+                                               replacement) == LXA_OK);
+    check_option_state(nodes, option, 0);
+    TEST_CHECK(lxa_dom_nodes_clone_element(nodes, option, &clone) == LXA_OK);
+    check_option_state(nodes, clone, LXA_DOM_OPTION_SELECTED);
+    TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("title"),
+        name("text"), &title) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_replace_attribute(nodes, option, replacement, title)
+               == LXA_OK);
+    check_option_state(nodes, option, 0);
+    TEST_CHECK(lxa_dom_nodes_replace_attribute(nodes, option, title, selected)
+               == LXA_OK);
+    check_option_state(nodes, option, LXA_DOM_OPTION_SELECTED);
+    budget.limits.max_work = budget.used[LXA_BUDGET_WORK];
+    TEST_CHECK(lxa_dom_nodes_detach_attribute(nodes, option, selected)
+               == LXA_ERROR_LIMIT);
+    check_option_state(nodes, option, LXA_DOM_OPTION_SELECTED);
+    budget.limits.max_work = max_work;
+    TEST_CHECK(lxa_dom_nodes_detach_attribute(nodes, option, selected) == LXA_OK);
+    check_option_state(nodes, option, 0);
+    for (unsigned selectedness = 0; selectedness < 2; ++selectedness) {
+        uint16_t flags = LXA_DOM_OPTION_DIRTY
+            | (selectedness ? LXA_DOM_OPTION_SELECTED : 0);
+        records = (lxa_dom_record_t *) nodes->records.bytes.data;
+        records[(lxa_id_t) option.handle].flags = flags;
+        TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, option, selected)
+                   == LXA_OK);
+        check_option_state(nodes, option, flags);
+        TEST_CHECK(lxa_dom_nodes_clone_element(nodes, option, &clone) == LXA_OK);
+        check_option_state(nodes, clone, LXA_DOM_OPTION_SELECTED);
+        TEST_CHECK(lxa_dom_nodes_detach_attribute(nodes, option, selected)
+                   == LXA_OK);
+        check_option_state(nodes, option, flags);
+    }
+    for (unsigned foreign = 0; foreign < 2; ++foreign) {
+        lxa_dom_ref_t host;
+        TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes,
+            name(foreign ? "option" : "div"),
+            foreign ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &host) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, host, selected)
+                   == LXA_OK);
+        check_option_state(nodes, host, 0);
+        TEST_CHECK(lxa_dom_nodes_detach_attribute(nodes, host, selected)
+                   == LXA_OK);
+    }
+    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+    records[(lxa_id_t) option.handle].flags = 0;
+    TEST_CHECK(lxa_dom_nodes_append_foreign_attribute(nodes, name("xml:selected"),
+        name(""), LXA_DOM_ATTR_NS_XML, &selected) == LXA_OK);
+    TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, option, selected) == LXA_OK);
+    check_option_state(nodes, option, 0);
+    TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+    records[(lxa_id_t) option.handle].flags = UINT16_MAX;
+    TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_ERROR_ARGUMENT);
+    records[(lxa_id_t) option.handle].flags = 0;
+    lxa_dom_nodes_destroy(nodes);
+    TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+}
+
+static void
 check_element_clone(void)
 {
     static const struct {
@@ -136,6 +238,7 @@ main(void)
     char input[] = "custom-tag";
     size_t before, i;
     check_element_clone();
+    check_option_selected_attributes();
     TEST_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create_with_entropy(&allocator, &budget,
         fixed_entropy, NULL, NULL, &nodes) == LXA_ERROR_ENTROPY);

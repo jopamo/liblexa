@@ -1915,6 +1915,33 @@ scan_attributes(lxa_dom_nodes_t *nodes, lxa_id_t element_id,
     return count == element.attr_count ? LXA_OK : LXA_ERROR_ARGUMENT;
 }
 
+static lxa_status_t
+option_selected_attribute(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
+                          lxa_dom_record_t host, lxa_span_t name,
+                          lxa_dom_attr_namespace_t ns, bool *applies)
+{
+    const lxa_dom_element_t *data =
+        (const lxa_dom_element_t *) nodes->elements.bytes.data + host.payload;
+    lxa_span_t tag;
+    lxa_status_t status;
+    *applies = false;
+    if (data->namespace_id != LXA_DOM_NS_HTML
+        || (host.flags & LXA_DOM_OPTION_DIRTY) != 0
+        || ns != LXA_DOM_ATTR_NS_NONE || name.length != 8)
+        return LXA_OK;
+    status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 8,
+                               &nodes->limit_reason);
+    if (status != LXA_OK || memcmp(name.data, "selected", 8) != 0)
+        return status;
+    status = lxa_dom_nodes_element_name(nodes, element, &tag);
+    if (status == LXA_OK && tag.length == 6) {
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 6,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) *applies = memcmp(tag.data, "option", 6) == 0;
+    }
+    return status;
+}
+
 lxa_status_t
 lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t attribute)
@@ -1924,6 +1951,7 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_attr_t *attrs, *attr;
     lxa_id_t host_id, attr_id, match, tail;
     lxa_span_t name, value;
+    bool select_option;
     lxa_status_t status;
     if (nodes == NULL) {
         return LXA_ERROR_ARGUMENT;
@@ -1965,6 +1993,9 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     if (data->attr_count == UINT32_MAX) {
         return LXA_ERROR_OVERFLOW;
     }
+    status = option_selected_attribute(nodes, element, host, name,
+                                       attr->namespace_id, &select_option);
+    if (status != LXA_OK) return status;
     /* No allocation, callbacks or fallible work after this point. */
     attr->owner = host_id;
     if (tail == LXA_ID_NONE) {
@@ -1975,6 +2006,9 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
             = attr_id;
     }
     ++data->attr_count;
+    if (select_option)
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[host_id].flags
+            |= LXA_DOM_OPTION_SELECTED;
     return LXA_OK;
 }
 
@@ -1987,6 +2021,7 @@ lxa_dom_nodes_detach_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_attr_t *attrs, *attr;
     lxa_id_t host_id, attr_id, match, tail, predecessor;
     lxa_span_t name, value;
+    bool deselect_option;
     lxa_status_t status;
     if (nodes == NULL) {
         return LXA_ERROR_ARGUMENT;
@@ -2019,6 +2054,9 @@ lxa_dom_nodes_detach_attribute(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || match != attr_id || data->attr_count == 0) {
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
     }
+    status = option_selected_attribute(nodes, element, host, name,
+                                       attr->namespace_id, &deselect_option);
+    if (status != LXA_OK) return status;
     /* All inspection and budgeted work precedes this link commit. */
     if (predecessor == LXA_ID_NONE) {
         data->first_attr = attr->next;
@@ -2029,6 +2067,9 @@ lxa_dom_nodes_detach_attribute(lxa_dom_nodes_t *nodes,
     }
     attr->owner = attr->next = LXA_ID_NONE;
     --data->attr_count;
+    if (deselect_option)
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[host_id].flags
+            &= (uint16_t) ~LXA_DOM_OPTION_SELECTED;
     return LXA_OK;
 }
 
@@ -2042,6 +2083,7 @@ lxa_dom_nodes_replace_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_attr_t *attrs, *old_attr, *new_attr;
     lxa_id_t host_id, old_id, new_id, match, tail, predecessor;
     lxa_span_t old_name, new_name, value;
+    bool deselect_option, select_option;
     lxa_status_t status;
     if (nodes == NULL) {
         return LXA_ERROR_ARGUMENT;
@@ -2089,6 +2131,14 @@ lxa_dom_nodes_replace_attribute(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || (match != LXA_ID_NONE && match != old_id)) {
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
     }
+    status = option_selected_attribute(nodes, element, host, old_name,
+                                       old_attr->namespace_id,
+                                       &deselect_option);
+    if (status == LXA_OK)
+        status = option_selected_attribute(nodes, element, host, new_name,
+                                           new_attr->namespace_id,
+                                           &select_option);
+    if (status != LXA_OK) return status;
     /* Both scans complete before changing ownership or links. */
     new_attr->owner = host_id;
     new_attr->next = old_attr->next;
@@ -2100,6 +2150,12 @@ lxa_dom_nodes_replace_attribute(lxa_dom_nodes_t *nodes,
             .next = new_id;
     }
     old_attr->owner = old_attr->next = LXA_ID_NONE;
+    if (select_option != deselect_option) {
+        lxa_dom_record_t *record =
+            (lxa_dom_record_t *) nodes->records.bytes.data + host_id;
+        if (select_option) record->flags |= LXA_DOM_OPTION_SELECTED;
+        else record->flags &= (uint16_t) ~LXA_DOM_OPTION_SELECTED;
+    }
     return LXA_OK;
 }
 
@@ -3209,7 +3265,12 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
             goto done;
         }
         if (node->generation != nodes->generation
-            || !valid_kind((lxa_dom_kind_t) node->kind)) {
+            || !valid_kind((lxa_dom_kind_t) node->kind)
+            || (node->flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY))
+               != 0
+            || (node->flags != 0
+                && (node->kind != LXA_DOM_KIND_ELEMENT
+                    || node->payload == LXA_ID_NONE))) {
             goto done;
         }
         if (node->payload != LXA_ID_NONE) {
@@ -3229,6 +3290,16 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
                     || (element->first_attr == LXA_ID_NONE)
                        != (element->attr_count == 0)) {
                     goto done;
+                }
+                if (node->flags != 0) {
+                    const lxa_dom_atom_t *atom = atoms[element->atom];
+                    if (element->namespace_id != LXA_DOM_NS_HTML
+                        || atom->length != 6
+                        || atom->offset > nodes->strings.length
+                        || atom->length > nodes->strings.length - atom->offset
+                        || memcmp(nodes->strings.data + atom->offset,
+                                  "option", 6) != 0)
+                        goto done;
                 }
                 seen[length + characters + element_count + attribute_count
                      + element->atom] = 1;
