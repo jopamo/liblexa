@@ -146,6 +146,11 @@ lxa_status_t lxa_dom_nodes_pi_read(const lxa_dom_nodes_t *nodes,
  * document doctype/root ordering when the parent is a document. */
 lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
+/* Unlink an attached parser-owned element after preflight. Removing an HTML
+ * option resets its old select at the link commit. Keep descendants/handles
+ * live in the store. Failure changes neither links nor option state. */
+lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element);
 /* Move an attached parser-owned subtree to the end of an element or fragment,
  * or immediately before a child of that parent. Validate link symmetry,
  * cycles, subtree depth and budget before commit. */

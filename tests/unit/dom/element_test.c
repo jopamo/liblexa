@@ -275,6 +275,100 @@ check_option_select_reset(void)
 }
 
 static void
+check_option_detach(void)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned path = 0; path < 7; ++path) {
+        lxa_budget_t budget;
+        lxa_dom_nodes_t *nodes;
+        lxa_dom_ref_t select, host, first, second, third, attr;
+        lxa_dom_record_t before[5], after;
+        lxa_dom_ref_t refs[5];
+        lxa_dom_record_t *records;
+        lxa_limits_t limits;
+        uint16_t old_flags = path == 4 || path == 6 ? 0
+            : LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+        uint16_t second_flags = path == 1 || path == 6 ? LXA_DOM_OPTION_SELECTED : 0;
+        uint16_t third_flags = path == 1 ? LXA_DOM_OPTION_SELECTED : 0;
+        size_t retained;
+        bool success = false;
+        TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        limits = budget.limits;
+        TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                   &nodes) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"),
+                                                      &select) == LXA_OK);
+        if (path == 2 || path == 3) {
+            TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes,
+                name(path == 2 ? "multiple" : "size"), name("0"), &attr) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, select, attr) == LXA_OK);
+        }
+        host = select;
+        if (path == 5) {
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("datalist"),
+                                                          &host) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, host)
+                       == LXA_OK);
+        }
+        TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("option"),
+            path == 4 ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &first) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, host, first)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"),
+                                                      &second) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, second)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"),
+                                                      &third) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, third)
+                   == LXA_OK);
+        records = (lxa_dom_record_t *) nodes->records.bytes.data;
+        records[(lxa_id_t) first.handle].flags = old_flags;
+        records[(lxa_id_t) second.handle].flags = second_flags;
+        records[(lxa_id_t) third.handle].flags = third_flags;
+        refs[0] = select; refs[1] = host; refs[2] = first;
+        refs[3] = second; refs[4] = third;
+        for (size_t i = 0; i < 5; ++i)
+            TEST_CHECK(lxa_dom_nodes_read(nodes, refs[i], &before[i]) == LXA_OK);
+        retained = budget.used[LXA_BUDGET_MEMORY];
+        if (path == 1) {
+            budget.limits.max_memory_bytes = retained;
+            TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, first)
+                       == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_MEMORY);
+            for (size_t i = 0; i < 5; ++i)
+                TEST_CHECK(lxa_dom_nodes_read(nodes, refs[i], &after) == LXA_OK
+                           && memcmp(&after, &before[i], sizeof(after)) == 0);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
+            budget.limits = limits;
+        }
+        for (size_t allowance = 0; allowance < 256; ++allowance) {
+            lxa_status_t status;
+            budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
+            status = lxa_dom_nodes_detach_constructed_element(nodes, first);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
+            if (status == LXA_OK) { success = true; break; }
+            TEST_CHECK(status == LXA_ERROR_LIMIT
+                       && nodes->limit_reason == LXA_BUDGET_WORK);
+            for (size_t i = 0; i < 5; ++i)
+                TEST_CHECK(lxa_dom_nodes_read(nodes, refs[i], &after) == LXA_OK
+                           && memcmp(&after, &before[i], sizeof(after)) == 0);
+        }
+        TEST_CHECK(success);
+        budget.limits = limits;
+        check_option_state(nodes, first, old_flags);
+        check_option_state(nodes, second,
+            path == 0 || path == 6 ? LXA_DOM_OPTION_SELECTED : 0);
+        check_option_state(nodes, third, third_flags);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, first, &after) == LXA_OK
+                   && after.parent == LXA_ID_NONE && after.prev == LXA_ID_NONE
+                   && after.next == LXA_ID_NONE);
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_dom_nodes_destroy(nodes);
+        TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+}
+
+static void
 check_element_clone(void)
 {
     static const struct {
@@ -388,6 +482,7 @@ main(void)
     check_element_clone();
     check_option_selected_attributes();
     check_option_select_reset();
+    check_option_detach();
     TEST_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create_with_entropy(&allocator, &budget,
         fixed_entropy, NULL, NULL, &nodes) == LXA_ERROR_ENTROPY);
