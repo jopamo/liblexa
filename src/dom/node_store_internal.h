@@ -21,6 +21,11 @@ enum {
     LXA_DOM_OPTION_DIRTY = 1u << 1
 };
 
+/* Apply the nearest select's selectedness rules. Preflight all traversal and
+ * allocation before changing option flags; no links or attributes change. */
+lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
+                                               lxa_dom_ref_t option);
+
 typedef char lxa_dom_record_size_must_be_32[
     sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
 

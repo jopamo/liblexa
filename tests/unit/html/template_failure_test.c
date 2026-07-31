@@ -253,6 +253,9 @@ main(void)
         "<body><template><table><tr><td>x</td></tr></table></template>";
     static const unsigned char virtual_foreign_recovery[] =
         "<template><tbody><math><unknown><mtext><tr><td>y</template>";
+    static const unsigned char option_select_reset[] =
+        "<select><option>x<option selected>y</select>"
+        "<template><select><option>x<option selected>y</select></template>";
     static const unsigned char section_list[] =
         "<head><template><ul><li>x<section><li>later</template>";
     static const unsigned char formatted_section_list[] =
@@ -1284,6 +1287,9 @@ main(void)
         status = sweep(virtual_foreign_recovery,
                        sizeof(virtual_foreign_recovery) - 1,
                        "virtual table foreign recovery");
+    if (status == 0)
+        status = sweep(option_select_reset, sizeof(option_select_reset) - 1,
+                       "option select reset");
     if (status == 0)
         status = sweep(frameset_noframes,
                        sizeof(frameset_noframes) - 1, "frameset noframes");

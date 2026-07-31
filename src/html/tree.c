@@ -1342,6 +1342,8 @@ open_container_ns(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = lxa_dom_nodes_append_constructed_child(tree->nodes,
                                                         current_element(tree), child);
+    if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "option"))
+        status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK) status = push_element(tree, child);
     return status;
 }
@@ -7219,6 +7221,8 @@ reprocess_template_token:
             }
             status = lxa_dom_nodes_append_constructed_child(tree->nodes,
                 template_parent(tree), child);
+            if (status == LXA_OK && named(token->name, "option"))
+                status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
             if (status != LXA_OK) return status;
             status = lxa_budget_charge(tree->nodes->budget,
                 LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);

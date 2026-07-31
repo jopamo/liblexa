@@ -2250,6 +2250,216 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     return lxa_handle_pack(id, nodes->generation, &out->handle);
 }
 
+typedef enum {
+    SELECT_OTHER, SELECT_SELECT, SELECT_OPTION, SELECT_OPTGROUP,
+    SELECT_DATALIST, SELECT_HR, SELECT_LEAF
+} select_tag_t;
+
+static lxa_status_t
+select_tag(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref, select_tag_t *out)
+{
+    lxa_dom_record_t record;
+    lxa_dom_namespace_t ns;
+    lxa_span_t tag;
+    lxa_status_t status = lxa_dom_nodes_read(nodes, ref, &record);
+    *out = SELECT_OTHER;
+    if (status != LXA_OK) return status;
+    if (record.kind != LXA_DOM_KIND_ELEMENT) {
+        *out = SELECT_LEAF;
+        return LXA_OK;
+    }
+    status = lxa_dom_nodes_element_namespace(nodes, ref, &ns);
+    if (status != LXA_OK || ns != LXA_DOM_NS_HTML) return status;
+    status = lxa_dom_nodes_element_name(nodes, ref, &tag);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, tag.length,
+                                   &nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    if (tag.length == 6 && memcmp(tag.data, "select", 6) == 0)
+        *out = SELECT_SELECT;
+    else if (tag.length == 6 && memcmp(tag.data, "option", 6) == 0)
+        *out = SELECT_OPTION;
+    else if (tag.length == 8 && memcmp(tag.data, "optgroup", 8) == 0)
+        *out = SELECT_OPTGROUP;
+    else if (tag.length == 8 && memcmp(tag.data, "datalist", 8) == 0)
+        *out = SELECT_DATALIST;
+    else if (tag.length == 2 && memcmp(tag.data, "hr", 2) == 0)
+        *out = SELECT_HR;
+    return LXA_OK;
+}
+
+static bool
+select_display_size_one(lxa_span_t value)
+{
+    size_t i = 0;
+    unsigned size = 0;
+    bool negative = false;
+    while (i < value.length
+           && (value.data[i] == ' ' || value.data[i] == '\t'
+               || value.data[i] == '\n' || value.data[i] == '\r'
+               || value.data[i] == '\f'))
+        ++i;
+    if (i < value.length && (value.data[i] == '+' || value.data[i] == '-'))
+        negative = value.data[i++] == '-';
+    if (i == value.length || value.data[i] < '0' || value.data[i] > '9')
+        return true; /* Invalid size uses the single-select default. */
+    while (i < value.length && value.data[i] >= '0' && value.data[i] <= '9') {
+        unsigned digit = value.data[i++] - '0';
+        if (size < 2) {
+            size = size * 10 + digit;
+            if (size > 2) size = 2;
+        }
+    }
+    return negative && size != 0 ? true : size == 1;
+}
+
+lxa_status_t
+lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option)
+{
+    lxa_dom_ref_t select = option, cursor, group = {0}, attribute;
+    lxa_dom_ref_t last = {0}, first = {0};
+    lxa_vector_t options;
+    select_tag_t tag;
+    size_t length, steps = 0, ascents = 0, selected = 0;
+    bool grouped = false, disabled_group = false, size_one = true;
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = select_tag(nodes, option, &tag);
+    if (status != LXA_OK || tag != SELECT_OPTION)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    length = lxa_vector_length(&nodes->records);
+    for (;;) {
+        if (++steps > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_parent(nodes, select, &select);
+        if (status != LXA_OK || select.handle == LXA_HANDLE_NONE) return status;
+        status = select_tag(nodes, select, &tag);
+        if (status != LXA_OK) return status;
+        if (tag == SELECT_SELECT) break;
+        if (tag == SELECT_OPTION || tag == SELECT_HR || tag == SELECT_DATALIST
+            || (tag == SELECT_OPTGROUP && grouped))
+            return LXA_OK;
+        if (tag == SELECT_OPTGROUP) grouped = true;
+    }
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
+    if (status != LXA_OK || attribute.handle != LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "size", 4}, &attribute);
+    if (status == LXA_OK && attribute.handle != LXA_HANDLE_NONE) {
+        lxa_span_t name, value;
+        status = lxa_dom_nodes_attribute_read(nodes, attribute, &name, &value);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK,
+                                       value.length, &nodes->limit_reason);
+        if (status == LXA_OK) size_one = select_display_size_one(value);
+    }
+    if (status != LXA_OK) return status;
+    status = lxa_vector_init(&options, &nodes->allocator, sizeof(lxa_id_t));
+    if (status != LXA_OK) return status;
+    status = lxa_vector_bind_budget(&options, nodes->budget);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_first_child(nodes, select, &cursor);
+    steps = 0;
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        lxa_dom_ref_t next;
+        lxa_dom_record_t record;
+        bool descend;
+        if (++steps > length) { status = LXA_ERROR_ARGUMENT; break; }
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = select_tag(nodes, cursor, &tag);
+        if (status != LXA_OK) break;
+        descend = tag != SELECT_LEAF && tag != SELECT_SELECT && tag != SELECT_OPTION
+            && tag != SELECT_HR && tag != SELECT_DATALIST
+            && !(tag == SELECT_OPTGROUP && group.handle != LXA_HANDLE_NONE);
+        if (tag == SELECT_OPTION) {
+            lxa_id_t id = (lxa_id_t) cursor.handle;
+            status = lxa_dom_nodes_read(nodes, cursor, &record);
+            if (status != LXA_OK) break;
+            if ((record.flags & LXA_DOM_OPTION_SELECTED) != 0) {
+                if (selected != 0) {
+                    if (selected == 1) {
+                        lxa_id_t previous = (lxa_id_t) last.handle;
+                        status = lxa_vector_push(&options, &previous);
+                    }
+                    if (status == LXA_OK)
+                        status = lxa_vector_push(&options, &id);
+                    if (status != LXA_OK) break;
+                }
+                if (selected < 2) ++selected;
+                last = cursor;
+            }
+            if (size_one && first.handle == LXA_HANDLE_NONE && !disabled_group) {
+                status = lxa_dom_nodes_find_attribute(nodes, cursor,
+                    (lxa_span_t){(const uint8_t *) "disabled", 8}, &attribute);
+                if (status != LXA_OK) break;
+                if (attribute.handle == LXA_HANDLE_NONE) first = cursor;
+            }
+        }
+        if (descend && tag == SELECT_OPTGROUP) {
+            group = cursor;
+            status = lxa_dom_nodes_find_attribute(nodes, group,
+                (lxa_span_t){(const uint8_t *) "disabled", 8}, &attribute);
+            if (status != LXA_OK) break;
+            disabled_group = attribute.handle != LXA_HANDLE_NONE;
+        }
+        if (descend) {
+            status = lxa_dom_nodes_first_child(nodes, cursor, &next);
+            if (status != LXA_OK) break;
+            if (next.handle != LXA_HANDLE_NONE) {
+                cursor = next;
+                continue;
+            }
+        }
+        for (;;) {
+            if (++ascents > length) { status = LXA_ERROR_ARGUMENT; break; }
+            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                       &nodes->limit_reason);
+            if (status != LXA_OK) break;
+            if (cursor.handle == group.handle) {
+                group = (lxa_dom_ref_t){0};
+                disabled_group = false;
+            }
+            status = lxa_dom_nodes_next_sibling(nodes, cursor, &next);
+            if (status != LXA_OK) break;
+            if (next.handle != LXA_HANDLE_NONE) {
+                cursor = next;
+                break;
+            }
+            status = lxa_dom_nodes_parent(nodes, cursor, &cursor);
+            if (status != LXA_OK) break;
+            if (cursor.handle == select.handle) {
+                cursor = (lxa_dom_ref_t){0};
+                break;
+            }
+            if (cursor.handle == LXA_HANDLE_NONE) {
+                status = LXA_ERROR_ARGUMENT;
+                break;
+            }
+        }
+    }
+    if (status == LXA_OK) {
+        lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
+        if (selected > 1) {
+            const lxa_id_t *ids = (const lxa_id_t *) options.bytes.data;
+            for (size_t i = 0; i < lxa_vector_length(&options); ++i) {
+                if (ids[i] != (lxa_id_t) last.handle)
+                    records[ids[i]].flags &= (uint16_t) ~LXA_DOM_OPTION_SELECTED;
+            }
+        }
+        else if (selected == 0 && size_one && first.handle != LXA_HANDLE_NONE)
+            records[(lxa_id_t) first.handle].flags |= LXA_DOM_OPTION_SELECTED;
+    }
+    if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
+        nodes->limit_reason = LXA_BUDGET_MEMORY;
+    lxa_vector_destroy(&options);
+    return status;
+}
+
 lxa_status_t
 lxa_dom_nodes_clone_element(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                             lxa_dom_ref_t *out)

@@ -29,9 +29,55 @@ write_bytes(void *context, lxa_span_t bytes)
     return result;
 }
 
+static void
+check_option_insert_state(void)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned path = 0; path < 4; ++path) {
+        bool templated = (path & 1) != 0, explicit_second = (path & 2) != 0;
+        lxa_budget_t budget;
+        lxa_dom_nodes_t *nodes;
+        lxa_html_tree_t tree;
+        lxa_html_tokenizer_t *tokenizer;
+        lxa_dom_ref_t second, select, first;
+        lxa_dom_record_t record;
+        lxa_html_result_t (*feed)(lxa_html_tokenizer_t *, lxa_span_t) =
+            lxa_html_tokenizer_feed;
+        TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                    &nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+            lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer) == LXA_OK);
+        if (templated) TEST_CHECK(feed(tokenizer, span("<template>")) == LXA_HTML_OK);
+        TEST_CHECK(feed(tokenizer, span("<select><option>a")) == LXA_HTML_OK);
+        TEST_CHECK(feed(tokenizer, span(explicit_second ? "<option selected>b"
+                                                       : "<option>b")) == LXA_HTML_OK);
+        {
+            const lxa_vector_t *open = templated ? &tree.template_elements
+                                                : &tree.open_elements;
+            second = ((const lxa_dom_ref_t *) open->bytes.data)
+                [lxa_vector_length(open) - 1];
+        }
+        TEST_CHECK(lxa_dom_nodes_parent(nodes, second, &select) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_first_child(nodes, select, &first) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, first, &record) == LXA_OK
+                   && record.flags == (explicit_second ? 0 : LXA_DOM_OPTION_SELECTED));
+        TEST_CHECK(lxa_dom_nodes_read(nodes, second, &record) == LXA_OK
+                   && record.flags == (explicit_second ? LXA_DOM_OPTION_SELECTED : 0));
+        TEST_CHECK(lxa_html_tokenizer_finish(tokenizer) == LXA_HTML_OK);
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_html_tokenizer_destroy(tokenizer);
+        lxa_html_tree_destroy(&tree);
+        lxa_dom_nodes_destroy(nodes);
+        TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+    }
+}
+
 int
 main(void)
 {
+    check_option_insert_state();
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_dom_nodes_t *nodes = NULL;
     lxa_html_tree_t tree;
