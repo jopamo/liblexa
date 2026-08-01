@@ -31,6 +31,11 @@ lxa_status_t lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
  * Inert template contents do not run these steps. */
 lxa_status_t lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
+/* Parser-pop effect. Non-HTML options and unselected/unowned options do nothing.
+ * Clone into the first enabled selectedcontent, including in inert templates.
+ * Failure preserves published children; unpublished clones remain store-owned. */
+lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element);
 
 /* Apply the nearest select's selectedness rules. Preflight all traversal and
  * allocation before changing option flags; no links or attributes change. */
