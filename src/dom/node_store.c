@@ -2408,6 +2408,28 @@ first_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
 }
 
 static lxa_status_t
+enabled_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
+                          lxa_dom_ref_t *out)
+{
+    lxa_dom_ref_t attribute;
+    lxa_dom_record_t record;
+    lxa_status_t status;
+    *out = (lxa_dom_ref_t){0};
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
+    if (status != LXA_OK || attribute.handle != LXA_HANDLE_NONE) return status;
+    status = first_selectedcontent(nodes, select, out);
+    if (status != LXA_OK || out->handle == LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_read(nodes, *out, &record);
+    if (status != LXA_OK) return status;
+    if ((record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+        return LXA_ERROR_ARGUMENT;
+    if ((record.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+        *out = (lxa_dom_ref_t){0};
+    return LXA_OK;
+}
+
+static lxa_status_t
 disable_cloned_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t staging)
 {
     lxa_dom_ref_t cursor;
@@ -2588,7 +2610,9 @@ option_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option,
     return option_select_at(nodes, parent, move, out);
 }
 
-typedef enum { SELECT_SCAN_RESET, SELECT_SCAN_EXCLUSION } select_scan_kind_t;
+typedef enum {
+    SELECT_SCAN_RESET, SELECT_SCAN_EXCLUSION, SELECT_SCAN_FIRST_SELECTED
+} select_scan_kind_t;
 
 typedef struct {
     select_scan_kind_t kind;
@@ -2664,6 +2688,19 @@ scan_select_options(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
             && tag != SELECT_HR && tag != SELECT_DATALIST
             && !(tag == SELECT_OPTGROUP && group.handle != LXA_HANDLE_NONE);
         if (tag == SELECT_OPTION) {
+            if (scan->kind == SELECT_SCAN_FIRST_SELECTED) {
+                lxa_dom_record_t record;
+                status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                           &nodes->limit_reason);
+                if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, cursor, &record);
+                if (status != LXA_OK) break;
+                if ((record.flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY)) != 0)
+                    return LXA_ERROR_ARGUMENT;
+                if ((record.flags & LXA_DOM_OPTION_SELECTED) != 0) {
+                    scan->first = cursor;
+                    return LXA_OK;
+                }
+            }
             if (scan->kind == SELECT_SCAN_EXCLUSION && excluding) {
                 scan->found_excluded = true;
                 return LXA_OK;
@@ -3747,7 +3784,7 @@ lxa_status_t
 lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
                                          lxa_dom_ref_t element)
 {
-    lxa_dom_ref_t select, attribute, target;
+    lxa_dom_ref_t select, target;
     lxa_dom_record_t record;
     select_tag_t tag;
     lxa_status_t status;
@@ -3761,17 +3798,29 @@ lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
     if ((record.flags & LXA_DOM_OPTION_SELECTED) == 0) return LXA_OK;
     status = option_select(nodes, element, NULL, &select);
     if (status != LXA_OK || select.handle == LXA_HANDLE_NONE) return status;
-    status = lxa_dom_nodes_find_attribute(nodes, select,
-        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
-    if (status != LXA_OK || attribute.handle != LXA_HANDLE_NONE) return status;
-    status = first_selectedcontent(nodes, select, &target);
+    status = enabled_selectedcontent(nodes, select, &target);
     if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
-    status = lxa_dom_nodes_read(nodes, target, &record);
-    if (status != LXA_OK) return status;
-    if ((record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
-        return LXA_ERROR_ARGUMENT;
-    if ((record.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) != 0) return LXA_OK;
     return replace_children_with_clones(nodes, target, element, true);
+}
+
+lxa_status_t
+lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
+                                     lxa_dom_ref_t select)
+{
+    lxa_dom_ref_t target;
+    select_tag_t tag;
+    select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = select_tag(nodes, select, &tag);
+    if (status != LXA_OK || tag != SELECT_SELECT)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    status = enabled_selectedcontent(nodes, select, &target);
+    if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
+    status = scan_select_options(nodes, select, LXA_HANDLE_NONE, NULL, &scan);
+    return status != LXA_OK ? status
+        : replace_children_with_clones(nodes, target, scan.first, true);
 }
 
 lxa_status_t

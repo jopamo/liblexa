@@ -36,6 +36,10 @@ lxa_status_t lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
  * Failure preserves published children; unpublished clones remain store-owned. */
 lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
+/* Update the enabled selectedcontent from the first selected option in the
+ * canonical option list, or clear it when no option is selected. */
+lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t select);
 
 /* Apply the nearest select's selectedness rules. Preflight all traversal and
  * allocation before changing option flags; no links or attributes change. */
