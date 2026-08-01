@@ -1043,7 +1043,7 @@ static void
 check_option_clone_select_resets(void)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
-    for (unsigned path = 0; path < 3; ++path) {
+    for (unsigned path = 0; path < 6; ++path) {
         bool success = false;
         for (size_t allowance = 0; allowance < 4096 && !success; ++allowance) {
             lxa_budget_t budget;
@@ -1051,6 +1051,7 @@ check_option_clone_select_resets(void)
             lxa_dom_nodes_t *nodes;
             lxa_dom_ref_t document, select, owner, option, target, old = {0};
             lxa_dom_ref_t retained = {0}, child = {0}, nested = {0}, first, second;
+            lxa_dom_ref_t extra = {0}, leading = {0}, trailing = {0};
             lxa_dom_ref_t attribute, clone;
             lxa_dom_record_t before[48], record, *records;
             lxa_status_t status;
@@ -1083,10 +1084,27 @@ check_option_clone_select_resets(void)
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, old) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"),
                                                              &retained) == LXA_OK);
-                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, owner, retained) == LXA_OK);
+                TEST_CHECK((path == 3 || path == 5
+                    ? lxa_dom_nodes_insert_constructed_before(nodes, owner, retained, target)
+                    : lxa_dom_nodes_append_constructed_child(nodes, owner, retained)) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, option) == LXA_OK);
             }
-            if (path != 2) {
+            if (path >= 3) {
+                if (path == 5)
+                    TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+                                                             name("old"), &leading) == LXA_OK);
+                else TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &leading) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_before(nodes, target, leading, old) == LXA_OK);
+                if (path == 4) {
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &trailing) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, trailing) == LXA_OK);
+                }
+                else {
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &extra) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_insert_constructed_before(nodes, owner, extra, target) == LXA_OK);
+                }
+            }
+            if (path < 2) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &child) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, option, child) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("selected"),
@@ -1113,6 +1131,10 @@ check_option_clone_select_resets(void)
             records = (lxa_dom_record_t *) nodes->records.bytes.data;
             records[(lxa_id_t) option.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
             if (path != 0) records[(lxa_id_t) old.handle].flags = LXA_DOM_OPTION_SELECTED;
+            if (path == 3 || path == 5) {
+                records[(lxa_id_t) retained.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+                records[(lxa_id_t) extra.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+            }
             count = lxa_dom_nodes_length(nodes);
             TEST_CHECK(count <= sizeof(before) / sizeof(before[0]));
             memcpy(before, records, count * sizeof(before[0]));
@@ -1133,7 +1155,10 @@ check_option_clone_select_resets(void)
                 if (success && (i == (lxa_id_t) target.handle
                     || (path == 0 && i == (lxa_id_t) option.handle)
                     || (path != 0 && (i == (lxa_id_t) old.handle
-                                     || i == (lxa_id_t) retained.handle)))) continue;
+                                     || i == (lxa_id_t) retained.handle))
+                    || (leading.handle != LXA_HANDLE_NONE && i == (lxa_id_t) leading.handle)
+                    || (trailing.handle != LXA_HANDLE_NONE && i == (lxa_id_t) trailing.handle)
+                    || (extra.handle != LXA_HANDLE_NONE && i == (lxa_id_t) extra.handle))) continue;
                 TEST_CHECK(lxa_handle_pack((lxa_id_t) i, nodes->generation, &ref.handle) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_read(nodes, ref, &record) == LXA_OK
                            && memcmp(&record, &before[i], sizeof(record)) == 0);
@@ -1142,7 +1167,7 @@ check_option_clone_select_resets(void)
                 check_option_state(nodes, option, LXA_DOM_OPTION_DIRTY
                     | (path == 0 ? 0 : LXA_DOM_OPTION_SELECTED));
                 TEST_CHECK(lxa_dom_nodes_first_child(nodes, target, &clone) == LXA_OK);
-                if (path == 2) TEST_CHECK(clone.handle == LXA_HANDLE_NONE);
+                if (path >= 2) TEST_CHECK(clone.handle == LXA_HANDLE_NONE);
                 else check_option_state(nodes, clone, path == 0 ? LXA_DOM_OPTION_SELECTED : 0);
                 if (path == 0) {
                     TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &clone) == LXA_OK);
@@ -1152,10 +1177,23 @@ check_option_clone_select_resets(void)
                     check_option_state(nodes, clone, LXA_DOM_OPTION_SELECTED);
                 }
                 else {
-                    check_option_state(nodes, retained, LXA_DOM_OPTION_SELECTED);
+                    check_option_state(nodes, retained,
+                        (path == 3 || path == 5 ? LXA_DOM_OPTION_DIRTY : 0)
+                        | (path == 5 ? 0 : LXA_DOM_OPTION_SELECTED));
                     TEST_CHECK(lxa_dom_nodes_read(nodes, old, &record) == LXA_OK
                         && record.flags == LXA_DOM_OPTION_SELECTED && record.parent == LXA_ID_NONE
                         && record.prev == LXA_ID_NONE && record.next == LXA_ID_NONE);
+                    if (extra.handle != LXA_HANDLE_NONE)
+                        check_option_state(nodes, extra, LXA_DOM_OPTION_DIRTY
+                            | (path == 5 ? LXA_DOM_OPTION_SELECTED : 0));
+                    if (leading.handle != LXA_HANDLE_NONE)
+                        TEST_CHECK(lxa_dom_nodes_read(nodes, leading, &record) == LXA_OK
+                            && record.flags == 0 && record.parent == LXA_ID_NONE
+                            && record.prev == LXA_ID_NONE && record.next == LXA_ID_NONE);
+                    if (trailing.handle != LXA_HANDLE_NONE)
+                        TEST_CHECK(lxa_dom_nodes_read(nodes, trailing, &record) == LXA_OK
+                            && record.flags == LXA_DOM_OPTION_SELECTED && record.parent == LXA_ID_NONE
+                            && record.prev == LXA_ID_NONE && record.next == LXA_ID_NONE);
                 }
             }
             TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
