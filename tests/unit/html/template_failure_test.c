@@ -253,6 +253,9 @@ main(void)
         "<body><template><table><tr><td>x</td></tr></table></template>";
     static const unsigned char virtual_foreign_recovery[] =
         "<template><tbody><math><unknown><mtext><tr><td>y</template>";
+    static const unsigned char disabled_selectedcontent[] =
+        "<option><selectedcontent href=x>own</selectedcontent></option>"
+        "<selectedcontent><selectedcontent>nested</selectedcontent></selectedcontent>";
     static const unsigned char option_select_reset[] =
         "<select><option>x<option selected>y</select>"
         "<template><select><option>x<option selected>y</select></template>";
@@ -1287,6 +1290,9 @@ main(void)
         status = sweep(virtual_foreign_recovery,
                        sizeof(virtual_foreign_recovery) - 1,
                        "virtual table foreign recovery");
+    if (status == 0)
+        status = sweep(disabled_selectedcontent, sizeof(disabled_selectedcontent) - 1,
+                       "disabled selectedcontent");
     if (status == 0)
         status = sweep(option_select_reset, sizeof(option_select_reset) - 1,
                        "option select reset");

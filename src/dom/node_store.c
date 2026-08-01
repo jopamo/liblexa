@@ -2252,7 +2252,7 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
 
 typedef enum {
     SELECT_OTHER, SELECT_SELECT, SELECT_OPTION, SELECT_OPTGROUP,
-    SELECT_DATALIST, SELECT_HR, SELECT_LEAF
+    SELECT_DATALIST, SELECT_HR, SELECT_LEAF, SELECT_SELECTEDCONTENT
 } select_tag_t;
 
 static lxa_status_t
@@ -2285,7 +2285,74 @@ select_tag(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref, select_tag_t *out)
         *out = SELECT_DATALIST;
     else if (tag.length == 2 && memcmp(tag.data, "hr", 2) == 0)
         *out = SELECT_HR;
+    else if (tag.length == 15 && memcmp(tag.data, "selectedcontent", 15) == 0)
+        *out = SELECT_SELECTEDCONTENT;
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
+                                      lxa_dom_ref_t parent, bool *disabled)
+{
+    lxa_dom_ref_t select = {0}, attribute;
+    size_t steps = 0, length;
+    lxa_status_t status;
+    if (nodes == NULL || disabled == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    *disabled = false;
+    length = lxa_vector_length(&nodes->records);
+    while (parent.handle != LXA_HANDLE_NONE) {
+        select_tag_t tag;
+        if (++steps > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = select_tag(nodes, parent, &tag);
+        if (status != LXA_OK) return status;
+        if (tag == SELECT_SELECT) {
+            if (select.handle != LXA_HANDLE_NONE) {
+                *disabled = true;
+                return LXA_OK;
+            }
+            select = parent;
+        }
+        if (tag == SELECT_OPTION || tag == SELECT_SELECTEDCONTENT) {
+            *disabled = true;
+            return LXA_OK;
+        }
+        status = lxa_dom_nodes_parent(nodes, parent, &parent);
+        if (status != LXA_OK) return status;
+    }
+    if (select.handle == LXA_HANDLE_NONE) return LXA_OK;
+    status = lxa_dom_nodes_find_attribute(nodes, select,
+        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
+    if (status != LXA_OK) return status;
+    return attribute.handle == LXA_HANDLE_NONE ? LXA_ERROR_UNSUPPORTED : LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
+                                      lxa_dom_ref_t element)
+{
+    lxa_dom_ref_t parent;
+    lxa_dom_record_t record;
+    select_tag_t tag;
+    bool disabled;
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    status = select_tag(nodes, element, &tag);
+    if (status != LXA_OK || tag != SELECT_SELECTEDCONTENT)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    status = lxa_dom_nodes_read(nodes, element, &record);
+    if (status == LXA_OK
+        && (record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+        return LXA_ERROR_ARGUMENT;
+    if (status == LXA_OK) status = lxa_dom_nodes_parent(nodes, element, &parent);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_prepare_selectedcontent(nodes, parent, &disabled);
+    if (status == LXA_OK)
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) element.handle].flags =
+            disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+    return status;
 }
 
 static lxa_status_t
@@ -3769,7 +3836,8 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
         }
         if (node->generation != nodes->generation
             || !valid_kind((lxa_dom_kind_t) node->kind)
-            || (node->flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY))
+            || (node->flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY
+                                | LXA_DOM_SELECTEDCONTENT_DISABLED))
                != 0
             || (node->flags != 0
                 && (node->kind != LXA_DOM_KIND_ELEMENT
@@ -3797,11 +3865,17 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
                 if (node->flags != 0) {
                     const lxa_dom_atom_t *atom = atoms[element->atom];
                     if (element->namespace_id != LXA_DOM_NS_HTML
-                        || atom->length != 6
                         || atom->offset > nodes->strings.length
-                        || atom->length > nodes->strings.length - atom->offset
-                        || memcmp(nodes->strings.data + atom->offset,
-                                  "option", 6) != 0)
+                        || atom->length > nodes->strings.length - atom->offset)
+                        goto done;
+                    if (atom->length == 6
+                        && memcmp(nodes->strings.data + atom->offset, "option", 6) == 0) {
+                        if ((node->flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY))
+                            != 0) goto done;
+                    }
+                    else if (atom->length != 15
+                        || memcmp(nodes->strings.data + atom->offset, "selectedcontent", 15)
+                           != 0 || node->flags != LXA_DOM_SELECTEDCONTENT_DISABLED)
                         goto done;
                 }
                 seen[length + characters + element_count + attribute_count

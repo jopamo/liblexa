@@ -74,10 +74,58 @@ check_option_insert_state(void)
     }
 }
 
+static void
+check_selectedcontent_disabled_state(void)
+{
+    static const struct {
+        const char *input;
+        bool disabled;
+    } cases[] = {
+        {"<selectedcontent><selectedcontent>", true},
+        {"<option><selectedcontent>", true},
+        {"<selectedcontent>", false},
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t path = 0; path < sizeof(cases) / sizeof(cases[0]); ++path) {
+        lxa_budget_t budget;
+        lxa_dom_nodes_t *nodes;
+        lxa_html_tree_t tree;
+        lxa_html_tokenizer_t *tokenizer;
+        lxa_dom_ref_t element;
+        lxa_dom_record_t record;
+        lxa_span_t tag;
+        const lxa_vector_t *open;
+        TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                    &nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+            lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer) == LXA_OK);
+        TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, span(cases[path].input))
+                   == LXA_HTML_OK);
+        open = &tree.open_elements;
+        element = ((const lxa_dom_ref_t *) open->bytes.data)[lxa_vector_length(open) - 1];
+        TEST_CHECK(lxa_dom_nodes_element_name(nodes, element, &tag) == LXA_OK
+                   && tag.length == strlen("selectedcontent")
+                   && memcmp(tag.data, "selectedcontent", tag.length) == 0);
+        TEST_CHECK(lxa_dom_nodes_read(nodes, element, &record) == LXA_OK
+                   && record.flags == (cases[path].disabled
+                        ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0));
+        TEST_CHECK(lxa_html_tokenizer_finish(tokenizer) == LXA_HTML_OK);
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_html_tokenizer_destroy(tokenizer);
+        lxa_html_tree_destroy(&tree);
+        lxa_dom_nodes_destroy(nodes);
+        TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                   && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0);
+    }
+}
+
 int
 main(void)
 {
     check_option_insert_state();
+    check_selectedcontent_disabled_state();
     lxa_allocator_t allocator = lxa_allocator_default();
     lxa_dom_nodes_t *nodes = NULL;
     lxa_html_tree_t tree;

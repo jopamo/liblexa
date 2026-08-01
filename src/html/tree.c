@@ -279,6 +279,23 @@ supported_container(lxa_html_tree_t *tree,
 {
     bool known;
     lxa_status_t status;
+    if (named(name, "selectedcontent")) {
+        lxa_dom_ref_t ancestor = {0};
+        size_t count = lxa_vector_length(&tree->open_elements);
+        bool disabled;
+        *supported = true;
+        if (tree->mode == LXA_TREE_TEMPLATE_TEXT) return LXA_OK;
+        if (count != 0)
+            ancestor = ((const lxa_dom_ref_t *)
+                tree->open_elements.bytes.data)[count - 1];
+        status = lxa_dom_nodes_prepare_selectedcontent(tree->nodes, ancestor,
+                                                        &disabled);
+        if (status == LXA_ERROR_UNSUPPORTED) {
+            *supported = false;
+            return LXA_OK;
+        }
+        return status;
+    }
     if (simple_container(name) || named(name, "picture")
         || named(name, "video") || named(name, "audio")
         || named(name, "map") || named(name, "canvas")
@@ -1344,6 +1361,9 @@ open_container_ns(lxa_html_tree_t *tree,
                                                         current_element(tree), child);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
+    if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "selectedcontent")
+        && tree->mode != LXA_TREE_TEMPLATE_TEXT)
+        status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK) status = push_element(tree, child);
     return status;
 }
