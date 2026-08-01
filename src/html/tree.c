@@ -404,12 +404,42 @@ push_element(lxa_html_tree_t *tree, lxa_dom_ref_t element)
     return status;
 }
 
-static void
+static lxa_status_t
+remove_open_element(lxa_html_tree_t *tree, lxa_vector_t *elements, size_t index)
+{
+    lxa_dom_record_t record;
+    lxa_dom_ref_t ref;
+    lxa_status_t status;
+    if (index >= lxa_vector_length(elements)) return LXA_ERROR_INTERNAL;
+    ref = ((const lxa_dom_ref_t *) elements->bytes.data)[index];
+    status = lxa_dom_nodes_read(tree->nodes, ref, &record);
+    if (status == LXA_OK && (record.flags & LXA_DOM_OPTION_SELECTED) != 0)
+        status = lxa_dom_nodes_maybe_clone_selected_option(tree->nodes, ref);
+    if (status != LXA_OK) return status;
+    lxa_vector_erase(elements, index, 1);
+    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    return LXA_OK;
+}
+
+static lxa_status_t
+pop_elements(lxa_html_tree_t *tree, lxa_vector_t *elements, size_t keep)
+{
+    size_t length = lxa_vector_length(elements);
+    if (keep > length) return LXA_ERROR_INTERNAL;
+    while (length > keep) {
+        lxa_status_t status = remove_open_element(tree, elements, length - 1);
+        if (status != LXA_OK) return status;
+        --length;
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
 pop_element(lxa_html_tree_t *tree)
 {
-    lxa_vector_erase(&tree->open_elements,
-                     lxa_vector_length(&tree->open_elements) - 1, 1);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    size_t length = lxa_vector_length(&tree->open_elements);
+    return length == 0 ? LXA_ERROR_INTERNAL
+        : remove_open_element(tree, &tree->open_elements, length - 1);
 }
 
 static void
@@ -659,7 +689,8 @@ close_active_anchor(lxa_html_tree_t *tree)
         while (lxa_vector_length(&tree->open_elements) != 0) {
             bool is_anchor = open[lxa_vector_length(&tree->open_elements) - 1]
                              .handle == tree->active_anchor.handle;
-            pop_element(tree);
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
             if (is_anchor) break;
         }
     }
@@ -704,8 +735,10 @@ close_crossed_anchor_formatting(lxa_html_tree_t *tree,
     if (!basic_formatting(name)
         || parent.handle != tree->active_anchor.handle)
         return LXA_OK;
-    pop_element(tree);
-    pop_element(tree);
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
     /* The inactive formatting entry takes over the anchor's existing slot. */
     tree->active_anchor = (lxa_dom_ref_t){0};
     tree->pending_formatting = pending;
@@ -796,9 +829,12 @@ close_crossed_paragraph(lxa_html_tree_t *tree,
     status = lxa_budget_charge(tree->nodes->budget,
         LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    pop_element(tree);
-    pop_element(tree);
-    pop_element(tree);
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
     status = push_element(tree, replacement);
     if (status == LXA_OK) status = push_element(tree, paragraph);
     if (status == LXA_OK) tree->pending_formatting = replacement;
@@ -845,8 +881,10 @@ close_crossed_formatting(lxa_html_tree_t *tree,
     status = lxa_budget_charge(tree->nodes->budget,
         LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    pop_element(tree);
-    pop_element(tree);
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
+    status = pop_element(tree);
+    if (status != LXA_OK) return status;
     tree->pending_formatting = pending;
     *closed = true;
     return LXA_OK;
@@ -896,8 +934,10 @@ close_list_item(lxa_html_tree_t *tree, bool definition)
             && ((!definition && named(name, "li"))
                 || (definition && (named(name, "dt")
                                    || named(name, "dd"))))) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             break;
         }
         if (special_element(name, ns)
@@ -935,8 +975,10 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             if (closed != NULL) *closed = true;
             return LXA_OK;
         }
@@ -968,8 +1010,10 @@ close_list(lxa_html_tree_t *tree, lxa_span_t target)
         if (status != LXA_OK) return status;
         if (name.length == target.length
             && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (named(name, "body") || named(name, "table")
@@ -1003,8 +1047,10 @@ end_list_item(lxa_html_tree_t *tree, lxa_span_t target)
             if (name.length != target.length
                 || memcmp(name.data, target.data, name.length) != 0)
                 return LXA_OK;
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
     }
@@ -1036,8 +1082,10 @@ end_ordinary_element(lxa_html_tree_t *tree, lxa_span_t target)
         if (status != LXA_OK) return status;
         if (name.length == target.length
             && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (inline_container(name)) continue;
@@ -1066,8 +1114,10 @@ end_scoped_container(lxa_html_tree_t *tree, lxa_span_t target)
         if (status != LXA_OK) return status;
         if (name.length == target.length
             && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (!inline_container(name))
@@ -1093,8 +1143,10 @@ close_open_heading(lxa_html_tree_t *tree)
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
         if (heading(name)) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (!inline_container(name))
@@ -1118,8 +1170,10 @@ close_open_button(lxa_html_tree_t *tree)
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
         if (named(name, "button")) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (named(name, "body") || named(name, "li")
@@ -1210,7 +1264,8 @@ flush_table_text(lxa_html_tree_t *tree)
                                            LXA_DOM_KIND_TEXT, spaces);
                 if (status != LXA_OK) return status;
             }
-            pop_element(tree);
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
             bytes.data += prefix;
             bytes.length -= prefix;
         }
@@ -1419,8 +1474,10 @@ consume_foreign(lxa_html_tree_t *tree,
                     if (status != LXA_OK) return status;
                     if (top.length == token->name.length
                         && memcmp(top.data, token->name.data, top.length) == 0) {
-                        while (lxa_vector_length(&tree->open_elements) > i)
-                            pop_element(tree);
+                        while (lxa_vector_length(&tree->open_elements) > i) {
+                            status = pop_element(tree);
+                            if (status != LXA_OK) return status;
+                        }
                         return LXA_OK;
                     }
                 }
@@ -1434,8 +1491,10 @@ consume_foreign(lxa_html_tree_t *tree,
             }
             if (top.length == target.length
                 && memcmp(top.data, target.data, top.length) == 0) {
-                while (lxa_vector_length(&tree->open_elements) > i)
-                    pop_element(tree);
+                while (lxa_vector_length(&tree->open_elements) > i) {
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
                 return LXA_OK;
             }
         }
@@ -1485,7 +1544,10 @@ consume_foreign(lxa_html_tree_t *tree,
         status = open_container_ns(tree, token,
             named(token->name, "svg") ? LXA_DOM_NS_SVG
             : named(token->name, "math") ? LXA_DOM_NS_MATHML : ns);
-    if (status == LXA_OK && token->self_closing) pop_element(tree);
+    if (status == LXA_OK && token->self_closing) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
     return status;
 }
 
@@ -1508,8 +1570,10 @@ close_select(lxa_html_tree_t *tree)
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
         if (named(name, "select")) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
     }
@@ -1605,13 +1669,17 @@ consume_select(lxa_html_tree_t *tree,
                                        1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             if (named(top, "option")) {
-                pop_element(tree);
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
                 status = lxa_dom_nodes_element_name(tree->nodes,
                                                     current_element(tree),
                                                     &top);
                 if (status != LXA_OK) return status;
             }
-            if (named(top, "optgroup")) pop_element(tree);
+            if (named(top, "optgroup")) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return append_void(tree, current_element(tree), token);
         }
         if (!named(token->name, "option")
@@ -1632,19 +1700,25 @@ consume_select(lxa_html_tree_t *tree,
                                        1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         if (named(top, "option")) {
-            pop_element(tree);
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
             status = lxa_dom_nodes_element_name(tree->nodes,
                                                 current_element(tree), &top);
             if (status != LXA_OK) return status;
         }
-        if (named(token->name, "optgroup") && named(top, "optgroup"))
-            pop_element(tree);
+        if (named(token->name, "optgroup") && named(top, "optgroup")) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
         return open_container(tree, token);
     }
     if (token->kind == LXA_HTML_END_TAG) {
         if (named(token->name, "select")) return close_select(tree);
         if (named(token->name, "option")) {
-            if (named(top, "option")) pop_element(tree);
+            if (named(top, "option")) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (named(token->name, "optgroup")) {
@@ -1659,11 +1733,17 @@ consume_select(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                                                         open[i - 2], &top);
                     if (status != LXA_OK) return status;
-                    if (named(top, "optgroup")) pop_element(tree);
+                    if (named(top, "optgroup")) {
+                        status = pop_element(tree);
+                        if (status != LXA_OK) return status;
+                    }
                 }
                 else return LXA_OK;
             }
-            if (named(top, "optgroup")) pop_element(tree);
+            if (named(top, "optgroup")) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         /* Other end tags are parse errors in select mode. Table and
@@ -1716,7 +1796,10 @@ foster_foreign(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
                                                           parent, child, table);
     if (status == LXA_OK) status = push_element(tree, child);
-    if (status == LXA_OK && token->self_closing) pop_element(tree);
+    if (status == LXA_OK && token->self_closing) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
     return status;
 }
 
@@ -1744,8 +1827,10 @@ close_open_table_part(lxa_html_tree_t *tree,
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         if (named(name, "table")
@@ -1828,7 +1913,8 @@ open_table_part(lxa_html_tree_t *tree,
                         LXA_BUDGET_NODES, needed,
                         &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                pop_element(tree);
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
                 top = below;
             }
         }
@@ -1894,7 +1980,8 @@ open_table_part(lxa_html_tree_t *tree,
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        needed, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
-        pop_element(tree);
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
         top = literal("table");
     }
     if (named(token->name, "colgroup")) {
@@ -1990,8 +2077,10 @@ end_table_part(lxa_html_tree_t *tree, lxa_span_t target)
         if (status != LXA_OK) return status;
         if (table_part(name) && name.length == target.length
             && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return LXA_OK;
         }
         /* A mismatched cell or a different table ends this scope. */
@@ -2150,28 +2239,28 @@ lxa_html_tree_destroy(lxa_html_tree_t *tree)
     memset(tree, 0, sizeof(*tree));
 }
 
-static void
+static lxa_status_t
 template_pop_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    size_t count = lxa_vector_length(&tree->template_elements) - keep;
-    if (count == 0) return;
-    lxa_vector_erase(&tree->template_elements, keep, count);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, count);
+    return pop_elements(tree, &tree->template_elements, keep);
 }
 
-static void
+
+static lxa_status_t
 close_template(lxa_html_tree_t *tree)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
     size_t extra_count;
     lxa_html_template_frame_t frame = {0};
     size_t boundary = 0;
+    lxa_status_t status;
     if (length != 0) {
         frame = ((const lxa_html_template_frame_t *)
                   tree->template_stack.bytes.data)[length - 1];
         boundary = frame.element_count;
     }
-    template_pop_elements(tree, boundary);
+    status = template_pop_elements(tree, boundary);
+    if (status != LXA_OK) return status;
     forget_pending_template_formatting(tree);
     extra_count = lxa_vector_length(&tree->pending_template_extras)
                   - frame.pending_extra_count;
@@ -2191,6 +2280,7 @@ close_template(lxa_html_tree_t *tree)
         tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
         tree->mode = tree->template_return_mode;
     }
+    return LXA_OK;
 }
 
 static size_t
@@ -2400,9 +2490,11 @@ flush_template_table_text(lxa_html_tree_t *tree)
                                        LXA_DOM_KIND_TEXT, spaces);
             if (status != LXA_OK) return status;
         }
-        if (colgroup)
-            template_pop_elements(tree,
-                lxa_vector_length(&tree->template_elements) - 1);
+        if (colgroup) {
+            status = template_pop_elements(tree,
+            lxa_vector_length(&tree->template_elements) - 1);
+            if (status != LXA_OK) return status;
+        }
         bytes.data += prefix;
         bytes.length -= prefix;
         status = lxa_dom_nodes_append_character(tree->nodes,
@@ -2540,7 +2632,8 @@ template_close_crossed_block(lxa_html_tree_t *tree,
         lxa_dom_ref_t *entries =
             (lxa_dom_ref_t *) tree->template_elements.bytes.data;
         entries[outer_index] = block;
-        template_pop_elements(tree, outer_index + 1 + reconstruct_count);
+        status = template_pop_elements(tree, outer_index + 1 + reconstruct_count);
+        if (status != LXA_OK) return status;
     }
     return status;
 }
@@ -2939,9 +3032,10 @@ template_close_crossed_list_item(lxa_html_tree_t *tree,
             entries[outer_index + 2 + kept_formatting] = block;
         for (j = 0; j < nested_blocks; ++j)
             entries[outer_index + 3 + j] = nested[j];
-        template_pop_elements(tree, outer_index + 2 + formatting_count
+        status = template_pop_elements(tree, outer_index + 2 + formatting_count
                                + (direct_block ? 1 : 0)
                                + nested_blocks + kept_formatting);
+        if (status != LXA_OK) return status;
     }
     return status;
 }
@@ -3201,8 +3295,10 @@ template_open_foreign(lxa_html_tree_t *tree,
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
         return status;
     }
-    if (token->self_closing)
-        template_pop_elements(tree, count - 1);
+    if (token->self_closing) {
+        status = template_pop_elements(tree, count - 1);
+        if (status != LXA_OK) return status;
+    }
     if (first && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
         tree->template_insertion_mode = LXA_TEMPLATE_BODY;
     return LXA_OK;
@@ -3326,7 +3422,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                     LXA_BUDGET_NODES, cell ? 3 : row ? 2 : 1,
                     &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_elements(tree, template_boundary(tree));
+                if (status != LXA_OK) return status;
                 return template_open_table_part(tree, token);
             }
         }
@@ -3365,7 +3462,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (status != LXA_OK) return status;
                     if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 }
-                template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_elements(tree, template_boundary(tree));
+                if (status != LXA_OK) return status;
                 return LXA_OK; /* No table remains to receive this part. */
             }
             if (length > template_boundary(tree) + 2
@@ -3384,7 +3482,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                 && tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
                 && named(top, "tr")
                 && (section || caption || group)) {
-                template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_elements(tree, template_boundary(tree));
+                if (status != LXA_OK) return status;
                 return LXA_OK; /* No table remains to receive this part. */
             }
             if (length == template_boundary(tree) + 1
@@ -3392,7 +3491,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                 && named(top, "colgroup")) {
                 /* Column-group mode closes before reprocessing a table part,
                  * even when the fragment has no table element. */
-                template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_elements(tree, template_boundary(tree));
+                if (status != LXA_OK) return status;
                 return template_open_table_part(tree, token);
             }
             if (length == template_boundary(tree) + 1
@@ -3401,7 +3501,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                 /* Close the direct cell before reprocessing in row mode.
                  * With no tr in scope, only another cell can be inserted. */
                 if (!cell) {
-                    template_pop_elements(tree, length - 1);
+                    status = template_pop_elements(tree, length - 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 --length;
@@ -3765,10 +3866,16 @@ reserve_part:
         if (retain && first < length)
             status = template_retain_formatting_chain(tree, first,
                                                        length - first, keep);
-        else template_pop_elements(tree, keep);
+        else {
+            status = template_pop_elements(tree, keep);
+            if (status != LXA_OK) return status;
+        }
         if (status != LXA_OK) return status;
     }
-    else template_pop_elements(tree, keep);
+    else {
+        status = template_pop_elements(tree, keep);
+        if (status != LXA_OK) return status;
+    }
     implied.kind = LXA_HTML_START_TAG;
     if (implied_section) {
         implied.name = literal("tbody");
@@ -3820,7 +3927,8 @@ template_open_column(lxa_html_tree_t *tree,
         if (length == template_boundary(tree) + 1
             && tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
             && named(top, "tr")) {
-            template_pop_elements(tree, template_boundary(tree));
+            status = template_pop_elements(tree, template_boundary(tree));
+            if (status != LXA_OK) return status;
             return LXA_OK;
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
@@ -3845,7 +3953,8 @@ template_open_column(lxa_html_tree_t *tree,
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 2, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_elements(tree, template_boundary(tree));
+                if (status != LXA_OK) return status;
                 return template_open_column(tree, token);
             }
         }
@@ -4315,7 +4424,8 @@ template_retain_formatting_chain(lxa_html_tree_t *tree,
         }
     }
     tree->pending_template_formatting = open[first + last];
-    template_pop_elements(tree, keep);
+    status = template_pop_elements(tree, keep);
+    if (status != LXA_OK) return status;
     return LXA_OK;
 }
 
@@ -4381,7 +4491,8 @@ reprocess_template_token:
                         open[length - 1], &name);
                 if (status != LXA_OK) return status;
                 if (ns == LXA_DOM_NS_SVG && named(name, "template")) {
-                    template_pop_elements(tree, length - 1);
+                    status = template_pop_elements(tree, length - 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
             }
@@ -4391,7 +4502,8 @@ reprocess_template_token:
                 status = lxa_budget_charge(tree->nodes->budget,
                     LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            close_template(tree);
+            status = close_template(tree);
+            if (status != LXA_OK) return status;
             return LXA_OK;
         }
         if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
@@ -4746,7 +4858,8 @@ reprocess_template_token:
                             open[list + 1], &item_name);
                     if (status != LXA_OK) return status;
                     if (!named(item_name, "li")) return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, list + 1);
+                    status = template_pop_elements(tree, list + 1);
+                    if (status != LXA_OK) return status;
                 }
             }
         }
@@ -4884,7 +4997,8 @@ reprocess_template_token:
                             break;
                         --keep;
                     }
-                    template_pop_elements(tree, keep);
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
                     goto reprocess_template_token;
                 }
                 /* Only the qualified HTML integration child is routed
@@ -4999,8 +5113,9 @@ reprocess_template_token:
                                 /* A table part other than a row or cell
                                  * closes the direct row but has no table to
                                  * receive it. */
-                                template_pop_elements(tree,
+                                status = template_pop_elements(tree,
                                                       template_boundary(tree));
+                                if (status != LXA_OK) return status;
                                 return LXA_OK;
                             }
                         }
@@ -5032,7 +5147,8 @@ reprocess_template_token:
                             return LXA_ERROR_UNSUPPORTED;
                         --keep;
                     }
-                    template_pop_elements(tree, keep);
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
                     goto reprocess_template_token;
                 }
                 if (!integrated)
@@ -5075,8 +5191,10 @@ reprocess_template_token:
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[length - 1], &top);
                 if (status != LXA_OK) return status;
-                if (named(top, "colgroup"))
-                    template_pop_elements(tree, length - 1);
+                if (named(top, "colgroup")) {
+                    status = template_pop_elements(tree, length - 1);
+                    if (status != LXA_OK) return status;
+                }
             }
             return LXA_OK; /* None can enter a template fragment. */
         }
@@ -5205,7 +5323,8 @@ reprocess_template_token:
                             LXA_BUDGET_NODES, 1,
                             &tree->nodes->limit_reason);
                         if (status != LXA_OK) return status;
-                        template_pop_elements(tree, i);
+                        status = template_pop_elements(tree, i);
+                        if (status != LXA_OK) return status;
                         goto reprocess_template_token;
                     }
                     break;
@@ -5258,7 +5377,8 @@ reprocess_template_token:
                         LXA_BUDGET_NODES, 1,
                         &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                template_pop_elements(tree, last);
+                status = template_pop_elements(tree, last);
+                if (status != LXA_OK) return status;
                 if (named(token->name, "form")) return LXA_OK;
                 goto reprocess_template_token;
             }
@@ -5285,7 +5405,8 @@ reprocess_template_token:
                         || named(token->name, "rt")
                         || named(token->name, "rp")
                         || block_container(token->name))) {
-                    template_pop_elements(tree, last);
+                    status = template_pop_elements(tree, last);
+                    if (status != LXA_OK) return status;
                     goto reprocess_template_token;
                 }
                 if (token->kind == LXA_HTML_TEXT) {
@@ -5300,8 +5421,10 @@ reprocess_template_token:
                         || named(token->name, "math"))) {
                     lxa_dom_namespace_t ns = named(token->name, "svg")
                         ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return template_foster_element(tree, token,
                         !token->self_closing, NULL, ns);
                 }
@@ -5309,16 +5432,20 @@ reprocess_template_token:
                     && (named(token->name, "base")
                         || named(token->name, "link")
                         || named(token->name, "meta"))) {
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return template_foster_element(tree, token, false, NULL,
                                                     LXA_DOM_NS_HTML);
                 }
                 if (token->kind == LXA_HTML_START_TAG
                     && named(token->name, "title")) {
                     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     status = template_foster_element(tree, token, false,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK)
@@ -5329,8 +5456,10 @@ reprocess_template_token:
                 if (token->kind == LXA_HTML_START_TAG
                     && named(token->name, "noframes")) {
                     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     status = template_foster_element(tree, token, false,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK)
@@ -5344,12 +5473,15 @@ reprocess_template_token:
                         || named(token->name, "script"))) {
                     /* Column-group mode closes before reprocessing these
                      * through the head-compatible text-mode rule. */
-                    template_pop_elements(tree, last);
+                    status = template_pop_elements(tree, last);
+                    if (status != LXA_OK) return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
                     && named(token->name, "form")) {
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     /* A template in scope suppresses in-table forms. */
                     return LXA_OK;
                 }
@@ -5365,14 +5497,18 @@ reprocess_template_token:
                         if (status != LXA_OK) return status;
                         /* In colgroup, input closes the group before its
                          * in-table rule inserts the hidden element. */
-                        if (in_colgroup)
-                            template_pop_elements(tree, last);
+                        if (in_colgroup) {
+                            status = template_pop_elements(tree, last);
+                            if (status != LXA_OK) return status;
+                        }
                         return append_void(tree, template_parent(tree), token);
                     }
                     status = template_foster_element(tree, token, false, NULL,
                                                      LXA_DOM_NS_HTML);
-                    if (status == LXA_OK && in_colgroup)
-                        template_pop_elements(tree, last);
+                    if (status == LXA_OK && in_colgroup) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
@@ -5384,8 +5520,10 @@ reprocess_template_token:
                     bool textarea = named(token->name, "textarea");
                     bool plaintext = named(token->name, "plaintext");
                     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     status = template_foster_element(tree, token, false,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK)
@@ -5409,8 +5547,10 @@ reprocess_template_token:
                     }
                     status = template_foster_element(tree, token, false, NULL,
                                                      LXA_DOM_NS_HTML);
-                    if (status == LXA_OK && in_colgroup)
-                        template_pop_elements(tree, last);
+                    if (status == LXA_OK && in_colgroup) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
@@ -5468,8 +5608,10 @@ reprocess_template_token:
                         || named(token->name, "rt")
                         || named(token->name, "rp")
                         || named(token->name, "li"))) {
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     status = template_foster_element(tree, token, true, NULL,
                                                      LXA_DOM_NS_HTML);
                     if (status == LXA_OK
@@ -5501,7 +5643,8 @@ reprocess_template_token:
                                 open[--i], &name);
                         if (status != LXA_OK) return status;
                         if (named(name, "table")) {
-                            template_pop_elements(tree, i);
+                            status = template_pop_elements(tree, i);
+                            if (status != LXA_OK) return status;
                             found = true;
                             break;
                         }
@@ -5521,15 +5664,19 @@ reprocess_template_token:
                                                   &ordinary);
                     if (status != LXA_OK) return status;
                     if (!ordinary) return LXA_ERROR_UNSUPPORTED;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return template_foster_element(tree, token, true, NULL,
                                                    LXA_DOM_NS_HTML);
                 }
                 if (token->kind == LXA_HTML_END_TAG
                     && named(token->name, "form")) {
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return LXA_OK;
                 }
                 if (token->kind == LXA_HTML_END_TAG
@@ -5538,8 +5685,10 @@ reprocess_template_token:
                      * an empty one at the foster location. */
                     adjusted = *token;
                     adjusted.kind = LXA_HTML_START_TAG;
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return template_foster_element(tree, &adjusted, false,
                                                    NULL, LXA_DOM_NS_HTML);
                 }
@@ -5578,8 +5727,10 @@ reprocess_template_token:
                 if (token->kind == LXA_HTML_END_TAG
                     && (named(token->name, "caption")
                         || named(token->name, "frameset"))) {
-                    if (named(top, "colgroup"))
-                        template_pop_elements(tree, last);
+                    if (named(top, "colgroup")) {
+                        status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     return LXA_OK; /* No match in this table scope. */
                 }
                 if (token->kind == LXA_HTML_END_TAG
@@ -5644,7 +5795,8 @@ reprocess_template_token:
                 if (!table_scope_found || !target_found) return LXA_OK;
                 /* Table tokens close the select in table scope before their
                  * table rule sees the open stack. */
-                template_pop_elements(tree, select);
+                status = template_pop_elements(tree, select);
+                if (status != LXA_OK) return status;
                 goto reprocess_template_token;
             }
         }
@@ -5660,12 +5812,19 @@ reprocess_template_token:
             if (status != LXA_OK) return status;
             if (select != length) {
                 if (token->kind == LXA_HTML_END_TAG) {
-                    if (named(token->name, "select"))
-                        template_pop_elements(tree, select);
-                    else if (named(token->name, "option") && option)
-                        template_pop_elements(tree, length - 1);
+                    if (named(token->name, "select")) {
+                        status = template_pop_elements(tree, select);
+                        if (status != LXA_OK) return status;
+                    }
+                    else if (named(token->name, "option") && option) {
+                        status = template_pop_elements(tree, length - 1);
+                        if (status != LXA_OK) return status;
+                    }
                     else if (named(token->name, "optgroup")) {
-                        if (group) template_pop_elements(tree, length - 1);
+                        if (group) {
+                            status = template_pop_elements(tree, length - 1);
+                            if (status != LXA_OK) return status;
+                        }
                         else if (option && length > select + 1) {
                             lxa_span_t previous;
                             const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
@@ -5677,14 +5836,17 @@ reprocess_template_token:
                                 status = lxa_dom_nodes_element_name(
                                     tree->nodes, open[length - 2], &previous);
                             if (status != LXA_OK) return status;
-                            if (named(previous, "optgroup"))
-                                template_pop_elements(tree, length - 2);
+                            if (named(previous, "optgroup")) {
+                                status = template_pop_elements(tree, length - 2);
+                                if (status != LXA_OK) return status;
+                            }
                         }
                     }
                     return LXA_OK;
                 }
                 if (named(token->name, "select")) {
-                    template_pop_elements(tree, select);
+                    status = template_pop_elements(tree, select);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 if (named(token->name, "option")
@@ -5726,7 +5888,8 @@ reprocess_template_token:
                         if (status != LXA_OK) return status;
                         if (named(previous, "optgroup")) --keep;
                     }
-                    template_pop_elements(tree, keep);
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
                     return append_void(tree, template_parent(tree), token);
                 }
                 else if (named(token->name, "input")
@@ -5737,7 +5900,8 @@ reprocess_template_token:
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                     if (status != LXA_OK) return status;
-                    template_pop_elements(tree, select);
+                    status = template_pop_elements(tree, select);
+                    if (status != LXA_OK) return status;
                     /* Reprocess against the underlying table or fragment. */
                     goto reprocess_template_token;
                 }
@@ -5820,7 +5984,8 @@ reprocess_template_token:
                             if (status != LXA_OK) return status;
                             if (!clearable) return LXA_ERROR_UNSUPPORTED;
                         }
-                        template_pop_elements(tree, section + 1);
+                        status = template_pop_elements(tree, section + 1);
+                        if (status != LXA_OK) return status;
                         return LXA_OK;
                     }
                     if (table_section(section_name)
@@ -5872,7 +6037,8 @@ reprocess_template_token:
             if (j == template_boundary(tree) && root.data != NULL
                 && root_ns == LXA_DOM_NS_HTML
                 && (named(root, "tr") || table_section(root))) {
-                template_pop_elements(tree, j);
+                status = template_pop_elements(tree, j);
+                if (status != LXA_OK) return status;
                 return LXA_OK;
             }
         }
@@ -5958,7 +6124,8 @@ reprocess_template_token:
                                 if (!named(name, "span"))
                                     return LXA_ERROR_UNSUPPORTED;
                             }
-                            template_pop_elements(tree, chain_start + matched);
+                            status = template_pop_elements(tree, chain_start + matched);
+                            if (status != LXA_OK) return status;
                         }
                         lxa_vector_erase(&tree->pending_template_extras,
                                          extra_start + matched, 1);
@@ -5975,7 +6142,10 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
                 if (pending_open && !template_pending_at_top(tree))
                     return LXA_ERROR_UNSUPPORTED;
-                if (pending_open) template_pop_elements(tree, i - 1);
+                if (pending_open) {
+                    status = template_pop_elements(tree, i - 1);
+                    if (status != LXA_OK) return status;
+                }
                 forget_pending_template_formatting(tree);
                 tree->pending_template_formatting =
                     ((const lxa_dom_ref_t *)
@@ -6004,7 +6174,8 @@ reprocess_template_token:
                     if (name.length != target.length
                         || memcmp(name.data, target.data, name.length) != 0)
                         return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, i - 1);
+                    status = template_pop_elements(tree, i - 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
             }
@@ -6043,7 +6214,8 @@ reprocess_template_token:
                                                              &ancestor);
                         if (status != LXA_OK) return status;
                         if (ancestor == template_boundary(tree)) {
-                            template_pop_elements(tree, ancestor);
+                            status = template_pop_elements(tree, ancestor);
+                            if (status != LXA_OK) return status;
                             forget_pending_template_formatting(tree);
                             return LXA_OK;
                         }
@@ -6083,7 +6255,8 @@ reprocess_template_token:
                             if (top_name.length == token->name.length
                                 && memcmp(top_name.data, token->name.data,
                                           top_name.length) == 0) {
-                                template_pop_elements(tree, end - 1);
+                                status = template_pop_elements(tree, end - 1);
+                                if (status != LXA_OK) return status;
                                 return LXA_OK;
                             }
                         }
@@ -6134,7 +6307,8 @@ reprocess_template_token:
                                         matched = j;
                                 }
                                 if (j == block_end && matched != SIZE_MAX) {
-                                    template_pop_elements(tree, matched);
+                                    status = template_pop_elements(tree, matched);
+                                    if (status != LXA_OK) return status;
                                     return LXA_OK;
                                 }
                             }
@@ -6157,7 +6331,8 @@ reprocess_template_token:
                                 || memcmp(block_name.data, token->name.data,
                                           block_name.length) != 0)
                                 return LXA_ERROR_UNSUPPORTED;
-                            template_pop_elements(tree, i - 1);
+                            status = template_pop_elements(tree, i - 1);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                     }
@@ -6174,7 +6349,8 @@ reprocess_template_token:
                             || memcmp(block_name.data, token->name.data,
                                       block_name.length) != 0)
                             return LXA_ERROR_UNSUPPORTED;
-                        template_pop_elements(tree, i - 1);
+                        status = template_pop_elements(tree, i - 1);
+                        if (status != LXA_OK) return status;
                         return LXA_OK;
                     }
                     if (i != boundary + 1
@@ -6193,7 +6369,8 @@ reprocess_template_token:
                         || memcmp(block_name.data, token->name.data,
                                   block_name.length) != 0)
                         return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, boundary);
+                    status = template_pop_elements(tree, boundary);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 else if (named(token->name, "ul")
@@ -6216,7 +6393,8 @@ reprocess_template_token:
                             && memcmp(list_name.data, token->name.data,
                                       list_name.length) == 0
                             && named(item_name, "li")) {
-                            template_pop_elements(tree, i - 2);
+                            status = template_pop_elements(tree, i - 2);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                     }
@@ -6234,7 +6412,8 @@ reprocess_template_token:
                         if (top_name.length == token->name.length
                             && memcmp(top_name.data, token->name.data,
                                       top_name.length) == 0) {
-                            template_pop_elements(tree, i - 1);
+                            status = template_pop_elements(tree, i - 1);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                     }
@@ -6288,7 +6467,8 @@ reprocess_template_token:
                                     != entries[start + j].handle)
                                     break;
                             if (j == extras) {
-                                template_pop_elements(tree, list);
+                                status = template_pop_elements(tree, list);
+                                if (status != LXA_OK) return status;
                                 return LXA_OK;
                             }
                         }
@@ -6313,7 +6493,8 @@ reprocess_template_token:
                                   list_name.length) != 0
                         || (i > list + 1 && !named(item_name, "li")))
                         return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, list);
+                    status = template_pop_elements(tree, list);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 else if (named(token->name, "li")) {
@@ -6334,7 +6515,8 @@ reprocess_template_token:
                         if ((named(list_name, "ul")
                              || named(list_name, "ol"))
                             && named(item_name, "li")) {
-                            template_pop_elements(tree, i - 1);
+                            status = template_pop_elements(tree, i - 1);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                     }
@@ -6366,7 +6548,8 @@ reprocess_template_token:
                                     != entries[start + j].handle)
                                     break;
                             if (j == extras) {
-                                template_pop_elements(tree, list + 1);
+                                status = template_pop_elements(tree, list + 1);
+                                if (status != LXA_OK) return status;
                                 return LXA_OK;
                             }
                         }
@@ -6386,7 +6569,8 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                     if (!named(item_name, "li"))
                         return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, list + 1);
+                    status = template_pop_elements(tree, list + 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 else if (named(token->name, "span")) {
@@ -6395,7 +6579,8 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                     if (ancestor == SIZE_MAX) return LXA_ERROR_UNSUPPORTED;
                     if (i == ancestor + 1) return LXA_OK;
-                    template_pop_elements(tree, i - 1);
+                    status = template_pop_elements(tree, i - 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 else if (template_pending_marker(token->name)) {
@@ -6414,7 +6599,8 @@ reprocess_template_token:
                         || memcmp(top_name.data, token->name.data,
                                   top_name.length) != 0)
                         return LXA_ERROR_UNSUPPORTED;
-                    template_pop_elements(tree, i - 1);
+                    status = template_pop_elements(tree, i - 1);
+                    if (status != LXA_OK) return status;
                     return LXA_OK;
                 }
                 else
@@ -6531,7 +6717,8 @@ reprocess_template_token:
                         if (count == 2
                             && (named(top, "dialog")
                                 || named(top, "search"))) {
-                            template_pop_elements(tree, i);
+                            status = template_pop_elements(tree, i);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                         if (template_adoption_block(top)
@@ -6698,7 +6885,8 @@ reprocess_template_token:
                             &tree->nodes->limit_reason);
                         if (status != LXA_OK) return status;
                         tree->pending_template_formatting = pending;
-                        template_pop_elements(tree, i);
+                        status = template_pop_elements(tree, i);
+                        if (status != LXA_OK) return status;
                         return LXA_OK;
                     }
                     if (formatting_above && named(name, "li")
@@ -6735,7 +6923,8 @@ reprocess_template_token:
                             status = template_retain_formatting_chain(tree,
                                 i + 1, count - 1, i + 1);
                             if (status != LXA_OK) return status;
-                            template_pop_elements(tree, i);
+                            status = template_pop_elements(tree, i);
+                            if (status != LXA_OK) return status;
                             return LXA_OK;
                         }
                     }
@@ -6745,7 +6934,8 @@ reprocess_template_token:
                     if (open[i].handle
                         == tree->pending_template_formatting.handle)
                         forget_pending_template_formatting(tree);
-                    template_pop_elements(tree, i);
+                    status = template_pop_elements(tree, i);
+                    if (status != LXA_OK) return status;
                     break;
                 }
                 if (template_formatting(name))
@@ -6825,7 +7015,8 @@ reprocess_template_token:
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
                 if (paragraph != lxa_vector_length(&tree->template_elements)) {
-                    template_pop_elements(tree, paragraph);
+                    status = template_pop_elements(tree, paragraph);
+                    if (status != LXA_OK) return status;
                 }
             }
             /* The in-template fallback reprocesses these in body mode.
@@ -6885,7 +7076,8 @@ reprocess_template_token:
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             if (paragraph != lxa_vector_length(&tree->template_elements)) {
-                template_pop_elements(tree, paragraph);
+                status = template_pop_elements(tree, paragraph);
+                if (status != LXA_OK) return status;
             }
             status = begin_text_element(tree, tokenizer, template_parent(tree),
                                         token, LXA_HTML_RAWTEXT);
@@ -7057,7 +7249,8 @@ reprocess_template_token:
                             open[close_at - 1], &current);
                     if (status != LXA_OK) return status;
                     if (table_context(current)) {
-                        template_pop_elements(tree, close_at);
+                        status = template_pop_elements(tree, close_at);
+                        if (status != LXA_OK) return status;
                         return template_foster_element(tree, token, true,
                                                        NULL, LXA_DOM_NS_HTML);
                     }
@@ -7124,7 +7317,8 @@ reprocess_template_token:
                             open[close_at - 1], &previous);
                     if (status != LXA_OK) return status;
                     if (named(previous, "table")) {
-                        template_pop_elements(tree, close_at);
+                        status = template_pop_elements(tree, close_at);
+                        if (status != LXA_OK) return status;
                         return template_foster_element(tree, token, true,
                                                        NULL, LXA_DOM_NS_HTML);
                     }
@@ -7156,7 +7350,8 @@ reprocess_template_token:
                         open[close_at - 1], &parent_name);
                     if (status != LXA_OK) return status;
                     if (named(parent_name, "table")) {
-                        template_pop_elements(tree, close_at);
+                        status = template_pop_elements(tree, close_at);
+                        if (status != LXA_OK) return status;
                         return template_foster_element(tree, token, true,
                                                        NULL, LXA_DOM_NS_HTML);
                     }
@@ -7237,7 +7432,8 @@ reprocess_template_token:
                 status = apply_attributes(tree, child, token);
             if (status != LXA_OK) return status;
             if (close_at != lxa_vector_length(&tree->template_elements)) {
-                template_pop_elements(tree, close_at);
+                status = template_pop_elements(tree, close_at);
+                if (status != LXA_OK) return status;
             }
             status = lxa_dom_nodes_append_constructed_child(tree->nodes,
                 template_parent(tree), child);
@@ -7278,13 +7474,17 @@ reprocess_template_token:
                 status = lxa_budget_charge(tree->nodes->budget,
                     LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            while (tree->mode == LXA_TREE_TEMPLATE_TEXT)
-                close_template(tree);
+            while (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
+                status = close_template(tree);
+                if (status != LXA_OK) return status;
+            }
         }
     }
     if (tree->mode == LXA_TREE_IN_FRAMESET
         || tree->mode == LXA_TREE_AFTER_FRAMESET) {
         if (token->kind == LXA_HTML_EOF) {
+            status = pop_elements(tree, &tree->open_elements, 0);
+            if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_DONE;
             return LXA_OK;
         }
@@ -7333,7 +7533,8 @@ reprocess_template_token:
         }
         if (token->kind == LXA_HTML_END_TAG
             && named(token->name, "frameset")) {
-            pop_element(tree);
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
             if (lxa_vector_length(&tree->open_elements) == 0)
                 tree->mode = LXA_TREE_AFTER_FRAMESET;
             return LXA_OK;
@@ -7376,11 +7577,15 @@ reprocess_template_token:
         && tree->mode == LXA_TREE_TEXT
         && (tree->text_return_mode == LXA_TREE_IN_FRAMESET
             || tree->text_return_mode == LXA_TREE_AFTER_FRAMESET)) {
+        status = pop_elements(tree, &tree->open_elements, 0);
+        if (status != LXA_OK) return status;
         tree->mode = LXA_TREE_DONE;
         return LXA_OK;
     }
     if (token->kind == LXA_HTML_EOF) {
         status = ensure_body(tree);
+        if (status == LXA_OK)
+            status = pop_elements(tree, &tree->open_elements, 0);
         if (status == LXA_OK) tree->mode = LXA_TREE_DONE;
         return status;
     }
@@ -7601,8 +7806,10 @@ reprocess_template_token:
                 }
             }
             if (!found_html) return LXA_ERROR_INTERNAL;
-            while (lxa_vector_length(&tree->open_elements) > i + 1)
-                pop_element(tree);
+            while (lxa_vector_length(&tree->open_elements) > i + 1) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
         }
         else if (ns != LXA_DOM_NS_HTML
             && !html_integration_child
@@ -7728,7 +7935,10 @@ reprocess_body_start:
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                if (named(top, "colgroup")) pop_element(tree);
+                if (named(top, "colgroup")) {
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
                 return begin_text_element(tree, tokenizer,
                     current_element(tree), token,
                     named(token->name, "style") ? LXA_HTML_RAWTEXT
@@ -7766,7 +7976,10 @@ reprocess_body_start:
                         text_mode, element);
                 if (status == LXA_OK) {
                     if (textarea) tree->skip_pre_newline = true;
-                    if (in_colgroup) pop_element(tree);
+                    if (in_colgroup) {
+                        status = pop_element(tree);
+                        if (status != LXA_OK) return status;
+                    }
                 }
                 return status;
             }
@@ -7784,7 +7997,8 @@ reprocess_body_start:
                             LXA_BUDGET_WORK, 2,
                             &tree->nodes->limit_reason);
                     if (status != LXA_OK) return status;
-                    pop_element(tree);
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
                 }
                 return foster_element(tree, token, true);
             }
@@ -7800,7 +8014,8 @@ reprocess_body_start:
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                pop_element(tree);
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
                 return hidden ? append_void(tree, current_element(tree), token)
                               : foster_element(tree, token, true);
             }
@@ -7833,7 +8048,8 @@ reprocess_body_start:
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                pop_element(tree);
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
             }
             return container ? foster_element(tree, token, false)
                              : LXA_ERROR_UNSUPPORTED;
@@ -7948,7 +8164,8 @@ reprocess_body_start:
                     if (status != LXA_OK) return status;
                     while (foreign_above_table != 0) {
                         --foreign_above_table;
-                        pop_element(tree);
+                        status = pop_element(tree);
+                        if (status != LXA_OK) return status;
                     }
                     goto reprocess_body_start;
                 }
@@ -8059,7 +8276,10 @@ after_select_mode:
             if (status == LXA_OK) {
                 tree->form = current_element(tree);
                 /* In-table forms are inserted but never stay open. */
-                if (in_table) pop_element(tree);
+                if (in_table) {
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
             }
             return status;
         }
@@ -8177,7 +8397,10 @@ after_select_mode:
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
             status = open_container_ns(tree, token, ns);
-            if (status == LXA_OK && token->self_closing) pop_element(tree);
+            if (status == LXA_OK && token->self_closing) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             return status;
         }
         if (named(token->name, "nobr")) {
@@ -8210,7 +8433,10 @@ after_select_mode:
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            if (close_previous) pop_element(tree);
+            if (close_previous) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
             status = reconstruct_anchor(tree);
             if (status == LXA_OK)
                 status = reconstruct_pending_formatting(tree);
@@ -8380,7 +8606,8 @@ after_select_mode:
             if (named(top, "nobr")) {
                 if (i != lxa_vector_length(&tree->open_elements) - 1)
                     return LXA_ERROR_UNSUPPORTED;
-                pop_element(tree);
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
                 return LXA_OK;
             }
         }
@@ -8406,7 +8633,8 @@ after_select_mode:
                     if (current_element(tree).handle
                         != tree->pending_formatting.handle)
                         return LXA_ERROR_UNSUPPORTED;
-                    pop_element(tree);
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
                 }
                 forget_pending_formatting(tree);
                 return LXA_OK;
@@ -8460,7 +8688,10 @@ after_select_mode:
             implied.name = literal("p");
             status = open_container(tree, &implied);
         }
-        if (status == LXA_OK) pop_element(tree);
+        if (status == LXA_OK) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
         return status;
     }
     if (token->kind == LXA_HTML_END_TAG
@@ -8547,7 +8778,8 @@ after_select_mode:
         if (top_name.length != token->name.length
             || memcmp(top_name.data, token->name.data, top_name.length) != 0)
             return LXA_ERROR_UNSUPPORTED;
-        pop_element(tree);
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
         return LXA_OK;
     }
     if (token->kind == LXA_HTML_TEXT) {

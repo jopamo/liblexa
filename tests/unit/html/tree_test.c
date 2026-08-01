@@ -121,9 +121,107 @@ check_selectedcontent_disabled_state(void)
     }
 }
 
+static void
+check_option_pop_failure(void)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned path = 0; path < 5; ++path) {
+        bool success = false;
+        for (size_t allowance = 0; allowance < 1024 && !success; ++allowance) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_html_token_t token = {0};
+            lxa_dom_ref_t option, select, target, text;
+            lxa_dom_record_t before[32], record;
+            lxa_dom_ref_t open[8];
+            lxa_vector_t *elements;
+            lxa_html_root_mode_t mode;
+            size_t count, length, quota;
+            lxa_status_t status;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL,
+                                                        &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_feed(tokenizer,
+                span(path < 3 ? "<body><template><select><option selected>x<!---->"
+                              : "<body><select><option selected>x<!---->")) == LXA_HTML_OK);
+            elements = path < 3 ? &tree.template_elements : &tree.open_elements;
+            length = lxa_vector_length(elements);
+            option = ((const lxa_dom_ref_t *) elements->bytes.data)[length - 1];
+            TEST_CHECK(lxa_dom_nodes_parent(nodes, option, &select) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, span("selectedcontent"),
+                                                         &target) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_insert_constructed_before(nodes, select, target, option)
+                       == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, span("old"),
+                                                      &text) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, text) == LXA_OK);
+            count = lxa_dom_nodes_length(nodes);
+            quota = budget.used[LXA_BUDGET_OPEN_ELEMENTS];
+            mode = tree.mode;
+            TEST_CHECK(count <= sizeof(before) / sizeof(before[0])
+                       && length <= sizeof(open) / sizeof(open[0]));
+            memcpy(before, nodes->records.bytes.data, count * sizeof(before[0]));
+            memcpy(open, elements->bytes.data, length * sizeof(open[0]));
+            token.kind = path == 2 || path == 4 ? LXA_HTML_EOF : LXA_HTML_END_TAG;
+            token.name = token.kind == LXA_HTML_EOF ? (lxa_span_t){0}
+                : span(path == 1 ? "template" : "option");
+            budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
+            status = lxa_html_tree_on_token(&tree, NULL, &token);
+            success = status == LXA_OK;
+            budget.limits.max_work = lxa_limits_default().max_work;
+            if (!success) {
+                TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_WORK);
+                TEST_CHECK(lxa_vector_length(elements) == length
+                    && memcmp(open, elements->bytes.data,
+                              length * sizeof(open[0])) == 0
+                    && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == quota
+                    && tree.mode == mode);
+                for (size_t i = 0; i < count; ++i) {
+                    lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};
+                    TEST_CHECK(lxa_handle_pack((lxa_id_t) i, nodes->generation, &ref.handle) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_read(nodes, ref, &record) == LXA_OK
+                               && memcmp(&record, &before[i], sizeof(record)) == 0);
+                }
+                TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &token) == status);
+            }
+            else if (token.kind == LXA_HTML_EOF) {
+                TEST_CHECK(tree.mode == LXA_TREE_DONE
+                    && lxa_vector_length(&tree.open_elements) == 0
+                    && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0);
+            }
+            if (success) {
+                lxa_dom_ref_t clone;
+                lxa_span_t bytes;
+                TEST_CHECK(lxa_dom_nodes_first_child(nodes, target, &clone) == LXA_OK
+                    && clone.handle != text.handle
+                    && lxa_dom_nodes_character_read(nodes, clone, &bytes) == LXA_OK
+                    && bytes.length == 1 && bytes.data[0] == 'x');
+                TEST_CHECK(lxa_dom_nodes_read(nodes, text, &record) == LXA_OK
+                           && record.parent == LXA_ID_NONE);
+            }
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+        TEST_CHECK(success);
+    }
+}
+
+
+
 int
 main(void)
 {
+    check_option_pop_failure();
     check_option_insert_state();
     check_selectedcontent_disabled_state();
     lxa_allocator_t allocator = lxa_allocator_default();
