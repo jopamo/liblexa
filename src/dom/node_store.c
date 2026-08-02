@@ -3866,6 +3866,56 @@ lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
         : replace_children_with_clones(nodes, target, scan.first, true);
 }
 
+static lxa_status_t
+nearest_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ancestor,
+                 lxa_dom_ref_t *out)
+{
+    size_t steps = 0, length = lxa_vector_length(&nodes->records);
+    *out = (lxa_dom_ref_t){0};
+    while (ancestor.handle != LXA_HANDLE_NONE) {
+        select_tag_t tag;
+        lxa_status_t status;
+        if (++steps > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = select_tag(nodes, ancestor, &tag);
+        if (status != LXA_OK) return status;
+        if (tag == SELECT_SELECT) {
+            *out = ancestor;
+            return LXA_OK;
+        }
+        status = lxa_dom_nodes_parent(nodes, ancestor, &ancestor);
+        if (status != LXA_OK) return status;
+    }
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_removed_selectedcontent(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element, lxa_dom_ref_t old_parent)
+{
+    lxa_dom_ref_t parent, select;
+    lxa_dom_record_t record;
+    select_tag_t tag;
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = select_tag(nodes, element, &tag);
+    if (status != LXA_OK || tag != SELECT_SELECTEDCONTENT)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    status = lxa_dom_nodes_read(nodes, element, &record);
+    if (status != LXA_OK) return status;
+    if ((record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+        return LXA_ERROR_ARGUMENT;
+    if ((record.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) != 0) return LXA_OK;
+    status = lxa_dom_nodes_parent(nodes, element, &parent);
+    if (status == LXA_OK) status = nearest_select(nodes, parent, &select);
+    if (status != LXA_OK || select.handle != LXA_HANDLE_NONE) return status;
+    status = nearest_select(nodes, old_parent, &select);
+    if (status != LXA_OK || select.handle == LXA_HANDLE_NONE) return status;
+    return lxa_dom_nodes_update_selectedcontent(nodes, select);
+}
+
 lxa_status_t
 lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
                                                lxa_dom_ref_t select)

@@ -40,6 +40,10 @@ lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
  * canonical option list, or clear it when no option is selected. */
 lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
+/* Run removing steps after disconnecting the subtree, using its former parent.
+ * Failure preserves published children; subtree disconnection is caller-owned. */
+lxa_status_t lxa_dom_nodes_removed_selectedcontent(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element, lxa_dom_ref_t old_parent);
 /* Preserve the first HTML selectedcontent descendant and clear all later ones.
  * Each replacement is staged; earlier successful clears survive a later error. */
 lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,

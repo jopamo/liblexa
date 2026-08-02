@@ -1208,7 +1208,9 @@ static void
 check_selectedcontent_update(void)
 {
     enum { SECOND, FIRST, TWO_SELECTED, CLEAR, MULTIPLE, DISABLED, FILTERED,
-           FOREIGN_SELECT, NO_TARGET, CASE_COUNT };
+           FOREIGN_SELECT, NO_TARGET, REMOVED, REMOVED_ANCESTOR,
+           REMOVED_DISABLED, REMOVED_RETAINED_SELECT, REMOVED_NO_SELECT,
+           REMOVED_FOREIGN_SELECT, REMOVED_FOREIGN_NODE, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
     for (unsigned path = 0; path < CASE_COUNT; ++path) {
         bool success = false;
@@ -1217,16 +1219,19 @@ check_selectedcontent_update(void)
             lxa_dom_nodes_t *nodes;
             lxa_dom_ref_t document, select, parent, target, old, other, other_text;
             lxa_dom_ref_t first, second, text, attribute, clone;
+            lxa_dom_ref_t removed = {0}, old_parent = {0};
             lxa_dom_record_t before[48], record, *records;
             size_t count;
             lxa_status_t status;
             bool changes = path == SECOND || path == FIRST || path == TWO_SELECTED
-                || path == CLEAR || path == FILTERED;
+                || path == CLEAR || path == FILTERED || path == REMOVED
+                || path == REMOVED_ANCESTOR;
             TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT, &document) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("select"),
-                path == FOREIGN_SELECT ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &select) == LXA_OK);
+                path == FOREIGN_SELECT || path == REMOVED_FOREIGN_SELECT
+                    ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &select) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, document, select) == LXA_OK);
             parent = select;
             if (path == FILTERED) {
@@ -1262,18 +1267,46 @@ check_selectedcontent_update(void)
                 TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("multiple"), name("false"), &attribute) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, select, attribute) == LXA_OK);
             }
+            if (path >= REMOVED) {
+                TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("selectedcontent"),
+                    path == REMOVED_FOREIGN_NODE ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &removed) == LXA_OK);
+                old_parent = path == REMOVED_NO_SELECT ? document : select;
+                if (path == REMOVED_ANCESTOR) {
+                    TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes, name("select"),
+                        LXA_DOM_NS_SVG, &old_parent) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, old_parent) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, select) == LXA_OK);
+                }
+                if (path == REMOVED_RETAINED_SELECT) {
+                    lxa_dom_ref_t detached;
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &detached) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, detached, removed) == LXA_OK);
+                }
+            }
             records = (lxa_dom_record_t *) nodes->records.bytes.data;
             records[(lxa_id_t) first.handle].flags = LXA_DOM_OPTION_DIRTY
                 | (path == FIRST || path == TWO_SELECTED || path == FILTERED ? LXA_DOM_OPTION_SELECTED : 0);
             records[(lxa_id_t) second.handle].flags = LXA_DOM_OPTION_DIRTY
                 | (path == FIRST || path == CLEAR ? 0 : LXA_DOM_OPTION_SELECTED);
             if (path == DISABLED) records[(lxa_id_t) target.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
+            if (path == REMOVED_DISABLED)
+                records[(lxa_id_t) removed.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
             count = lxa_dom_nodes_length(nodes);
             TEST_CHECK(count <= sizeof(before) / sizeof(before[0]));
             memcpy(before, records, count * sizeof(before[0]));
+            if (path == REMOVED && allowance == 0) {
+                budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY];
+                TEST_CHECK(lxa_dom_nodes_removed_selectedcontent(nodes, removed, old_parent)
+                    == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_MEMORY);
+                budget.limits.max_memory_bytes = lxa_limits_default().max_memory_bytes;
+                TEST_CHECK(memcmp(before, nodes->records.bytes.data, count * sizeof(before[0])) == 0);
+            }
             budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
-            status = lxa_dom_nodes_update_selectedcontent(nodes, select);
-            success = status == (path == FOREIGN_SELECT ? LXA_ERROR_ARGUMENT : LXA_OK);
+            status = path >= REMOVED
+                ? lxa_dom_nodes_removed_selectedcontent(nodes, removed, old_parent)
+                : lxa_dom_nodes_update_selectedcontent(nodes, select);
+            success = status == (path == FOREIGN_SELECT || path == REMOVED_FOREIGN_NODE
+                ? LXA_ERROR_ARGUMENT : LXA_OK);
             if (!success)
                 TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_WORK);
             budget.limits.max_work = lxa_limits_default().max_work;
