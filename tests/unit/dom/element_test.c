@@ -1444,10 +1444,11 @@ check_selectedcontent_postconnection(void)
 }
 
 static void
-check_selectedcontent_leaf_detach(void)
+check_selectedcontent_detach(void)
 {
     enum { PRIMARY, NONPRIMARY, CLEAR, MULTIPLE, DISABLED, DISABLED_FIRST,
-           FOREIGN, LAST_TARGET, CASE_COUNT };
+           FOREIGN, LAST_TARGET, POPULATED, DISABLED_DESCENDANT, INERT_TEMPLATE,
+           BARRIER_OPTIONS, OWNED_OPTIONS, ENABLED_DESCENDANT, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
     for (unsigned path = 0; path < CASE_COUNT; ++path) {
         bool success = false;
@@ -1459,7 +1460,10 @@ check_selectedcontent_leaf_detach(void)
             lxa_dom_record_t before[24], record, *records;
             size_t count;
             lxa_status_t status;
-            bool changes = path == PRIMARY || path == NONPRIMARY || path == CLEAR;
+            bool unimplemented = path == OWNED_OPTIONS || path == ENABLED_DESCENDANT;
+            bool changes = path == PRIMARY || path == NONPRIMARY || path == CLEAR
+                || (path >= POPULATED && !unimplemented);
+            bool removed_ok;
             TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &select) == LXA_OK);
@@ -1491,6 +1495,31 @@ check_selectedcontent_leaf_detach(void)
                 TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("multiple"), name("false"), &attribute) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, select, attribute) == LXA_OK);
             }
+            if (path >= POPULATED) {
+                lxa_dom_ref_t descendant, container = removed;
+                if (path == BARRIER_OPTIONS) {
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("datalist"), &container) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, removed, container) == LXA_OK);
+                }
+                if (path == INERT_TEMPLATE) {
+                    lxa_dom_ref_t template;
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("template"), &template) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, removed, template) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT_FRAGMENT, &container) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_bind_template(nodes, template, container) == LXA_OK);
+                }
+                TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes,
+                    name(path == BARRIER_OPTIONS || path == OWNED_OPTIONS ? "option" : "selectedcontent"),
+                    path == POPULATED ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &descendant) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, container, descendant) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("removed"), &text) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, descendant, text) == LXA_OK);
+                records = (lxa_dom_record_t *) nodes->records.bytes.data;
+                if (path == DISABLED_DESCENDANT)
+                    records[(lxa_id_t) descendant.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
+                if (path == BARRIER_OPTIONS || path == OWNED_OPTIONS)
+                    records[(lxa_id_t) descendant.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+            }
             records = (lxa_dom_record_t *) nodes->records.bytes.data;
             if (path == DISABLED) records[(lxa_id_t) removed.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
             if (path == DISABLED_FIRST) records[(lxa_id_t) target.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
@@ -1510,24 +1539,27 @@ check_selectedcontent_leaf_detach(void)
             }
             budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
             status = lxa_dom_nodes_detach_constructed_element(nodes, removed);
-            success = status == LXA_OK;
+            removed_ok = status == LXA_OK;
+            success = status == (unimplemented ? LXA_ERROR_UNSUPPORTED : LXA_OK);
             if (!success)
                 TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_WORK);
             budget.limits.max_work = lxa_limits_default().max_work;
             for (size_t i = 0; i < count; ++i) {
                 lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};
-                if (success && (i == (lxa_id_t) removed.handle || i == (lxa_id_t) select.handle
+                if (removed_ok && (i == (lxa_id_t) removed.handle || i == (lxa_id_t) select.handle
                     || i == before[(lxa_id_t) removed.handle].prev
                     || i == before[(lxa_id_t) removed.handle].next)) continue;
-                if (success && changes && (i == (lxa_id_t) target.handle || i == (lxa_id_t) old.handle)) continue;
+                if (removed_ok && changes && (i == (lxa_id_t) target.handle || i == (lxa_id_t) old.handle)) continue;
                 TEST_CHECK(lxa_handle_pack((lxa_id_t) i, nodes->generation, &ref.handle) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_read(nodes, ref, &record) == LXA_OK
                     && memcmp(&record, &before[i], sizeof(record)) == 0);
             }
-            if (success) {
+            if (removed_ok) {
                 TEST_CHECK(lxa_dom_nodes_read(nodes, removed, &record) == LXA_OK
                     && record.parent == LXA_ID_NONE && record.prev == LXA_ID_NONE && record.next == LXA_ID_NONE);
                 TEST_CHECK(record.flags == before[(lxa_id_t) removed.handle].flags);
+                TEST_CHECK(record.first_child == before[(lxa_id_t) removed.handle].first_child
+                    && record.last_child == before[(lxa_id_t) removed.handle].last_child);
                 TEST_CHECK(lxa_dom_nodes_first_child(nodes, target, &clone) == LXA_OK);
                 if (!changes) TEST_CHECK(clone.handle == old.handle);
                 else if (path == CLEAR) TEST_CHECK(clone.handle == LXA_HANDLE_NONE);
@@ -1786,7 +1818,7 @@ main(void)
     check_option_clone_select_resets();
     check_selectedcontent_update();
     check_selectedcontent_postconnection();
-    check_selectedcontent_leaf_detach();
+    check_selectedcontent_detach();
     check_nonprimary_selectedcontent_clear();
     TEST_CHECK(lxa_budget_init(&budget, &limits) == LXA_OK);
     TEST_CHECK(lxa_dom_nodes_create_with_entropy(&allocator, &budget,

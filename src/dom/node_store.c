@@ -3242,11 +3242,11 @@ unlink_constructed(lxa_dom_record_t *records, const lxa_dom_record_t *moved)
 }
 
 static lxa_status_t
-plan_selectedcontent_leaf_removal(lxa_dom_nodes_t *nodes,
+plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, const lxa_dom_record_t *record,
-    child_replace_plan_t *replacement)
+    bool owned_options, child_replace_plan_t *replacement)
 {
-    lxa_dom_ref_t parent, target;
+    lxa_dom_ref_t parent, target, cursor;
     select_tag_t tag;
     select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
     lxa_status_t status = select_tag(nodes, element, &tag);
@@ -3257,9 +3257,32 @@ plan_selectedcontent_leaf_removal(lxa_dom_nodes_t *nodes,
     status = lxa_dom_nodes_parent(nodes, element, &parent);
     if (status == LXA_OK) status = select_tag(nodes, parent, &tag);
     if (status != LXA_OK || tag != SELECT_SELECT) return status;
-    /* A direct leaf cannot change option ownership or the chosen source. */
     status = enabled_selectedcontent(nodes, parent, element.handle, &target);
     if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
+    if (owned_options) return LXA_ERROR_UNSUPPORTED;
+    /* Enabled descendants need their own ordered removal updates. */
+    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    status = lxa_dom_nodes_first_child(nodes, element, &cursor);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        if (++visits > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = select_tag(nodes, cursor, &tag);
+        if (status != LXA_OK) return status;
+        if (tag == SELECT_SELECTEDCONTENT) {
+            lxa_dom_record_t descendant;
+            status = lxa_dom_nodes_read(nodes, cursor, &descendant);
+            if (status != LXA_OK) return status;
+            if ((descendant.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+                return LXA_ERROR_ARGUMENT;
+            if ((descendant.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) == 0)
+                return LXA_ERROR_UNSUPPORTED;
+        }
+        status = next_descendant(nodes, element, cursor, tag != SELECT_LEAF,
+                                   &ascents, &cursor);
+    }
+    if (status != LXA_OK) return status;
+    /* The caller excludes roots that change option ownership. */
     status = scan_select_options(nodes, parent, LXA_HANDLE_NONE, NULL, &scan);
     return status != LXA_OK ? status
         : prepare_child_replacement(nodes, target, scan.first, true, replacement);
@@ -3272,7 +3295,7 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     lxa_dom_record_t moved, *records;
     select_reset_plan_t plan = {.choice = LXA_ID_NONE};
     child_replace_plan_t replacement = {.reset.choice = LXA_ID_NONE};
-    bool option;
+    bool option, owned_options = false;
     lxa_id_t child_id;
     lxa_status_t status;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
@@ -3304,10 +3327,12 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
             }
             if (status == LXA_OK && affected)
                 status = plan_select_reset(nodes, select, element.handle, NULL, &plan);
+            owned_options = affected;
         }
     }
-    if (status == LXA_OK && !option && moved.first_child == LXA_ID_NONE)
-        status = plan_selectedcontent_leaf_removal(nodes, element, &moved, &replacement);
+    if (status == LXA_OK && !option)
+        status = plan_selectedcontent_removal(nodes, element, &moved,
+                                                owned_options, &replacement);
     if (status != LXA_OK) goto done;
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
     unlink_constructed(records, &moved);
