@@ -177,9 +177,9 @@ lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
 /* Unlink an attached parser-owned element after preflight. Removing owned HTML
  * options, including descendants, resets their old select at the link commit.
- * Removing enabled direct selectedcontent from an HTML select stages that select's
- * update when no option ownership changes or enabled selectedcontent descendants
- * need removal updates; otherwise reject the unimplemented update sequence.
+ * Removing enabled direct selectedcontent from an HTML select stages its update
+ * before descendant option resets. Enabled selectedcontent descendant updates
+ * remain unsupported.
  * Other selectedcontent removal effects are not dispatched.
  * Keep descendants/handles live in the store. Failure changes neither links
  * nor option state. */
