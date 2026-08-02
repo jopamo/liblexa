@@ -2290,16 +2290,14 @@ select_tag(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref, select_tag_t *out)
     return LXA_OK;
 }
 
-lxa_status_t
-lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
-                                      lxa_dom_ref_t parent, bool *disabled)
+static lxa_status_t
+selectedcontent_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
+                          bool *disabled, lxa_dom_ref_t *select)
 {
-    lxa_dom_ref_t select = {0}, attribute;
     size_t steps = 0, length;
     lxa_status_t status;
-    if (nodes == NULL || disabled == NULL) return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     *disabled = false;
+    *select = (lxa_dom_ref_t){0};
     length = lxa_vector_length(&nodes->records);
     while (parent.handle != LXA_HANDLE_NONE) {
         select_tag_t tag;
@@ -2309,11 +2307,11 @@ lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
         if (status == LXA_OK) status = select_tag(nodes, parent, &tag);
         if (status != LXA_OK) return status;
         if (tag == SELECT_SELECT) {
-            if (select.handle != LXA_HANDLE_NONE) {
+            if (select->handle != LXA_HANDLE_NONE) {
                 *disabled = true;
                 return LXA_OK;
             }
-            select = parent;
+            *select = parent;
         }
         if (tag == SELECT_OPTION || tag == SELECT_SELECTEDCONTENT) {
             *disabled = true;
@@ -2322,7 +2320,20 @@ lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
         status = lxa_dom_nodes_parent(nodes, parent, &parent);
         if (status != LXA_OK) return status;
     }
-    if (select.handle == LXA_HANDLE_NONE) return LXA_OK;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
+                                      lxa_dom_ref_t parent, bool *disabled)
+{
+    lxa_dom_ref_t select, attribute;
+    lxa_status_t status;
+    if (nodes == NULL || disabled == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = selectedcontent_context(nodes, parent, disabled, &select);
+    if (status != LXA_OK || *disabled || select.handle == LXA_HANDLE_NONE)
+        return status;
     status = lxa_dom_nodes_find_attribute(nodes, select,
         (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
     if (status != LXA_OK) return status;
@@ -2333,12 +2344,13 @@ lxa_status_t
 lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
                                       lxa_dom_ref_t element)
 {
-    lxa_dom_ref_t parent;
+    lxa_dom_ref_t parent, select, attribute = {0};
     lxa_dom_record_t record;
     select_tag_t tag;
     bool disabled;
     lxa_status_t status;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = select_tag(nodes, element, &tag);
     if (status != LXA_OK || tag != SELECT_SELECTEDCONTENT)
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
@@ -2348,10 +2360,18 @@ lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
         return LXA_ERROR_ARGUMENT;
     if (status == LXA_OK) status = lxa_dom_nodes_parent(nodes, element, &parent);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_prepare_selectedcontent(nodes, parent, &disabled);
+        status = selectedcontent_context(nodes, parent, &disabled, &select);
+    if (status == LXA_OK && !disabled && select.handle != LXA_HANDLE_NONE)
+        status = lxa_dom_nodes_find_attribute(nodes, select,
+            (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
+    if (status != LXA_OK) return status;
+    ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) element.handle].flags =
+        disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+    if (disabled || select.handle == LXA_HANDLE_NONE
+        || attribute.handle != LXA_HANDLE_NONE) return LXA_OK;
+    status = lxa_dom_nodes_update_selectedcontent(nodes, select);
     if (status == LXA_OK)
-        ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) element.handle].flags =
-            disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+        status = lxa_dom_nodes_clear_nonprimary_selectedcontent(nodes, select);
     return status;
 }
 

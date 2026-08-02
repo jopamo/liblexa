@@ -24,10 +24,11 @@ enum {
 enum { LXA_DOM_SELECTEDCONTENT_DISABLED = 1u << 2 };
 
 /* Preflight connected selectedcontent under the proposed parent. Reject
- * enabled single-select contexts until their clone effects are implemented. */
+ * enabled single-select contexts until mutation removal dispatch is complete. */
 lxa_status_t lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, bool *disabled);
-/* Apply the supported post-connection state after all fallible checks.
+/* Publish post-connection state, then update/clear the nearest single select.
+ * Later failure retains the state and earlier completed replacements.
  * Inert template contents do not run these steps. */
 lxa_status_t lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
