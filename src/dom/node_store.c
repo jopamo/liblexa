@@ -3867,6 +3867,57 @@ lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
 }
 
 lxa_status_t
+lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
+                                               lxa_dom_ref_t select)
+{
+    lxa_vector_t targets = {0};
+    lxa_dom_ref_t cursor;
+    select_tag_t tag;
+    size_t visits = 0, ascents = 0, length;
+    bool first = true;
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = select_tag(nodes, select, &tag);
+    if (status != LXA_OK || tag != SELECT_SELECT)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    length = lxa_vector_length(&nodes->records);
+    status = lxa_vector_init(&targets, &nodes->allocator, sizeof(lxa_dom_ref_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&targets, nodes->budget);
+    if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, select, &cursor);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        if (++visits > length) { status = LXA_ERROR_ARGUMENT; break; }
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = select_tag(nodes, cursor, &tag);
+        if (status != LXA_OK) break;
+        if (tag == SELECT_SELECTEDCONTENT) {
+            lxa_dom_record_t record;
+            status = lxa_dom_nodes_read(nodes, cursor, &record);
+            if (status != LXA_OK) break;
+            if ((record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0) {
+                status = LXA_ERROR_ARGUMENT;
+                break;
+            }
+            if (first) first = false;
+            else status = lxa_vector_push(&targets, &cursor);
+            if (status != LXA_OK) break;
+        }
+        status = next_descendant(nodes, select, cursor, tag != SELECT_LEAF,
+                                   &ascents, &cursor);
+    }
+    /* Collect before clearing: an earlier target can detach a later one. */
+    for (size_t i = 0; status == LXA_OK && i < lxa_vector_length(&targets); ++i) {
+        const lxa_dom_ref_t *refs = (const lxa_dom_ref_t *) targets.bytes.data;
+        status = replace_children_with_clones(nodes, refs[i], (lxa_dom_ref_t){0}, true);
+    }
+    if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
+        nodes->limit_reason = LXA_BUDGET_MEMORY;
+    lxa_vector_destroy(&targets);
+    return status;
+}
+
+lxa_status_t
 lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     lxa_buffer_t *output, size_t max_output_bytes)
 {

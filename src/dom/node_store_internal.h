@@ -40,6 +40,10 @@ lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
  * canonical option list, or clear it when no option is selected. */
 lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
+/* Preserve the first HTML selectedcontent descendant and clear all later ones.
+ * Each replacement is staged; earlier successful clears survive a later error. */
+lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t select);
 
 /* Apply the nearest select's selectedness rules. Preflight all traversal and
  * allocation before changing option flags; no links or attributes change. */
