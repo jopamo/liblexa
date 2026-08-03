@@ -1451,13 +1451,15 @@ check_selectedcontent_detach(void)
            BARRIER_OPTIONS, OWNED_OPTIONS, ENABLED_DESCENDANT,
            OWNED_TWO_LIVE, OWNED_TARGET_SELECTED, INDIRECT, RETAINED_SELECT,
            OPTION_BEFORE_SC, INDIRECT_WITH_OPTIONS, PRIOR_NESTED_TARGET,
-           ZERO_ID_OPTION, CASE_COUNT };
+           ZERO_ID_OPTION, NESTED_PARENT, NESTED_OPTIONS_FIRST,
+           NESTED_SOURCE, DEEP_SOURCE, NESTED_TARGET, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
     for (unsigned resource = 0; resource < 2; ++resource)
     for (unsigned path = 0; path < CASE_COUNT; ++path) {
         if (resource != 0 && path != OWNED_OPTIONS && path != OWNED_TWO_LIVE
             && path != OWNED_TARGET_SELECTED && path != INDIRECT_WITH_OPTIONS
-            && path != OPTION_BEFORE_SC && path != PRIOR_NESTED_TARGET) continue;
+            && path != OPTION_BEFORE_SC && path != PRIOR_NESTED_TARGET
+            && path < NESTED_PARENT) continue;
         bool success = false;
         for (size_t allowance = 0; allowance < 2048 && !success; ++allowance) {
             lxa_budget_t budget;
@@ -1465,6 +1467,7 @@ check_selectedcontent_detach(void)
             lxa_dom_ref_t select, removed, target, old, later, later_text;
             lxa_dom_ref_t first, second, text, attribute, clone;
             lxa_dom_ref_t inner = {0}, inner_retained = {0};
+            lxa_dom_ref_t wrapper = {0};
             lxa_dom_record_t before[24], record, *records;
             size_t count;
             lxa_status_t status;
@@ -1473,7 +1476,7 @@ check_selectedcontent_detach(void)
                 || (path >= POPULATED && !unimplemented && path != RETAINED_SELECT);
             bool collapses = path == OWNED_TWO_LIVE || path == OWNED_TARGET_SELECTED
                 || path == INDIRECT_WITH_OPTIONS || path == OPTION_BEFORE_SC
-                || path == PRIOR_NESTED_TARGET;
+                || path == PRIOR_NESTED_TARGET || path == NESTED_OPTIONS_FIRST;
             bool removed_ok;
             TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
@@ -1485,7 +1488,13 @@ check_selectedcontent_detach(void)
             TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes,
                 name(path >= INDIRECT ? "button" : "selectedcontent"),
                 path == FOREIGN ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &removed) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, removed) == LXA_OK);
+            if (path == NESTED_PARENT || path == NESTED_OPTIONS_FIRST) {
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &wrapper) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, wrapper) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, wrapper, removed) == LXA_OK);
+            }
+            else if (path < NESTED_SOURCE)
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, removed) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &target) == LXA_OK);
             if (path == PRIOR_NESTED_TARGET) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &inner) == LXA_OK);
@@ -1496,6 +1505,8 @@ check_selectedcontent_detach(void)
             }
             else if (path != LAST_TARGET)
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, target) == LXA_OK);
+            if (path == NESTED_TARGET)
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, removed) == LXA_OK);
             if (path == OWNED_TARGET_SELECTED || path == ZERO_ID_OPTION) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &old) == LXA_OK);
             }
@@ -1520,8 +1531,16 @@ check_selectedcontent_detach(void)
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, first, text) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &second) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, second) == LXA_OK);
+            if (path == NESTED_SOURCE)
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, second, removed) == LXA_OK);
+            if (path == DEEP_SOURCE) {
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("span"), &wrapper) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, second, wrapper) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, wrapper, removed) == LXA_OK);
+            }
             TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("b"), &text) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, second, text) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                path == DEEP_SOURCE ? wrapper : second, text) == LXA_OK);
             if (path == PRIOR_NESTED_TARGET) {
                 lxa_dom_ref_t child;
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &child) == LXA_OK);
@@ -1552,7 +1571,8 @@ check_selectedcontent_detach(void)
                     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &container) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, removed, container) == LXA_OK);
                 }
-                if (path == OPTION_BEFORE_SC || path == PRIOR_NESTED_TARGET) {
+                if (path == OPTION_BEFORE_SC || path == PRIOR_NESTED_TARGET
+                    || path == NESTED_OPTIONS_FIRST) {
                     lxa_dom_ref_t preceding;
                     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &preceding) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, removed, preceding) == LXA_OK);
@@ -1616,7 +1636,8 @@ check_selectedcontent_detach(void)
             budget.limits.max_memory_bytes = lxa_limits_default().max_memory_bytes;
             for (size_t i = 0; i < count; ++i) {
                 lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};
-                if (removed_ok && (i == (lxa_id_t) removed.handle || i == (lxa_id_t) select.handle
+                if (removed_ok && (i == (lxa_id_t) removed.handle
+                    || i == before[(lxa_id_t) removed.handle].parent
                     || i == before[(lxa_id_t) removed.handle].prev
                     || i == before[(lxa_id_t) removed.handle].next)) continue;
                 if (removed_ok && changes && (i == (lxa_id_t) target.handle || i == (lxa_id_t) old.handle)) continue;
@@ -1636,10 +1657,21 @@ check_selectedcontent_detach(void)
                 else if (path == CLEAR || path == ZERO_ID_OPTION) TEST_CHECK(clone.handle == LXA_HANDLE_NONE);
                 else {
                     lxa_span_t bytes;
+                    if (path == DEEP_SOURCE) {
+                        lxa_dom_ref_t child;
+                        TEST_CHECK(lxa_dom_nodes_first_child(nodes, clone, &child) == LXA_OK);
+                        TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &clone) == LXA_OK
+                            && clone.handle == LXA_HANDLE_NONE);
+                        clone = child;
+                    }
                     TEST_CHECK(lxa_dom_nodes_character_read(nodes, clone, &bytes) == LXA_OK
                         && bytes.length == 1 && bytes.data[0] == (path == OWNED_TARGET_SELECTED ? 'c'
-                            : path == OPTION_BEFORE_SC || path == PRIOR_NESTED_TARGET ? 'b'
+                            : path == OPTION_BEFORE_SC || path == PRIOR_NESTED_TARGET
+                                || path == NESTED_OPTIONS_FIRST ? 'b'
                             : path == NONPRIMARY || collapses ? 'a' : 'b'));
+                    if (path >= NESTED_PARENT)
+                        TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &clone) == LXA_OK
+                            && clone.handle == LXA_HANDLE_NONE);
                     if (path == PRIOR_NESTED_TARGET) {
                         TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &clone) == LXA_OK);
                         check_option_state(nodes, clone, 0);

@@ -3298,8 +3298,8 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
             || (record->flags & LXA_DOM_SELECTEDCONTENT_DISABLED) != 0))
         return LXA_OK;
     status = lxa_dom_nodes_parent(nodes, element, &parent);
-    if (status == LXA_OK) status = select_tag(nodes, parent, &tag);
-    if (status != LXA_OK || tag != SELECT_SELECT) return status;
+    if (status == LXA_OK) status = nearest_select(nodes, parent, NULL, &parent);
+    if (status != LXA_OK || parent.handle == LXA_HANDLE_NONE) return status;
     size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
     cursor = element;
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
@@ -3669,7 +3669,7 @@ clone_children_frame(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
 static lxa_status_t
 clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                   lxa_dom_ref_t staging, size_t target_depth, size_t length,
-                  size_t *roots, bool option_lifecycle)
+                  size_t *roots, bool option_lifecycle, lxa_handle_t excluded)
 {
     lxa_vector_t frames;
     lxa_buffer_t text = {0};
@@ -3716,6 +3716,10 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
             status = LXA_ERROR_ARGUMENT;
             break;
         }
+        ((clone_children_frame_t *) frames.bytes.data)[top].next =
+            child_record.next;
+        ((clone_children_frame_t *) frames.bytes.data)[top].previous = frame.next;
+        if (child.handle == excluded) continue;
         status = lxa_size_add(frame.depth, 1, &depth);
         if (status == LXA_OK) {
             size_t absolute;
@@ -3725,9 +3729,6 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                                            absolute, &nodes->limit_reason);
         }
         if (status != LXA_OK) break;
-        ((clone_children_frame_t *) frames.bytes.data)[top].next =
-            child_record.next;
-        ((clone_children_frame_t *) frames.bytes.data)[top].previous = frame.next;
         switch (child_record.kind) {
         case LXA_DOM_KIND_ELEMENT:
             status = lxa_dom_nodes_clone_element(nodes, child, &clone);
@@ -3854,6 +3855,18 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
         cursor = child.next;
     }
     if (previous != host.last_child) return LXA_ERROR_ARGUMENT;
+    if (initial != NULL && initial->excluded != LXA_HANDLE_NONE) {
+        lxa_dom_ref_t excluded = {nodes, nodes->epoch, initial->excluded};
+        lxa_dom_record_t removed;
+        status = lxa_dom_nodes_read(nodes, excluded, &removed);
+        if (status != LXA_OK) return status;
+        if (removed.parent == (lxa_id_t) target.handle) {
+            if (host.first_child == (lxa_id_t) excluded.handle)
+                host.first_child = removed.next;
+            if (host.last_child == (lxa_id_t) excluded.handle)
+                host.last_child = removed.prev;
+        }
+    }
     if (source.handle != LXA_HANDLE_NONE) {
         status = lxa_dom_nodes_read(nodes, source, &original);
         if (status != LXA_OK) return status;
@@ -3891,7 +3904,8 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                 LXA_DOM_KIND_DOCUMENT_FRAGMENT, &staging);
             if (status == LXA_OK)
                 status = clone_child_lists(nodes, source, staging, depth, length,
-                                            &roots, selectedcontent_copy);
+                                            &roots, selectedcontent_copy,
+                                            initial == NULL ? LXA_HANDLE_NONE : initial->excluded);
             if (status == LXA_OK)
                 status = lxa_dom_nodes_read(nodes, staging, &candidate);
             if (status == LXA_OK && selectedcontent_copy && connected)
@@ -3936,12 +3950,12 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
             status = lxa_vector_init(&removals, &nodes->allocator,
                                      sizeof(select_reset_plan_t));
             if (status == LXA_OK) status = lxa_vector_bind_budget(&removals, nodes->budget);
-            if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, target, &child);
+            if (status == LXA_OK) status = select_first_child(nodes, target, &base, &child);
             /* Each root disconnects before its descendant option resets run. */
             while (status == LXA_OK && child.handle != LXA_HANDLE_NONE) {
                 lxa_dom_ref_t next = {0};
                 select_reset_scan_t probe = {.kind = SELECT_SCAN_EXCLUSION};
-                status = lxa_dom_nodes_next_sibling(nodes, child, &next);
+                status = select_next_sibling(nodes, child, &base, &next);
                 if (status == LXA_OK)
                     status = scan_select_options(nodes, select, child.handle, &base, &probe);
                 if (status == LXA_OK && probe.found_excluded) {
