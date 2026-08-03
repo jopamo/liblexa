@@ -3313,12 +3313,53 @@ selectedcontent_removal_hook(lxa_dom_nodes_t *nodes, lxa_dom_ref_t cursor,
             if (retained.handle == LXA_HANDLE_NONE) *hook = REMOVE_HOOK_CONTENT;
         }
     }
-    else if (*tag == SELECT_OPTION) {
+    else if (*tag == SELECT_OPTION && old_select.handle != LXA_HANDLE_NONE) {
         status = option_select(nodes, cursor, NULL, &ancestor);
         if (status != LXA_OK) return status;
         if (ancestor.handle == old_select.handle) *hook = REMOVE_HOOK_OPTION;
     }
     return LXA_OK;
+}
+
+static lxa_status_t
+check_selectedcontent_child_removals(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t host, lxa_dom_ref_t parent, const select_view_t *placement)
+{
+    lxa_dom_ref_t root, select, no_owner = {0};
+    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    lxa_status_t status = nearest_select(nodes, parent, NULL, &select);
+    if (status == LXA_OK) status = select_first_child(nodes, host, placement, &root);
+    while (status == LXA_OK && root.handle != LXA_HANDLE_NONE) {
+        lxa_dom_ref_t cursor = root;
+        select_view_t removing = placement == NULL
+            ? (select_view_t){.kind = SELECT_UNCHANGED, .prior_choice = LXA_ID_NONE} : *placement;
+        removing.excluded = root.handle;
+        while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+            select_tag_t tag;
+            remove_hook_t hook;
+            if (++visits > length) return LXA_ERROR_ARGUMENT;
+            if (placement != NULL && cursor.handle == placement->excluded) {
+                status = next_descendant(nodes, root, cursor, false, &ascents, &cursor);
+                continue;
+            }
+            status = selectedcontent_removal_hook(nodes, cursor, no_owner, &removing, &tag, &hook);
+            if (status != LXA_OK) return status;
+            if (hook == REMOVE_HOOK_CONTENT && select.handle != LXA_HANDLE_NONE) {
+                lxa_dom_ref_t target;
+                status = enabled_selectedcontent(nodes, select, root.handle, &target);
+                if (status != LXA_OK) return status;
+                if (target.handle != LXA_HANDLE_NONE) return LXA_ERROR_UNSUPPORTED;
+            }
+            if (cursor.handle == root.handle) {
+                if (tag == SELECT_LEAF) cursor = (lxa_dom_ref_t){0};
+                else status = lxa_dom_nodes_first_child(nodes, root, &cursor);
+            }
+            else status = next_descendant(nodes, root, cursor, tag != SELECT_LEAF,
+                                            &ascents, &cursor);
+        }
+        if (status == LXA_OK) status = select_next_sibling(nodes, root, placement, &root);
+    }
+    return status;
 }
 
 static lxa_status_t
@@ -3366,12 +3407,6 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || effects == 0) return status;
     status = enabled_selectedcontent(nodes, parent, element.handle, &target);
     if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
-    if (effects > 1) {
-        lxa_dom_ref_t nested;
-        status = first_selectedcontent(nodes, target, element.handle, &nested);
-        if (status != LXA_OK) return status;
-        if (nested.handle != LXA_HANDLE_NONE) return LXA_ERROR_UNSUPPORTED;
-    }
     if (effects > 1) {
         size_t seen = 0;
         visits = ascents = 0;
@@ -3434,17 +3469,16 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         }
         if (status != LXA_OK) break;
         status = scan_select_options(nodes, parent, LXA_HANDLE_NONE, &source_view, &scan);
-        if (status == LXA_OK && effects > 1 && scan.first.handle != LXA_HANDLE_NONE) {
-            lxa_dom_ref_t nested;
-            status = first_selectedcontent(nodes, scan.first, element.handle, &nested);
-            if (status == LXA_OK && nested.handle != LXA_HANDLE_NONE)
-                status = LXA_ERROR_UNSUPPORTED;
-        }
         if (status == LXA_OK) {
             const select_view_t *copy_view = view.selection_owner.handle != LXA_HANDLE_NONE
                 && view.selection_owner.handle != parent.handle ? &view : &source_view;
-            status = prepare_child_replacement(nodes, target, scan.first, true, copy_view, current);
+            status = check_selectedcontent_child_removals(nodes, target, target, copy_view);
+            if (status == LXA_OK)
+                status = prepare_child_replacement(nodes, target, scan.first, true, copy_view, current);
         }
+        if (status == LXA_OK && effect + 1 < effects
+            && current->staging.handle != LXA_HANDLE_NONE)
+            status = check_selectedcontent_child_removals(nodes, current->staging, target, NULL);
         if (status == LXA_OK) {
             if (current->result.selection_owner.handle == LXA_HANDLE_NONE
                 || current->result.selection_owner.handle == parent.handle)

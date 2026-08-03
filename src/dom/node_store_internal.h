@@ -180,9 +180,8 @@ lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
  * Removing a subtree stages one selectedcontent update
  * among option resets when an enabled instance loses its select ancestry.
  * Stage repeated updates and interleaved option hooks with separate source and
- * target select projections, without selectedcontent descendants in replacement
- * contents. Other
- * multiple-update sequences remain unsupported.
+ * target select projections. Reject replacement-child removals requiring further
+ * selectedcontent updates; disabled or retained-select descendants do nothing.
  * Keep descendants/handles live in the store. Failure changes neither links
  * nor option state. */
 lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,

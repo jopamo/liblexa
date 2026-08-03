@@ -1458,8 +1458,10 @@ check_selectedcontent_detach(void)
            SEQUENCE_OWNERLESS, INTERLEAVED_OWNERLESS, OWNERLESS_BEFORE,
            SEQUENCE_NESTED_TARGET, NESTED_BEFORE, NESTED_INTERLEAVED,
            NESTED_INNER_FALLBACK,
+           REPEATED_DISABLED_TARGET, REPEATED_CONNECTED_SOURCE, REPEATED_RETAINED_SOURCE,
+           REPEATED_MULTIPLE_TARGET, FINAL_ACTIVE_SOURCE,
            SEQUENCE_REENTRANT_SOURCE,
-           SEQUENCE_REENTRANT_TARGET, CASE_COUNT };
+           SEQUENCE_REENTRANT_TARGET, DISABLED_ACTIVE_DESCENDANT, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
     for (unsigned resource = 0; resource < 2; ++resource)
     for (unsigned path = 0; path < CASE_COUNT; ++path) {
@@ -1474,7 +1476,7 @@ check_selectedcontent_detach(void)
             lxa_dom_ref_t select, removed, target, old, later, later_text;
             lxa_dom_ref_t first, second, text, attribute, clone;
             lxa_dom_ref_t inner = {0}, inner_retained = {0}, inner_other = {0};
-            lxa_dom_ref_t wrapper = {0};
+            lxa_dom_ref_t wrapper = {0}, source_content = {0};
             lxa_dom_record_t before[24], record, *records;
             size_t count;
             lxa_status_t status;
@@ -1487,7 +1489,7 @@ check_selectedcontent_detach(void)
                 || path == INTERLEAVED_OPTIONS || path == INTERLEAVED_THREE
                 || path == INTERLEAVED_OWNERLESS || path == OWNERLESS_BEFORE
                 || path == NESTED_BEFORE || path == NESTED_INTERLEAVED
-                || path == NESTED_INNER_FALLBACK;
+                || path == NESTED_INNER_FALLBACK || path == FINAL_ACTIVE_SOURCE;
             bool sequence_source = path == SEQUENCE_SOURCE_CHANGE || path == SEQUENCE_THREE;
             bool ownerless = path >= SEQUENCE_OWNERLESS && path <= OWNERLESS_BEFORE;
             bool nested_target = path == PRIOR_NESTED_TARGET
@@ -1500,6 +1502,11 @@ check_selectedcontent_detach(void)
                 TEST_CHECK((lxa_id_t) first.handle == 0);
             }
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &select) == LXA_OK);
+            if (path == REPEATED_CONNECTED_SOURCE) {
+                lxa_dom_ref_t document;
+                TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT, &document) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, document, select) == LXA_OK);
+            }
             TEST_CHECK(lxa_dom_nodes_append_namespaced_element(nodes,
                 name(path >= INDIRECT ? "button" : "selectedcontent"),
                 path == FOREIGN ? LXA_DOM_NS_SVG : LXA_DOM_NS_HTML, &removed) == LXA_OK);
@@ -1511,7 +1518,7 @@ check_selectedcontent_detach(void)
             else if (path < NESTED_SOURCE || path >= SEQUENCE_SOURCE_CHANGE)
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, removed) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &target) == LXA_OK);
-            if (nested_target) {
+            if (nested_target || path == REPEATED_MULTIPLE_TARGET) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &inner) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, inner) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, inner, target) == LXA_OK);
@@ -1521,6 +1528,10 @@ check_selectedcontent_detach(void)
                     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &inner_other) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, inner, inner_other) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_reparent_constructed_child(nodes, inner, target) == LXA_OK);
+                }
+                if (path == REPEATED_MULTIPLE_TARGET) {
+                    TEST_CHECK(lxa_dom_nodes_append_html_attribute(nodes, name("multiple"), name("false"), &attribute) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_attach_attribute(nodes, inner, attribute) == LXA_OK);
                 }
             }
             else if (ownerless) {
@@ -1535,10 +1546,16 @@ check_selectedcontent_detach(void)
             if (path == OWNED_TARGET_SELECTED || path == ZERO_ID_OPTION) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &old) == LXA_OK);
             }
-            else if (path == SEQUENCE_REENTRANT_TARGET)
+            else if (path == SEQUENCE_REENTRANT_TARGET || path == REPEATED_DISABLED_TARGET
+                || path == DISABLED_ACTIVE_DESCENDANT || path == REPEATED_MULTIPLE_TARGET)
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &old) == LXA_OK);
             else TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("old"), &old) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, old) == LXA_OK);
+            if (path == DISABLED_ACTIVE_DESCENDANT) {
+                lxa_dom_ref_t active;
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &active) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old, active) == LXA_OK);
+            }
             if (path == OWNED_TARGET_SELECTED || path == ZERO_ID_OPTION) {
                 TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("c"), &text) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, old, text) == LXA_OK);
@@ -1568,6 +1585,18 @@ check_selectedcontent_detach(void)
             TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("b"), &text) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
                 path == DEEP_SOURCE ? wrapper : second, text) == LXA_OK);
+            if (path == REPEATED_CONNECTED_SOURCE || path == REPEATED_RETAINED_SOURCE
+                || path == FINAL_ACTIVE_SOURCE) {
+                lxa_dom_ref_t parent = second;
+                if (path == REPEATED_RETAINED_SOURCE) {
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &parent) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, second, parent) == LXA_OK);
+                }
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &source_content) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, source_content) == LXA_OK);
+                if (path == REPEATED_CONNECTED_SOURCE)
+                    TEST_CHECK(lxa_dom_nodes_connect_selectedcontent(nodes, source_content) == LXA_OK);
+            }
             if (sequence_source) {
                 for (unsigned i = 0; i < 2; ++i) {
                     lxa_dom_ref_t option, child;
@@ -1635,7 +1664,7 @@ check_selectedcontent_detach(void)
                 if (path >= SEQUENCE_SOURCE_CHANGE) {
                     if (path == INTERLEAVED_OPTIONS || path == INTERLEAVED_THREE
                         || path == INTERLEAVED_OWNERLESS || path == NESTED_INTERLEAVED
-                        || path == NESTED_INNER_FALLBACK) {
+                        || path == NESTED_INNER_FALLBACK || path == FINAL_ACTIVE_SOURCE) {
                         TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &descendant) == LXA_OK);
                         TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, removed, descendant) == LXA_OK);
                         records = (lxa_dom_record_t *) nodes->records.bytes.data;
@@ -1685,6 +1714,8 @@ check_selectedcontent_detach(void)
                 records[(lxa_id_t) inner_retained.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
             if (path == NESTED_INNER_FALLBACK)
                 records[(lxa_id_t) inner_other.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+            if (path == REPEATED_DISABLED_TARGET || path == DISABLED_ACTIVE_DESCENDANT)
+                records[(lxa_id_t) old.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
             count = lxa_dom_nodes_length(nodes);
             TEST_CHECK(count <= sizeof(before) / sizeof(before[0]));
             memcpy(before, records, count * sizeof(before[0]));
@@ -1747,9 +1778,11 @@ check_selectedcontent_detach(void)
                             : path == OPTION_BEFORE_SC || path == PRIOR_NESTED_TARGET
                                 || path == NESTED_OPTIONS_FIRST
                                 || path == INTERLEAVED_OPTIONS || path == INTERLEAVED_THREE
-                                || ownerless || nested_target ? 'b'
+                                || ownerless || nested_target || path == FINAL_ACTIVE_SOURCE ? 'b'
                             : path == NONPRIMARY || collapses ? 'a' : 'b'));
-                    if (path >= NESTED_PARENT && !nested_target)
+                    if (path >= NESTED_PARENT && !nested_target
+                        && path != REPEATED_CONNECTED_SOURCE && path != REPEATED_RETAINED_SOURCE
+                        && path != FINAL_ACTIVE_SOURCE)
                         TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &clone) == LXA_OK
                             && clone.handle == LXA_HANDLE_NONE);
                     if (nested_target) {
@@ -1761,6 +1794,16 @@ check_selectedcontent_detach(void)
                         else check_option_state(nodes, clone, 0);
                         check_option_state(nodes, inner_retained, LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY);
                     }
+                    if (path == REPEATED_CONNECTED_SOURCE || path == REPEATED_RETAINED_SOURCE
+                        || path == FINAL_ACTIVE_SOURCE) {
+                        lxa_dom_ref_t content;
+                        uint16_t flags = path == REPEATED_CONNECTED_SOURCE ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+                        TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, clone, &content) == LXA_OK);
+                        if (path == REPEATED_RETAINED_SOURCE)
+                            TEST_CHECK(lxa_dom_nodes_first_child(nodes, content, &content) == LXA_OK);
+                        TEST_CHECK(lxa_dom_nodes_read(nodes, content, &record) == LXA_OK && record.flags == flags);
+                        TEST_CHECK(lxa_dom_nodes_read(nodes, source_content, &record) == LXA_OK && record.flags == flags);
+                    }
                 }
                 TEST_CHECK(lxa_dom_nodes_first_child(nodes, later, &clone) == LXA_OK && clone.handle == later_text.handle);
                 check_option_state(nodes, first, path == ZERO_ID_OPTION || sequence_source
@@ -1768,7 +1811,8 @@ check_selectedcontent_detach(void)
                     ? LXA_DOM_OPTION_DIRTY : before[(lxa_id_t) first.handle].flags);
                 check_option_state(nodes, second, sequence_source
                     ? LXA_DOM_OPTION_DIRTY : before[(lxa_id_t) second.handle].flags);
-                if (path == OWNED_TARGET_SELECTED)
+                if (path == OWNED_TARGET_SELECTED || path == REPEATED_DISABLED_TARGET
+                    || path == REPEATED_MULTIPLE_TARGET)
                     TEST_CHECK(lxa_dom_nodes_read(nodes, old, &record) == LXA_OK
                         && record.parent == LXA_ID_NONE && record.prev == LXA_ID_NONE
                         && record.next == LXA_ID_NONE && record.flags == before[(lxa_id_t) old.handle].flags);
