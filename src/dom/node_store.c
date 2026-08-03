@@ -2544,6 +2544,12 @@ typedef struct {
     select_view_t result;
 } child_replace_plan_t;
 
+typedef struct {
+    bool reset_before;
+    select_reset_plan_t reset;
+    child_replace_plan_t replacement;
+} selectedcontent_update_plan_t;
+
 static lxa_status_t prepare_child_replacement(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t target, lxa_dom_ref_t source, bool selectedcontent_copy,
     const select_view_t *initial, child_replace_plan_t *plan);
@@ -3281,21 +3287,52 @@ unlink_constructed(lxa_dom_record_t *records, const lxa_dom_record_t *moved)
     else records[moved->next].prev = moved->prev;
 }
 
+typedef enum { REMOVE_HOOK_NONE, REMOVE_HOOK_OPTION, REMOVE_HOOK_CONTENT } remove_hook_t;
+
+static lxa_status_t
+selectedcontent_removal_hook(lxa_dom_nodes_t *nodes, lxa_dom_ref_t cursor,
+    lxa_dom_ref_t old_select, const select_view_t *view,
+    select_tag_t *tag, remove_hook_t *hook)
+{
+    lxa_dom_ref_t ancestor, retained;
+    lxa_status_t status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                            &nodes->limit_reason);
+    *hook = REMOVE_HOOK_NONE;
+    if (status == LXA_OK) status = select_tag(nodes, cursor, tag);
+    if (status != LXA_OK) return status;
+    if (*tag == SELECT_SELECTEDCONTENT) {
+        lxa_dom_record_t descendant;
+        status = lxa_dom_nodes_read(nodes, cursor, &descendant);
+        if (status != LXA_OK) return status;
+        if ((descendant.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+            return LXA_ERROR_ARGUMENT;
+        if ((descendant.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) == 0) {
+            status = select_parent(nodes, cursor, view, &ancestor);
+            if (status == LXA_OK) status = nearest_select(nodes, ancestor, view, &retained);
+            if (status != LXA_OK) return status;
+            if (retained.handle == LXA_HANDLE_NONE) *hook = REMOVE_HOOK_CONTENT;
+        }
+    }
+    else if (*tag == SELECT_OPTION) {
+        status = option_select(nodes, cursor, NULL, &ancestor);
+        if (status != LXA_OK) return status;
+        if (ancestor.handle == old_select.handle) *hook = REMOVE_HOOK_OPTION;
+    }
+    return LXA_OK;
+}
+
 static lxa_status_t
 plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, const lxa_dom_record_t *record,
     select_reset_plan_t *before_update, child_replace_plan_t *replacement,
     lxa_vector_t *updates)
 {
-    lxa_dom_ref_t parent, target, cursor, ancestor, retained;
+    lxa_dom_ref_t parent, target, cursor;
     select_tag_t tag;
     select_view_t view = {.kind = SELECT_UNCHANGED, .excluded = element.handle,
                           .prior_choice = LXA_ID_NONE};
-    enum { REMOVE_NONE, REMOVE_OPTIONS_FIRST, REMOVE_EFFECT_FIRST,
-           REMOVE_EFFECT_AFTER_OPTIONS,
-           REMOVE_SEQUENCE } order = REMOVE_NONE;
     size_t effects = 0;
-    bool owned_options = false;
+    bool pending = false, first_reset = false;
     lxa_status_t status = select_tag(nodes, element, &tag);
     if (status != LXA_OK) return status;
     if (tag == SELECT_SELECTEDCONTENT
@@ -3311,50 +3348,26 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
     size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
     cursor = element;
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        remove_hook_t hook;
         if (++visits > length) return LXA_ERROR_ARGUMENT;
-        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &nodes->limit_reason);
-        if (status == LXA_OK) status = select_tag(nodes, cursor, &tag);
+        status = selectedcontent_removal_hook(nodes, cursor, parent, &view, &tag, &hook);
         if (status != LXA_OK) return status;
-        if (tag == SELECT_SELECTEDCONTENT) {
-            lxa_dom_record_t descendant;
-            status = lxa_dom_nodes_read(nodes, cursor, &descendant);
-            if (status != LXA_OK) return status;
-            if ((descendant.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
-                return LXA_ERROR_ARGUMENT;
-            if ((descendant.flags & LXA_DOM_SELECTEDCONTENT_DISABLED) == 0) {
-                status = select_parent(nodes, cursor, &view, &ancestor);
-                if (status == LXA_OK)
-                    status = nearest_select(nodes, ancestor, &view, &retained);
-                if (status != LXA_OK) return status;
-                if (retained.handle == LXA_HANDLE_NONE) {
-                    ++effects;
-                    if (order == REMOVE_NONE) order = REMOVE_EFFECT_FIRST;
-                    else if (order == REMOVE_OPTIONS_FIRST) order = REMOVE_EFFECT_AFTER_OPTIONS;
-                    else order = REMOVE_SEQUENCE;
-                }
-            }
-        }
-        if (tag == SELECT_OPTION) {
-            status = option_select(nodes, cursor, NULL, &ancestor);
-            if (status != LXA_OK) return status;
-            if (ancestor.handle == parent.handle) {
-                owned_options = true;
-                if (order == REMOVE_NONE) order = REMOVE_OPTIONS_FIRST;
-            }
+        if (hook == REMOVE_HOOK_OPTION) pending = true;
+        else if (hook == REMOVE_HOOK_CONTENT) {
+            if (effects == 0) first_reset = pending;
+            ++effects;
+            pending = false;
         }
         if (cursor.handle == element.handle)
             status = lxa_dom_nodes_first_child(nodes, element, &cursor);
         else status = next_descendant(nodes, element, cursor, tag != SELECT_LEAF,
                                         &ascents, &cursor);
     }
-    if (status != LXA_OK || order == REMOVE_NONE || order == REMOVE_OPTIONS_FIRST)
-        return status;
+    if (status != LXA_OK || effects == 0) return status;
     status = enabled_selectedcontent(nodes, parent, element.handle, &target);
     if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
-    if (order == REMOVE_SEQUENCE) {
+    if (effects > 1) {
         lxa_dom_ref_t owner, nested;
-        if (owned_options) return LXA_ERROR_UNSUPPORTED;
         status = option_select_at(nodes, target, &view, &owner);
         if (status != LXA_OK) return status;
         if (owner.handle != parent.handle) return LXA_ERROR_UNSUPPORTED;
@@ -3362,30 +3375,63 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         if (status != LXA_OK) return status;
         if (nested.handle != LXA_HANDLE_NONE) return LXA_ERROR_UNSUPPORTED;
     }
-    if (order == REMOVE_EFFECT_AFTER_OPTIONS) {
-        status = plan_select_reset(nodes, parent, element.handle, NULL, before_update);
-        if (status != LXA_OK) return status;
-        view.prior_collapsed = before_update->options.bytes.length != 0;
-        view.prior_choice = before_update->choice;
-        view.original_length = lxa_vector_length(&nodes->records);
-        view.selection_owner = parent;
-    }
     if (effects > 1) {
-        status = lxa_vector_init(updates, &nodes->allocator, sizeof(child_replace_plan_t));
+        size_t seen = 0;
+        visits = ascents = 0;
+        pending = false;
+        cursor = element;
+        status = lxa_vector_init(updates, &nodes->allocator, sizeof(selectedcontent_update_plan_t));
         if (status == LXA_OK) status = lxa_vector_bind_budget(updates, nodes->budget);
+        if (status == LXA_OK) status = lxa_vector_reserve(updates, effects - 1);
+        while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+            remove_hook_t hook;
+            if (++visits > length) { status = LXA_ERROR_ARGUMENT; break; }
+            status = selectedcontent_removal_hook(nodes, cursor, parent, &view, &tag, &hook);
+            if (status != LXA_OK) break;
+            if (hook == REMOVE_HOOK_OPTION) pending = true;
+            else if (hook == REMOVE_HOOK_CONTENT) {
+                if (seen != 0) {
+                    selectedcontent_update_plan_t update = {
+                        .reset_before = pending, .reset.choice = LXA_ID_NONE,
+                        .replacement.reset.choice = LXA_ID_NONE};
+                    status = lxa_vector_push(updates, &update);
+                }
+                ++seen;
+                pending = false;
+            }
+            if (status == LXA_OK) {
+                if (cursor.handle == element.handle)
+                    status = lxa_dom_nodes_first_child(nodes, element, &cursor);
+                else status = next_descendant(nodes, element, cursor, tag != SELECT_LEAF,
+                                                &ascents, &cursor);
+            }
+        }
+        if (status == LXA_OK && seen != effects) status = LXA_ERROR_ARGUMENT;
     }
     for (size_t effect = 0; status == LXA_OK && effect < effects; ++effect) {
-        child_replace_plan_t next = {.reset.choice = LXA_ID_NONE};
-        child_replace_plan_t *current = effect == 0 ? replacement : &next;
+        selectedcontent_update_plan_t *update = effect == 0 ? NULL
+            : &((selectedcontent_update_plan_t *) updates->bytes.data)[effect - 1];
+        child_replace_plan_t *current = effect == 0 ? replacement : &update->replacement;
+        select_reset_plan_t *reset = effect == 0 ? before_update : &update->reset;
         select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
         if (effect != 0) {
             view = effect == 1 ? replacement->result
-                : ((child_replace_plan_t *) updates->bytes.data)[effect - 2].result;
+                : ((selectedcontent_update_plan_t *) updates->bytes.data)[effect - 2].replacement.result;
             view.prior_collapsed |= view.final_collapsed;
             if (view.final_chosen) view.prior_choice = view.final_choice;
             view.final_collapsed = view.final_chosen = false;
             view.original_length = lxa_vector_length(&nodes->records);
         }
+        if (effect == 0 ? first_reset : update->reset_before) {
+            status = plan_select_reset(nodes, parent, LXA_HANDLE_NONE, &view, reset);
+            if (status == LXA_OK) {
+                view.prior_collapsed |= reset->options.bytes.length != 0;
+                if (reset->choice != LXA_ID_NONE) view.prior_choice = reset->choice;
+                view.original_length = lxa_vector_length(&nodes->records);
+                view.selection_owner = parent;
+            }
+        }
+        if (status != LXA_OK) break;
         status = scan_select_options(nodes, parent, LXA_HANDLE_NONE, &view, &scan);
         if (status == LXA_OK && effects > 1 && scan.first.handle != LXA_HANDLE_NONE) {
             lxa_dom_ref_t nested;
@@ -3395,10 +3441,6 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         }
         if (status == LXA_OK)
             status = prepare_child_replacement(nodes, target, scan.first, true, &view, current);
-        if (effect != 0) {
-            if (status == LXA_OK) status = lxa_vector_push(updates, &next);
-            if (status != LXA_OK) destroy_child_replacement(&next);
-        }
     }
     if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
         nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3453,7 +3495,7 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     if (status == LXA_OK && affected_select.handle != LXA_HANDLE_NONE) {
         if (replacement.target.handle != LXA_HANDLE_NONE) {
             const child_replace_plan_t *last = lxa_vector_length(&updates) == 0
-                ? &replacement : &((child_replace_plan_t *) updates.bytes.data)[lxa_vector_length(&updates) - 1];
+                ? &replacement : &((selectedcontent_update_plan_t *) updates.bytes.data)[lxa_vector_length(&updates) - 1].replacement;
             select_view_t view = last->result;
             if (last->reset_select.handle != affected_select.handle) {
                 view.prior_collapsed = before_update.options.bytes.length != 0;
@@ -3474,12 +3516,18 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     commit_select_reset(nodes, &before_update);
     if (replacement.target.handle != LXA_HANDLE_NONE)
         commit_child_replacement(nodes, &replacement);
-    for (size_t i = 0; i < lxa_vector_length(&updates); ++i)
-        commit_child_replacement(nodes, &((child_replace_plan_t *) updates.bytes.data)[i]);
+    for (size_t i = 0; i < lxa_vector_length(&updates); ++i) {
+        selectedcontent_update_plan_t *update = &((selectedcontent_update_plan_t *) updates.bytes.data)[i];
+        commit_select_reset(nodes, &update->reset);
+        commit_child_replacement(nodes, &update->replacement);
+    }
     commit_select_reset(nodes, &plan);
 done:
-    for (size_t i = 0; i < lxa_vector_length(&updates); ++i)
-        destroy_child_replacement(&((child_replace_plan_t *) updates.bytes.data)[i]);
+    for (size_t i = 0; i < lxa_vector_length(&updates); ++i) {
+        selectedcontent_update_plan_t *update = &((selectedcontent_update_plan_t *) updates.bytes.data)[i];
+        destroy_child_replacement(&update->replacement);
+        lxa_vector_destroy(&update->reset.options);
+    }
     lxa_vector_destroy(&updates);
     destroy_child_replacement(&replacement);
     lxa_vector_destroy(&before_update.options);
