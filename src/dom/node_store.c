@@ -2537,7 +2537,7 @@ typedef struct {
 } select_view_t;
 
 typedef struct {
-    lxa_dom_ref_t target, staging, reset_select;
+    lxa_dom_ref_t target, staging;
     lxa_dom_record_t host, candidate;
     lxa_vector_t removals;
     select_reset_plan_t reset;
@@ -3370,7 +3370,8 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         lxa_dom_ref_t owner, nested;
         status = option_select_at(nodes, target, &view, &owner);
         if (status != LXA_OK) return status;
-        if (owner.handle != parent.handle) return LXA_ERROR_UNSUPPORTED;
+        if (owner.handle != LXA_HANDLE_NONE && owner.handle != parent.handle)
+            return LXA_ERROR_UNSUPPORTED;
         status = first_selectedcontent(nodes, target, element.handle, &nested);
         if (status != LXA_OK) return status;
         if (nested.handle != LXA_HANDLE_NONE) return LXA_ERROR_UNSUPPORTED;
@@ -3497,7 +3498,7 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
             const child_replace_plan_t *last = lxa_vector_length(&updates) == 0
                 ? &replacement : &((selectedcontent_update_plan_t *) updates.bytes.data)[lxa_vector_length(&updates) - 1].replacement;
             select_view_t view = last->result;
-            if (last->reset_select.handle != affected_select.handle) {
+            if (view.selection_owner.handle != affected_select.handle) {
                 view.prior_collapsed = before_update.options.bytes.length != 0;
                 view.prior_choice = before_update.choice;
                 view.final_collapsed = view.final_chosen = false;
@@ -4050,7 +4051,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
         select_reset_scan_t old_scan = {.kind = SELECT_SCAN_EXCLUSION};
         select_reset_scan_t new_scan = {.kind = SELECT_SCAN_EXCLUSION};
         status = option_select_at(nodes, target, &base, &select);
-        if (status == LXA_OK) {
+        if (status == LXA_OK && select.handle != LXA_HANDLE_NONE) {
             if (view.selection_owner.handle != LXA_HANDLE_NONE
                 && view.selection_owner.handle != select.handle) {
                 view.prior_collapsed = false;
@@ -4100,7 +4101,6 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
         view.final_collapsed = reset.options.bytes.length != 0;
         view.final_chosen = reset.choice != LXA_ID_NONE;
         view.final_choice = reset.choice;
-        plan->reset_select = select;
         plan->result = view;
     }
     plan->target = target;
