@@ -2550,8 +2550,10 @@ static void destroy_child_replacement(child_replace_plan_t *plan);
 static lxa_status_t nearest_select(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t ancestor, const select_view_t *view, lxa_dom_ref_t *out);
 static lxa_status_t detach_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element);
-static lxa_status_t reinsert_option_transaction(lxa_dom_nodes_t *nodes,
+static lxa_status_t reparent_content_transaction(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
+static lxa_status_t child_copy_context(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t ancestor, size_t *depth, bool *connected);
 
 /* Read the proposed placement without publishing any link changes. */
 static lxa_status_t
@@ -3463,11 +3465,9 @@ done:
 }
 
 static lxa_status_t
-collect_option_move_selects(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
-                             const select_view_t *move,
-                             lxa_dom_ref_t external_owner,
-                             lxa_dom_ref_t selects[2], size_t *count,
-                             bool *same_owner)
+option_reparent_effect(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
+                       const select_view_t *move,
+                       lxa_dom_ref_t external_owner, bool *reset)
 {
     lxa_dom_ref_t owners[2];
     bool option;
@@ -3476,20 +3476,9 @@ collect_option_move_selects(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
     status = option_select(nodes, ref, NULL, &owners[0]);
     if (status == LXA_OK) status = option_select(nodes, ref, move, &owners[1]);
     if (status != LXA_OK) return status;
-    if (owners[0].handle == owners[1].handle) {
-        if (owners[0].handle != LXA_HANDLE_NONE
-            && owners[0].handle == external_owner.handle) *same_owner = true;
-        return LXA_OK;
-    }
-    for (size_t i = 0; i < 2; ++i) {
-        size_t j = 0;
-        if (owners[i].handle == LXA_HANDLE_NONE) continue;
-        while (j < *count && selects[j].handle != owners[i].handle) ++j;
-        if (j != *count) continue;
-        /* Internal select owners do not change when their subtree moves. */
-        if (*count == 2) return LXA_ERROR_ARGUMENT;
-        selects[(*count)++] = owners[i];
-    }
+    if (owners[0].handle != owners[1].handle
+        || (owners[0].handle != LXA_HANDLE_NONE
+            && owners[0].handle == external_owner.handle)) *reset = true;
     return LXA_OK;
 }
 
@@ -3500,14 +3489,12 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_dom_record_t host, moved, target, *records, *old;
     select_view_t move = {.subtree = child, .parent = parent, .before = before,
                           .kind = SELECT_MOVE};
-    lxa_dom_ref_t selects[2], external_owner = {0};
-    select_reset_plan_t plans[2] = {{.choice = LXA_ID_NONE}, {.choice = LXA_ID_NONE}};
-    size_t select_count = 0;
+    lxa_dom_ref_t external_owner = {0};
     lxa_id_t host_id, child_id, old_id, target_id, cursor, predecessor;
     size_t length, depth = 1, relative = 1, max_relative = 1;
     size_t visits = 0, ascents = 0;
     size_t new_depth;
-    bool root_option, has_content = false, same_owner = false;
+    bool root_option, has_content = false, reset_options = false;
     lxa_status_t status;
     if (nodes == NULL
         || parent.handle == child.handle) {
@@ -3608,9 +3595,8 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                 status = select_tag(nodes, ref, &tag);
             if (status == LXA_OK && tag == SELECT_SELECTEDCONTENT) has_content = true;
             if (status == LXA_OK)
-                status = collect_option_move_selects(nodes, ref, &move,
-                                                       external_owner,
-                                                       selects, &select_count, &same_owner);
+                status = option_reparent_effect(nodes, ref, &move,
+                                                  external_owner, &reset_options);
             if (status != LXA_OK) return status;
         }
         if ((entry.first_child == LXA_ID_NONE)
@@ -3652,11 +3638,18 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH,
                                   new_depth, &nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if ((select_count != 0 || same_owner) && !has_content) {
+    if (has_content) {
+        size_t destination_depth;
+        bool connected;
+        status = child_copy_context(nodes, parent, &destination_depth, &connected);
+        if (status != LXA_OK) return status;
+        if (connected) return LXA_ERROR_UNSUPPORTED;
+    }
+    if (reset_options || has_content) {
         if (target_id == child_id)
             status = lxa_dom_nodes_next_sibling(nodes, child, &before);
         if (status == LXA_OK)
-            status = reinsert_option_transaction(nodes, parent, child, before);
+            status = reparent_content_transaction(nodes, parent, child, before);
         return status;
     }
     if (host_id == old_id
@@ -3664,10 +3657,6 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             || (target_id == LXA_ID_NONE && old->last_child == child_id)
             || target_id == moved.next))
         return LXA_OK;
-    for (size_t i = 0; i < select_count; ++i) {
-        status = plan_select_reset(nodes, selects[i], LXA_HANDLE_NONE, &move, &plans[i]);
-        if (status != LXA_OK) goto done;
-    }
     /* All remaining writes are allocation-free and cannot fail. */
     unlink_constructed(records, &moved);
     predecessor = target_id == LXA_ID_NONE
@@ -3679,10 +3668,7 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     else records[predecessor].next = child_id;
     if (target_id == LXA_ID_NONE) records[host_id].last_child = child_id;
     else records[target_id].prev = child_id;
-    for (size_t i = 0; i < select_count; ++i) commit_select_reset(nodes, &plans[i]);
-done:
-    for (size_t i = 0; i < 2; ++i) lxa_vector_destroy(&plans[i].options);
-    return status;
+    return LXA_OK;
 }
 
 lxa_status_t
@@ -4106,7 +4092,7 @@ typedef enum {
     CONTENT_REMOVE, CONTENT_HOOKS, CONTENT_INSERT, CONTENT_REINSERT
 } content_phase_t;
 typedef enum {
-    CONTENT_COPY_JOB, CONTENT_DETACH_JOB, CONTENT_OPTION_REINSERT_JOB
+    CONTENT_COPY_JOB, CONTENT_DETACH_JOB, CONTENT_REPARENT_JOB
 } content_job_t;
 typedef struct {
     child_replace_plan_t copy;
@@ -4192,7 +4178,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
     if (status == LXA_OK && job == CONTENT_COPY_JOB)
         status = push_content_copy(nodes, &frames, target, source);
     else if (status == LXA_OK
-             && (job == CONTENT_DETACH_JOB || job == CONTENT_OPTION_REINSERT_JOB)) {
+             && (job == CONTENT_DETACH_JOB || job == CONTENT_REPARENT_JOB)) {
         content_frame_t frame = {.copy.reset.choice = LXA_ID_NONE, .root = target,
                                 .destination = source, .before = before,
                                 .phase = CONTENT_REMOVE, .job = job};
@@ -4211,7 +4197,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             lxa_dom_ref_t root;
             lxa_dom_record_t record;
             if (frame.job == CONTENT_DETACH_JOB
-                || frame.job == CONTENT_OPTION_REINSERT_JOB) root = frame.root;
+                || frame.job == CONTENT_REPARENT_JOB) root = frame.root;
             else if (frame.job == CONTENT_COPY_JOB)
                 status = lxa_dom_nodes_first_child(nodes, host, &root);
             else status = LXA_ERROR_ARGUMENT;
@@ -4247,7 +4233,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
                 }
                 frame.hooks = (lxa_vector_t){0};
                 frame.hook = 0;
-                frame.phase = frame.job == CONTENT_OPTION_REINSERT_JOB
+                frame.phase = frame.job == CONTENT_REPARENT_JOB
                               ? CONTENT_REINSERT : CONTENT_REMOVE;
                 ((content_frame_t *) frames.bytes.data)[top] = frame;
                 continue;
@@ -4385,10 +4371,10 @@ detach_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element)
 }
 
 static lxa_status_t
-reinsert_option_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
+reparent_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_dom_ref_t child, lxa_dom_ref_t before)
 {
-    return run_content_transaction(nodes, child, parent, before, CONTENT_OPTION_REINSERT_JOB);
+    return run_content_transaction(nodes, child, parent, before, CONTENT_REPARENT_JOB);
 }
 
 static lxa_status_t

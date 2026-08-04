@@ -190,9 +190,10 @@ lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
  * or immediately before a child of that parent. Validate link symmetry,
  * cycles, subtree depth and budget before commit. Option-only subtrees run
  * removal resets before insertion resets, including an unchanged external
- * owner. Internal select owners remain unchanged. Subtrees containing HTML
- * selectedcontent still use link-commit option resets. Failure preserves
- * links/state. */
+ * owner. Internal select owners remain unchanged. Selectedcontent subtrees run
+ * ordered removing updates before insertion into inert destinations, without
+ * post-connection steps. Connected selectedcontent destinations are rejected.
+ * Failure preserves original records; unpublished drafts remain store-owned. */
 lxa_status_t lxa_dom_nodes_reparent_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child);
 lxa_status_t lxa_dom_nodes_reparent_constructed_before(lxa_dom_nodes_t *nodes,
