@@ -134,9 +134,7 @@ check_option_pop_reentrant_removal(void)
             lxa_html_tree_t tree;
             lxa_html_tokenizer_t *tokenizer;
             lxa_dom_ref_t option, select, target, content, text;
-            lxa_dom_record_t before[32];
-            lxa_dom_ref_t open[8];
-            size_t count, length, quota;
+            lxa_dom_record_t record;
             lxa_html_result_t (*feed)(lxa_html_tokenizer_t *, lxa_span_t) =
                 lxa_html_tokenizer_feed;
             lxa_html_result_t (*finish)(lxa_html_tokenizer_t *) =
@@ -161,21 +159,22 @@ check_option_pop_reentrant_removal(void)
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, content) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, span("old"), &text) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, content, text) == LXA_OK);
-            count = lxa_dom_nodes_length(nodes);
-            length = lxa_vector_length(&tree.template_elements);
-            quota = budget.used[LXA_BUDGET_OPEN_ELEMENTS];
-            TEST_CHECK(count <= sizeof(before) / sizeof(before[0])
-                && length <= sizeof(open) / sizeof(open[0]));
-            memcpy(before, nodes->records.bytes.data, count * sizeof(before[0]));
-            memcpy(open, tree.template_elements.bytes.data, length * sizeof(open[0]));
-            TEST_CHECK(feed(tokenizer, span("</template>")) == LXA_HTML_CALLBACK_FAILURE);
-            TEST_CHECK(tree.failure == LXA_ERROR_UNSUPPORTED
-                && tree.mode != LXA_TREE_DONE
-                && lxa_vector_length(&tree.template_elements) == length
-                && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == quota
-                && memcmp(open, tree.template_elements.bytes.data, length * sizeof(open[0])) == 0
-                && memcmp(before, nodes->records.bytes.data, count * sizeof(before[0])) == 0);
-            TEST_CHECK(finish(tokenizer) == LXA_HTML_CALLBACK_FAILURE);
+            size_t count = lxa_dom_nodes_length(nodes);
+            TEST_CHECK(feed(tokenizer, span("</template>")) == LXA_HTML_OK);
+            TEST_CHECK(lxa_dom_nodes_length(nodes) == count + 6);
+            TEST_CHECK(finish(tokenizer) == LXA_HTML_OK);
+            TEST_CHECK(tree.mode == LXA_TREE_DONE && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, content, &record) == LXA_OK
+                && record.parent == LXA_ID_NONE);
+            TEST_CHECK(lxa_dom_nodes_first_child(nodes, target, &text) == LXA_OK);
+            lxa_span_t bytes;
+            TEST_CHECK(lxa_dom_nodes_character_read(nodes, text, &bytes) == LXA_OK
+                && bytes.length == 1 && bytes.data[0] == 'x');
+            TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, text, &text) == LXA_OK
+                && lxa_dom_nodes_read(nodes, text, &record) == LXA_OK
+                && record.kind == LXA_DOM_KIND_COMMENT);
+            TEST_CHECK(lxa_dom_nodes_next_sibling(nodes, text, &text) == LXA_OK
+                && text.handle == LXA_HANDLE_NONE);
             TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
             lxa_html_tokenizer_destroy(tokenizer);
             lxa_html_tree_destroy(&tree);

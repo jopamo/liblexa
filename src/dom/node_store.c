@@ -2550,8 +2550,10 @@ typedef struct {
     child_replace_plan_t replacement;
 } selectedcontent_update_plan_t;
 
+typedef enum { CHILD_DRAFT, CHILD_CONTENT_COPY, CHILD_CONTENT_STAGE } child_copy_t;
+
 static lxa_status_t prepare_child_replacement(lxa_dom_nodes_t *nodes,
-    lxa_dom_ref_t target, lxa_dom_ref_t source, bool selectedcontent_copy,
+    lxa_dom_ref_t target, lxa_dom_ref_t source, child_copy_t copy,
     const select_view_t *initial, child_replace_plan_t *plan);
 static void commit_child_replacement(lxa_dom_nodes_t *nodes,
     const child_replace_plan_t *plan);
@@ -3510,7 +3512,8 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         if (status == LXA_OK) {
             const select_view_t *copy_view = view.selection_owner.handle != LXA_HANDLE_NONE
                 && view.selection_owner.handle != parent.handle ? &view : &source_view;
-            status = prepare_child_replacement(nodes, target, scan.first, true, copy_view, current);
+            status = prepare_child_replacement(nodes, target, scan.first,
+                                                CHILD_CONTENT_COPY, copy_view, current);
         }
         if (status == LXA_OK && effect + 1 < effects
             && current->staging.handle != LXA_HANDLE_NONE)
@@ -3993,15 +3996,47 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
 }
 
 static lxa_status_t
+child_copy_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ancestor,
+                     size_t *depth, bool *connected)
+{
+    size_t length = lxa_vector_length(&nodes->records);
+    bool inert = false;
+    *depth = 0;
+    *connected = false;
+    while (ancestor.handle != LXA_HANDLE_NONE) {
+        lxa_dom_record_t record;
+        if (++*depth > length) return LXA_ERROR_ARGUMENT;
+        lxa_status_t status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                                &nodes->limit_reason);
+        if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, ancestor, &record);
+        if (status != LXA_OK) return status;
+        if (record.kind != LXA_DOM_KIND_ELEMENT
+            && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
+            && record.kind != LXA_DOM_KIND_DOCUMENT)
+            return LXA_ERROR_ARGUMENT;
+        if (record.kind == LXA_DOM_KIND_DOCUMENT) *connected = !inert;
+        if (record.parent != LXA_ID_NONE)
+            status = lxa_dom_nodes_parent(nodes, ancestor, &ancestor);
+        else if (record.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT) {
+            inert = true;
+            status = lxa_dom_nodes_template_owner(nodes, ancestor, &ancestor);
+        }
+        else ancestor = (lxa_dom_ref_t){0};
+        if (status != LXA_OK) return status;
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
 prepare_child_replacement(lxa_dom_nodes_t *nodes,
-    lxa_dom_ref_t target, lxa_dom_ref_t source, bool selectedcontent_copy,
+    lxa_dom_ref_t target, lxa_dom_ref_t source, child_copy_t copy,
     const select_view_t *initial, child_replace_plan_t *plan)
 {
     lxa_dom_record_t host, original, candidate = {0}, *records;
-    lxa_dom_ref_t staging = {0}, ancestor = target;
+    lxa_dom_ref_t staging = {0};
     lxa_id_t cursor, previous = LXA_ID_NONE;
     size_t length, old_count = 0, roots = 0, depth = 0, work;
-    bool copy_source, connected = false, inert = false;
+    bool copy_source, connected = false;
     lxa_vector_t removals = {0};
     select_reset_plan_t reset = {.choice = LXA_ID_NONE};
     lxa_status_t status;
@@ -4063,7 +4098,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                 host.last_child = removed.prev;
         }
     }
-    if (selectedcontent_copy) {
+    if (copy == CHILD_CONTENT_COPY) {
         status = check_selectedcontent_child_removals(nodes, target, target, initial);
         if (status != LXA_OK) return status;
     }
@@ -4078,37 +4113,17 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                != (original.last_child == LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
         copy_source = original.first_child != LXA_ID_NONE;
-        while (copy_source && ancestor.handle != LXA_HANDLE_NONE) {
-            if (++depth > length) return LXA_ERROR_ARGUMENT;
-            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
-                                        &nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_read(nodes, ancestor, &original);
-            if (status != LXA_OK) return status;
-            if (original.kind != LXA_DOM_KIND_ELEMENT
-                && original.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
-                && original.kind != LXA_DOM_KIND_DOCUMENT)
-                return LXA_ERROR_ARGUMENT;
-            if (original.kind == LXA_DOM_KIND_DOCUMENT) connected = !inert;
-            if (original.parent != LXA_ID_NONE)
-                status = lxa_dom_nodes_parent(nodes, ancestor, &ancestor);
-            else if (original.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT) {
-                inert = true;
-                status = lxa_dom_nodes_template_owner(nodes, ancestor, &ancestor);
-            }
-            else ancestor = (lxa_dom_ref_t){0};
-            if (status != LXA_OK) return status;
-        }
         if (copy_source) {
-            status = lxa_dom_nodes_append_draft(nodes,
+            status = child_copy_context(nodes, target, &depth, &connected);
+            if (status == LXA_OK) status = lxa_dom_nodes_append_draft(nodes,
                 LXA_DOM_KIND_DOCUMENT_FRAGMENT, &staging);
             if (status == LXA_OK)
                 status = clone_child_lists(nodes, source, staging, depth, length,
-                                            &roots, selectedcontent_copy,
+                                            &roots, copy != CHILD_DRAFT,
                                             initial == NULL ? LXA_HANDLE_NONE : initial->excluded);
             if (status == LXA_OK)
                 status = lxa_dom_nodes_read(nodes, staging, &candidate);
-            if (status == LXA_OK && selectedcontent_copy && connected)
+            if (status == LXA_OK && copy == CHILD_CONTENT_COPY && connected)
                 status = disable_cloned_selectedcontent(nodes, staging);
             if (status != LXA_OK) return status;
         }
@@ -4119,7 +4134,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, work,
                                     &nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if (selectedcontent_copy) {
+    if (copy == CHILD_CONTENT_COPY) {
         lxa_dom_ref_t select;
         select_view_t base = initial == NULL
             ? (select_view_t){.kind = SELECT_UNCHANGED, .prior_choice = LXA_ID_NONE}
@@ -4241,16 +4256,233 @@ destroy_child_replacement(child_replace_plan_t *plan)
     lxa_vector_destroy(&plan->reset.options);
 }
 
+typedef struct { lxa_id_t id; lxa_dom_record_t record; } content_undo_t;
+
+static lxa_status_t
+save_content_record(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_id_t id)
+{
+    content_undo_t entry;
+    if (id == LXA_ID_NONE) return LXA_OK;
+    if (id < nodes->retired || id >= lxa_vector_length(&nodes->records))
+        return LXA_ERROR_ARGUMENT;
+    entry.id = id;
+    entry.record = ((const lxa_dom_record_t *) nodes->records.bytes.data)[id];
+    lxa_status_t status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                            &nodes->limit_reason);
+    return status != LXA_OK ? status : lxa_vector_push(undo, &entry);
+}
+
+typedef struct { remove_hook_t kind; lxa_dom_ref_t select; } content_hook_t;
+typedef enum { CONTENT_REMOVE, CONTENT_HOOKS, CONTENT_INSERT } content_phase_t;
+typedef struct {
+    child_replace_plan_t copy;
+    lxa_vector_t hooks;
+    size_t hook;
+    content_phase_t phase;
+} content_frame_t;
+
+static lxa_status_t
+collect_content_hooks(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
+    lxa_dom_ref_t parent, lxa_vector_t *hooks)
+{
+    lxa_dom_ref_t old_owner, old_select, cursor = root;
+    select_tag_t tag;
+    select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle,
+                              .prior_choice = LXA_ID_NONE};
+    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    lxa_status_t status = select_tag(nodes, root, &tag);
+    if (status == LXA_OK)
+        status = tag == SELECT_OPTION ? option_select(nodes, root, NULL, &old_owner)
+            : option_select_at(nodes, root, NULL, &old_owner);
+    if (status == LXA_OK && old_owner.handle == root.handle) old_owner = (lxa_dom_ref_t){0};
+    if (status == LXA_OK) status = nearest_select(nodes, parent, NULL, &old_select);
+    if (status == LXA_OK)
+        status = lxa_vector_init(hooks, &nodes->allocator, sizeof(content_hook_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(hooks, nodes->budget);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        remove_hook_t hook;
+        if (++visits > length) return LXA_ERROR_ARGUMENT;
+        status = selectedcontent_removal_hook(nodes, cursor, old_owner, &removing, &tag, &hook);
+        if (status != LXA_OK) break;
+        content_hook_t effect = {hook, hook == REMOVE_HOOK_OPTION ? old_owner : old_select};
+        if (hook != REMOVE_HOOK_NONE && effect.select.handle != LXA_HANDLE_NONE)
+            status = lxa_vector_push(hooks, &effect);
+        if (status != LXA_OK) break;
+        if (cursor.handle == root.handle) {
+            if (tag == SELECT_LEAF) cursor = (lxa_dom_ref_t){0};
+            else status = lxa_dom_nodes_first_child(nodes, root, &cursor);
+        }
+        else status = next_descendant(nodes, root, cursor, tag != SELECT_LEAF, &ascents, &cursor);
+    }
+    return status;
+}
+
+static lxa_status_t
+reset_content_select(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_dom_ref_t select)
+{
+    select_reset_plan_t plan = {.choice = LXA_ID_NONE};
+    lxa_status_t status = plan_select_reset(nodes, select, LXA_HANDLE_NONE, NULL, &plan);
+    const lxa_id_t *ids = (const lxa_id_t *) plan.options.bytes.data;
+    for (size_t i = 0; status == LXA_OK && i < lxa_vector_length(&plan.options); ++i)
+        status = save_content_record(nodes, undo, ids[i]);
+    if (status == LXA_OK) status = save_content_record(nodes, undo, plan.choice);
+    if (status == LXA_OK) commit_select_reset(nodes, &plan);
+    lxa_vector_destroy(&plan.options);
+    return status;
+}
+
+static lxa_status_t
+push_content_copy(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
+    lxa_dom_ref_t target, lxa_dom_ref_t source)
+{
+    content_frame_t frame = {.copy.reset.choice = LXA_ID_NONE, .phase = CONTENT_REMOVE};
+    lxa_status_t status = prepare_child_replacement(nodes, target, source,
+                                                    CHILD_CONTENT_STAGE, NULL, &frame.copy);
+    if (status == LXA_OK) status = lxa_vector_push(frames, &frame);
+    if (status != LXA_OK) destroy_child_replacement(&frame.copy);
+    return status;
+}
+
+static lxa_status_t
+replace_reentrant_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target, lxa_dom_ref_t source)
+{
+    lxa_vector_t frames = {0}, undo = {0};
+    lxa_status_t status = lxa_vector_init(&frames, &nodes->allocator, sizeof(content_frame_t));
+    if (status == LXA_OK)
+        status = lxa_vector_init(&undo, &nodes->allocator, sizeof(content_undo_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&frames, nodes->budget);
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&undo, nodes->budget);
+    if (status == LXA_OK) status = push_content_copy(nodes, &frames, target, source);
+    /* Nested effects see the current links. Undo every write on failure. */
+    while (status == LXA_OK && lxa_vector_length(&frames) != 0) {
+        size_t top = lxa_vector_length(&frames) - 1;
+        content_frame_t frame = ((const content_frame_t *) frames.bytes.data)[top];
+        lxa_dom_ref_t host = frame.copy.target;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1, &nodes->limit_reason);
+        if (status != LXA_OK) break;
+        if (frame.phase == CONTENT_REMOVE) {
+            lxa_dom_ref_t root;
+            lxa_dom_record_t record;
+            status = lxa_dom_nodes_first_child(nodes, host, &root);
+            if (status != LXA_OK) break;
+            if (root.handle == LXA_HANDLE_NONE) {
+                ((content_frame_t *) frames.bytes.data)[top].phase = CONTENT_INSERT;
+                continue;
+            }
+            status = lxa_dom_nodes_read(nodes, root, &record);
+            if (status == LXA_OK)
+                status = attached_child_links(nodes, (lxa_id_t) root.handle, &record);
+            if (status == LXA_OK) status = collect_content_hooks(nodes, root, host, &frame.hooks);
+            ((content_frame_t *) frames.bytes.data)[top].hooks = frame.hooks;
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, record.parent);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, (lxa_id_t) root.handle);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, record.prev);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, record.next);
+            if (status != LXA_OK) break;
+            lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
+            unlink_constructed(records, &record);
+            records[(lxa_id_t) root.handle].parent =
+                records[(lxa_id_t) root.handle].prev =
+                records[(lxa_id_t) root.handle].next = LXA_ID_NONE;
+            ((content_frame_t *) frames.bytes.data)[top].phase = CONTENT_HOOKS;
+        }
+        else if (frame.phase == CONTENT_HOOKS) {
+            if (frame.hook == lxa_vector_length(&frame.hooks)) {
+                lxa_vector_destroy(&frame.hooks);
+                frame.hooks = (lxa_vector_t){0};
+                frame.hook = 0;
+                frame.phase = CONTENT_REMOVE;
+                ((content_frame_t *) frames.bytes.data)[top] = frame;
+                continue;
+            }
+            content_hook_t hook = ((const content_hook_t *) frame.hooks.bytes.data)[frame.hook];
+            ((content_frame_t *) frames.bytes.data)[top].hook++;
+            if (hook.kind == REMOVE_HOOK_OPTION)
+                status = reset_content_select(nodes, &undo, hook.select);
+            else {
+                lxa_dom_ref_t next_target;
+                select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
+                status = enabled_selectedcontent(nodes, hook.select, LXA_HANDLE_NONE, &next_target);
+                if (status == LXA_OK && next_target.handle != LXA_HANDLE_NONE) {
+                    status = scan_select_options(nodes, hook.select, LXA_HANDLE_NONE, NULL, &scan);
+                    if (status == LXA_OK)
+                        status = push_content_copy(nodes, &frames, next_target, scan.first);
+                }
+            }
+        }
+        else if (frame.phase == CONTENT_INSERT) {
+            lxa_dom_record_t record;
+            lxa_dom_ref_t staging = frame.copy.staging;
+            status = lxa_dom_nodes_read(nodes, host, &record);
+            if (status == LXA_OK
+                && (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE))
+                status = LXA_ERROR_ARGUMENT;
+            if (status == LXA_OK && staging.handle != LXA_HANDLE_NONE) {
+                size_t depth;
+                bool connected;
+                status = child_copy_context(nodes, host, &depth, &connected);
+                if (status == LXA_OK && connected)
+                    status = disable_cloned_selectedcontent(nodes, staging);
+            }
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, (lxa_id_t) host.handle);
+            if (status == LXA_OK && staging.handle != LXA_HANDLE_NONE)
+                status = save_content_record(nodes, &undo, (lxa_id_t) staging.handle);
+            for (lxa_id_t id = staging.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
+                              : frame.copy.candidate.first_child;
+                 status == LXA_OK && id != LXA_ID_NONE;) {
+                status = save_content_record(nodes, &undo, id);
+                if (status == LXA_OK)
+                    id = ((const lxa_dom_record_t *) nodes->records.bytes.data)[id].next;
+            }
+            if (status != LXA_OK) break;
+            frame.copy.host = record;
+            commit_child_replacement(nodes, &frame.copy);
+            lxa_dom_ref_t select;
+            select_reset_scan_t owned = {.kind = SELECT_SCAN_EXCLUSION};
+            status = option_select_at(nodes, host, NULL, &select);
+            if (status == LXA_OK && select.handle != LXA_HANDLE_NONE)
+                status = scan_select_options(nodes, select, host.handle, NULL, &owned);
+            if (status == LXA_OK && owned.found_excluded)
+                status = reset_content_select(nodes, &undo, select);
+            if (status == LXA_OK) {
+                destroy_child_replacement(&frame.copy);
+                lxa_vector_erase(&frames, top, 1);
+            }
+        }
+        else status = LXA_ERROR_ARGUMENT;
+    }
+    if (status != LXA_OK && undo.bytes.data != NULL) {
+        const content_undo_t *entries = (const content_undo_t *) undo.bytes.data;
+        lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
+        for (size_t i = lxa_vector_length(&undo); i != 0; --i)
+            records[entries[i - 1].id] = entries[i - 1].record;
+    }
+    for (size_t i = 0; i < lxa_vector_length(&frames); ++i) {
+        content_frame_t *frame = &((content_frame_t *) frames.bytes.data)[i];
+        destroy_child_replacement(&frame->copy);
+        lxa_vector_destroy(&frame->hooks);
+    }
+    lxa_vector_destroy(&frames);
+    lxa_vector_destroy(&undo);
+    if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
+        nodes->limit_reason = LXA_BUDGET_MEMORY;
+    return status;
+}
+
 static lxa_status_t
 replace_children_with_clones(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t target, lxa_dom_ref_t source, bool selectedcontent_copy)
 {
     child_replace_plan_t plan = {.reset.choice = LXA_ID_NONE};
     lxa_status_t status = prepare_child_replacement(nodes, target, source,
-                                                      selectedcontent_copy,
+                                                      selectedcontent_copy
+                                                          ? CHILD_CONTENT_COPY : CHILD_DRAFT,
                                                       NULL, &plan);
     if (status == LXA_OK) commit_child_replacement(nodes, &plan);
     destroy_child_replacement(&plan);
+    /* Active removing hooks need ordered execution, not a link-only plan. */
+    if (status == LXA_ERROR_UNSUPPORTED && selectedcontent_copy)
+        status = replace_reentrant_content(nodes, target, source);
     return status;
 }
 

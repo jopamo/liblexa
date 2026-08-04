@@ -254,7 +254,8 @@ main(void)
     static const unsigned char virtual_foreign_recovery[] =
         "<template><tbody><math><unknown><mtext><tr><td>y</template>";
     static const unsigned char option_pop_selectedcontent[] =
-        "<template><select><selectedcontent>old</selectedcontent>"
+        "<template><select><selectedcontent><selectedcontent>old"
+        "</selectedcontent></selectedcontent>"
         "<option selected><b href=x>x</b></option><option selected>"
         "<template><selectedcontent>inert</selectedcontent></template>"
         "<i>y</i>";
