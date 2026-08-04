@@ -1427,7 +1427,7 @@ static void
 check_selectedcontent_reentrant_removals(void)
 {
     enum { EMPTY, OWNED_OPTION, REMAINING_ROOT, SELECTED_SOURCE, RETAINED_SELECT,
-           OTHER_TARGET, CASE_COUNT };
+           OTHER_TARGET, LOST_ANCESTOR, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
     for (unsigned path = 0; path < 2 * CASE_COUNT; ++path) {
         unsigned scenario = path % CASE_COUNT;
@@ -1445,32 +1445,37 @@ check_selectedcontent_reentrant_removals(void)
             TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &select) == LXA_OK);
-            if (scenario == OTHER_TARGET) {
+            if (scenario == OTHER_TARGET || scenario == LOST_ANCESTOR) {
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &primary) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, primary) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("primary"), &primary_old) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, primary, primary_old) == LXA_OK);
             }
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &target) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, select, target) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                scenario == LOST_ANCESTOR ? primary : select, target) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
-                name(scenario == OWNED_OPTION ? "div" : scenario == RETAINED_SELECT
+                name(scenario == OWNED_OPTION || scenario == LOST_ANCESTOR ? "div" : scenario == RETAINED_SELECT
                     ? "select" : "selectedcontent"), &root) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, target, root) == LXA_OK);
             content = root;
-            if (scenario == OWNED_OPTION || scenario == RETAINED_SELECT) {
+            if (scenario == OWNED_OPTION || scenario == RETAINED_SELECT || scenario == LOST_ANCESTOR) {
                 if (scenario == OWNED_OPTION) {
                     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &owned) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, owned) == LXA_OK);
                 }
-                else for (size_t i = 0; i < 2; ++i) {
+                else if (scenario == RETAINED_SELECT) for (size_t i = 0; i < 2; ++i) {
                     TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &retained[i]) == LXA_OK);
                     TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, retained[i]) == LXA_OK);
                 }
                 TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &content) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, content) == LXA_OK);
+                if (scenario == LOST_ANCESTOR) {
+                    TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &text) == LXA_OK);
+                    TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, text) == LXA_OK);
+                }
             }
-            if (scenario != OTHER_TARGET) {
+            if (scenario != OTHER_TARGET && scenario != LOST_ANCESTOR) {
                 TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("old"), &text) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, content, text) == LXA_OK);
             }
@@ -1492,13 +1497,13 @@ check_selectedcontent_reentrant_removals(void)
                     records[(lxa_id_t) retained[i].handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
             records[(lxa_id_t) option.handle].flags = LXA_DOM_OPTION_DIRTY
                 | (scenario == SELECTED_SOURCE || scenario == RETAINED_SELECT
-                    || scenario == OTHER_TARGET ? LXA_DOM_OPTION_SELECTED : 0);
+                    || scenario == OTHER_TARGET || scenario == LOST_ANCESTOR ? LXA_DOM_OPTION_SELECTED : 0);
             count = lxa_dom_nodes_length(nodes);
             TEST_CHECK(count <= sizeof(before) / sizeof(before[0]));
             memcpy(before, records, count * sizeof(before[0]));
             if (memory) budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY] + allowance;
             else budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
-            status = scenario == OTHER_TARGET
+            status = scenario == OTHER_TARGET || scenario == LOST_ANCESTOR
                 ? lxa_dom_nodes_clear_nonprimary_selectedcontent(nodes, select)
                 : lxa_dom_nodes_update_selectedcontent(nodes, select);
             complete = status == LXA_OK;
@@ -1508,7 +1513,7 @@ check_selectedcontent_reentrant_removals(void)
             budget.limits.max_work = lxa_limits_default().max_work;
             budget.limits.max_memory_bytes = lxa_limits_default().max_memory_bytes;
             bool changed = complete;
-            if (!complete && scenario == OTHER_TARGET) {
+            if (!complete && (scenario == OTHER_TARGET || scenario == LOST_ANCESTOR)) {
                 TEST_CHECK(lxa_dom_nodes_read(nodes, target, &record) == LXA_OK);
                 changed = record.first_child == LXA_ID_NONE;
                 partial |= changed;
@@ -1533,23 +1538,26 @@ check_selectedcontent_reentrant_removals(void)
                         && record.parent == LXA_ID_NONE);
                 check_option_state(nodes, option, LXA_DOM_OPTION_DIRTY
                     | (scenario == SELECTED_SOURCE || scenario == OWNED_OPTION
-                        || scenario == RETAINED_SELECT || scenario == OTHER_TARGET ? LXA_DOM_OPTION_SELECTED : 0));
+                        || scenario == RETAINED_SELECT || scenario == OTHER_TARGET
+                        || scenario == LOST_ANCESTOR ? LXA_DOM_OPTION_SELECTED : 0));
                 if (scenario == OWNED_OPTION)
                     TEST_CHECK(lxa_dom_nodes_length(nodes) == count + 2);
-                if (scenario == OTHER_TARGET) {
+                if (scenario == OTHER_TARGET || scenario == LOST_ANCESTOR) {
                     lxa_span_t bytes;
                     TEST_CHECK(lxa_dom_nodes_first_child(nodes, primary, &child) == LXA_OK
                         && lxa_dom_nodes_character_read(nodes, child, &bytes) == LXA_OK
                         && bytes.length == 3 && memcmp(bytes.data, "new", 3) == 0);
                     TEST_CHECK(lxa_dom_nodes_read(nodes, primary_old, &record) == LXA_OK
                         && record.parent == LXA_ID_NONE);
+                    if (complete && scenario == LOST_ANCESTOR)
+                        TEST_CHECK(lxa_dom_nodes_length(nodes) == count + 4);
                 }
             }
             for (size_t i = 0; i < count; ++i) {
                 if (changed && (i == (lxa_id_t) target.handle || i == (lxa_id_t) root.handle
                     || (tail.handle != LXA_HANDLE_NONE && i == (lxa_id_t) tail.handle)
                     || (scenario == OWNED_OPTION && i == (lxa_id_t) option.handle)
-                    || (scenario == OTHER_TARGET && (i == (lxa_id_t) primary.handle
+                    || ((scenario == OTHER_TARGET || scenario == LOST_ANCESTOR) && (i == (lxa_id_t) primary.handle
                         || i == (lxa_id_t) primary_old.handle)))) continue;
                 TEST_CHECK(memcmp((const lxa_dom_record_t *) nodes->records.bytes.data + i,
                                   before + i, sizeof(before[i])) == 0);
@@ -1559,7 +1567,7 @@ check_selectedcontent_reentrant_removals(void)
             TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
         }
         TEST_CHECK(complete);
-        if (scenario == OTHER_TARGET) {
+        if (scenario == OTHER_TARGET || scenario == LOST_ANCESTOR) {
             TEST_CHECK(rolled_back);
             if (!memory) TEST_CHECK(partial);
         }
@@ -1763,7 +1771,10 @@ check_selectedcontent_detach(void)
             && path != OPTION_BEFORE_SC && path != PRIOR_NESTED_TARGET
             && path != ENABLED_DESCENDANT && path < NESTED_PARENT) continue;
         bool success = false;
-        for (size_t allowance = 0; allowance < (resource == 0 ? 2048 : 4096) && !success; ++allowance) {
+        bool cyclic = path == SEQUENCE_REENTRANT_SOURCE;
+        size_t ceiling = resource == 0 ? 2048 : cyclic ? 8192 : 4096;
+        size_t step = cyclic ? 128 : 1;
+        for (size_t allowance = 0; allowance < ceiling && !success; allowance += step) {
             lxa_budget_t budget;
             lxa_dom_nodes_t *nodes;
             lxa_dom_ref_t select, removed, target, old, later, later_text;
@@ -1773,9 +1784,8 @@ check_selectedcontent_detach(void)
             lxa_dom_record_t before[24], record, *records;
             size_t count;
             lxa_status_t status;
-            bool unimplemented = path >= SEQUENCE_REENTRANT_SOURCE;
             bool changes = path == PRIMARY || path == NONPRIMARY || path == CLEAR
-                || (path >= POPULATED && !unimplemented && path != RETAINED_SELECT);
+                || (path >= POPULATED && !cyclic && path != RETAINED_SELECT);
             bool collapses = path == OWNED_TWO_LIVE || path == OWNED_TARGET_SELECTED
                 || path == INDIRECT_WITH_OPTIONS || path == OPTION_BEFORE_SC
                 || path == PRIOR_NESTED_TARGET || path == NESTED_OPTIONS_FIRST
@@ -2024,10 +2034,15 @@ check_selectedcontent_detach(void)
             else budget.limits.max_memory_bytes = budget.used[LXA_BUDGET_MEMORY] + allowance;
             status = lxa_dom_nodes_detach_constructed_element(nodes, removed);
             removed_ok = status == LXA_OK;
-            success = status == (unimplemented ? LXA_ERROR_UNSUPPORTED : LXA_OK);
-            if (!success)
+            success = removed_ok;
+            if (!removed_ok)
                 TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason
                     == (resource == 0 ? LXA_BUDGET_WORK : LXA_BUDGET_MEMORY));
+            if (cyclic) {
+                TEST_CHECK(!removed_ok);
+                success = allowance + step >= ceiling;
+                if (success) TEST_CHECK(lxa_dom_nodes_length(nodes) > count);
+            }
             budget.limits.max_work = lxa_limits_default().max_work;
             budget.limits.max_memory_bytes = lxa_limits_default().max_memory_bytes;
             for (size_t i = 0; i < count; ++i) {

@@ -41,7 +41,7 @@ lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Update the enabled selectedcontent from the first selected option in the
  * canonical option list, or clear it when no option is selected.
- * Preflight old-child removal as for the parser-pop effect. */
+ * Run old-child removal as for the parser-pop effect. */
 lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
 /* Run removing steps after disconnecting the subtree, using its former parent.
@@ -49,7 +49,7 @@ lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_removed_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t old_parent);
 /* Preserve the first HTML selectedcontent descendant and clear all later ones.
- * Each replacement preflights old-child removal; earlier successful clears
+ * Each replacement runs old-child removal; earlier successful clears
  * survive a later error. */
 lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
@@ -179,15 +179,11 @@ lxa_status_t lxa_dom_nodes_pi_read(const lxa_dom_nodes_t *nodes,
  * document doctype/root ordering when the parent is a document. */
 lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
-/* Unlink an attached parser-owned element after preflight. Removing owned HTML
- * options, including descendants, resets their old select at the link commit.
- * Removing a subtree stages one selectedcontent update
- * among option resets when an enabled instance loses its select ancestry.
- * Stage repeated updates and interleaved option hooks with separate source and
- * target select projections. Reject replacement-child removals requiring further
- * selectedcontent updates; disabled or retained-select descendants do nothing.
- * Keep descendants/handles live in the store. Failure changes neither links
- * nor option state. */
+/* Unlink an attached parser-owned element transactionally. Run owned option
+ * resets and selectedcontent removing updates in root/descendant order,
+ * including bounded reentrant copies. Disabled or retained-select content
+ * descendants do nothing. Keep descendants/handles live in the store.
+ * Failure preserves original records; unpublished drafts remain store-owned. */
 lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Move an attached parser-owned subtree to the end of an element or fragment,
