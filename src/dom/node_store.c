@@ -3472,9 +3472,7 @@ plan_selectedcontent_removal(lxa_dom_nodes_t *nodes,
         if (status == LXA_OK) {
             const select_view_t *copy_view = view.selection_owner.handle != LXA_HANDLE_NONE
                 && view.selection_owner.handle != parent.handle ? &view : &source_view;
-            status = check_selectedcontent_child_removals(nodes, target, target, copy_view);
-            if (status == LXA_OK)
-                status = prepare_child_replacement(nodes, target, scan.first, true, copy_view, current);
+            status = prepare_child_replacement(nodes, target, scan.first, true, copy_view, current);
         }
         if (status == LXA_OK && effect + 1 < effects
             && current->staging.handle != LXA_HANDLE_NONE)
@@ -4026,6 +4024,10 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
             if (host.last_child == (lxa_id_t) excluded.handle)
                 host.last_child = removed.prev;
         }
+    }
+    if (selectedcontent_copy) {
+        status = check_selectedcontent_child_removals(nodes, target, target, initial);
+        if (status != LXA_OK) return status;
     }
     if (source.handle != LXA_HANDLE_NONE) {
         status = lxa_dom_nodes_read(nodes, source, &original);

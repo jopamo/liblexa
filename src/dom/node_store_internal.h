@@ -34,11 +34,13 @@ lxa_status_t lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Parser-pop effect. Non-HTML options and unselected/unowned options do nothing.
  * Clone into the first enabled selectedcontent, including in inert templates.
+ * Reentrant selectedcontent updates from old-child removal are unsupported.
  * Failure preserves published children; unpublished clones remain store-owned. */
 lxa_status_t lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Update the enabled selectedcontent from the first selected option in the
- * canonical option list, or clear it when no option is selected. */
+ * canonical option list, or clear it when no option is selected.
+ * Preflight old-child removal as for the parser-pop effect. */
 lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
 /* Run removing steps after disconnecting the subtree, using its former parent.
@@ -46,7 +48,8 @@ lxa_status_t lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_removed_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t old_parent);
 /* Preserve the first HTML selectedcontent descendant and clear all later ones.
- * Each replacement is staged; earlier successful clears survive a later error. */
+ * Each replacement preflights old-child removal; earlier successful clears
+ * survive a later error. */
 lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select);
 
