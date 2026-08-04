@@ -3322,6 +3322,37 @@ selectedcontent_removal_hook(lxa_dom_nodes_t *nodes, lxa_dom_ref_t cursor,
 }
 
 static lxa_status_t
+selectedcontent_removal_clears_empty_target(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t host, lxa_dom_ref_t parent, lxa_dom_ref_t root,
+    lxa_dom_ref_t select, const select_view_t *placement,
+    const select_view_t *removing, bool *empty)
+{
+    lxa_dom_ref_t first, next;
+    select_reset_scan_t owned = {.kind = SELECT_SCAN_EXCLUSION};
+    select_reset_scan_t selected = {.kind = SELECT_SCAN_FIRST_SELECTED};
+    select_view_t selection = *removing;
+    lxa_status_t status;
+    *empty = false;
+    if (host.handle != parent.handle) return LXA_OK;
+    status = select_first_child(nodes, host, placement, &first);
+    if (status == LXA_OK) status = select_next_sibling(nodes, root, placement, &next);
+    if (status != LXA_OK || first.handle != root.handle
+        || next.handle != LXA_HANDLE_NONE) return status;
+    /* Owned option removals can select a fallback before the content hook. */
+    status = scan_select_options(nodes, select, parent.handle, placement, &owned);
+    if (status != LXA_OK || owned.found_excluded) return status;
+    if (selection.selection_owner.handle != LXA_HANDLE_NONE
+        && selection.selection_owner.handle != select.handle) {
+        selection.prior_collapsed = false;
+        selection.prior_choice = LXA_ID_NONE;
+        selection.final_collapsed = selection.final_chosen = false;
+    }
+    status = scan_select_options(nodes, select, LXA_HANDLE_NONE, &selection, &selected);
+    if (status == LXA_OK) *empty = selected.first.handle == LXA_HANDLE_NONE;
+    return status;
+}
+
+static lxa_status_t
 check_selectedcontent_child_removals(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t host, lxa_dom_ref_t parent, const select_view_t *placement)
 {
@@ -3348,7 +3379,14 @@ check_selectedcontent_child_removals(lxa_dom_nodes_t *nodes,
                 lxa_dom_ref_t target;
                 status = enabled_selectedcontent(nodes, select, root.handle, &target);
                 if (status != LXA_OK) return status;
-                if (target.handle != LXA_HANDLE_NONE) return LXA_ERROR_UNSUPPORTED;
+                if (target.handle != LXA_HANDLE_NONE) {
+                    bool empty = false;
+                    if (target.handle == parent.handle)
+                        status = selectedcontent_removal_clears_empty_target(nodes,
+                            host, parent, root, select, placement, &removing, &empty);
+                    if (status != LXA_OK) return status;
+                    if (!empty) return LXA_ERROR_UNSUPPORTED;
+                }
             }
             if (cursor.handle == root.handle) {
                 if (tag == SELECT_LEAF) cursor = (lxa_dom_ref_t){0};
