@@ -2564,6 +2564,8 @@ static lxa_status_t nearest_select(lxa_dom_nodes_t *nodes,
 static lxa_status_t detach_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element);
 static lxa_status_t reparent_content_transaction(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
+static lxa_status_t collect_nonprimary_content(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t select, lxa_vector_t *targets);
 
 /* Read the proposed placement without publishing any link changes. */
 static lxa_status_t
@@ -4093,13 +4095,15 @@ save_content_record(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_id_t id)
 typedef struct { remove_hook_t kind; lxa_dom_ref_t context; } content_hook_t;
 typedef enum {
     CONTENT_REMOVE, CONTENT_HOOKS, CONTENT_INSERT, CONTENT_REINSERT,
-    CONTENT_CONNECT
+    CONTENT_CONNECT, CONTENT_COLLECT_CLEARS, CONTENT_CLEAR
 } content_phase_t;
 typedef enum {
-    CONTENT_COPY_JOB, CONTENT_DETACH_JOB, CONTENT_REPARENT_JOB
+    CONTENT_COPY_JOB, CONTENT_DETACH_JOB, CONTENT_REPARENT_JOB,
+    CONTENT_CONNECTION_JOB
 } content_job_t;
 typedef struct {
     child_replace_plan_t copy;
+    /* Clear phases store refs; removal/connection phases store content hooks. */
     lxa_vector_t hooks;
     lxa_dom_ref_t root, destination, before;
     size_t hook;
@@ -4197,6 +4201,20 @@ push_content_copy(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
 }
 
 static lxa_status_t
+push_select_content_copy(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
+                         lxa_dom_ref_t select)
+{
+    lxa_dom_ref_t target;
+    select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
+    lxa_status_t status = enabled_selectedcontent(nodes, select, LXA_HANDLE_NONE, &target);
+    if (status == LXA_OK && target.handle != LXA_HANDLE_NONE) {
+        status = scan_select_options(nodes, select, LXA_HANDLE_NONE, NULL, &scan);
+        if (status == LXA_OK) status = push_content_copy(nodes, frames, target, scan.first);
+    }
+    return status;
+}
+
+static lxa_status_t
 run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
     lxa_dom_ref_t source, lxa_dom_ref_t before, content_job_t job)
 {
@@ -4274,16 +4292,10 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             if (hook.kind == REMOVE_HOOK_OPTION)
                 status = reset_content_select(nodes, &undo, hook.context);
             else {
-                lxa_dom_ref_t select, next_target = {0};
-                select_reset_scan_t scan = {.kind = SELECT_SCAN_FIRST_SELECTED};
+                lxa_dom_ref_t select;
                 status = nearest_select(nodes, hook.context, NULL, &select);
                 if (status == LXA_OK && select.handle != LXA_HANDLE_NONE)
-                    status = enabled_selectedcontent(nodes, select, LXA_HANDLE_NONE, &next_target);
-                if (status == LXA_OK && next_target.handle != LXA_HANDLE_NONE) {
-                    status = scan_select_options(nodes, select, LXA_HANDLE_NONE, NULL, &scan);
-                    if (status == LXA_OK)
-                        status = push_content_copy(nodes, &frames, next_target, scan.first);
-                }
+                    status = push_select_content_copy(nodes, &frames, select);
             }
         }
         else if (frame.phase == CONTENT_REINSERT) {
@@ -4361,14 +4373,36 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             status = child_copy_context(nodes, hook.context, &depth, &connected);
             if (status == LXA_OK && connected) {
                 status = prepare_selectedcontent_connection(nodes, hook.context, &disabled, &select);
-                if (status == LXA_OK && select.handle != LXA_HANDLE_NONE)
-                    status = LXA_ERROR_UNSUPPORTED;
                 if (status == LXA_OK)
                     status = save_content_record(nodes, &undo, (lxa_id_t) hook.context.handle);
                 if (status == LXA_OK)
                     ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) hook.context.handle].flags =
                         disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+                if (status == LXA_OK && select.handle != LXA_HANDLE_NONE) {
+                    content_frame_t connection = {.copy.reset.choice = LXA_ID_NONE,
+                        .copy.target = select, .phase = CONTENT_COLLECT_CLEARS,
+                        .job = CONTENT_CONNECTION_JOB};
+                    status = lxa_vector_push(&frames, &connection);
+                    if (status == LXA_OK) status = push_select_content_copy(nodes, &frames, select);
+                }
             }
+        }
+        else if (frame.phase == CONTENT_COLLECT_CLEARS) {
+            status = collect_nonprimary_content(nodes, host, &frame.hooks);
+            frame.hook = 0;
+            frame.phase = CONTENT_CLEAR;
+            ((content_frame_t *) frames.bytes.data)[top] = frame;
+        }
+        else if (frame.phase == CONTENT_CLEAR) {
+            if (frame.hook == lxa_vector_length(&frame.hooks)) {
+                lxa_vector_destroy(&frame.hooks);
+                destroy_child_replacement(&frame.copy);
+                lxa_vector_erase(&frames, top, 1);
+                continue;
+            }
+            lxa_dom_ref_t target = ((const lxa_dom_ref_t *) frame.hooks.bytes.data)[frame.hook];
+            ((content_frame_t *) frames.bytes.data)[top].hook++;
+            status = push_content_copy(nodes, &frames, target, (lxa_dom_ref_t){0});
         }
         else if (frame.phase == CONTENT_INSERT) {
             lxa_dom_record_t record;
@@ -4560,24 +4594,21 @@ lxa_dom_nodes_removed_selectedcontent(lxa_dom_nodes_t *nodes,
     return lxa_dom_nodes_update_selectedcontent(nodes, select);
 }
 
-lxa_status_t
-lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
-                                               lxa_dom_ref_t select)
+static lxa_status_t
+collect_nonprimary_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
+                            lxa_vector_t *targets)
 {
-    lxa_vector_t targets = {0};
     lxa_dom_ref_t cursor;
     select_tag_t tag;
     size_t visits = 0, ascents = 0, length;
     bool first = true;
     lxa_status_t status;
-    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = select_tag(nodes, select, &tag);
     if (status != LXA_OK || tag != SELECT_SELECT)
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
     length = lxa_vector_length(&nodes->records);
-    status = lxa_vector_init(&targets, &nodes->allocator, sizeof(lxa_dom_ref_t));
-    if (status == LXA_OK) status = lxa_vector_bind_budget(&targets, nodes->budget);
+    status = lxa_vector_init(targets, &nodes->allocator, sizeof(lxa_dom_ref_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(targets, nodes->budget);
     if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, select, &cursor);
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
         if (++visits > length) { status = LXA_ERROR_ARGUMENT; break; }
@@ -4594,12 +4625,23 @@ lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
                 break;
             }
             if (first) first = false;
-            else status = lxa_vector_push(&targets, &cursor);
+            else status = lxa_vector_push(targets, &cursor);
             if (status != LXA_OK) break;
         }
         status = next_descendant(nodes, select, cursor, tag != SELECT_LEAF,
                                    &ascents, &cursor);
     }
+    return status;
+}
+
+lxa_status_t
+lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nodes,
+                                               lxa_dom_ref_t select)
+{
+    lxa_vector_t targets = {0};
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    lxa_status_t status = collect_nonprimary_content(nodes, select, &targets);
     /* Collect before clearing: an earlier target can detach a later one. */
     for (size_t i = 0; status == LXA_OK && i < lxa_vector_length(&targets); ++i) {
         const lxa_dom_ref_t *refs = (const lxa_dom_ref_t *) targets.bytes.data;
