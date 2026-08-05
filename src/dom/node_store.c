@@ -3504,7 +3504,7 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_dom_ref_t external_owner = {0};
     lxa_id_t host_id, child_id, old_id, target_id, cursor, predecessor;
     size_t length, depth = 1, relative = 1, max_relative = 1;
-    size_t visits = 0, ascents = 0;
+    size_t visits = 0, ascents = 0, inert = 0;
     size_t new_depth;
     bool root_option, has_content = false, reset_options = false;
     lxa_status_t status;
@@ -3583,11 +3583,12 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             if (status != LXA_OK) return status;
         }
     }
-    /* Iterative subtree walk. Visit each member once, and charge ascents.
+    /* Include associated fragments in depth checks, not lifecycle hooks.
      * Broken child/sibling rings stop at the number of allocated slots. */
     cursor = child_id;
     for (;;) {
         lxa_dom_record_t entry;
+        lxa_dom_ref_t contents = {0};
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
                                    &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -3597,23 +3598,38 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         if (relative > max_relative) max_relative = relative;
         if (entry.kind != LXA_DOM_KIND_ELEMENT
             && entry.kind != LXA_DOM_KIND_TEXT
-            && entry.kind != LXA_DOM_KIND_COMMENT)
+            && entry.kind != LXA_DOM_KIND_COMMENT
+            && entry.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
+            return LXA_ERROR_ARGUMENT;
+        if (entry.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT
+            && (inert == 0 || entry.parent != LXA_ID_NONE
+                || entry.prev != LXA_ID_NONE || entry.next != LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_ELEMENT) {
             lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};
             select_tag_t tag;
             status = lxa_handle_pack(cursor, nodes->generation, &ref.handle);
-            if (status == LXA_OK)
+            if (status == LXA_OK && inert == 0)
                 status = select_tag(nodes, ref, &tag);
-            if (status == LXA_OK && tag == SELECT_SELECTEDCONTENT) has_content = true;
-            if (status == LXA_OK)
+            if (status == LXA_OK && inert == 0 && tag == SELECT_SELECTEDCONTENT)
+                has_content = true;
+            if (status == LXA_OK && inert == 0)
                 status = option_reparent_effect(nodes, ref, &move,
                                                   external_owner, &reset_options);
+            if (status == LXA_OK && lxa_vector_length(&nodes->templates) != 0)
+                status = lxa_dom_nodes_template_contents(nodes, ref, &contents);
             if (status != LXA_OK) return status;
         }
         if ((entry.first_child == LXA_ID_NONE)
             != (entry.last_child == LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
+        if (contents.handle != LXA_HANDLE_NONE) {
+            if (entry.first_child != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
+            cursor = (lxa_id_t) contents.handle;
+            ++relative;
+            ++inert;
+            continue;
+        }
         if (entry.first_child != LXA_ID_NONE) {
             lxa_id_t next = entry.first_child;
             if (next < nodes->retired || next >= length
@@ -3626,11 +3642,21 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         }
         while (cursor != child_id && records[cursor].next == LXA_ID_NONE) {
             lxa_id_t up = records[cursor].parent;
+            bool virtual_edge = records[cursor].kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT;
             status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
                                        &nodes->limit_reason);
             if (status != LXA_OK) return status;
+            if (virtual_edge) {
+                lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch}, owner;
+                status = lxa_handle_pack(cursor, nodes->generation, &ref.handle);
+                if (status == LXA_OK) status = lxa_dom_nodes_template_owner(nodes, ref, &owner);
+                if (status != LXA_OK) return status;
+                if (owner.handle == LXA_HANDLE_NONE || inert == 0) return LXA_ERROR_ARGUMENT;
+                up = (lxa_id_t) owner.handle;
+                --inert;
+            }
             if (up < nodes->retired || up >= length || ++ascents > length
-                || records[up].last_child != cursor)
+                || (!virtual_edge && records[up].last_child != cursor))
                 return LXA_ERROR_ARGUMENT;
             cursor = up;
             --relative;

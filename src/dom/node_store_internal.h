@@ -188,7 +188,8 @@ lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
 /* Move an attached parser-owned subtree to the end of an element or fragment,
  * or immediately before a child of that parent. Validate link symmetry,
- * cycles, subtree depth and budget before commit. Option-only subtrees run
+ * cycles, subtree depth (including associated template fragments) and budget
+ * before commit. Template contents stay inert. Option-only subtrees run
  * removal resets before insertion resets, including an unchanged external
  * owner. Internal select owners remain unchanged. Selectedcontent subtrees run
  * ordered removing updates before insertion into inert destinations, without

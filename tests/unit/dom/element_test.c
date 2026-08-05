@@ -816,6 +816,107 @@ check_selectedcontent_reparent_classification(void)
 }
 
 static void
+check_template_reparent_depth(void)
+{
+    enum { EMPTY, TEXT, CONTENT, NESTED, WRAPPER, CASE_COUNT };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned path = 0; path < CASE_COUNT; ++path) {
+        for (unsigned insertion = 0; insertion < 2; ++insertion) {
+            lxa_budget_t budget;
+            lxa_limits_t limits;
+            lxa_dom_nodes_t *nodes;
+            lxa_dom_ref_t document, outer, destination, holder, root, template, fragment, tail, leaf;
+            lxa_dom_record_t snapshot[20], *records, record;
+            size_t count, retained, required = path == EMPTY ? 4
+                : path == TEXT ? 5 : path == NESTED ? 7 : 6;
+            bool success = false;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            limits = budget.limits;
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT, &document) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &outer) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, document, outer) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &destination) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, outer, destination) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_COMMENT, name("tail"), &tail) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, destination, tail) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &holder) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
+                name(path == WRAPPER ? "div" : "template"), &root) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, holder, root) == LXA_OK);
+            template = root;
+            if (path == WRAPPER) {
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("template"), &template) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, template) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_COMMENT, name("sibling"), &leaf) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, root, leaf) == LXA_OK);
+            }
+            TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT_FRAGMENT, &fragment) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_bind_template(nodes, template, fragment) == LXA_OK);
+            lxa_dom_ref_t parent = fragment;
+            if (path == NESTED) {
+                lxa_dom_ref_t nested;
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("template"), &nested) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, fragment, nested) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT_FRAGMENT, &parent) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_bind_template(nodes, nested, parent) == LXA_OK);
+            }
+            if (path == CONTENT) {
+                lxa_dom_ref_t option;
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("option"), &option) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, option) == LXA_OK);
+                ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) option.handle].flags =
+                    LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("selectedcontent"), &leaf) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, leaf) == LXA_OK);
+                parent = leaf;
+            }
+            if (path != EMPTY) {
+                TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("keep"), &leaf) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, leaf) == LXA_OK);
+            }
+            records = (lxa_dom_record_t *) nodes->records.bytes.data;
+            count = lxa_dom_nodes_length(nodes);
+            TEST_CHECK(count <= sizeof(snapshot) / sizeof(snapshot[0]));
+            memcpy(snapshot, records, count * sizeof(snapshot[0]));
+            retained = budget.used[LXA_BUDGET_MEMORY];
+            budget.limits.max_memory_bytes = retained;
+            budget.limits.max_tree_depth = required - 1;
+            lxa_status_t status = insertion == 0
+                ? lxa_dom_nodes_reparent_constructed_child(nodes, destination, root)
+                : lxa_dom_nodes_reparent_constructed_before(nodes, destination, root, tail);
+            TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_TREE_DEPTH
+                && memcmp(records, snapshot, count * sizeof(snapshot[0])) == 0);
+            budget.limits.max_tree_depth = required;
+            for (size_t allowance = 0; allowance < 1024; ++allowance) {
+                budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
+                status = insertion == 0
+                    ? lxa_dom_nodes_reparent_constructed_child(nodes, destination, root)
+                    : lxa_dom_nodes_reparent_constructed_before(nodes, destination, root, tail);
+                TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);
+                if (status == LXA_OK) { success = true; break; }
+                TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_WORK
+                    && memcmp(records, snapshot, count * sizeof(snapshot[0])) == 0);
+            }
+            TEST_CHECK(success);
+            budget.limits = limits;
+            for (lxa_id_t i = 0; i < count; ++i) {
+                if (i == (lxa_id_t) holder.handle || i == (lxa_id_t) destination.handle
+                    || i == (lxa_id_t) root.handle || i == (lxa_id_t) tail.handle) continue;
+                TEST_CHECK(memcmp(&records[i], &snapshot[i], sizeof(record)) == 0);
+            }
+            TEST_CHECK(lxa_dom_nodes_read(nodes, root, &record) == LXA_OK
+                && record.parent == (lxa_id_t) destination.handle);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, fragment, &record) == LXA_OK
+                && record.parent == LXA_ID_NONE);
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0);
+        }
+    }
+}
+
+static void
 check_container_option_detach(void)
 {
     static const struct {
@@ -2686,6 +2787,7 @@ main(void)
     check_option_reinsert();
     check_selectedcontent_reparent();
     check_selectedcontent_reparent_classification();
+    check_template_reparent_depth();
     check_container_option_detach();
     check_container_option_move();
     check_selectedcontent_connection();
