@@ -1810,6 +1810,8 @@ foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
                                                           parent, child, table);
+    if (status == LXA_OK && named(token->name, "selectedcontent"))
+        status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
     return status;
 }
