@@ -575,7 +575,9 @@ check_selectedcontent_reparent(void)
     enum { ROOT, DESCENDANT, DISABLED, RETAINED, OPTION_FIRST, TEMPLATE,
            STALE_REFERENCE, CONNECTED, SINGLE, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
-    for (unsigned path = 0; path < CASE_COUNT; ++path) {
+    for (unsigned pass = 0; pass < CASE_COUNT * 2; ++pass) {
+        unsigned path = pass % CASE_COUNT;
+        bool detached = pass >= CASE_COUNT;
         for (unsigned resource = 0; resource < 2; ++resource) {
             bool success = false, rollback_with_drafts = false;
             for (size_t allowance = 0; allowance < 8192; allowance += 16) {
@@ -645,13 +647,19 @@ check_selectedcontent_reparent(void)
                     records[(lxa_id_t) option.handle].flags = LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY;
                 if (path == DISABLED)
                     records[(lxa_id_t) content.handle].flags = LXA_DOM_SELECTEDCONTENT_DISABLED;
+                if (detached) {
+                    TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, moved) == LXA_OK);
+                    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+                }
                 count = lxa_dom_nodes_length(nodes);
                 TEST_CHECK(count <= sizeof(snapshot) / sizeof(snapshot[0]));
                 memcpy(snapshot, records, count * sizeof(snapshot[0]));
                 retained = budget.used[LXA_BUDGET_MEMORY];
                 if (resource == 0) budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
                 else budget.limits.max_memory_bytes = retained + allowance;
-                lxa_status_t status = before_ref.handle == LXA_HANDLE_NONE
+                lxa_status_t status = detached
+                    ? lxa_dom_nodes_insert_constructed_subtree(nodes, destination, moved, before_ref)
+                    : before_ref.handle == LXA_HANDLE_NONE
                     ? lxa_dom_nodes_reparent_constructed_child(nodes, destination, moved)
                     : lxa_dom_nodes_reparent_constructed_before(nodes, destination, moved, before_ref);
                 budget.limits = limits;
@@ -667,7 +675,7 @@ check_selectedcontent_reparent(void)
                 else {
                     bool updates = path != DISABLED && path != RETAINED;
                     TEST_CHECK(lxa_dom_nodes_length(nodes) == count
-                        + (path == SINGLE ? 4 : updates ? 2 : 0));
+                        + (path == SINGLE ? 2 : 0) + (!detached && updates ? 2 : 0));
                     TEST_CHECK(lxa_dom_nodes_read(nodes, moved, &record) == LXA_OK
                         && record.parent == (lxa_id_t) destination.handle);
                     TEST_CHECK(lxa_dom_nodes_read(nodes, content, &record) == LXA_OK
@@ -700,7 +708,7 @@ check_selectedcontent_reparent(void)
                 if (terminal) { success = true; break; }
             }
             TEST_CHECK(success);
-            if (path == STALE_REFERENCE) TEST_CHECK(rollback_with_drafts);
+            if (!detached && path == STALE_REFERENCE) TEST_CHECK(rollback_with_drafts);
         }
     }
 }
@@ -711,7 +719,9 @@ check_selectedcontent_reparent_classification(void)
     enum { BODY, OPTION, CONTENT, TWO_SELECTS, MULTIPLE, FOREIGN_OPTION,
            TEMPLATE, SINGLE, CLASSIFIED_PREFIX, DISCONNECTED_ENTRY, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
-    for (unsigned path = 0; path < CASE_COUNT; ++path) {
+    for (unsigned pass = 0; pass < CASE_COUNT * 2; ++pass) {
+        unsigned path = pass % CASE_COUNT;
+        bool detached = pass >= CASE_COUNT;
         for (unsigned resource = 0; resource < 2; ++resource) {
             bool success = false;
             for (size_t allowance = 0; allowance < 4096; allowance += 16) {
@@ -768,13 +778,19 @@ check_selectedcontent_reparent_classification(void)
                     records[(lxa_id_t) contents[i].handle].flags =
                         (path == DISCONNECTED_ENTRY || (path == CLASSIFIED_PREFIX ? i == 1 : i == 0))
                         ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
+                if (detached) {
+                    TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, moved) == LXA_OK);
+                    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+                }
                 count = lxa_dom_nodes_length(nodes);
                 TEST_CHECK(count <= sizeof(snapshot) / sizeof(snapshot[0]));
                 memcpy(snapshot, records, count * sizeof(snapshot[0]));
                 retained = budget.used[LXA_BUDGET_MEMORY];
                 if (resource == 0) budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
                 else budget.limits.max_memory_bytes = retained + allowance;
-                lxa_status_t status = lxa_dom_nodes_reparent_constructed_child(nodes, destination, moved);
+                lxa_status_t status = detached
+                    ? lxa_dom_nodes_insert_constructed_subtree(nodes, destination, moved, (lxa_dom_ref_t){0})
+                    : lxa_dom_nodes_reparent_constructed_child(nodes, destination, moved);
                 budget.limits = limits;
                 records = (lxa_dom_record_t *) nodes->records.bytes.data;
                 bool terminal = status == LXA_OK;
@@ -820,7 +836,9 @@ check_template_reparent_depth(void)
 {
     enum { EMPTY, TEXT, CONTENT, NESTED, WRAPPER, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
-    for (unsigned path = 0; path < CASE_COUNT; ++path) {
+    for (unsigned pass = 0; pass < CASE_COUNT * 2; ++pass) {
+        unsigned path = pass % CASE_COUNT;
+        bool detached = pass >= CASE_COUNT;
         for (unsigned insertion = 0; insertion < 2; ++insertion) {
             lxa_budget_t budget;
             lxa_limits_t limits;
@@ -875,6 +893,16 @@ check_template_reparent_depth(void)
                 TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("keep"), &leaf) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, leaf) == LXA_OK);
             }
+            if (detached) {
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes, destination,
+                    root, (lxa_dom_ref_t){0}) == LXA_ERROR_ARGUMENT);
+                TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, root) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_reparent_constructed_child(nodes, destination, root)
+                    == LXA_ERROR_ARGUMENT);
+                if (path == NESTED && insertion == 0)
+                    TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes, parent,
+                        root, (lxa_dom_ref_t){0}) == LXA_ERROR_ARGUMENT);
+            }
             records = (lxa_dom_record_t *) nodes->records.bytes.data;
             count = lxa_dom_nodes_length(nodes);
             TEST_CHECK(count <= sizeof(snapshot) / sizeof(snapshot[0]));
@@ -882,7 +910,10 @@ check_template_reparent_depth(void)
             retained = budget.used[LXA_BUDGET_MEMORY];
             budget.limits.max_memory_bytes = retained;
             budget.limits.max_tree_depth = required - 1;
-            lxa_status_t status = insertion == 0
+            lxa_status_t status = detached
+                ? lxa_dom_nodes_insert_constructed_subtree(nodes, destination, root,
+                    insertion == 0 ? (lxa_dom_ref_t){0} : tail)
+                : insertion == 0
                 ? lxa_dom_nodes_reparent_constructed_child(nodes, destination, root)
                 : lxa_dom_nodes_reparent_constructed_before(nodes, destination, root, tail);
             TEST_CHECK(status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_TREE_DEPTH
@@ -890,7 +921,10 @@ check_template_reparent_depth(void)
             budget.limits.max_tree_depth = required;
             for (size_t allowance = 0; allowance < 1024; ++allowance) {
                 budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
-                status = insertion == 0
+                status = detached
+                    ? lxa_dom_nodes_insert_constructed_subtree(nodes, destination, root,
+                        insertion == 0 ? (lxa_dom_ref_t){0} : tail)
+                    : insertion == 0
                     ? lxa_dom_nodes_reparent_constructed_child(nodes, destination, root)
                     : lxa_dom_nodes_reparent_constructed_before(nodes, destination, root, tail);
                 TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == retained);

@@ -2562,8 +2562,8 @@ static void destroy_child_replacement(child_replace_plan_t *plan);
 static lxa_status_t nearest_select(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t ancestor, const select_view_t *view, lxa_dom_ref_t *out);
 static lxa_status_t detach_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element);
-static lxa_status_t reparent_content_transaction(lxa_dom_nodes_t *nodes,
-    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
+static lxa_status_t place_content_transaction(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before, bool removing);
 static lxa_status_t collect_nonprimary_content(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t select, lxa_vector_t *targets);
 
@@ -3494,11 +3494,11 @@ option_reparent_effect(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
     return LXA_OK;
 }
 
-lxa_status_t
-reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
-                     lxa_dom_ref_t child, lxa_dom_ref_t before)
+static lxa_status_t
+place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
+                  lxa_dom_ref_t child, lxa_dom_ref_t before, bool removing)
 {
-    lxa_dom_record_t host, moved, target, *records, *old;
+    lxa_dom_record_t host, moved, target, *records, *old = NULL;
     select_view_t move = {.subtree = child, .parent = parent, .before = before,
                           .kind = SELECT_MOVE};
     lxa_dom_ref_t external_owner = {0};
@@ -3537,7 +3537,7 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         || (target_id != LXA_ID_NONE
             && (target.parent != host_id || target_id < nodes->retired
                 || target_id >= length))
-        || old_id < nodes->retired || old_id >= length
+        || (removing && (old_id < nodes->retired || old_id >= length))
         || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE))
         return LXA_ERROR_ARGUMENT;
     status = check_template_parent(nodes, host_id);
@@ -3548,9 +3548,13 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         if (status != LXA_OK) return status;
     }
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
-    old = &records[old_id];
-    status = attached_child_links(nodes, child_id, &moved);
-    if (status != LXA_OK) return status;
+    if (removing) {
+        old = &records[old_id];
+        status = attached_child_links(nodes, child_id, &moved);
+        if (status != LXA_OK) return status;
+    }
+    else if (moved.parent != LXA_ID_NONE || moved.prev != LXA_ID_NONE
+             || moved.next != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
     if (moved.kind == LXA_DOM_KIND_ELEMENT) {
         status = html_option(nodes, child, &root_option);
         if (status == LXA_OK)
@@ -3677,19 +3681,19 @@ reparent_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                                   new_depth, &nodes->limit_reason);
     if (status != LXA_OK) return status;
     if (reset_options || has_content) {
-        if (target_id == child_id)
+        if (removing && target_id == child_id)
             status = lxa_dom_nodes_next_sibling(nodes, child, &before);
         if (status == LXA_OK)
-            status = reparent_content_transaction(nodes, parent, child, before);
+            status = place_content_transaction(nodes, parent, child, before, removing);
         return status;
     }
-    if (host_id == old_id
+    if (removing && host_id == old_id
         && (target_id == child_id
             || (target_id == LXA_ID_NONE && old->last_child == child_id)
             || target_id == moved.next))
         return LXA_OK;
     /* All remaining writes are allocation-free and cannot fail. */
-    unlink_constructed(records, &moved);
+    if (removing) unlink_constructed(records, &moved);
     predecessor = target_id == LXA_ID_NONE
                   ? records[host_id].last_child : records[target_id].prev;
     records[child_id].parent = host_id;
@@ -3707,7 +3711,7 @@ lxa_dom_nodes_reparent_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child)
 {
     lxa_dom_ref_t end = {0};
-    return reparent_constructed(nodes, parent, child, end);
+    return place_constructed(nodes, parent, child, end, true);
 }
 
 lxa_status_t
@@ -3715,7 +3719,14 @@ lxa_dom_nodes_reparent_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before)
 {
     if (before.handle == LXA_HANDLE_NONE) return LXA_ERROR_ARGUMENT;
-    return reparent_constructed(nodes, parent, child, before);
+    return place_constructed(nodes, parent, child, before, true);
+}
+
+lxa_status_t
+lxa_dom_nodes_insert_constructed_subtree(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before)
+{
+    return place_constructed(nodes, parent, child, before, false);
 }
 
 typedef struct {
@@ -4125,7 +4136,7 @@ typedef enum {
 } content_phase_t;
 typedef enum {
     CONTENT_COPY_JOB, CONTENT_DETACH_JOB, CONTENT_REPARENT_JOB,
-    CONTENT_CONNECTION_JOB
+    CONTENT_CONNECTION_JOB, CONTENT_INSERT_SUBTREE_JOB
 } content_job_t;
 typedef struct {
     child_replace_plan_t copy;
@@ -4253,11 +4264,14 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
     if (status == LXA_OK && job == CONTENT_COPY_JOB)
         status = push_content_copy(nodes, &frames, target, source);
     else if (status == LXA_OK
-             && (job == CONTENT_DETACH_JOB || job == CONTENT_REPARENT_JOB)) {
+             && (job == CONTENT_DETACH_JOB || job == CONTENT_REPARENT_JOB
+                 || job == CONTENT_INSERT_SUBTREE_JOB)) {
         content_frame_t frame = {.copy.reset.choice = LXA_ID_NONE, .root = target,
                                 .destination = source, .before = before,
-                                .phase = CONTENT_REMOVE, .job = job};
-        status = lxa_dom_nodes_parent(nodes, target, &frame.copy.target);
+                                .phase = job == CONTENT_INSERT_SUBTREE_JOB
+                                         ? CONTENT_REINSERT : CONTENT_REMOVE, .job = job};
+        if (job != CONTENT_INSERT_SUBTREE_JOB)
+            status = lxa_dom_nodes_parent(nodes, target, &frame.copy.target);
         if (status == LXA_OK) status = lxa_vector_push(&frames, &frame);
     }
     else if (status == LXA_OK) status = LXA_ERROR_ARGUMENT;
@@ -4497,10 +4511,11 @@ detach_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element)
 }
 
 static lxa_status_t
-reparent_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
-    lxa_dom_ref_t child, lxa_dom_ref_t before)
+place_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
+    lxa_dom_ref_t child, lxa_dom_ref_t before, bool removing)
 {
-    return run_content_transaction(nodes, child, parent, before, CONTENT_REPARENT_JOB);
+    return run_content_transaction(nodes, child, parent, before,
+        removing ? CONTENT_REPARENT_JOB : CONTENT_INSERT_SUBTREE_JOB);
 }
 
 static lxa_status_t

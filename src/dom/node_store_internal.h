@@ -201,5 +201,13 @@ lxa_status_t lxa_dom_nodes_reparent_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child);
 lxa_status_t lxa_dom_nodes_reparent_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
+/* Insert a detached parser-owned element, text or comment into an element
+ * or fragment. Elements may be populated.
+ * NONE appends; otherwise before must be a current child of parent. Share
+ * reparent hierarchy/depth checks and run insertion/post-connection steps,
+ * without removing steps. Failure preserves the initial detached records;
+ * unpublished drafts remain store-owned. A preceding removal is not undone. */
+lxa_status_t lxa_dom_nodes_insert_constructed_subtree(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
 
 #endif
