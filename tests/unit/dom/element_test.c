@@ -1269,7 +1269,7 @@ check_selectedcontent_connection(void)
         lxa_dom_nodes_t *nodes;
         lxa_dom_ref_t parent, host, element, clone, attribute;
         lxa_dom_record_t before, after, *records;
-        bool success = false, disabled;
+        bool success = false;
         size_t retained;
         TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
         limits = budget.limits;
@@ -1317,17 +1317,10 @@ check_selectedcontent_connection(void)
         budget.limits = limits;
         check_option_state(nodes, element, cases[path].disabled
             ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0);
-        if (cases[path].primary)
-            TEST_CHECK(lxa_dom_nodes_prepare_selectedcontent(nodes, host, &disabled)
-                == LXA_ERROR_UNSUPPORTED && !disabled);
         TEST_CHECK(lxa_dom_nodes_clone_element(nodes, element, &clone) == LXA_OK);
         check_option_state(nodes, clone, 0);
         TEST_CHECK(lxa_dom_nodes_connect_selectedcontent(nodes, host)
             == (path == 2 ? LXA_OK : LXA_ERROR_ARGUMENT));
-        TEST_CHECK(lxa_dom_nodes_prepare_selectedcontent(nodes, host, NULL)
-                   == LXA_ERROR_ARGUMENT);
-        TEST_CHECK(lxa_dom_nodes_prepare_selectedcontent(nodes, (lxa_dom_ref_t){0},
-                                                         &disabled) == LXA_OK && !disabled);
         records = (lxa_dom_record_t *) nodes->records.bytes.data;
         records[(lxa_id_t) clone.handle].flags = LXA_DOM_OPTION_SELECTED;
         TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_ERROR_ARGUMENT);

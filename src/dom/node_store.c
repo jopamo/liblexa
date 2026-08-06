@@ -2354,23 +2354,6 @@ selectedcontent_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     return LXA_OK;
 }
 
-lxa_status_t
-lxa_dom_nodes_prepare_selectedcontent(lxa_dom_nodes_t *nodes,
-                                      lxa_dom_ref_t parent, bool *disabled)
-{
-    lxa_dom_ref_t select, attribute;
-    lxa_status_t status;
-    if (nodes == NULL || disabled == NULL) return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
-    status = selectedcontent_context(nodes, parent, disabled, &select);
-    if (status != LXA_OK || *disabled || select.handle == LXA_HANDLE_NONE)
-        return status;
-    status = lxa_dom_nodes_find_attribute(nodes, select,
-        (lxa_span_t){(const uint8_t *) "multiple", 8}, &attribute);
-    if (status != LXA_OK) return status;
-    return attribute.handle == LXA_HANDLE_NONE ? LXA_ERROR_UNSUPPORTED : LXA_OK;
-}
-
 static lxa_status_t
 prepare_selectedcontent_connection(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, bool *disabled, lxa_dom_ref_t *update_select)
