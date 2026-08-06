@@ -283,9 +283,93 @@ check_option_pop_failure(void)
 
 
 
+static void
+check_adoption_removal_limits(void)
+{
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned pass = 0; pass < 1; ++pass) {
+        bool in_template = pass >= 2;
+        const char *expected = in_template
+            ? "<html><head><template><div><b></b><div><b></b></div></div>"
+              "</template></head><body></body></html>"
+            : "<html><head></head><body><div><a></a><div><a></a></div>"
+              "</div></body></html>";
+        bool success = false, detached_failure = false;
+        for (size_t allowance = 0; allowance < 512 && !success; ++allowance) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_dom_ref_t common, formatting, furthest;
+            lxa_dom_record_t record;
+            lxa_html_token_t token = {.kind = LXA_HTML_END_TAG,
+                .name = span(in_template ? "b" : "a")};
+            lxa_html_result_t (*feed)(lxa_html_tokenizer_t *, lxa_span_t) =
+                lxa_html_tokenizer_feed;
+            lxa_html_result_t (*finish)(lxa_html_tokenizer_t *) =
+                lxa_html_tokenizer_finish;
+            lxa_status_t status;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget,
+                NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer) == LXA_OK);
+            TEST_CHECK(feed(tokenizer, span(in_template
+                ? "<template><div><b><div>" : "<div><a><div>")) == LXA_HTML_OK);
+            const lxa_vector_t *elements = in_template
+                ? &tree.template_elements : &tree.open_elements;
+            size_t count = lxa_vector_length(elements);
+            TEST_CHECK(count == (in_template ? 3 : 4));
+            const lxa_dom_ref_t *open =
+                (const lxa_dom_ref_t *) elements->bytes.data;
+            common = open[count - 3];
+            formatting = open[count - 2];
+            furthest = open[count - 1];
+            TEST_CHECK(lxa_dom_nodes_read(nodes, furthest, &record) == LXA_OK
+                && record.parent == (lxa_id_t) formatting.handle);
+            budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + allowance;
+            status = lxa_html_tree_on_token(&tree, NULL, &token);
+            budget.limits.max_work = lxa_limits_default().max_work;
+            TEST_CHECK(lxa_dom_nodes_read(nodes, furthest, &record) == LXA_OK);
+            if (status == LXA_OK) {
+                sink_t sink = {{0}, 0};
+                lxa_limit_reason_t reason;
+                success = true;
+                TEST_CHECK(record.parent == (lxa_id_t) common.handle);
+                TEST_CHECK(finish(tokenizer) == LXA_HTML_OK);
+                TEST_CHECK(lxa_html_serialize_document(nodes, tree.document,
+                    write_bytes, &sink, &reason) == LXA_OK);
+                TEST_CHECK(sink.length == strlen(expected)
+                    && memcmp(sink.data, expected, sink.length) == 0);
+            }
+            else {
+                TEST_CHECK(status == LXA_ERROR_LIMIT && tree.failure == status
+                    && nodes->limit_reason == LXA_BUDGET_WORK);
+                if (record.parent == LXA_ID_NONE) {
+                    detached_failure = true;
+                    TEST_CHECK(record.prev == LXA_ID_NONE && record.next == LXA_ID_NONE);
+                }
+                else TEST_CHECK(record.parent == (lxa_id_t) formatting.handle
+                    || record.parent == (lxa_id_t) common.handle);
+                TEST_CHECK(finish(tokenizer) == LXA_HTML_CALLBACK_FAILURE);
+            }
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+        TEST_CHECK(success && detached_failure);
+    }
+}
+
 int
 main(void)
 {
+    check_adoption_removal_limits();
     check_option_pop_failure();
     check_option_pop_reentrant_removal();
     check_option_insert_state();

@@ -1026,8 +1026,8 @@ lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
  * alone do not detect moving a template (or its ancestor) into its content.
  */
 static lxa_status_t
-check_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
-                       lxa_id_t target, lxa_budget_kind_t *reason)
+find_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
+                      lxa_id_t target, bool *found, lxa_budget_kind_t *reason)
 {
     const lxa_dom_record_t *records =
         (const lxa_dom_record_t *) nodes->records.bytes.data;
@@ -1035,14 +1035,19 @@ check_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
         (const lxa_dom_template_t *) nodes->templates.bytes.data;
     size_t length = lxa_vector_length(&nodes->records), steps = 0;
     lxa_id_t cursor = start;
+    *found = false;
     while (cursor != LXA_ID_NONE) {
         size_t i;
         lxa_status_t status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK,
                                                  1, reason);
         if (status != LXA_OK) return status;
-        if (cursor == target || cursor < nodes->retired || cursor >= length
+        if (cursor < nodes->retired || cursor >= length
             || ++steps > length)
             return LXA_ERROR_ARGUMENT;
+        if (cursor == target) {
+            *found = true;
+            return LXA_OK;
+        }
         if (records[cursor].parent != LXA_ID_NONE) {
             cursor = records[cursor].parent;
             continue;
@@ -1058,6 +1063,32 @@ check_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
                  ? LXA_ID_NONE : entries[i].element;
     }
     return LXA_OK;
+}
+
+static lxa_status_t
+check_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
+                       lxa_id_t target, lxa_budget_kind_t *reason)
+{
+    bool found;
+    lxa_status_t status = find_virtual_ancestor(nodes, start, target, &found, reason);
+    return status == LXA_OK && found ? LXA_ERROR_ARGUMENT : status;
+}
+
+lxa_status_t
+lxa_dom_nodes_host_including_ancestor(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t ancestor, lxa_dom_ref_t node, bool *out)
+{
+    lxa_dom_record_t record;
+    lxa_status_t status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = false;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = lxa_dom_nodes_read(nodes, ancestor, &record);
+    if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, node, &record);
+    if (status != LXA_OK) return status;
+    return find_virtual_ancestor(nodes, (lxa_id_t) node.handle,
+        (lxa_id_t) ancestor.handle, out, &nodes->limit_reason);
 }
 
 lxa_status_t

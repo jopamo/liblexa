@@ -66,6 +66,10 @@ typedef char lxa_dom_record_size_must_be_32[
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
                                 lxa_dom_ref_t handle,
                                 lxa_dom_record_t *out);
+/* Inclusive ancestry follows actual parents and bound template-fragment hosts.
+ * Failure leaves out false; traversal is WORK-bounded and allocation-free. */
+lxa_status_t lxa_dom_nodes_host_including_ancestor(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t ancestor, lxa_dom_ref_t node, bool *out);
 /* Parser-only draft construction. A draft has no typed payload or links.
  * Failure leaves length and earlier references valid. */
 lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,

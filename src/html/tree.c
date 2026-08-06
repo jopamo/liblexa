@@ -575,6 +575,46 @@ reconstruct_pending_formatting(lxa_html_tree_t *tree)
 }
 
 static lxa_status_t
+place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
+                    lxa_dom_ref_t parent, lxa_dom_ref_t before)
+{
+    lxa_dom_ref_t current;
+    lxa_dom_record_t host;
+    bool ancestor;
+    lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, node, &current);
+    if (status == LXA_OK && current.handle != LXA_HANDLE_NONE)
+        status = lxa_dom_nodes_detach_constructed_element(tree->nodes, node);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_parent(tree->nodes, node, &current);
+    if (status != LXA_OK || current.handle != LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_host_including_ancestor(tree->nodes, node, parent,
+                                                   &ancestor);
+    if (status != LXA_OK || ancestor) return status;
+    status = lxa_dom_nodes_read(tree->nodes, parent, &host);
+    if (status != LXA_OK) return status;
+    if (host.kind == LXA_DOM_KIND_DOCUMENT) {
+        size_t visits = 0;
+        status = lxa_dom_nodes_first_child(tree->nodes, parent, &current);
+        while (status == LXA_OK && current.handle != LXA_HANDLE_NONE) {
+            lxa_dom_record_t child;
+            if (++visits > lxa_dom_nodes_length(tree->nodes))
+                return LXA_ERROR_INTERNAL;
+            status = lxa_dom_nodes_read(tree->nodes, current, &child);
+            if (status != LXA_OK || child.kind == LXA_DOM_KIND_ELEMENT)
+                return status;
+            status = lxa_dom_nodes_next_sibling(tree->nodes, current, &current);
+        }
+        if (status != LXA_OK) return status;
+    }
+    if (before.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_parent(tree->nodes, before, &current);
+        if (status != LXA_OK || current.handle != parent.handle) return status;
+    }
+    return lxa_dom_nodes_insert_constructed_subtree(tree->nodes, parent, node,
+                                                    before);
+}
+
+static lxa_status_t
 adopt_anchor_blocks(lxa_html_tree_t *tree)
 {
     size_t length = lxa_vector_length(&tree->open_elements), i, anchor = length;
@@ -638,8 +678,7 @@ adopt_anchor_blocks(lxa_html_tree_t *tree)
         block = open[anchor + 1];
         status = clone_formatting_element(tree, tree->active_anchor, &clone);
         if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                common, block);
+            status = place_adoption_node(tree, block, common, (lxa_dom_ref_t){0});
         if (status == LXA_OK)
             status = lxa_dom_nodes_append_constructed_child(tree->nodes,
                                                               block, clone);

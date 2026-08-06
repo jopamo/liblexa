@@ -900,6 +900,20 @@ check_template_reparent_depth(void)
                 TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT, name("keep"), &leaf) == LXA_OK);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, parent, leaf) == LXA_OK);
             }
+            {
+                bool ancestor = false;
+                TEST_CHECK(lxa_dom_nodes_host_including_ancestor(nodes, root, root,
+                    &ancestor) == LXA_OK && ancestor);
+                TEST_CHECK(lxa_dom_nodes_host_including_ancestor(nodes, root, parent,
+                    &ancestor) == LXA_OK && ancestor);
+                TEST_CHECK(lxa_dom_nodes_host_including_ancestor(nodes, destination, parent,
+                    &ancestor) == LXA_OK && !ancestor);
+                budget.limits.max_work = budget.used[LXA_BUDGET_WORK];
+                TEST_CHECK(lxa_dom_nodes_host_including_ancestor(nodes, root, parent,
+                    &ancestor) == LXA_ERROR_LIMIT && !ancestor
+                    && nodes->limit_reason == LXA_BUDGET_WORK);
+                budget.limits = limits;
+            }
             if (detached) {
                 TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes, destination,
                     root, (lxa_dom_ref_t){0}) == LXA_ERROR_ARGUMENT);
