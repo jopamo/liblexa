@@ -3448,7 +3448,7 @@ template_open_table_part(lxa_html_tree_t *tree,
     if (table == SIZE_MAX) {
         if (length > template_boundary(tree)
             && tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-            && ordinary_above) {
+            && (ordinary_above || caption_open)) {
             lxa_span_t root;
             size_t j;
             bool clearable = true;

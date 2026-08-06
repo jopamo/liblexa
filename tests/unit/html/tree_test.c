@@ -30,6 +30,70 @@ write_bytes(void *context, lxa_span_t bytes)
 }
 
 static void
+check_caption_transitions(void)
+{
+    static const struct {
+        const char *input, *output;
+    } cases[] = {
+        {"<template><caption>x<caption>y</template>",
+         "<html><head><template><caption>x</caption><caption>y</caption>"
+         "</template></head><body></body></html>"},
+        {"<template><caption>x<colgroup>y</template>",
+         "<html><head><template><caption>x</caption><colgroup></colgroup>"
+         "y</template></head><body></body></html>"},
+        {"<template><caption>x<tbody>y</template>",
+         "<html><head><template><caption>x</caption><tbody></tbody>"
+         "y</template></head><body></body></html>"},
+        {"<template><caption>x<tr>y</template>",
+         "<html><head><template><caption>x</caption><tbody><tr></tr>"
+         "</tbody>y</template></head><body></body></html>"},
+        {"<template><caption>x<td>y</template>",
+         "<html><head><template><caption>x</caption><tbody><tr><td>y</td>"
+         "</tr></tbody></template></head><body></body></html>"}
+    };
+    static const size_t chunks[] = {SIZE_MAX, 1, 7};
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        for (size_t j = 0; j < sizeof(chunks) / sizeof(chunks[0]); ++j) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_limit_reason_t reason;
+            sink_t sink = {{0}, 0};
+            lxa_span_t input = span(cases[i].input);
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget,
+                NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget,
+                &tokenizer) == LXA_OK);
+            for (size_t offset = 0; offset < input.length;) {
+                size_t length = input.length - offset;
+                if (length > chunks[j]) length = chunks[j];
+                TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, (lxa_span_t) {
+                    input.data + offset, length
+                }) == LXA_HTML_OK);
+                offset += length;
+            }
+            TEST_CHECK(lxa_html_tokenizer_finish(tokenizer) == LXA_HTML_OK);
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_serialize_document(nodes, tree.document,
+                write_bytes, &sink, &reason) == LXA_OK);
+            TEST_CHECK(sink.length == strlen(cases[i].output)
+                && memcmp(sink.data, cases[i].output, sink.length) == 0);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+    }
+}
+
+static void
 check_option_insert_state(void)
 {
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -481,6 +545,7 @@ check_detached_table_fostering(void)
 int
 main(void)
 {
+    check_caption_transitions();
     check_detached_table_fostering();
     check_adoption_removal_limits();
     check_option_pop_failure();

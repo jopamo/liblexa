@@ -252,7 +252,12 @@ main(void)
     static const unsigned char table[] =
         "<body><template><table><tr><td>x</td></tr></table></template>";
     static const unsigned char virtual_foreign_recovery[] =
-        "<template><tbody><math><unknown><mtext><tr><td>y</template>";
+        "<template><tbody><math><unknown><mtext><tr><td>y</template>"
+        "<template><caption>x<caption>y</template>"
+        "<template><caption>x<colgroup>y</template>"
+        "<template><caption>x<tbody>y</template>"
+        "<template><caption>x<tr>y</template>"
+        "<template><caption>x<td>y</template>";
     static const unsigned char option_pop_selectedcontent[] =
         "<template><select><selectedcontent><selectedcontent>old"
         "</selectedcontent></selectedcontent>"
