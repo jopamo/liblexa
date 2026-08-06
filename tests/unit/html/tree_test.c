@@ -420,9 +420,68 @@ check_adoption_removal_limits(void)
     }
 }
 
+static void
+check_detached_table_fostering(void)
+{
+    static const struct {
+        const char *input, *output;
+    } cases[] = {
+        {"<div>foster</div>", "<div>foster</div>"},
+        {"foster", "foster"},
+        {"<svg><text>foster</text></svg>", "<svg><text>foster</text></svg>"},
+        {"<textarea>foster</textarea>", "<textarea>foster</textarea>"}
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned driver = 0; driver < 1; ++driver) {
+        for (size_t path = 0; path < sizeof(cases) / sizeof(cases[0]); ++path) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_dom_ref_t table;
+            lxa_dom_record_t record;
+            sink_t sink = {{0}, 0};
+            lxa_limit_reason_t reason;
+            lxa_html_result_t (*feed)(lxa_html_tokenizer_t *, lxa_span_t) =
+                lxa_html_tokenizer_feed;
+            lxa_html_result_t (*finish)(lxa_html_tokenizer_t *) =
+                lxa_html_tokenizer_finish;
+            const char *prefix = "<html><head></head><body>";
+            const char *suffix = "</body></html>";
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer) == LXA_OK);
+            TEST_CHECK(feed(tokenizer, span("<table>")) == LXA_HTML_OK);
+            TEST_CHECK(lxa_vector_length(&tree.open_elements) == 2);
+            table = ((const lxa_dom_ref_t *) tree.open_elements.bytes.data)[1];
+            TEST_CHECK(lxa_dom_nodes_detach_constructed_element(nodes, table) == LXA_OK);
+            TEST_CHECK(feed(tokenizer, span(cases[path].input)) == LXA_HTML_OK);
+            TEST_CHECK(finish(tokenizer) == LXA_HTML_OK);
+            TEST_CHECK(lxa_dom_nodes_read(nodes, table, &record) == LXA_OK
+                && record.parent == LXA_ID_NONE);
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_serialize_document(nodes, tree.document,
+                write_bytes, &sink, &reason) == LXA_OK);
+            TEST_CHECK(sink.length == strlen(prefix) + strlen(cases[path].output) + strlen(suffix)
+                && memcmp(sink.data, prefix, strlen(prefix)) == 0
+                && memcmp(sink.data + strlen(prefix), cases[path].output,
+                          strlen(cases[path].output)) == 0
+                && memcmp(sink.data + sink.length - strlen(suffix), suffix, strlen(suffix)) == 0);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0);
+        }
+    }
+}
+
 int
 main(void)
 {
+    check_detached_table_fostering();
     check_adoption_removal_limits();
     check_option_pop_failure();
     check_option_pop_reentrant_removal();
