@@ -836,9 +836,10 @@ check_template_reparent_depth(void)
 {
     enum { EMPTY, TEXT, CONTENT, NESTED, WRAPPER, CASE_COUNT };
     lxa_allocator_t allocator = lxa_allocator_default();
-    for (unsigned pass = 0; pass < CASE_COUNT * 2; ++pass) {
+    for (unsigned pass = 0; pass < CASE_COUNT * 3; ++pass) {
         unsigned path = pass % CASE_COUNT;
         bool detached = pass >= CASE_COUNT;
+        bool document_target = pass >= CASE_COUNT * 2;
         for (unsigned insertion = 0; insertion < 2; ++insertion) {
             lxa_budget_t budget;
             lxa_limits_t limits;
@@ -852,10 +853,16 @@ check_template_reparent_depth(void)
             limits = budget.limits;
             TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget, NULL, &nodes) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT, &document) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &outer) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, document, outer) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &destination) == LXA_OK);
-            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, outer, destination) == LXA_OK);
+            if (document_target) {
+                destination = document;
+                required -= 2;
+            }
+            else {
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &outer) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, document, outer) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("select"), &destination) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, outer, destination) == LXA_OK);
+            }
             TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_COMMENT, name("tail"), &tail) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes, destination, tail) == LXA_OK);
             TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("div"), &holder) == LXA_OK);
@@ -3075,7 +3082,7 @@ main(void)
                        && record.first_child == (lxa_id_t) new_comment.handle
                        && record.last_child == (lxa_id_t) second_root.handle);
             {
-                lxa_dom_ref_t third_document, third_doctype;
+                lxa_dom_ref_t third_document, third_doctype, root_text, duplicate, content;
                 TEST_CHECK(lxa_dom_nodes_append_draft(nodes, LXA_DOM_KIND_DOCUMENT,
                     &third_document) == LXA_OK);
                 declaration.name = name("html");
@@ -3088,8 +3095,35 @@ main(void)
                     == LXA_ERROR_ARGUMENT);
                 TEST_CHECK(lxa_dom_nodes_read(nodes, another_root, &record)
                     == LXA_OK && record.parent == LXA_ID_NONE);
+                TEST_CHECK(lxa_dom_nodes_append_character(nodes, LXA_DOM_KIND_TEXT,
+                    name("root"), &root_text) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes,
+                    third_document, root_text, (lxa_dom_ref_t){0})
+                    == LXA_ERROR_ARGUMENT);
                 TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
-                    third_document, another_root) == LXA_OK);
+                    another_root, root_text) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
+                    name("selectedcontent"), &content) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                    another_root, content) == LXA_OK);
+                ((lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) content.handle].flags =
+                    LXA_DOM_SELECTEDCONTENT_DISABLED;
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes,
+                    third_document, another_root, third_doctype)
+                    == LXA_ERROR_ARGUMENT);
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes,
+                    third_document, another_root, (lxa_dom_ref_t){0}) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_read(nodes, content, &record)
+                    == LXA_OK && record.flags == 0);
+                TEST_CHECK(lxa_dom_nodes_append_html_element(nodes, name("html"),
+                    &duplicate) == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_insert_constructed_subtree(nodes,
+                    third_document, duplicate, (lxa_dom_ref_t){0})
+                    == LXA_ERROR_ARGUMENT);
+                TEST_CHECK(lxa_dom_nodes_read(nodes, duplicate, &record)
+                    == LXA_OK && record.parent == LXA_ID_NONE);
+                TEST_CHECK(lxa_dom_nodes_read(nodes, root_text, &record)
+                    == LXA_OK && record.parent == (lxa_id_t) another_root.handle);
             }
         }
         TEST_CHECK(lxa_dom_nodes_read(nodes, document, &record) == LXA_OK

@@ -3060,6 +3060,55 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     return LXA_OK;
 }
 
+static bool
+document_child_kind(lxa_dom_kind_t kind)
+{
+    return kind == LXA_DOM_KIND_ELEMENT || kind == LXA_DOM_KIND_COMMENT
+           || kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
+           || kind == LXA_DOM_KIND_DOCUMENT_TYPE;
+}
+
+static lxa_status_t
+check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
+                         const lxa_dom_record_t *host,
+                         lxa_dom_kind_t kind, lxa_id_t target)
+{
+    const lxa_dom_record_t *records =
+        (const lxa_dom_record_t *) nodes->records.bytes.data;
+    lxa_id_t sibling = host->first_child, previous = LXA_ID_NONE;
+    size_t length = lxa_vector_length(&nodes->records), linked = 0;
+    bool past_target = false;
+    if (!document_child_kind(kind)) return LXA_ERROR_ARGUMENT;
+    while (sibling != LXA_ID_NONE) {
+        const lxa_dom_record_t *existing;
+        lxa_status_t status;
+        if (sibling < nodes->retired || sibling >= length || ++linked > length)
+            return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        existing = &records[sibling];
+        if (sibling == target) past_target = true;
+        if (existing->parent != parent || existing->prev != previous
+            || !document_child_kind(existing->kind)
+            || (kind == LXA_DOM_KIND_ELEMENT
+                && existing->kind == LXA_DOM_KIND_ELEMENT)
+            || (kind == LXA_DOM_KIND_DOCUMENT_TYPE
+                && (existing->kind == LXA_DOM_KIND_DOCUMENT_TYPE
+                    || (existing->kind == LXA_DOM_KIND_ELEMENT
+                        && !past_target)))
+            || (kind == LXA_DOM_KIND_ELEMENT && past_target
+                && existing->kind == LXA_DOM_KIND_DOCUMENT_TYPE))
+            return LXA_ERROR_ARGUMENT;
+        previous = sibling;
+        sibling = existing->next;
+    }
+    if (previous != host->last_child
+        || (target != LXA_ID_NONE && !past_target))
+        return LXA_ERROR_ARGUMENT;
+    return LXA_OK;
+}
+
 static lxa_status_t
 construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                 lxa_dom_ref_t child, lxa_dom_ref_t before)
@@ -3110,10 +3159,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         || (host.kind != LXA_DOM_KIND_DOCUMENT
             && leaf.kind == LXA_DOM_KIND_DOCUMENT_TYPE)
         || (host.kind == LXA_DOM_KIND_DOCUMENT
-            && leaf.kind != LXA_DOM_KIND_ELEMENT
-            && leaf.kind != LXA_DOM_KIND_COMMENT
-            && leaf.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION
-            && leaf.kind != LXA_DOM_KIND_DOCUMENT_TYPE)
+            && !document_child_kind(leaf.kind))
         || (target_id != LXA_ID_NONE
             && (target.parent != parent_id
                 || target_id < nodes->retired || target_id >= length))
@@ -3132,44 +3178,9 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     }
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
     if (host.kind == LXA_DOM_KIND_DOCUMENT) {
-        lxa_id_t sibling = host.first_child, previous = LXA_ID_NONE;
-        size_t linked = 0;
-        bool past_target = false;
-        while (sibling != LXA_ID_NONE) {
-            const lxa_dom_record_t *existing;
-            if (sibling < nodes->retired || sibling >= length
-                || ++linked > length) {
-                return LXA_ERROR_ARGUMENT;
-            }
-            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
-                                        &nodes->limit_reason);
-            if (status != LXA_OK) {
-                return status;
-            }
-            existing = &records[sibling];
-            if (sibling == target_id) past_target = true;
-            if (existing->parent != parent_id || existing->prev != previous
-                || (existing->kind != LXA_DOM_KIND_ELEMENT
-                    && existing->kind != LXA_DOM_KIND_COMMENT
-                    && existing->kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION
-                    && existing->kind != LXA_DOM_KIND_DOCUMENT_TYPE)
-                || (leaf.kind == LXA_DOM_KIND_ELEMENT
-                    && existing->kind == LXA_DOM_KIND_ELEMENT)
-                || (leaf.kind == LXA_DOM_KIND_DOCUMENT_TYPE
-                    && (existing->kind == LXA_DOM_KIND_DOCUMENT_TYPE
-                        || (existing->kind == LXA_DOM_KIND_ELEMENT
-                            && !past_target)))
-                || (leaf.kind == LXA_DOM_KIND_ELEMENT && past_target
-                    && existing->kind == LXA_DOM_KIND_DOCUMENT_TYPE)) {
-                return LXA_ERROR_ARGUMENT;
-            }
-            previous = sibling;
-            sibling = existing->next;
-        }
-        if (previous != host.last_child
-            || (target_id != LXA_ID_NONE && !past_target)) {
-            return LXA_ERROR_ARGUMENT;
-        }
+        status = check_document_insertion(nodes, parent_id, &host, leaf.kind,
+                                          target_id);
+        if (status != LXA_OK) return status;
     }
     if (host.last_child != LXA_ID_NONE) {
         if (host.last_child < nodes->retired || host.last_child >= length
@@ -3526,7 +3537,8 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     target_id = before.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
                 : (lxa_id_t) before.handle;
     if ((host.kind != LXA_DOM_KIND_ELEMENT
-         && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
+         && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
+         && (removing || host.kind != LXA_DOM_KIND_DOCUMENT))
         || (moved.kind != LXA_DOM_KIND_ELEMENT
             && moved.kind != LXA_DOM_KIND_TEXT
             && moved.kind != LXA_DOM_KIND_COMMENT)
@@ -3534,6 +3546,8 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             && host.payload >= lxa_vector_length(&nodes->elements))
         || (moved.kind == LXA_DOM_KIND_ELEMENT
             && moved.payload >= lxa_vector_length(&nodes->elements))
+        || (host.kind == LXA_DOM_KIND_DOCUMENT
+            && !document_child_kind(moved.kind))
         || (target_id != LXA_ID_NONE
             && (target.parent != host_id || target_id < nodes->retired
                 || target_id >= length))
@@ -3563,6 +3577,11 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         if (status != LXA_OK) return status;
     }
     if (external_owner.handle == child.handle) external_owner = (lxa_dom_ref_t){0};
+    if (host.kind == LXA_DOM_KIND_DOCUMENT) {
+        status = check_document_insertion(nodes, host_id, &host, moved.kind,
+                                          target_id);
+        if (status != LXA_OK) return status;
+    }
     if ((host.last_child != LXA_ID_NONE
             && (host.last_child < nodes->retired || host.last_child >= length
                 || records[host.last_child].next != LXA_ID_NONE
