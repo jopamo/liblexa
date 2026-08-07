@@ -3446,6 +3446,18 @@ template_open_table_part(lxa_html_tree_t *tree,
             ordinary_above = true;
     }
     if (table == SIZE_MAX) {
+        if (context == SIZE_MAX && cell_index == SIZE_MAX && !caption_open
+            && (tree->template_insertion_mode == LXA_TEMPLATE_ROW
+                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY)) {
+            if (!cell && !(row && tree->template_insertion_mode
+                                 == LXA_TEMPLATE_TABLE_BODY))
+                return LXA_OK;
+            keep = template_boundary(tree);
+            implied_row = cell && tree->template_insertion_mode
+                                  == LXA_TEMPLATE_TABLE_BODY;
+            extra = implied_row ? 2 : 1;
+            goto reserve_part;
+        }
         if (length > template_boundary(tree)
             && tree->template_insertion_mode == LXA_TEMPLATE_TABLE
             && (ordinary_above || caption_open)) {
@@ -3788,24 +3800,12 @@ template_open_table_part(lxa_html_tree_t *tree,
                                 + (cell || fostered_section ? 1 : 0)
                               : length;
         if (length == template_boundary(tree)) {
-            /* A direct cell leaves no tr in scope; row-mode table starts
-             * cannot close a row that isn't there. Similarly, a direct row
-             * leaves no section for table-body starts to close. */
-            if (tree->template_insertion_mode == LXA_TEMPLATE_ROW
-                && !cell)
-                return LXA_OK;
-            if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-                && !row && !cell)
-                return LXA_OK;
-            implied_row = cell && tree->template_insertion_mode
-                                  == LXA_TEMPLATE_TABLE_BODY;
             implied_section = (row || cell) && tree->template_insertion_mode
                                                == LXA_TEMPLATE_TABLE;
             if (implied_section) {
                 implied_row = cell;
                 extra = cell ? 3 : 2;
             }
-            else if (implied_row) extra = 2;
             if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
                 next_mode = row ? LXA_TEMPLATE_TABLE_BODY
                           : cell ? LXA_TEMPLATE_ROW

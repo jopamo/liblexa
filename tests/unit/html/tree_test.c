@@ -57,7 +57,19 @@ check_table_transitions(void)
         {"<table><colgroup><svg><g>x</g></svg> y<col></table>",
          "<html><head></head><body><svg><g>x</g></svg> y<table>"
          "<colgroup></colgroup><colgroup><col></colgroup></table>"
-         "</body></html>"}
+         "</body></html>"},
+        {"<template><td><tr><div><tfoot>y</div></template>",
+         "<html><head><template><td></td><div>y</div></template></head>"
+         "<body></body></html>"},
+        {"<template><tr><caption><div><tbody>y</div></template>",
+         "<html><head><template><tr></tr><div>y</div></template></head>"
+         "<body></body></html>"},
+        {"<template><td><tr><div><td>y</td>z</template>",
+         "<html><head><template><td></td><div></div><td>y</td>z</template>"
+         "</head><body></body></html>"},
+        {"<template><tr><caption><div><td>y</td>z</template>",
+         "<html><head><template><tr></tr><div></div><tr><td>y</td></tr>"
+         "z</template></head><body></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();

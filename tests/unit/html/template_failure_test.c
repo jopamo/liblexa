@@ -257,7 +257,11 @@ main(void)
         "<template><caption>x<colgroup>y</template>"
         "<template><caption>x<tbody>y</template>"
         "<template><caption>x<tr>y</template>"
-        "<template><caption>x<td>y</template>";
+        "<template><caption>x<td>y</template>"
+        "<template><td><tr><div><tfoot>y</div></template>"
+        "<template><tr><caption><div><tbody>y</div></template>"
+        "<template><td><tr><div><td>y</td>z</template>"
+        "<template><tr><caption><div><td>y</td>z</template>";
     static const unsigned char option_pop_selectedcontent[] =
         "<template><select><selectedcontent><selectedcontent>old"
         "</selectedcontent></selectedcontent>"
