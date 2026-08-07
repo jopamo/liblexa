@@ -1474,15 +1474,38 @@ open_container(lxa_html_tree_t *tree,
     return open_container_ns(tree, token, LXA_DOM_NS_HTML);
 }
 
+static lxa_status_t
+append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+                     const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t child;
+    lxa_status_t status;
+    if (token->kind == LXA_HTML_COMMENT)
+        return append_character(tree, parent, LXA_DOM_KIND_COMMENT,
+                                token->data);
+    status = lxa_dom_nodes_append_pi(tree->nodes, token->name, token->data,
+                                     &child);
+    return status == LXA_OK
+           ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+           : status;
+}
+
+
 /* Foreign descendants retain their parent's namespace unless an integration
  * point dispatches the token through HTML construction instead. */
 static lxa_status_t
 consume_foreign(lxa_html_tree_t *tree,
-                const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+                const lxa_html_token_t *token, lxa_dom_namespace_t ns,
+                bool *reprocess)
 {
     lxa_span_t top;
     lxa_status_t status;
     bool known;
+    *reprocess = false;
+    if (token->kind == LXA_HTML_COMMENT
+        || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
+        return append_comment_or_pi(tree, current_element(tree), token);
+    if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (token->kind == LXA_HTML_TEXT)
         return insert_data_text(tree, current_element(tree), token->data,
                                 true, false);
@@ -1501,6 +1524,11 @@ consume_foreign(lxa_html_tree_t *tree,
                                                       &ancestor_ns);
             if (status != LXA_OK) return status;
             if (ancestor_ns == LXA_DOM_NS_HTML) {
+                if (named(token->name, "body")
+                    || named(token->name, "html")) {
+                    *reprocess = true;
+                    return LXA_OK;
+                }
                 /* A matching ordinary HTML container closes through its
                  * foreign descendants. Do not let an unrelated HTML end
                  * tear down this subtree before its mode is supported. */
@@ -7745,7 +7773,9 @@ reprocess_template_token:
             tree->mode = LXA_TREE_IN_HEAD;
         }
     }
-    if (tree->mode == LXA_TREE_IN_BODY
+    if ((tree->mode == LXA_TREE_IN_BODY
+         || tree->mode == LXA_TREE_AFTER_BODY
+         || tree->mode == LXA_TREE_AFTER_HTML)
         && lxa_vector_length(&tree->open_elements) > 1) {
         lxa_dom_namespace_t ns;
         bool integration_owner = false;
@@ -7866,12 +7896,11 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
             }
         }
-        else if (ns != LXA_DOM_NS_HTML
-            && !html_integration_child
-            && token->kind != LXA_HTML_COMMENT
-            && token->kind != LXA_HTML_PROCESSING_INSTRUCTION
-            && token->kind != LXA_HTML_DOCTYPE)
-            return consume_foreign(tree, token, ns);
+        else if (ns != LXA_DOM_NS_HTML && !html_integration_child) {
+            bool reprocess;
+            status = consume_foreign(tree, token, ns, &reprocess);
+            if (status != LXA_OK || !reprocess) return status;
+        }
     }
     if (token->kind == LXA_HTML_START_TAG && named(token->name, "image")) {
         /* HTML's image start tag is reprocessed as img. Keep the token's
@@ -7919,15 +7948,7 @@ reprocess_template_token:
                      : tree->mode == LXA_TREE_IN_HEAD
                        ? tree->head : tree->html;
         }
-        if (token->kind == LXA_HTML_COMMENT)
-            return append_character(tree, parent, LXA_DOM_KIND_COMMENT,
-                                    token->data);
-        status = lxa_dom_nodes_append_pi(tree->nodes, token->name, token->data,
-                                          &child);
-        return status == LXA_OK
-               ? lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         parent, child)
-               : status;
+        return append_comment_or_pi(tree, parent, token);
     }
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (tree->mode == LXA_TREE_AFTER_BODY

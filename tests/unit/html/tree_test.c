@@ -30,6 +30,47 @@ write_bytes(void *context, lxa_span_t bytes)
 }
 
 static void
+check_foreign_after_body_namespace(void)
+{
+    static const struct {
+        const char *input;
+        lxa_dom_namespace_t ns;
+    } cases[] = {
+        {"<svg></body><circle/>", LXA_DOM_NS_SVG},
+        {"<math></html><mrow/>", LXA_DOM_NS_MATHML},
+        {"<svg></html><foreignObject><p>x", LXA_DOM_NS_HTML}
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        lxa_dom_nodes_t *nodes;
+        lxa_html_tree_t tree;
+        lxa_html_tokenizer_t *tokenizer;
+        lxa_dom_ref_t node;
+        lxa_dom_namespace_t ns;
+        TEST_CHECK(lxa_dom_nodes_create(&allocator, &nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+        TEST_CHECK(lxa_html_tokenizer_create(&allocator,
+            lxa_html_tree_on_token, NULL, &tree, &tokenizer) == LXA_OK);
+        TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, span(cases[i].input))
+                   == LXA_HTML_OK);
+        TEST_CHECK(lxa_dom_nodes_first_child(nodes, tree.body, &node)
+                   == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_first_child(nodes, node, &node) == LXA_OK);
+        if (i == 2)
+            TEST_CHECK(lxa_dom_nodes_first_child(nodes, node, &node)
+                       == LXA_OK);
+        TEST_CHECK(lxa_dom_nodes_element_namespace(nodes, node, &ns)
+                   == LXA_OK && ns == cases[i].ns);
+        TEST_CHECK(lxa_html_tokenizer_finish(tokenizer) == LXA_HTML_OK);
+        TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+        lxa_html_tokenizer_destroy(tokenizer);
+        lxa_html_tree_destroy(&tree);
+        lxa_dom_nodes_destroy(nodes);
+    }
+}
+
+
+static void
 check_table_transitions(void)
 {
     static const struct {
@@ -91,7 +132,23 @@ check_table_transitions(void)
          "<td>y</td></tr></tbody></table></template></head><body></body></html>"},
         {"<template><colgroup><html lang=x><col></template>",
          "<html><head><template><colgroup><col></colgroup></template>"
-         "</head><body></body></html>"}
+         "</head><body></body></html>"},
+        {"<svg></body><circle/><g/><!--x--><?x y?><![CDATA[z]]>",
+         "<html><head></head><body><svg><circle></circle><g></g>"
+         "<!--x--><?x y?>z</svg></body></html>"},
+        {"<math></html><mrow/><!--x-->",
+         "<html><head></head><body><math><mrow></mrow><!--x-->"
+         "</math></body></html>"},
+        {"<svg><g></body></g><circle/>",
+         "<html><head></head><body><svg><g></g><circle></circle>"
+         "</svg></body></html>"},
+        {"<svg></html><foreignObject><p>x",
+         "<html><head></head><body><svg><foreignObject><p>x</p>"
+         "</foreignObject></svg></body></html>"},
+        {"<svg></body><p>x",
+         "<html><head></head><body><svg></svg><p>x</p></body></html>"},
+        {"<svg></body></html><!--x-->",
+         "<html><head></head><body><svg><!--x--></svg></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -588,6 +645,7 @@ int
 main(void)
 {
     check_table_transitions();
+    check_foreign_after_body_namespace();
     check_detached_table_fostering();
     check_adoption_removal_limits();
     check_option_pop_failure();
