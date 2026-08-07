@@ -8085,10 +8085,20 @@ reprocess_body_start:
                 }
                 return foster_element(tree, token, true);
             }
-            if (named(token->name, "svg") || named(token->name, "math"))
+            if (named(token->name, "svg") || named(token->name, "math")) {
+                if (named(top, "colgroup")) {
+                    status = lxa_budget_check(tree->nodes->budget,
+                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+                    if (status == LXA_OK)
+                        status = lxa_budget_check(tree->nodes->budget,
+                            LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
+                    if (status == LXA_OK) status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
                 return foster_foreign(tree, token,
                     named(token->name, "svg") ? LXA_DOM_NS_SVG
                                               : LXA_DOM_NS_MATHML);
+            }
             status = supported_container(tree, token->name, &container);
             if (status != LXA_OK) return status;
             /* The table-mode "anything else" rule foster-parents marquee

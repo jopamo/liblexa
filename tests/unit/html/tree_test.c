@@ -30,7 +30,7 @@ write_bytes(void *context, lxa_span_t bytes)
 }
 
 static void
-check_caption_transitions(void)
+check_table_transitions(void)
 {
     static const struct {
         const char *input, *output;
@@ -49,7 +49,15 @@ check_caption_transitions(void)
          "</tbody>y</template></head><body></body></html>"},
         {"<template><caption>x<td>y</template>",
          "<html><head><template><caption>x</caption><tbody><tr><td>y</td>"
-         "</tr></tbody></template></head><body></body></html>"}
+         "</tr></tbody></template></head><body></body></html>"},
+        {"<table><colgroup><math><mi>x</mi></math> y<col></table>",
+         "<html><head></head><body><math><mi>x</mi></math> y<table>"
+         "<colgroup></colgroup><colgroup><col></colgroup></table>"
+         "</body></html>"},
+        {"<table><colgroup><svg><g>x</g></svg> y<col></table>",
+         "<html><head></head><body><svg><g>x</g></svg> y<table>"
+         "<colgroup></colgroup><colgroup><col></colgroup></table>"
+         "</body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -545,7 +553,7 @@ check_detached_table_fostering(void)
 int
 main(void)
 {
-    check_caption_transitions();
+    check_table_transitions();
     check_detached_table_fostering();
     check_adoption_removal_limits();
     check_option_pop_failure();
