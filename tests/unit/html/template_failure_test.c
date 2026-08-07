@@ -376,6 +376,12 @@ main(void)
         "<body><template><col>A \tB<template></template>"
         "<html data-x=y><colgroup><div><col></template>";
     static const unsigned char direct_group_content[] =
+        "<template><html><tr><td>x</template>"
+        "<template><head><tr><td>x</template>"
+        "<template><body><tr><td>x</template>"
+        "<template><frameset><tr><td>x</template>"
+        "<template><frame><tr><td>x</template>"
+        "<template><table><template><frame><tr><td>x</template><tr><td>y</template>"
         "<template><colgroup><noframes>x</noframes><col>"
         "<tr><td>y</template><template><colgroup><object>x</object>"
         "<col><tr><td>z</template>"

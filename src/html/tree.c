@@ -5226,15 +5226,15 @@ reprocess_template_token:
             }
         }
         if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "html"))
-            return LXA_OK; /* The root cannot reopen inside a template. */
-        if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "body")
+            && (named(token->name, "html")
+                || named(token->name, "head")
+                || named(token->name, "body")
                 || named(token->name, "frameset")
                 || named(token->name, "frame")))
         {
             size_t length = lxa_vector_length(&tree->template_elements);
-            if (length > template_boundary(tree)) {
+            if (length > template_boundary(tree)
+                && !named(token->name, "html")) {
                 const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
                     tree->template_elements.bytes.data;
                 lxa_span_t top;
@@ -5249,6 +5249,8 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
             }
+            if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
+                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
             return LXA_OK; /* None can enter a template fragment. */
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
