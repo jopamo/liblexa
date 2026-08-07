@@ -3366,6 +3366,7 @@ template_fostered_descendant(lxa_span_t name,
     }
     *result = block_container(name) || heading(name)
         || named(name, "p") || named(name, "li")
+        || named(name, "form")
         || named(name, "dt") || named(name, "dd")
         || template_crossed_inline(name)
         || named(name, "rt") || named(name, "rp")
