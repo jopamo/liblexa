@@ -252,6 +252,8 @@ main(void)
     static const unsigned char table[] =
         "<body><template><table><tr><td>x</td></tr></table></template>";
     static const unsigned char virtual_foreign_recovery[] =
+        "<template><tr><caption><div><col>x<td>y</template>"
+        "<template><td><tr><div><col>x<td>y</template>"
         "<template><thead><th><form>x<colgroup><col>y</template>"
         "<form><template><tr><td><form>x<tfoot>y</template></form><form>z</form>"
         "<template><tbody><math><unknown><mtext><tr><td>y</template>"

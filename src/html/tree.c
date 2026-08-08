@@ -3437,7 +3437,8 @@ template_open_table_part(lxa_html_tree_t *tree,
     bool row = named(token->name, "tr");
     bool cell = named(token->name, "td") || named(token->name, "th");
     bool caption = named(token->name, "caption");
-    bool group = named(token->name, "colgroup");
+    bool column = named(token->name, "col");
+    bool group = column || named(token->name, "colgroup");
     bool caption_open = false, ordinary_above = false, clear_ordinary;
     bool group_open = false;
     bool implied_section = false, implied_row = false;
@@ -3512,7 +3513,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                 }
                 if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, cell ? 3 : row ? 2 : 1,
+                    LXA_BUDGET_NODES, cell ? 3 : row || column ? 2 : 1,
                     &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
                 status = template_pop_elements(tree, template_boundary(tree));
@@ -3908,7 +3909,7 @@ reserve_part:
                                    depth, &tree->nodes->limit_reason);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   extra, &tree->nodes->limit_reason);
+                                   extra + column, &tree->nodes->limit_reason);
     if (status == LXA_OK && extra > length - keep)
         status = lxa_budget_check(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, extra - (length - keep),
@@ -3968,7 +3969,14 @@ reserve_part:
         status = template_push_table_part(tree, &implied);
         if (status != LXA_OK) return status;
     }
-    status = template_push_table_part(tree, token);
+    if (column) {
+        implied.name = literal("colgroup");
+        status = template_push_table_part(tree, &implied);
+        if (status == LXA_OK)
+            status = append_void(tree, template_parent(tree), token);
+    }
+    else
+        status = template_push_table_part(tree, token);
     if (status == LXA_OK) tree->template_insertion_mode = next_mode;
     return status;
 }
@@ -4044,17 +4052,7 @@ template_open_column(lxa_html_tree_t *tree,
         || (!named(top, "table") && !named(top, "colgroup"))) {
         /* The in-table col rule clears an open row/cell (or fostered
          * descendant) before inserting its implicit column group. */
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   2, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        implied.kind = LXA_HTML_START_TAG;
-        implied.name = literal("colgroup");
-        status = template_open_table_part(tree, &implied);
-        if (status != LXA_OK
-            || lxa_vector_length(&tree->template_elements)
-               == template_boundary(tree))
-            return status; /* No table received the implied group. */
-        return append_void(tree, template_parent(tree), token);
+        return template_open_table_part(tree, token);
     }
     add_group = named(top, "table");
     count = add_group ? 2 : 1;

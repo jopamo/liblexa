@@ -71,6 +71,61 @@ check_foreign_after_body_namespace(void)
 
 
 static void
+check_template_column_admission_limits(void)
+{
+    static const char *inputs[] = {
+        "<template><td><tr><div>",
+        "<template><tr><caption><div>",
+        "<template><caption><div>",
+        "<template><table><tr><td><div>"
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        for (uint32_t capacity = 0; capacity < 3; ++capacity) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_html_token_t column = {.kind = LXA_HTML_START_TAG,
+                                       .name = span("col")};
+            size_t count, open;
+            lxa_html_template_mode_t mode;
+            bool ignored = i < 2, limited = !ignored && capacity < 2;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget,
+                NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget,
+                &tokenizer) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, span(inputs[i]))
+                       == LXA_HTML_OK);
+            count = lxa_dom_nodes_length(nodes);
+            open = lxa_vector_length(&tree.template_elements);
+            mode = tree.template_insertion_mode;
+            budget.limits.max_nodes = (uint32_t) count + capacity;
+            TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &column)
+                       == (limited ? LXA_ERROR_LIMIT : LXA_OK));
+            TEST_CHECK(lxa_dom_nodes_length(nodes)
+                       == count + (ignored || limited ? 0 : 2));
+            if (ignored || limited)
+                TEST_CHECK(lxa_vector_length(&tree.template_elements) == open
+                           && tree.template_insertion_mode == mode);
+            if (limited) TEST_CHECK(nodes->limit_reason == LXA_BUDGET_NODES);
+            budget.limits = lxa_limits_default();
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                       && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                       && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+    }
+}
+
+
+static void
 check_table_transitions(void)
 {
     static const struct {
@@ -148,7 +203,19 @@ check_table_transitions(void)
         {"<svg></body><p>x",
          "<html><head></head><body><svg></svg><p>x</p></body></html>"},
         {"<svg></body></html><!--x-->",
-         "<html><head></head><body><svg><!--x--></svg></body></html>"}
+         "<html><head></head><body><svg><!--x--></svg></body></html>"},
+        {"<template><tr><caption><div><col span=2>x<td>y",
+         "<html><head><template><tr></tr><div>x</div><tr><td>y</td></tr>"
+         "</template></head><body></body></html>"},
+        {"<template><td><tr><div><col>x<td>y",
+         "<html><head><template><td></td><div>x</div><td>y</td></template>"
+         "</head><body></body></html>"},
+        {"<template><th><caption><b><col>x",
+         "<html><head><template><th></th><b>x</b></template></head>"
+         "<body></body></html>"},
+        {"<template><caption>x<col span=2>y",
+         "<html><head><template><caption>x</caption><colgroup>"
+         "<col span=\"2\"></colgroup>y</template></head><body></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();
@@ -646,6 +713,7 @@ main(void)
 {
     check_table_transitions();
     check_foreign_after_body_namespace();
+    check_template_column_admission_limits();
     check_detached_table_fostering();
     check_adoption_removal_limits();
     check_option_pop_failure();
