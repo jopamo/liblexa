@@ -131,6 +131,20 @@ check_table_transitions(void)
     static const struct {
         const char *input, *output;
     } cases[] = {
+        {"<template><b><i><table><colgroup><input href=x>x",
+         "<html><head><template><b><i><input href=\"x\">x<table><colgroup>"
+         "</colgroup></table></i></b></template></head><body></body></html>"},
+        {"<template><b><table><colgroup><wbr><img src=x><image src=y> z",
+         "<html><head><template><b><wbr><img src=\"x\"><img src=\"y\"> z"
+         "<table><colgroup></colgroup></table></b></template></head>"
+         "<body></body></html>"},
+        {"<template><b><table><colgroup><input type=hidden> x",
+         "<html><head><template><b> x<table><colgroup></colgroup>"
+         "<input type=\"hidden\"></table></b></template></head>"
+         "<body></body></html>"},
+        {"<template><b><table><colgroup><param>x",
+         "<html><head><template><b><param>x<table><colgroup></colgroup>"
+         "</table></b></template></head><body></body></html>"},
         {"<html lang=old><div></body><html lang=new dir=rtl><!--c-->"
          "<?x y?><html title=t>",
          "<html lang=\"old\" dir=\"rtl\" title=\"t\"><head></head><body>"

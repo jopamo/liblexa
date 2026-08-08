@@ -5616,13 +5616,6 @@ reprocess_template_token:
                         }
                         return append_void(tree, template_parent(tree), token);
                     }
-                    status = template_foster_element(tree, token, false, NULL,
-                                                     LXA_DOM_NS_HTML);
-                    if (status == LXA_OK && in_colgroup) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
                     && (named(token->name, "textarea")
@@ -5653,6 +5646,18 @@ reprocess_template_token:
                     && (body_void(token->name)
                         || named(token->name, "image"))) {
                     bool in_colgroup = named(top, "colgroup");
+                    if (in_colgroup) {
+                        status = lxa_budget_check(tree->nodes->budget,
+                            LXA_BUDGET_NODES, 1,
+                            &tree->nodes->limit_reason);
+                        if (status == LXA_OK)
+                            status = lxa_budget_check(tree->nodes->budget,
+                                LXA_BUDGET_WORK, 2,
+                                &tree->nodes->limit_reason);
+                        if (status == LXA_OK)
+                            status = template_pop_elements(tree, last);
+                        if (status != LXA_OK) return status;
+                    }
                     if (named(token->name, "image")) {
                         adjusted = *token;
                         adjusted.name = literal("img");
@@ -5660,10 +5665,6 @@ reprocess_template_token:
                     }
                     status = template_foster_element(tree, token, false, NULL,
                                                      LXA_DOM_NS_HTML);
-                    if (status == LXA_OK && in_colgroup) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
