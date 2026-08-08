@@ -7987,8 +7987,10 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_TEXT && space_only(token->data))
             return insert_data_text(tree, tree->body, token->data,
                                     false, false);
-        /* Unexpected content after an end tag is processed in body mode. */
-        tree->mode = LXA_TREE_IN_BODY;
+        /* An html start uses body rules without leaving the current mode. */
+        if (token->kind != LXA_HTML_START_TAG
+            || !named(token->name, "html"))
+            tree->mode = LXA_TREE_IN_BODY;
     }
     if (tree->mode == LXA_TREE_IN_BODY
         && token->kind == LXA_HTML_END_TAG

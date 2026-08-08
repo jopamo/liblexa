@@ -1148,6 +1148,9 @@ main(void)
         "<template><table><colgroup><form id=ignored><col>"
         "</table></template>";
     static const unsigned char body_descendant[] =
+        "<html lang=old><div></body><html lang=new dir=rtl><!--c-->"
+        "<?x y?><html title=t></div></body></html><html id=x>"
+        "<!--d--><?z q?><script><b></script>"
         "<body><template><div><tr><td></td><table><tr><td>x"
         "</table></div></template>";
     static const unsigned char direct_row_foster[] =

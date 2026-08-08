@@ -131,6 +131,19 @@ check_table_transitions(void)
     static const struct {
         const char *input, *output;
     } cases[] = {
+        {"<html lang=old><div></body><html lang=new dir=rtl><!--c-->"
+         "<?x y?><html title=t>",
+         "<html lang=\"old\" dir=\"rtl\" title=\"t\"><head></head><body>"
+         "<div></div></body><!--c--><?x y?></html>"},
+        {"<div></body></html><html lang=x><!--c--><?x y?>",
+         "<html lang=\"x\"><head></head><body><div></div></body></html>"
+         "<!--c--><?x y?>"},
+        {"<div></body><html><!--a--><script><b></script><!--b-->",
+         "<html><head></head><body><div><script><b></script><!--b-->"
+         "</div></body><!--a--></html>"},
+        {"<div></body></html><html><!--a--><script><b></script><!--b-->",
+         "<html><head></head><body><div><script><b></script><!--b-->"
+         "</div></body></html><!--a-->"},
         {"<table><colgroup><head href=x> <script><a href=x>",
          "<html><head></head><body><table><colgroup></colgroup> "
          "<script><a href=x></script></table></body></html>"},
