@@ -4509,6 +4509,37 @@ template_retain_formatting_chain(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                          size_t boundary, bool *column_group)
+{
+    size_t length = lxa_vector_length(elements);
+    lxa_status_t status;
+    *column_group = false;
+    if (length > boundary) {
+        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+        lxa_dom_namespace_t ns;
+        lxa_span_t name;
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[length - 1],
+                                                  &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
+                                                 &name);
+        if (status != LXA_OK) return status;
+        *column_group = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
+    }
+    return LXA_OK;
+}
+
+
+static bool
+body_control_start(lxa_span_t name)
+{
+    return named(name, "html") || named(name, "head") || named(name, "body")
+        || named(name, "frameset") || named(name, "frame");
+}
+
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5252,11 +5283,7 @@ reprocess_template_token:
             }
         }
         if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "html")
-                || named(token->name, "head")
-                || named(token->name, "body")
-                || named(token->name, "frameset")
-                || named(token->name, "frame")))
+            && body_control_start(token->name))
         {
             size_t length = lxa_vector_length(&tree->template_elements);
             if (length > template_boundary(tree)
@@ -7976,6 +8003,28 @@ reprocess_template_token:
         token = &adjusted;
     }
 reprocess_body_start:
+    if (tree->mode == LXA_TREE_IN_BODY
+        && ((token->kind == LXA_HTML_START_TAG
+             && body_control_start(token->name)
+             && !named(token->name, "html"))
+            || (token->kind == LXA_HTML_END_TAG
+                && named(token->name, "head")))) {
+        bool column_group;
+        status = current_html_column_group(tree, &tree->open_elements, 0,
+                                            &column_group);
+        if (status != LXA_OK) return status;
+        if (column_group) {
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                                        2, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+            if (token->kind == LXA_HTML_START_TAG
+                && (named(token->name, "frame")
+                    || named(token->name, "frameset")))
+                return LXA_OK;
+        }
+    }
     /* A template end without an active template is ignored by the in-head
      * rule, including when that rule is reached from body/table/select. */
     if (token->kind == LXA_HTML_END_TAG

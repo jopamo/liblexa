@@ -131,6 +131,9 @@ check_table_transitions(void)
     static const struct {
         const char *input, *output;
     } cases[] = {
+        {"<table><colgroup><head href=x> <script><a href=x>",
+         "<html><head></head><body><table><colgroup></colgroup> "
+         "<script><a href=x></script></table></body></html>"},
         {"<template><caption>x<caption>y</template>",
          "<html><head><template><caption>x</caption><caption>y</caption>"
          "</template></head><body></body></html>"},
@@ -242,7 +245,20 @@ check_table_transitions(void)
          "</svg></template></head><body></body></html>"},
         {"<template><table><colgroup></dl><!--c-->",
          "<html><head><template><table><colgroup></colgroup><!--c-->"
-         "</table></template></head><body></body></html>"}
+         "</table></template></head><body></body></html>"},
+        {"<table><colgroup> <head> \n<col>",
+         "<html><head></head><body><table><colgroup> </colgroup> \n"
+         "<colgroup><col></colgroup></table></body></html>"},
+        {"<table><colgroup><body class=x> <col>",
+         "<html><head></head><body class=\"x\"><table><colgroup></colgroup> "
+         "<colgroup><col></colgroup></table></body></html>"},
+        {"<table><colgroup><frameset> <col><frame> <col>",
+         "<html><head></head><body><table><colgroup></colgroup> "
+         "<colgroup><col></colgroup> <colgroup><col></colgroup></table>"
+         "</body></html>"},
+        {"<table><colgroup><html lang=x> <col>",
+         "<html lang=\"x\"><head></head><body><table><colgroup> <col>"
+         "</colgroup></table></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();

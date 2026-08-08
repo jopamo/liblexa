@@ -516,6 +516,10 @@ main(void)
         "<template><table><colgroup><b class=x><em id=y>text</em>"
         "</b><col></table></template>";
     static const unsigned char colgroup_foreign[] =
+        "<table><colgroup> <head> \n<col></table>"
+        "<table><colgroup><body class=x> <col></table>"
+        "<table><colgroup><frameset> <col><frame> <col></table>"
+        "<table><colgroup><html lang=x> <col></table>"
         "<template><svg><colgroup></dl><!--c--><?x y?></template>"
         "<template><math><colgroup></div><!--c--></template>"
         "<table><thead><math><mtext><table>x<tr><td>y</table>"
