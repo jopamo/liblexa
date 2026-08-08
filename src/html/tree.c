@@ -5433,13 +5433,17 @@ reprocess_template_token:
                 tree->template_elements.bytes.data;
             size_t last = lxa_vector_length(&tree->template_elements) - 1;
             lxa_span_t top;
+            lxa_dom_namespace_t ns;
             status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                         1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
                 status = lxa_dom_nodes_element_name(tree->nodes, open[last],
                                                      &top);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_namespace(tree->nodes,
+                                                          open[last], &ns);
             if (status != LXA_OK) return status;
-            if (last == template_boundary(tree)
+            if (ns == LXA_DOM_NS_HTML && last == template_boundary(tree)
                 && named(top, "colgroup")
                 && token->kind == LXA_HTML_START_TAG
                 && !named(token->name, "col")
@@ -5463,9 +5467,10 @@ reprocess_template_token:
                 if (named(token->name, "form")) return LXA_OK;
                 goto reprocess_template_token;
             }
-            if (named(top, "table") || named(top, "colgroup")
-                || table_section(top)
-                || named(top, "tr")) {
+            if (ns == LXA_DOM_NS_HTML
+                && (named(top, "table") || named(top, "colgroup")
+                    || table_section(top)
+                    || named(top, "tr"))) {
                 if (named(top, "colgroup")
                     && token->kind == LXA_HTML_END_TAG
                     && (table_section(token->name)
@@ -5821,7 +5826,8 @@ reprocess_template_token:
                     && !named(token->name, "tr"))
                     return LXA_ERROR_UNSUPPORTED;
             }
-            else if ((named(top, "caption")
+            else if (ns == LXA_DOM_NS_HTML
+                     && (named(top, "caption")
                       || named(top, "td") || named(top, "th"))
                      && token->kind == LXA_HTML_START_TAG
                      && (table_section(token->name)

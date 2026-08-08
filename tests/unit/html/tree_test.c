@@ -230,7 +230,19 @@ check_table_transitions(void)
          "</td></tr></tbody></table></body></html>"},
         {"<table><caption><svg><foreignObject><table>x",
          "<html><head></head><body><table><caption><svg><foreignObject>x"
-         "<table></table></foreignObject></svg></caption></table></body></html>"}
+         "<table></table></foreignObject></svg></caption></table></body></html>"},
+        {"<template><svg><colgroup></dl><!--c--><?x y?>",
+         "<html><head><template><svg><colgroup><!--c--><?x y?>"
+         "</colgroup></svg></template></head><body></body></html>"},
+        {"<template><math><colgroup></div><!--c-->",
+         "<html><head><template><math><colgroup><!--c--></colgroup>"
+         "</math></template></head><body></body></html>"},
+        {"<template><svg><colgroup></colgroup><!--c-->",
+         "<html><head><template><svg><colgroup></colgroup><!--c-->"
+         "</svg></template></head><body></body></html>"},
+        {"<template><table><colgroup></dl><!--c-->",
+         "<html><head><template><table><colgroup></colgroup><!--c-->"
+         "</table></template></head><body></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();
