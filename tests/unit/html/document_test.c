@@ -12736,7 +12736,12 @@ main(void)
         &parse_result, &reason, &document) == LXA_ERROR_LIMIT);
     TEST_CHECK(document == NULL && reason == LXA_BUDGET_NODES);
     limits = lxa_limits_default();
-    limits.max_open_elements = 6; /* foreign select is the stack high-water */
+    limits.max_open_elements = 5; /* foreign select is the stack high-water */
+    TEST_CHECK(lxa_html_document_parse(&allocator, &limits,
+        span("<div><table><svg><foreignObject><select><table><s>"),
+        &parse_result, &reason, &document) == LXA_ERROR_LIMIT);
+    TEST_CHECK(document == NULL && reason == LXA_BUDGET_OPEN_ELEMENTS);
+    limits.max_open_elements = 6;
     TEST_CHECK(lxa_html_document_parse(&allocator, &limits,
         span("<div><table><svg><foreignObject><select><table><s>"),
         &parse_result, &reason, &document) == LXA_OK);

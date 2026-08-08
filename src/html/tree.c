@@ -2014,7 +2014,7 @@ open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_namespace(tree->nodes,
                                                                open[--i], &ns);
                 if (status != LXA_OK) return status;
-                if (ns != LXA_DOM_NS_HTML) break;
+                if (ns != LXA_DOM_NS_HTML) continue;
                 status = lxa_dom_nodes_element_name(tree->nodes, open[i],
                                                      &name);
                 if (status != LXA_OK) return status;

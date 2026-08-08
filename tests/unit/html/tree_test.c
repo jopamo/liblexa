@@ -215,7 +215,22 @@ check_table_transitions(void)
          "<body></body></html>"},
         {"<template><caption>x<col span=2>y",
          "<html><head><template><caption>x</caption><colgroup>"
-         "<col span=\"2\"></colgroup>y</template></head><body></body></html>"}
+         "<col span=\"2\"></colgroup>y</template></head><body></body></html>"},
+        {"<table><thead><math><mtext><table>x<tr><td>y",
+         "<html><head></head><body><math><mtext></mtext></math><table>"
+         "<thead></thead></table>x<table><tbody><tr><td>y</td></tr></tbody>"
+         "</table></body></html>"},
+        {"<table><tbody><svg><foreignObject><table>x<tr><td>y",
+         "<html><head></head><body><svg><foreignObject></foreignObject>"
+         "</svg><table><tbody></tbody></table>x<table><tbody><tr><td>y</td>"
+         "</tr></tbody></table></body></html>"},
+        {"<table><td><math><mtext><table>x<tr><td>y",
+         "<html><head></head><body><table><tbody><tr><td><math><mtext>x"
+         "<table><tbody><tr><td>y</td></tr></tbody></table></mtext></math>"
+         "</td></tr></tbody></table></body></html>"},
+        {"<table><caption><svg><foreignObject><table>x",
+         "<html><head></head><body><table><caption><svg><foreignObject>x"
+         "<table></table></foreignObject></svg></caption></table></body></html>"}
     };
     static const size_t chunks[] = {SIZE_MAX, 1, 7};
     lxa_allocator_t allocator = lxa_allocator_default();
