@@ -1,6 +1,6 @@
 /* DO NOT EDIT: generated from WHATWG HTML source.html.
  * HTML revision: 2f441941fc523877bd9d5cd7de3b91a81a00ca2e; input SHA-256: bec5f8ad394043ac0ee18ba090ec74ae8760b38af5bdf584db58220c299bb9de.
- * See data/whatwg/html/source.json and LICENSE. */
+ * See LICENSE for the WHATWG standards-data license. */
 /* This list does not include legacy, custom, or parser-only tag names. */
 #ifndef LIBLEXA_GENERATED_HTML_TAGS_H
 #define LIBLEXA_GENERATED_HTML_TAGS_H

@@ -1,5 +1,6 @@
 #include "liblexa/html.h"
 #include "html/tree.h"
+#include "html/tokenizer_tree.h"
 #include "html/input_encoding.h"
 #include <string.h>
 
@@ -259,10 +260,10 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             lxa_html_tree_on_token, NULL, &tree,
             &document->budget, &tokenizer);
         if (status == LXA_OK) {
-            result = lxa_html_tokenizer_feed_prepaid(tokenizer,
+            result = lxa_html_tree_tokenizer_feed_prepaid(tokenizer,
                 (lxa_span_t){decoded.data, decoded.length});
             if (result == LXA_HTML_OK)
-                result = lxa_html_tokenizer_finish(tokenizer);
+                result = lxa_html_tree_tokenizer_finish(tokenizer);
             status = parser_status(result, tokenizer);
             if (status == LXA_ERROR_LIMIT && reason != NULL)
                 *reason = result == LXA_HTML_LIMIT

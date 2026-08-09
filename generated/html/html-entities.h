@@ -1,6 +1,6 @@
 /* DO NOT EDIT: generated from WHATWG HTML entities.json.
  * html-build revision: 283a3531a61106d07d9a7d9fb3e6f3b9bfd33d70; input SHA-256: d741d877ac77c4194c4ad526b5b4a19aef8dfe411ab840a466891cdbb9f362e6.
- * See data/whatwg/html/source.json and LICENSE. */
+ * See LICENSE for the WHATWG standards-data license. */
 #ifndef LIBLEXA_GENERATED_HTML_ENTITIES_H
 #define LIBLEXA_GENERATED_HTML_ENTITIES_H
 #include <stdint.h>

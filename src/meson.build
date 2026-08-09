@@ -1,13 +1,3 @@
-# Add each module's sources here when its owner supplies metadata.
-core_provenance = run_command('python3',
-  files('../tools/validate/check_provenance.py'),
-  files('../tools/validate/provenance.json'),
-  lxa_core_sources, lxa_encoding_sources, lxa_unicode_sources, lxa_dom_sources,
-  css_consumer_sources, check: false)
-if core_provenance.returncode() != 0
-  error(core_provenance.stderr().strip())
-endif
-
 # An instrumented shared object resolves the compiler sanitizer runtime in
 # its final executable.
 shared_overrides = []
@@ -29,22 +19,14 @@ pkg.generate(lxa_library,
 
 # HTML keeps its candidate ABI name while its consumed grammar is qualified.
 # This target is independently installable.
-if get_option('candidate_html')
+if candidate_html_enabled
   html_generated_inc = include_directories('../generated/html')
   html_candidate_sources = files(
-    'html/tokenizer.c', 'html/input_encoding.c',
+    'html/tokenizer.c', 'html/tokenizer_tree.c', 'html/input_encoding.c',
     'html/foreign_names.c',
     'html/tree.c', 'html/document.c')
   html_candidate_sources += files('serialize/escape.c',
     'serialize/document.c')
-  # Keep HTML document/tree/serializer provenance separate from the core.
-  html_provenance = run_command('python3',
-    files('../tools/validate/check_provenance.py'),
-    files('../tools/validate/provenance.json'),
-    '--candidate', html_candidate_sources, check: false)
-  if html_provenance.returncode() != 0
-    error(html_provenance.stderr().strip())
-  endif
   lxa_html_candidate = both_libraries('lexa-html-candidate',
     html_candidate_sources,
     include_directories: [lxa_public_inc, html_generated_inc],

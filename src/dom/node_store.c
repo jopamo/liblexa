@@ -43,18 +43,27 @@ typedef struct {
     bool has_public, has_system, force_quirks;
 } lxa_dom_doctype_t;
 
-/* The tokenizer folds ASCII uppercase before handing names to the tree.
- * Keep raw markup delimiters out of the owned store: the HTML serializer
- * writes names verbatim. Bytes >= 0x80 come from the decoder/tokenizer.
- */
+typedef enum {
+    HTML_NAME_PUBLIC,
+    HTML_NAME_TOKEN_TAG,
+    HTML_NAME_TOKEN_ATTRIBUTE
+} html_name_kind_t;
+
+/* Public constructors exclude markup delimiters. Parser names instead follow
+ * their tokenizer context; the serializer writes both forms verbatim. */
 static bool
-html_name_byte(uint8_t c)
+html_name_byte(uint8_t c, size_t index, html_name_kind_t kind)
 {
-    return c != 0 && c != ' ' && c != '\n' && c != '\r'
-           && c != '\t' && c != '\f' && c != '/'
-           && c != '<' && c != '>' && c != '='
-           && c != '"' && c != '\''
-           && (c < 'A' || c > 'Z');
+    if (c == 0 || c == ' ' || c == '\n' || c == '\r'
+        || c == '\t' || c == '\f' || c == '/' || c == '>'
+        || (c >= 'A' && c <= 'Z'))
+        return false;
+    if (c == '<' || c == '"' || c == '\'')
+        return kind != HTML_NAME_PUBLIC;
+    if (c == '=')
+        return kind == HTML_NAME_TOKEN_TAG
+               || (kind == HTML_NAME_TOKEN_ATTRIBUTE && index == 0);
+    return true;
 }
 
 lxa_status_t
@@ -734,8 +743,81 @@ string_source(const lxa_dom_nodes_t *nodes, lxa_span_t span,
 }
 
 lxa_status_t
-lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
-    lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out)
+lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
+                               lxa_span_t bytes)
+{
+    lxa_dom_record_t record;
+    lxa_dom_character_t old, *characters;
+    size_t length, total, original, offset, source, copied;
+    bool self, extend;
+    lxa_status_t status;
+    if (nodes == NULL || (bytes.data == NULL && bytes.length != 0))
+        return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = lxa_dom_nodes_read(nodes, text, &record);
+    if (status != LXA_OK) return status;
+    if (record.kind != LXA_DOM_KIND_TEXT
+        || record.payload >= lxa_vector_length(&nodes->characters))
+        return LXA_ERROR_ARGUMENT;
+    old = ((const lxa_dom_character_t *)
+           nodes->characters.bytes.data)[record.payload];
+    original = nodes->strings.length;
+    if (old.offset > original || old.length > original - old.offset)
+        return LXA_ERROR_ARGUMENT;
+    if (bytes.length == 0) return LXA_OK;
+    status = string_source(nodes, bytes, &self, &source);
+    if (status != LXA_OK) return status;
+    extend = old.offset + old.length == original;
+    offset = extend ? old.offset : original;
+    status = lxa_size_add(old.length, bytes.length, &length);
+    if (status == LXA_OK)
+        status = lxa_size_add(extend ? 0 : old.length, bytes.length, &copied);
+    if (status == LXA_OK) status = lxa_size_add(original, copied, &total);
+    if (status != LXA_OK) return status;
+    if (total > nodes->charged_string_bytes)
+        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+            total - nodes->charged_string_bytes, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, copied,
+                                   &nodes->limit_reason);
+    if (status == LXA_OK) status = lxa_buffer_reserve(&nodes->strings, total);
+    if (status != LXA_OK) {
+        if (status == LXA_ERROR_LIMIT
+            && nodes->limit_reason == LXA_BUDGET_COUNT)
+            nodes->limit_reason = LXA_BUDGET_MEMORY;
+        return status;
+    }
+    if (total > nodes->charged_string_bytes) {
+        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+            total - nodes->charged_string_bytes, &nodes->limit_reason);
+        if (status != LXA_OK) return status;
+    }
+    if (!extend)
+        status = lxa_buffer_append_self(&nodes->strings, old.offset, old.length);
+    if (status == LXA_OK)
+        status = self ? lxa_buffer_append_self(&nodes->strings, source,
+                                                bytes.length)
+                      : lxa_buffer_append(&nodes->strings, bytes);
+    if (status != LXA_OK) {
+        lxa_buffer_truncate(&nodes->strings, original);
+        if (status == LXA_ERROR_LIMIT)
+            nodes->limit_reason = LXA_BUDGET_MEMORY;
+        return status;
+    }
+    characters = (lxa_dom_character_t *) nodes->characters.bytes.data;
+    characters[record.payload].offset = offset;
+    characters[record.payload].length = length;
+    if (total > nodes->charged_string_bytes) {
+        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+                          total - nodes->charged_string_bytes, NULL);
+        nodes->charged_string_bytes = total;
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
+    lxa_dom_namespace_t ns, html_name_kind_t kind, lxa_dom_ref_t *out)
 {
     lxa_dom_element_t element;
     lxa_dom_record_t record;
@@ -780,7 +862,7 @@ lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
         if (status != LXA_OK) {
             return status;
         }
-        if (!html_name_byte(c)
+        if (!html_name_byte(c, i, kind)
             && !(ns != LXA_DOM_NS_HTML && c >= 'A' && c <= 'Z')) {
             return LXA_ERROR_UNSUPPORTED;
         }
@@ -961,8 +1043,21 @@ lxa_status_t
 lxa_dom_nodes_append_html_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
                                    lxa_dom_ref_t *out)
 {
-    return lxa_dom_nodes_append_namespaced_element(nodes, name,
-                                                    LXA_DOM_NS_HTML, out);
+    return append_element(nodes, name, LXA_DOM_NS_HTML, HTML_NAME_PUBLIC, out);
+}
+
+lxa_status_t
+lxa_dom_nodes_append_parsed_html_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
+                                          lxa_dom_ref_t *out)
+{
+    return append_element(nodes, name, LXA_DOM_NS_HTML, HTML_NAME_TOKEN_TAG, out);
+}
+
+lxa_status_t
+lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
+    lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out)
+{
+    return append_element(nodes, name, ns, HTML_NAME_TOKEN_TAG, out);
 }
 
 lxa_status_t
@@ -1215,7 +1310,8 @@ check_template_parent(lxa_dom_nodes_t *nodes, lxa_id_t parent)
 
 static lxa_status_t
 append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
-                 bool foreign, lxa_dom_attr_namespace_t ns, lxa_dom_ref_t *out)
+                 bool foreign, lxa_dom_attr_namespace_t ns,
+                 html_name_kind_t kind, lxa_dom_ref_t *out)
 {
     lxa_dom_attr_t attr;
     lxa_dom_record_t record;
@@ -1264,7 +1360,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         if (status != LXA_OK) {
             return status;
         }
-        if (!html_name_byte(c)
+        if (!html_name_byte(c, i, kind)
             && !(foreign && c >= 'A' && c <= 'Z')) {
             return LXA_ERROR_UNSUPPORTED;
         }
@@ -1389,7 +1485,15 @@ lxa_dom_nodes_append_html_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out)
 {
     return append_attribute(nodes, name, value, false,
-                            LXA_DOM_ATTR_NS_NONE, out);
+                            LXA_DOM_ATTR_NS_NONE, HTML_NAME_PUBLIC, out);
+}
+
+lxa_status_t
+lxa_dom_nodes_append_parsed_html_attribute(lxa_dom_nodes_t *nodes,
+    lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out)
+{
+    return append_attribute(nodes, name, value, false, LXA_DOM_ATTR_NS_NONE,
+                             HTML_NAME_TOKEN_ATTRIBUTE, out);
 }
 
 lxa_status_t
@@ -1397,7 +1501,8 @@ lxa_dom_nodes_append_foreign_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_attr_namespace_t ns,
     lxa_dom_ref_t *out)
 {
-    return append_attribute(nodes, name, value, true, ns, out);
+    return append_attribute(nodes, name, value, true, ns,
+                             HTML_NAME_TOKEN_ATTRIBUTE, out);
 }
 
 lxa_status_t
@@ -3555,7 +3660,8 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
          && (removing || host.kind != LXA_DOM_KIND_DOCUMENT))
         || (moved.kind != LXA_DOM_KIND_ELEMENT
             && moved.kind != LXA_DOM_KIND_TEXT
-            && moved.kind != LXA_DOM_KIND_COMMENT)
+            && moved.kind != LXA_DOM_KIND_COMMENT
+            && moved.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION)
         || (host.kind == LXA_DOM_KIND_ELEMENT
             && host.payload >= lxa_vector_length(&nodes->elements))
         || (moved.kind == LXA_DOM_KIND_ELEMENT
@@ -3565,19 +3671,9 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         || (target_id != LXA_ID_NONE
             && (target.parent != host_id || target_id < nodes->retired
                 || target_id >= length))
-        || (removing && (old_id < nodes->retired || old_id >= length))
         || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE))
         return LXA_ERROR_ARGUMENT;
-    status = check_template_parent(nodes, host_id);
-    if (status != LXA_OK) return status;
-    if (lxa_vector_length(&nodes->templates) != 0) {
-        status = check_virtual_ancestor(nodes, host_id, child_id,
-                                        &nodes->limit_reason);
-        if (status != LXA_OK) return status;
-    }
-    records = (lxa_dom_record_t *) nodes->records.bytes.data;
     if (removing) {
-        old = &records[old_id];
         status = attached_child_links(nodes, child_id, &moved);
         if (status != LXA_OK) return status;
     }
@@ -3591,6 +3687,15 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         if (status != LXA_OK) return status;
     }
     if (external_owner.handle == child.handle) external_owner = (lxa_dom_ref_t){0};
+    status = check_template_parent(nodes, host_id);
+    if (status != LXA_OK) return status;
+    if (lxa_vector_length(&nodes->templates) != 0) {
+        status = check_virtual_ancestor(nodes, host_id, child_id,
+                                        &nodes->limit_reason);
+        if (status != LXA_OK) return status;
+    }
+    records = (lxa_dom_record_t *) nodes->records.bytes.data;
+    if (removing) old = &records[old_id];
     if (host.kind == LXA_DOM_KIND_DOCUMENT) {
         status = check_document_insertion(nodes, host_id, &host, moved.kind,
                                           target_id);
@@ -3636,11 +3741,17 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         if (entry.kind != LXA_DOM_KIND_ELEMENT
             && entry.kind != LXA_DOM_KIND_TEXT
             && entry.kind != LXA_DOM_KIND_COMMENT
+            && entry.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION
             && entry.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT
             && (inert == 0 || entry.parent != LXA_ID_NONE
                 || entry.prev != LXA_ID_NONE || entry.next != LXA_ID_NONE))
+            return LXA_ERROR_ARGUMENT;
+        if (entry.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
+            && (entry.payload >= lxa_vector_length(&nodes->pis)
+                || entry.first_child != LXA_ID_NONE
+                || entry.last_child != LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_ELEMENT) {
             lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};

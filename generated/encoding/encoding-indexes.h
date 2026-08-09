@@ -1,6 +1,6 @@
 /* DO NOT EDIT: generated from WHATWG Encoding indexes.json.
  * revision: a985b62a9b45c17da3e17a9f0a0b4e30c34c4a8a; input SHA-256: b7c8961095f0b4cae8f4a16a5011e7c84047a60c1277e28ee8df9e56074ee509.
- * See data/whatwg/encoding/source.json and LICENSE. */
+ * See LICENSE for the WHATWG standards-data license. */
 #ifndef LIBLEXA_GENERATED_ENCODING_INDEXES_H
 #define LIBLEXA_GENERATED_ENCODING_INDEXES_H
 #include <stdint.h>

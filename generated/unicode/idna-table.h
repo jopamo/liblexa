@@ -1,6 +1,6 @@
 /* DO NOT EDIT: generated from Unicode 17.0.0 UTS #46.
  * Input SHA-256: 87f05505dc026fdb2bff16132bdc68a8014675836882a9a2b1844540ad3be382
- * See data/unicode/17.0.0/{source.json,LICENSE}. */
+ * See LICENSE for the Unicode standards-data license. */
 #ifndef LIBLEXA_GENERATED_IDNA_H
 #define LIBLEXA_GENERATED_IDNA_H
 #include <stdint.h>

@@ -1,0 +1,16 @@
+/* LXA_HTML_SCAN_CLASS(name, stop_predicate); CR/non-ASCII return to decoding. */
+LXA_HTML_SCAN_CLASS(DATA, c == '<' || c == '&' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(RAW, c == '<' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(PLAIN, lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(ESCAPED, c == '<' || c == '-' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(VALUE_DOUBLE, c == '"' || c == '&' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(VALUE_SINGLE, c == '\'' || c == '&' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(VALUE_UNQUOTED, c == '&' || lxa_html_byte_space(c)
+                   || c == '>' || c == '"' || c == '\'' || c == '<'
+                   || c == '=' || c == '`' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(NAME, lxa_html_byte_upper(c) || lxa_html_byte_space(c)
+                   || c == '/' || c == '>' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(ATTRIBUTE_NAME, lxa_html_byte_upper(c) || lxa_html_byte_space(c)
+                   || c == '/' || c == '>' || c == '=' || c == '"' || c == '\''
+                   || c == '<' || lxa_html_byte_text_stop(c))
+LXA_HTML_SCAN_CLASS(BOGUS_COMMENT, c == '>' || lxa_html_byte_text_stop(c))

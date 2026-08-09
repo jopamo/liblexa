@@ -80,6 +80,10 @@ lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
 lxa_status_t lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
                                               lxa_dom_ref_t parent,
                                               lxa_dom_ref_t child);
+/* Append to typed TEXT storage without changing its handle or links.
+ * Accept string-store aliases; publish the new span only after reserve/copy. */
+lxa_status_t lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t text, lxa_span_t bytes);
 
 typedef struct {
     lxa_id_t element, fragment;
@@ -127,6 +131,12 @@ typedef enum {
     LXA_DOM_ATTR_NS_XMLNS
 } lxa_dom_attr_namespace_t;
 
+/* Parser-only names preserve canonical tokenizer spelling, including
+ * characters rejected by the public DOM constructors. */
+lxa_status_t lxa_dom_nodes_append_parsed_html_element(lxa_dom_nodes_t *nodes,
+    lxa_span_t name, lxa_dom_ref_t *out);
+lxa_status_t lxa_dom_nodes_append_parsed_html_attribute(lxa_dom_nodes_t *nodes,
+    lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,

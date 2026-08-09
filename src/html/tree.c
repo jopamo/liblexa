@@ -4,6 +4,7 @@
 #include "html-categories.h"
 #include "html-tags.h"
 #include "html/tree.h"
+#include "html/tokenizer_classes.h"
 
 static lxa_span_t
 literal(const char *text)
@@ -23,18 +24,63 @@ name_equals_literal(lxa_span_t name, const char *text, size_t length)
  * time instead of rediscovering them for every token and open-stack probe. */
 #define named(name, text) name_equals_literal((name), (text), sizeof(text) - 1)
 
+static const char *
+namespace_name(lxa_dom_namespace_t ns)
+{
+    return ns == LXA_DOM_NS_HTML ? "html"
+        : ns == LXA_DOM_NS_SVG ? "svg"
+        : ns == LXA_DOM_NS_MATHML ? "mathml" : NULL;
+}
+
 static bool
 special_element(lxa_span_t name, lxa_dom_namespace_t ns)
 {
-    const char *namespace_name =
-        ns == LXA_DOM_NS_HTML ? "html"
-        : ns == LXA_DOM_NS_SVG ? "svg"
-        : ns == LXA_DOM_NS_MATHML ? "mathml" : NULL;
+    const char *namespace = namespace_name(ns);
     size_t i;
-    if (namespace_name == NULL) return false;
+    if (namespace == NULL) return false;
     for (i = 0; i < LIBLEXA_HTML_SPECIAL_COUNT; ++i) {
         const liblexa_html_special_tag *tag = &liblexa_html_special_tags[i];
-        if (strcmp(tag->namespace_name, namespace_name) == 0
+        if (strcmp(tag->namespace_name, namespace) == 0
+            && name_equals_literal(name, tag->tag, strlen(tag->tag)))
+            return true;
+    }
+    return false;
+}
+
+static bool
+formatting_tag(lxa_span_t name)
+{
+    for (size_t i = 0; i < LIBLEXA_HTML_FORMATTING_COUNT; ++i) {
+        const char *tag = liblexa_html_formatting_tags[i];
+        if (name_equals_literal(name, tag, strlen(tag))) return true;
+    }
+    return false;
+}
+
+static bool
+formatting_marker_tag(lxa_span_t name)
+{
+    return named(name, "td") || named(name, "th") || named(name, "caption")
+           || named(name, "object") || named(name, "marquee")
+           || named(name, "applet");
+}
+
+typedef enum {
+    SCOPE_NORMAL = 1,
+    SCOPE_LIST_ITEM = 2,
+    SCOPE_BUTTON = 4,
+    SCOPE_TABLE = 8
+} scope_kind_t;
+
+static bool
+scope_boundary(lxa_span_t name, lxa_dom_namespace_t ns, scope_kind_t scope)
+{
+    const char *namespace = namespace_name(ns);
+    if (namespace == NULL) return false;
+    for (size_t i = 0; i < LIBLEXA_HTML_SCOPE_BOUNDARY_COUNT; ++i) {
+        const liblexa_html_scope_boundary *tag = &liblexa_html_scope_boundaries[i];
+        if ((tag->mask & scope) != 0
+            && strcmp(tag->namespace_name, namespace) == 0
             && name_equals_literal(name, tag->tag, strlen(tag->tag)))
             return true;
     }
@@ -62,6 +108,80 @@ heading(lxa_span_t name)
 }
 
 static bool
+implied_end_tag(lxa_span_t name)
+{
+    for (size_t i = 0; i < LIBLEXA_HTML_IMPLIED_END_COUNT; ++i) {
+        const char *tag = liblexa_html_implied_end_tags[i];
+        if (name_equals_literal(name, tag, strlen(tag))) return true;
+    }
+    return false;
+}
+
+static lxa_status_t
+doctype_document_mode(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                       lxa_html_document_mode_t *mode)
+{
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    *mode = LXA_HTML_NO_QUIRKS;
+    if (token->force_quirks || !named(token->name, "html")) {
+        *mode = LXA_HTML_QUIRKS;
+        return LXA_OK;
+    }
+    if (!token->has_public_id && !token->has_system_id) return LXA_OK;
+    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+        LIBLEXA_HTML_DOCTYPE_RULE_COUNT, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = 0; i < LIBLEXA_HTML_DOCTYPE_RULE_COUNT; ++i) {
+        const liblexa_html_doctype_rule *rule = &liblexa_html_doctype_rules[i];
+        lxa_span_t value;
+        bool exact = false;
+        switch (rule->condition) {
+        case LIBLEXA_DOCTYPE_SYSTEM_EXACT:
+            if (!token->has_system_id) continue;
+            value = token->system_id;
+            exact = true;
+            break;
+        case LIBLEXA_DOCTYPE_PUBLIC_EXACT:
+            if (!token->has_public_id) continue;
+            value = token->public_id;
+            exact = true;
+            break;
+        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM:
+            if (token->has_system_id && token->system_id.length != 0) continue;
+            if (!token->has_public_id) continue;
+            value = token->public_id;
+            break;
+        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM:
+            if (!token->has_system_id || token->system_id.length == 0) continue;
+            if (!token->has_public_id) continue;
+            value = token->public_id;
+            break;
+        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX:
+            if (!token->has_public_id) continue;
+            value = token->public_id;
+            break;
+        default:
+            return LXA_ERROR_INTERNAL;
+        }
+        if (value.length < rule->length
+            || (exact && value.length != rule->length))
+            continue;
+        value.length = rule->length;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+            value.length / 8 + (value.length % 8 != 0),
+            &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        if (ascii_case_equals(value, rule->identifier, rule->length)) {
+            *mode = rule->limited ? LXA_HTML_LIMITED_QUIRKS : LXA_HTML_QUIRKS;
+            return LXA_OK;
+        }
+    }
+    return LXA_OK;
+}
+
+static bool
 block_container(lxa_span_t name)
 {
     return named(name, "div") || named(name, "section")
@@ -84,21 +204,16 @@ block_container(lxa_span_t name)
 static bool
 inline_container(lxa_span_t name)
 {
-    return named(name, "span") || named(name, "a")
+    return formatting_tag(name) || named(name, "span")
            || named(name, "ins") || named(name, "slot")
            || named(name, "label")
            || named(name, "abbr") || named(name, "cite")
            || named(name, "data") || named(name, "dfn")
-           || named(name, "font")
            || named(name, "mark") || named(name, "q")
            || named(name, "time")
-           || named(name, "small") || named(name, "big")
            || named(name, "acronym") || named(name, "var")
            || named(name, "sub") || named(name, "sup")
-           || named(name, "em") || named(name, "b")
-           || named(name, "strong") || named(name, "code")
-           || named(name, "i") || named(name, "del")
-           || named(name, "s") || named(name, "strike")
+           || named(name, "del")
            || named(name, "samp") || named(name, "kbd");
 }
 
@@ -128,6 +243,41 @@ annotation_html_integration(lxa_html_tree_t *tree,
     return LXA_OK;
 }
 
+static lxa_status_t
+foreign_breakout_boundary(lxa_html_tree_t *tree, lxa_dom_ref_t element,
+                          bool *boundary)
+{
+    lxa_dom_namespace_t ns;
+    lxa_span_t name;
+    lxa_status_t status = lxa_dom_nodes_element_namespace(
+        tree->nodes, element, &ns);
+    *boundary = false;
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML) {
+        *boundary = true;
+        return LXA_OK;
+    }
+    status = lxa_dom_nodes_element_name(tree->nodes, element, &name);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_SVG)
+        *boundary = named(name, "foreignObject")
+                    || named(name, "title") || named(name, "desc");
+    else if (ns == LXA_DOM_NS_MATHML) {
+        *boundary = mathml_text_integration(name);
+        if (named(name, "annotation-xml"))
+            return annotation_html_integration(tree, element, boundary);
+    }
+    else return LXA_ERROR_INTERNAL;
+    return LXA_OK;
+}
+
+static bool
+select_container(lxa_span_t name)
+{
+    return named(name, "select") || named(name, "option")
+        || named(name, "optgroup");
+}
+
 static bool
 simple_container(lxa_span_t name)
 {
@@ -135,9 +285,24 @@ simple_container(lxa_span_t name)
            || named(name, "p") || named(name, "li")
            || named(name, "dt") || named(name, "dd")
            || named(name, "noscript")
-           || named(name, "select")
-           || named(name, "option") || named(name, "optgroup")
+           || select_container(name)
            || heading(name);
+}
+
+static bool
+ruby_annotation(lxa_span_t name)
+{
+    return named(name, "rb") || named(name, "rtc")
+        || named(name, "rt") || named(name, "rp");
+}
+
+static bool
+container_reconstructs(lxa_span_t name)
+{
+    return !ruby_annotation(name)
+        && (inline_container(name) || !simple_container(name)
+           || named(name, "noscript") || named(name, "button")
+           || select_container(name));
 }
 
 static bool
@@ -225,7 +390,7 @@ static bool
 foreign_html_start_breakout(lxa_span_t name)
 {
     return named(name, "p") || named(name, "div")
-        || named(name, "body") || named(name, "span")
+        || named(name, "head") || named(name, "body") || named(name, "span")
         || named(name, "br") || named(name, "img")
         || named(name, "embed") || named(name, "meta")
         || named(name, "hr") || named(name, "ul")
@@ -280,11 +445,17 @@ supported_container(lxa_html_tree_t *tree,
     bool known;
     lxa_status_t status;
     if (simple_container(name) || named(name, "selectedcontent")
+        || formatting_marker_tag(name)
+        || ruby_annotation(name) || named(name, "ruby")
+        || named(name, "bdi") || named(name, "bdo")
+        || named(name, "datalist") || named(name, "output")
+        || named(name, "progress") || named(name, "meter")
         || named(name, "picture")
         || named(name, "video") || named(name, "audio")
         || named(name, "map") || named(name, "canvas")
         || named(name, "legend") || named(name, "isindex")
-        || named(name, "menuitem") || named(name, "multicol")
+        || named(name, "blink") || named(name, "menuitem")
+        || named(name, "multicol")
         || named(name, "nextid") || named(name, "spacer")) {
         *supported = true;
         return LXA_OK;
@@ -307,11 +478,26 @@ supported_container(lxa_html_tree_t *tree,
 static bool
 space_only(lxa_span_t data)
 {
+    for (size_t i = 0; i < data.length; ++i)
+        if (!lxa_html_byte_tree_space(data.data[i])) return false;
+    return true;
+}
+
+static bool
+null_only(lxa_span_t data)
+{
+    for (size_t i = 0; i < data.length; ++i)
+        if (data.data[i] != 0) return false;
+    return true;
+}
+
+static bool
+null_or_space_only(lxa_span_t data)
+{
     size_t i;
     for (i = 0; i < data.length; ++i) {
         uint8_t c = data.data[i];
-        if (c != ' ' && c != '\n' && c != '\t' && c != '\f' && c != '\r'
-            && c != 0)
+        if (!lxa_html_byte_tree_space(c) && c != 0)
             return false;
     }
     return true;
@@ -324,7 +510,7 @@ ensure_element(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     lxa_dom_ref_t node;
     lxa_status_t status;
     if (slot->handle != LXA_HANDLE_NONE) return LXA_OK;
-    status = lxa_dom_nodes_append_html_element(tree->nodes, literal(name), &node);
+    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, literal(name), &node);
     if (status == LXA_OK)
         status = lxa_dom_nodes_append_constructed_child(tree->nodes, parent,
                                                           node);
@@ -349,9 +535,11 @@ ensure_head(lxa_html_tree_t *tree)
 static lxa_status_t
 ensure_body(lxa_html_tree_t *tree)
 {
+    bool implicit = tree->body.handle == LXA_HANDLE_NONE;
     lxa_status_t status = ensure_head(tree);
     if (status == LXA_OK)
         status = ensure_element(tree, tree->html, "body", &tree->body);
+    if (status == LXA_OK && implicit) tree->frameset_ok = true;
     if (status != LXA_OK || lxa_vector_length(&tree->open_elements) != 0)
         return status;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
@@ -373,19 +561,66 @@ current_element(const lxa_html_tree_t *tree)
     return ((const lxa_dom_ref_t *) tree->open_elements.bytes.data)[count - 1];
 }
 
+static size_t template_boundary(const lxa_html_tree_t *);
+static lxa_dom_ref_t template_parent(const lxa_html_tree_t *);
+static lxa_status_t template_pop_elements(lxa_html_tree_t *, size_t);
+static lxa_status_t template_foster_location(lxa_html_tree_t *,
+                                             lxa_dom_ref_t *, lxa_dom_ref_t *);
+
+static lxa_vector_t *
+formatting_elements(lxa_html_tree_t *tree)
+{
+    return tree->mode == LXA_TREE_TEMPLATE_TEXT
+        ? &tree->template_elements : &tree->open_elements;
+}
+
+static size_t
+formatting_boundary(const lxa_html_tree_t *tree)
+{
+    return tree->mode == LXA_TREE_TEMPLATE_TEXT ? template_boundary(tree) : 0;
+}
+
+static lxa_dom_ref_t
+formatting_parent(const lxa_html_tree_t *tree)
+{
+    return tree->mode == LXA_TREE_TEMPLATE_TEXT
+        ? template_parent(tree) : current_element(tree);
+}
+
 static lxa_status_t
-push_element(lxa_html_tree_t *tree, lxa_dom_ref_t element)
+push_open_reference(lxa_html_tree_t *tree, lxa_vector_t *elements,
+                     lxa_dom_ref_t element)
 {
     lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
         LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    status = lxa_vector_push(&tree->open_elements, &element);
+    status = lxa_vector_push(elements, &element);
     if (status != LXA_OK)
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
     return status;
+}
+
+static lxa_status_t
+push_element(lxa_html_tree_t *tree, lxa_dom_ref_t element)
+{
+    return push_open_reference(tree, &tree->open_elements, element);
+}
+
+static void
+clear_formatting_to_marker(lxa_html_tree_t *tree)
+{
+    const lxa_html_formatting_entry_t *entries =
+        (const lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
+    size_t marker = tree->formatting_marker;
+    size_t start = marker == SIZE_MAX ? 0 : marker;
+    size_t count = lxa_vector_length(&tree->formatting) - start;
+    tree->formatting_marker = marker == SIZE_MAX
+                             ? SIZE_MAX : entries[marker].previous_marker;
+    lxa_vector_erase(&tree->formatting, start, count);
+    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING, count);
 }
 
 static lxa_status_t
@@ -426,491 +661,165 @@ pop_element(lxa_html_tree_t *tree)
         : remove_open_element(tree, &tree->open_elements, length - 1);
 }
 
-static void
-forget_anchor(lxa_html_tree_t *tree)
+static lxa_status_t
+pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    if (tree->active_anchor.handle != LXA_HANDLE_NONE) {
-        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
-                           1);
-        tree->active_anchor = (lxa_dom_ref_t){0};
+    const lxa_dom_ref_t *open =
+        (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
+    size_t length = lxa_vector_length(&tree->open_elements), closures = 0;
+    /* Table recovery closes cells/captions, not other popped marker owners. */
+    if (tree->formatting_marker != SIZE_MAX) {
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, length - keep, &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        for (size_t i = keep; i < length; ++i) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+            if (status != LXA_OK) return status;
+            if (ns == LXA_DOM_NS_HTML
+                && (named(name, "td") || named(name, "th")
+                    || named(name, "caption")))
+                ++closures;
+        }
     }
-}
-
-static void
-forget_pending_formatting(lxa_html_tree_t *tree)
-{
-    if (tree->pending_formatting.handle != LXA_HANDLE_NONE) {
-        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
-                           1);
-        tree->pending_formatting = (lxa_dom_ref_t){0};
+    while (lxa_vector_length(&tree->open_elements) > keep) {
+        lxa_status_t status = pop_element(tree);
+        if (status != LXA_OK) return status;
     }
-}
-
-static void
-forget_pending_template_formatting(lxa_html_tree_t *tree)
-{
-    if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE) {
-        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
-                           1);
-        tree->pending_template_formatting = (lxa_dom_ref_t){0};
+    while (closures != 0) {
+        clear_formatting_to_marker(tree);
+        --closures;
     }
+    return LXA_OK;
 }
 
 static lxa_status_t
-reference_is_open(lxa_html_tree_t *tree, lxa_dom_ref_t ref,
-                  bool *found)
+find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                     size_t boundary, lxa_dom_ref_t ref, size_t *index)
 {
     size_t i;
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    *found = false;
-    for (i = 0; i < lxa_vector_length(&tree->open_elements); ++i) {
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    *index = lxa_vector_length(elements);
+    for (i = boundary; i < lxa_vector_length(elements); ++i) {
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         if (open[i].handle == ref.handle) {
-            *found = true;
+            *index = i;
             break;
         }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+reference_is_open(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool *found)
+{
+    size_t index;
+    lxa_vector_t *elements = formatting_elements(tree);
+    lxa_status_t status = find_open_reference(tree, elements,
+                                             formatting_boundary(tree),
+                                             ref, &index);
+    if (status == LXA_OK)
+        *found = index != lxa_vector_length(elements);
+    return status;
+}
+
+static lxa_status_t
+find_scoped_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                       size_t boundary, lxa_dom_ref_t ref, size_t *index)
+{
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t i = lxa_vector_length(elements);
+    *index = i;
+    while (i > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        --i;
+        if (open[i].handle == ref.handle) {
+            *index = i;
+            break;
+        }
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        if (status != LXA_OK) return status;
+        if (scope_boundary(name, ns, SCOPE_NORMAL)) break;
     }
     return LXA_OK;
 }
 
 static lxa_status_t reserve_open_elements(lxa_html_tree_t *,
                                            size_t);
+static lxa_status_t foster_location(lxa_html_tree_t *,
+                                     lxa_dom_ref_t *, lxa_dom_ref_t *);
 
 static lxa_status_t
-clone_formatting_element(lxa_html_tree_t *tree,
-                         lxa_dom_ref_t old, lxa_dom_ref_t *out)
+root_insertion_location(lxa_html_tree_t *tree, lxa_dom_ref_t target,
+                         lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
 {
-    lxa_dom_ref_t clone, attr = {0}, next, copied;
-    lxa_span_t name, key, value;
-    lxa_status_t status;
-    status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                              1, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, old, &name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_html_element(tree->nodes, name, &clone);
-    while (status == LXA_OK) {
-        status = lxa_dom_nodes_attribute_next(tree->nodes, old, attr, &next);
-        if (status != LXA_OK || next.handle == LXA_HANDLE_NONE) break;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status != LXA_OK) break;
-        status = lxa_dom_nodes_attribute_read(tree->nodes, next, &key, &value);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_html_attribute(tree->nodes, key,
-                                                           value, &copied);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_attach_attribute(tree->nodes, clone, copied);
-        attr = next;
-    }
-    if (status == LXA_OK) *out = clone;
-    return status;
-}
-
-static lxa_status_t
-reconstruct_element(lxa_html_tree_t *tree,
-                    lxa_dom_ref_t old, lxa_dom_ref_t *out)
-{
-    lxa_dom_ref_t clone;
-    lxa_status_t status = reserve_open_elements(tree, 1);
-    if (status == LXA_OK)
-        status = clone_formatting_element(tree, old, &clone);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(
-            tree->nodes, current_element(tree), clone);
-    if (status == LXA_OK) status = push_element(tree, clone);
-    if (status == LXA_OK) *out = clone;
-    return status;
-}
-
-/* The active <a> entry survives implied </li>. Recreate its tag and parsed
- * attributes under the next item before inserting content there. Both the
- * original and reconstructed nodes stay in the canonical ID store. */
-static lxa_status_t
-reconstruct_anchor(lxa_html_tree_t *tree)
-{
-    lxa_status_t status;
-    bool found;
-    if (tree->active_anchor.handle == LXA_HANDLE_NONE) return LXA_OK;
-    status = reference_is_open(tree, tree->active_anchor, &found);
-    if (status != LXA_OK || found) return status;
-    return reconstruct_element(tree, tree->active_anchor,
-                               &tree->active_anchor);
-}
-
-/* Recreate the innermost formatting element after its enclosing formatting
- * end tag was seen out of order. The previous node remains in the tree. */
-static lxa_status_t
-reconstruct_pending_formatting(lxa_html_tree_t *tree)
-{
-    lxa_dom_ref_t old = tree->pending_formatting;
-    lxa_dom_ref_t clone;
-    bool found;
-    lxa_status_t status;
-    if (old.handle == LXA_HANDLE_NONE) return LXA_OK;
-    status = reference_is_open(tree, old, &found);
-    if (status != LXA_OK || found) return status;
-    status = reconstruct_element(tree, old, &clone);
-    if (status == LXA_OK) tree->pending_formatting = clone;
-    return status;
-}
-
-static lxa_status_t
-place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
-                    lxa_dom_ref_t parent, lxa_dom_ref_t before)
-{
-    lxa_dom_ref_t current;
-    lxa_dom_record_t host;
-    bool ancestor;
-    lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, node, &current);
-    if (status == LXA_OK && current.handle != LXA_HANDLE_NONE)
-        status = lxa_dom_nodes_detach_constructed_element(tree->nodes, node);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_parent(tree->nodes, node, &current);
-    if (status != LXA_OK || current.handle != LXA_HANDLE_NONE) return status;
-    status = lxa_dom_nodes_host_including_ancestor(tree->nodes, node, parent,
-                                                   &ancestor);
-    if (status != LXA_OK || ancestor) return status;
-    status = lxa_dom_nodes_read(tree->nodes, parent, &host);
-    if (status != LXA_OK) return status;
-    if (host.kind == LXA_DOM_KIND_DOCUMENT) {
-        size_t visits = 0;
-        status = lxa_dom_nodes_first_child(tree->nodes, parent, &current);
-        while (status == LXA_OK && current.handle != LXA_HANDLE_NONE) {
-            lxa_dom_record_t child;
-            if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_INTERNAL;
-            status = lxa_dom_nodes_read(tree->nodes, current, &child);
-            if (status != LXA_OK || child.kind == LXA_DOM_KIND_ELEMENT)
-                return status;
-            status = lxa_dom_nodes_next_sibling(tree->nodes, current, &current);
-        }
-        if (status != LXA_OK) return status;
-    }
-    if (before.handle != LXA_HANDLE_NONE) {
-        status = lxa_dom_nodes_parent(tree->nodes, before, &current);
-        if (status != LXA_OK || current.handle != parent.handle) return status;
-    }
-    return lxa_dom_nodes_insert_constructed_subtree(tree->nodes, parent, node,
-                                                    before);
-}
-
-static lxa_status_t
-adopt_anchor_blocks(lxa_html_tree_t *tree)
-{
-    size_t length = lxa_vector_length(&tree->open_elements), i, anchor = length;
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    lxa_status_t status;
-    if (tree->pending_formatting.handle != LXA_HANDLE_NONE)
-        return LXA_OK; /* A second formatting entry needs the full list. */
-    for (i = length; i > 1; ) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (open[--i].handle == tree->active_anchor.handle) {
-            anchor = i;
-            break;
-        }
-    }
-    if (anchor == length || anchor + 1 == length)
-        return LXA_OK;
-    /* This is the direct block chain of the adoption algorithm. Do not
-     * rearrange an intervening formatting entry without its own list. */
-    {
-        lxa_span_t common_name;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                 open[anchor - 1],
-                                                 &common_name);
-        if (status != LXA_OK) return status;
-        if (!named(common_name, "body") && !named(common_name, "div")
-            && !named(common_name, "address")
-            && !(named(common_name, "b") && length == anchor + 2))
-            return LXA_OK;
-    }
-    for (i = anchor + 1; i < length; ++i) {
-        lxa_span_t name;
-        lxa_dom_ref_t parent;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_parent(tree->nodes, open[i], &parent);
-        if (status != LXA_OK) return status;
-        if ((!named(name, "div") && !named(name, "address")
-             && !((named(name, "p") || named(name, "button"))
-                  && i == anchor + 1
-                  && length == anchor + 2))
-            || parent.handle != open[i - 1].handle)
-            return LXA_OK;
-    }
-    status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                               length - anchor - 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    while (lxa_vector_length(&tree->open_elements) > anchor + 1) {
-        lxa_dom_ref_t common, block, clone, first;
-        size_t visits = 0;
-        open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-        common = open[anchor - 1];
-        block = open[anchor + 1];
-        status = clone_formatting_element(tree, tree->active_anchor, &clone);
-        if (status == LXA_OK)
-            status = place_adoption_node(tree, block, common, (lxa_dom_ref_t){0});
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                              block, clone);
-        while (status == LXA_OK) {
-            status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
-            if (status != LXA_OK || first.handle == clone.handle) break;
-            if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_INTERNAL;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                    clone, first);
-        }
-        if (status != LXA_OK) return status;
-        status = lxa_vector_erase(&tree->open_elements, anchor, 1);
-        if (status != LXA_OK) return status;
-        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
-        status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        status = lxa_vector_insert(&tree->open_elements, anchor + 1, &clone);
-        if (status != LXA_OK) {
-            lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
-            return status;
-        }
-        tree->active_anchor = clone;
-        ++anchor;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-close_active_anchor(lxa_html_tree_t *tree)
-{
-    bool found = false;
-    lxa_status_t status;
-    if (tree->active_anchor.handle != LXA_HANDLE_NONE) {
-        status = reference_is_open(tree, tree->active_anchor, &found);
-        if (status != LXA_OK) return status;
-    }
-    if (found) {
-        const lxa_dom_ref_t *open;
-        status = adopt_anchor_blocks(tree);
-        if (status != LXA_OK) return status;
-        open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-        while (lxa_vector_length(&tree->open_elements) != 0) {
-            bool is_anchor = open[lxa_vector_length(&tree->open_elements) - 1]
-                             .handle == tree->active_anchor.handle;
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-            if (is_anchor) break;
-        }
-    }
-    forget_anchor(tree);
-    return LXA_OK;
-}
-
-static bool
-basic_formatting(lxa_span_t name)
-{
-    return named(name, "b") || named(name, "i")
-           || named(name, "em") || named(name, "strong")
-           || named(name, "code");
-}
-
-/* With no furthest block, closing an anchor under one formatting element
- * leaves that element in the formatting list for the next text token. */
-static lxa_status_t
-close_crossed_anchor_formatting(lxa_html_tree_t *tree,
-                                bool *closed)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->open_elements);
-    lxa_dom_ref_t pending, parent;
     lxa_span_t name;
-    lxa_status_t status;
-    *closed = false;
-    if (tree->active_anchor.handle == LXA_HANDLE_NONE
-        || tree->pending_formatting.handle != LXA_HANDLE_NONE
-        || length < 3
-        || open[length - 2].handle != tree->active_anchor.handle)
-        return LXA_OK;
-    pending = open[length - 1];
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = lxa_dom_nodes_element_namespace(tree->nodes, target,
+                                                          &ns);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, pending, &name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_parent(tree->nodes, pending, &parent);
+        status = lxa_dom_nodes_element_name(tree->nodes, target, &name);
     if (status != LXA_OK) return status;
-    if (!basic_formatting(name)
-        || parent.handle != tree->active_anchor.handle)
-        return LXA_OK;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    /* The inactive formatting entry takes over the anchor's existing slot. */
-    tree->active_anchor = (lxa_dom_ref_t){0};
-    tree->pending_formatting = pending;
-    *closed = true;
-    return LXA_OK;
+    *parent = target;
+    *before = (lxa_dom_ref_t){0};
+    return ns == LXA_DOM_NS_HTML && table_context(name)
+           ? foster_location(tree, parent, before) : LXA_OK;
 }
 
-/* The first furthest-block case: a paragraph directly inside two open
- * formatting elements. The original branch keeps its prior children; the
- * paragraph moves under a replacement inner element and its contents move
- * under a clone of the closed outer element. Other adoption shapes still
- * require the general active-formatting algorithm. */
 static lxa_status_t
-close_crossed_paragraph(lxa_html_tree_t *tree,
-                        lxa_span_t target, bool *closed)
+formatting_insertion_location(lxa_html_tree_t *tree, lxa_dom_ref_t target,
+                               lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->open_elements);
-    lxa_dom_ref_t outer, inner, paragraph, parent, actual;
-    lxa_dom_ref_t replacement, clone;
-    lxa_dom_ref_t first;
-    lxa_span_t outer_name, inner_name, top_name;
+    lxa_span_t name;
+    lxa_dom_namespace_t ns;
     lxa_status_t status;
-    size_t visits = 0;
-    *closed = false;
-    if (!basic_formatting(target) || length < 4)
-        return LXA_OK;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                3, &tree->nodes->limit_reason);
+    if (tree->mode != LXA_TREE_TEMPLATE_TEXT)
+        return root_insertion_location(tree, target, parent, before);
+    *parent = target;
+    *before = (lxa_dom_ref_t){0};
+    if (target.handle == tree->template_fragment.handle) return LXA_OK;
+    status = lxa_dom_nodes_element_namespace(tree->nodes, target, &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes, target, &name);
     if (status != LXA_OK) return status;
-    outer = open[length - 3];
-    inner = open[length - 2];
-    paragraph = open[length - 1];
-    parent = open[length - 4];
-    status = lxa_dom_nodes_element_name(tree->nodes, outer, &outer_name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, inner, &inner_name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, paragraph, &top_name);
-    if (status != LXA_OK) return status;
-    if (!named(top_name, "p") || !basic_formatting(inner_name)
-        || outer_name.length != target.length
-        || memcmp(outer_name.data, target.data, target.length) != 0)
-        return LXA_OK;
-    status = lxa_dom_nodes_parent(tree->nodes, outer, &actual);
-    if (status != LXA_OK || actual.handle != parent.handle)
-        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
-    status = lxa_dom_nodes_parent(tree->nodes, inner, &actual);
-    if (status != LXA_OK || actual.handle != outer.handle)
-        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
-    status = lxa_dom_nodes_parent(tree->nodes, paragraph, &actual);
-    if (status != LXA_OK || actual.handle != inner.handle)
-        return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
-    if (tree->pending_formatting.handle != LXA_HANDLE_NONE
-        || tree->active_anchor.handle != LXA_HANDLE_NONE)
-        return LXA_ERROR_UNSUPPORTED;
-    status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                               2, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget,
-            LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    status = clone_formatting_element(tree, inner, &replacement);
-    if (status == LXA_OK)
-        status = clone_formatting_element(tree, outer, &clone);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         parent, replacement);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_reparent_constructed_child(
-            tree->nodes, replacement, paragraph);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         paragraph, clone);
-    while (status == LXA_OK) {
-        status = lxa_dom_nodes_first_child(tree->nodes, paragraph, &first);
-        if (status != LXA_OK || first.handle == clone.handle) break;
-        if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_INTERNAL;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                clone, first);
+    return ns == LXA_DOM_NS_HTML && table_context(name)
+        ? template_foster_location(tree, parent, before) : LXA_OK;
+}
+
+static lxa_status_t
+formatting_pop_elements(lxa_html_tree_t *tree, size_t keep)
+{
+    return pop_elements(tree, formatting_elements(tree), keep);
+}
+
+static lxa_status_t
+reconstruct_element_at(lxa_html_tree_t *tree, lxa_vector_t *elements,
+                        lxa_dom_ref_t old, lxa_dom_ref_t parent,
+                        lxa_dom_ref_t before, lxa_dom_ref_t *out)
+{
+    lxa_dom_ref_t clone;
+    lxa_status_t status = lxa_dom_nodes_clone_element(tree->nodes, old, &clone);
+    if (status == LXA_OK) {
+        if (before.handle == LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                             parent, clone);
+        else status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                               parent, clone, before);
     }
-    if (status != LXA_OK) return status;
-    status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    status = push_element(tree, replacement);
-    if (status == LXA_OK) status = push_element(tree, paragraph);
-    if (status == LXA_OK) tree->pending_formatting = replacement;
-    else lxa_budget_release(tree->nodes->budget,
-                             LXA_BUDGET_ACTIVE_FORMATTING, 1);
-    *closed = status == LXA_OK;
+    if (status == LXA_OK) status = push_open_reference(tree, elements, clone);
+    if (status == LXA_OK) *out = clone;
     return status;
-}
-
-/* One crossed pair with no intervening block has no furthest block to move.
- * Keep the inner element as an inactive formatting entry for reconstruction. */
-static lxa_status_t
-close_crossed_formatting(lxa_html_tree_t *tree,
-                         lxa_span_t target, bool *closed)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->open_elements);
-    lxa_span_t inner, outer;
-    lxa_dom_ref_t pending;
-    lxa_status_t status;
-    *closed = false;
-    if (!basic_formatting(target) || length < 3)
-        return LXA_OK;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                2, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
-                                             &inner);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, open[length - 2],
-                                             &outer);
-    if (status != LXA_OK) return status;
-    if (!basic_formatting(inner)
-        || outer.length != target.length
-        || memcmp(outer.data, target.data, outer.length) != 0)
-        return LXA_OK;
-    if (tree->pending_formatting.handle != LXA_HANDLE_NONE)
-        return LXA_ERROR_UNSUPPORTED; /* A second entry needs a formatting list. */
-    status = lxa_budget_check(tree->nodes->budget,
-        LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    pending = open[length - 1];
-    status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    status = pop_element(tree);
-    if (status != LXA_OK) return status;
-    tree->pending_formatting = pending;
-    *closed = true;
-    return LXA_OK;
 }
 
 static lxa_status_t
@@ -927,6 +836,245 @@ reserve_open_elements(lxa_html_tree_t *tree, size_t count)
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
+    return status;
+}
+
+static lxa_html_formatting_entry_t *
+formatting_entries(lxa_html_tree_t *tree)
+{
+    return (lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
+}
+
+static size_t
+formatting_start(const lxa_html_tree_t *tree)
+{
+    return tree->formatting_marker == SIZE_MAX
+           ? 0 : tree->formatting_marker + 1;
+}
+
+static void
+remove_formatting(lxa_html_tree_t *tree, size_t index)
+{
+    /* Entries removed here follow the last marker, so marker indices stay put. */
+    lxa_vector_erase(&tree->formatting, index, 1);
+    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1);
+}
+
+static lxa_status_t
+find_formatting(lxa_html_tree_t *tree, lxa_span_t target, size_t *index)
+{
+    size_t i = lxa_vector_length(&tree->formatting);
+    *index = i;
+    while (i > formatting_start(tree)) {
+        lxa_span_t name;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes,
+                formatting_entries(tree)[--i].element, &name);
+        if (status != LXA_OK) return status;
+        if (name.length == target.length
+            && memcmp(name.data, target.data, name.length) == 0) {
+            *index = i;
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+find_formatting_reference(lxa_html_tree_t *tree, lxa_dom_ref_t ref,
+                           size_t *index)
+{
+    size_t i = lxa_vector_length(&tree->formatting);
+    *index = i;
+    while (i > formatting_start(tree)) {
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        if (formatting_entries(tree)[--i].element.handle == ref.handle) {
+            *index = i;
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+reserve_formatting(lxa_html_tree_t *tree, size_t count)
+{
+    size_t required;
+    lxa_status_t status = lxa_budget_check(tree->nodes->budget,
+        LXA_BUDGET_ACTIVE_FORMATTING, count, &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_size_add(lxa_vector_length(&tree->formatting),
+                              count, &required);
+    if (status == LXA_OK)
+        status = lxa_vector_reserve(&tree->formatting, required);
+    if (status == LXA_ERROR_LIMIT
+        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
+        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
+    return status;
+}
+
+static lxa_status_t
+append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
+{
+    lxa_html_formatting_entry_t entry = {
+        .element = ref, .previous_marker = tree->formatting_marker
+    };
+    size_t index = lxa_vector_length(&tree->formatting);
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+        LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) {
+        status = lxa_vector_push(&tree->formatting, &entry);
+        if (status != LXA_OK)
+            lxa_budget_release(tree->nodes->budget,
+                                LXA_BUDGET_ACTIVE_FORMATTING, 1);
+    }
+    if (status == LXA_OK && marker) tree->formatting_marker = index;
+    return status;
+}
+
+static lxa_status_t
+formatting_token_equal(lxa_html_tree_t *tree, lxa_dom_ref_t element,
+                       const lxa_html_token_t *token, bool *equal)
+{
+    lxa_span_t name;
+    lxa_dom_ref_t attribute = {0};
+    size_t count = 0;
+    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, element,
+                                                     &name);
+    *equal = false;
+    if (status != LXA_OK) return status;
+    if (name.length != token->name.length
+        || memcmp(name.data, token->name.data, name.length) != 0)
+        return LXA_OK;
+    for (;;) {
+        lxa_span_t key, value;
+        bool matched = false;
+        status = lxa_dom_nodes_attribute_next(tree->nodes, element, attribute,
+                                               &attribute);
+        if (status != LXA_OK) return status;
+        if (attribute.handle == LXA_HANDLE_NONE) break;
+        if (count == token->attribute_count) return LXA_OK;
+        ++count;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_attribute_read(tree->nodes, attribute,
+                                                   &key, &value);
+        if (status != LXA_OK) return status;
+        for (size_t i = 0; i < token->attribute_count; ++i) {
+            const lxa_html_attribute_t *candidate = &token->attributes[i];
+            status = lxa_budget_charge(tree->nodes->budget,
+                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            if (key.length != candidate->name.length) continue;
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                key.length / 8 + (key.length % 8 != 0),
+                &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            if (memcmp(key.data, candidate->name.data, key.length) != 0)
+                continue;
+            if (value.length != candidate->value.length) return LXA_OK;
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                value.length / 8 + (value.length % 8 != 0),
+                &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            if (value.length != 0
+                && memcmp(value.data, candidate->value.data, value.length) != 0)
+                return LXA_OK;
+            matched = true;
+            break;
+        }
+        if (!matched) return LXA_OK;
+    }
+    *equal = count == token->attribute_count;
+    return LXA_OK;
+}
+
+static lxa_status_t
+plan_formatting_add(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                     size_t *drop)
+{
+    size_t i = lxa_vector_length(&tree->formatting), matches = 0;
+    *drop = SIZE_MAX;
+    while (i > formatting_start(tree)) {
+        bool equal;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = formatting_token_equal(tree,
+                formatting_entries(tree)[--i].element, token, &equal);
+        if (status != LXA_OK) return status;
+        if (equal && ++matches >= 3) *drop = i;
+    }
+    return reserve_formatting(tree, *drop == SIZE_MAX ? 1 : 0);
+}
+
+static lxa_status_t
+reserve_formatting_elements(lxa_html_tree_t *tree, size_t count)
+{
+    size_t required, depth;
+    lxa_status_t status;
+    if (tree->mode != LXA_TREE_TEMPLATE_TEXT)
+        return reserve_open_elements(tree, count);
+    status = lxa_size_add(lxa_vector_length(&tree->template_elements), count,
+                          &required);
+    if (status == LXA_OK)
+        status = lxa_size_add(lxa_vector_length(&tree->template_stack), 1,
+                              &depth);
+    if (status == LXA_OK) status = lxa_size_mul(depth, 2, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, 2, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, required, &depth);
+    if (status == LXA_OK && tree->template_return_mode == LXA_TREE_IN_BODY) {
+        size_t root = lxa_vector_length(&tree->open_elements);
+        if (root == 0) return LXA_ERROR_INTERNAL;
+        status = lxa_size_add(depth, root - 1, &depth);
+    }
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_TREE_DEPTH,
+                                   depth, &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                                   count, &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_vector_reserve(&tree->template_elements, required);
+    if (status == LXA_ERROR_LIMIT
+        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
+        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
+    return status;
+}
+
+static lxa_status_t
+reconstruct_formatting(lxa_html_tree_t *tree)
+{
+    size_t start = formatting_start(tree);
+    size_t i = lxa_vector_length(&tree->formatting), end = i;
+    lxa_status_t status;
+    while (i > start) {
+        bool open;
+        status = reference_is_open(tree, formatting_entries(tree)[i - 1].element,
+                                    &open);
+        if (status != LXA_OK) return status;
+        if (open) break;
+        --i;
+    }
+    if (i == end) return LXA_OK;
+    status = reserve_formatting_elements(tree, end - i);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                                   end - i, &tree->nodes->limit_reason);
+    while (status == LXA_OK && i < end) {
+        lxa_dom_ref_t clone, parent, before;
+        status = formatting_insertion_location(tree, formatting_parent(tree),
+                                                &parent, &before);
+        if (status == LXA_OK)
+            status = reconstruct_element_at(tree, formatting_elements(tree),
+                formatting_entries(tree)[i].element, parent, before, &clone);
+        if (status == LXA_OK) formatting_entries(tree)[i++].element = clone;
+    }
     return status;
 }
 
@@ -973,7 +1121,7 @@ close_list_item(lxa_html_tree_t *tree, bool definition)
 }
 
 /* A block or <hr> closes a paragraph even when inline descendants are open.
- * The search stops at the nearest scope boundary; failed work/node preflight
+ * The search stops at the nearest scope boundary; failed work preflight
  * leaves the open stack untouched. */
 static lxa_status_t
 close_paragraph(lxa_html_tree_t *tree, bool *closed)
@@ -991,13 +1139,9 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
         --i;
         status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
         if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) break;
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        if (named(name, "p")) {
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && named(name, "p")) {
             while (lxa_vector_length(&tree->open_elements) > i) {
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
@@ -1005,21 +1149,21 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
             if (closed != NULL) *closed = true;
             return LXA_OK;
         }
-        if (named(name, "body") || named(name, "li")
-            || named(name, "td") || named(name, "th")
-            || named(name, "caption") || named(name, "button"))
+        if (scope_boundary(name, ns, SCOPE_BUTTON))
             break;
     }
     return LXA_OK;
 }
 
+/* Any other end tag searches to a matching HTML element or a special element. */
 static lxa_status_t
-close_list(lxa_html_tree_t *tree, lxa_span_t target)
+find_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                         size_t boundary, lxa_span_t target, size_t *index)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 1) {
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t i = lxa_vector_length(elements);
+    *index = i;
+    while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
@@ -1028,152 +1172,195 @@ close_list(lxa_html_tree_t *tree, lxa_span_t target)
         --i;
         status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
         if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) break;
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        if (name.length == target.length
-            && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && name.length == target.length) {
+            size_t blocks = name.length / 8 + (name.length % 8 != 0);
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                blocks, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            if (memcmp(name.data, target.data, name.length) == 0) {
+                *index = i;
+                return LXA_OK;
             }
-            return LXA_OK;
         }
-        if (named(name, "body") || named(name, "table")
-            || named(name, "caption") || named(name, "td")
-            || named(name, "th"))
-            break;
+        if (special_element(name, ns)) break;
     }
     return LXA_OK;
 }
 
 static lxa_status_t
-end_list_item(lxa_html_tree_t *tree, lxa_span_t target)
+current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                          size_t boundary, bool *column_group)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    bool definition = named(target, "dt") || named(target, "dd");
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 1) {
+    size_t length = lxa_vector_length(elements);
+    lxa_status_t status;
+    *column_group = false;
+    if (length > boundary) {
+        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+        lxa_dom_namespace_t ns;
         lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[length - 1],
+                                                  &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
+                                                 &name);
         if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "ul") || named(name, "ol") || named(name, "dl")
-            || named(name, "menu"))
-            break;
-        if ((definition && (named(name, "dt") || named(name, "dd")))
-            || (!definition && named(name, "li"))) {
-            if (name.length != target.length
-                || memcmp(name.data, target.data, name.length) != 0)
-                return LXA_OK;
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
+        *column_group = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
     }
-    /* A list-item end without a matching item in this list's scope is a
-     * parse error, but does not abort construction or close another list. */
     return LXA_OK;
 }
 
-/* The any-other-end-tag search for ordinary HTML elements stops at an
- * HTML special element; a missing match is an ignored parse error. */
+static lxa_status_t
+plan_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                         size_t boundary, lxa_span_t target, size_t *index)
+{
+    lxa_vector_t view = *elements;
+    bool column_group;
+    lxa_status_t status = current_html_column_group(tree, elements, boundary,
+                                                    &column_group);
+    if (status != LXA_OK) return status;
+    /* Search the post-colgroup view before releasing live entries. */
+    if (column_group) view.bytes.length -= sizeof(lxa_dom_ref_t);
+    status = find_ordinary_end_target(tree, &view, boundary, target, index);
+    if (status == LXA_OK && column_group)
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                    &tree->nodes->limit_reason);
+    return status;
+}
+
 static lxa_status_t
 end_ordinary_element(lxa_html_tree_t *tree, lxa_span_t target)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->open_elements);
-    while (i > 0) {
+    size_t index;
+    lxa_status_t status = plan_ordinary_end_target(tree, &tree->open_elements,
+                                                  0, target, &index);
+    if (status != LXA_OK) return status;
+    while (lxa_vector_length(&tree->open_elements) > index) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
+    return LXA_OK;
+}
+
+/* Heading end tags accept any h1-h6; other names match exactly. */
+static lxa_status_t
+find_scoped_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                       size_t boundary, lxa_span_t target, scope_kind_t scope,
+                       size_t *index)
+{
+    bool any_heading = heading(target);
+    size_t i = lxa_vector_length(elements);
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    *index = i;
+    while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        bool ordinary;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         --i;
         status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) break;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (name.length == target.length
-            && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
+        if (ns == LXA_DOM_NS_HTML
+            && (any_heading ? heading(name)
+                : name.length == target.length
+                  && memcmp(name.data, target.data, name.length) == 0)) {
+            *index = i;
             return LXA_OK;
         }
-        if (inline_container(name)) continue;
-        status = supported_container(tree, name, &ordinary);
-        if (status != LXA_OK) return status;
-        if (!ordinary || simple_container(name)) break;
+        if (scope_boundary(name, ns, scope))
+            break;
     }
     return LXA_OK;
 }
 
-/* Close a block or heading through open inline descendants, but do not
- * cross a different special element or a table/list scope boundary. */
 static lxa_status_t
-end_scoped_container(lxa_html_tree_t *tree, lxa_span_t target)
+plan_ruby_start(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                 size_t boundary, lxa_span_t target, size_t *keep)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 0) {
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t index;
+    bool except_rtc = named(target, "rp") || named(target, "rt");
+    lxa_status_t status = find_scoped_end_target(tree, elements, boundary,
+        (lxa_span_t){(const unsigned char *) "ruby", 4}, SCOPE_NORMAL, &index);
+    *keep = lxa_vector_length(elements);
+    if (status != LXA_OK || index == *keep) return status;
+    while (*keep > index + 1) {
         lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                                    1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes,
+                open[*keep - 1], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes,
+                open[*keep - 1], &name);
         if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (name.length == target.length
-            && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
-        if (!inline_container(name))
+        if (ns != LXA_DOM_NS_HTML || !implied_end_tag(name)
+            || (except_rtc && named(name, "rtc")))
             break;
+        --*keep;
     }
-    /* A block end with no matching element in the supported scope is
-     * ignored; it must not terminate an unrelated parent. */
+    return LXA_OK;
+}
+
+/* Close an HTML element through descendants up to the requested scope. */
+static lxa_status_t
+end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
+                   scope_kind_t scope)
+{
+    lxa_vector_t view = tree->open_elements;
+    bool column_group;
+    size_t index;
+    lxa_status_t status = current_html_column_group(tree, &view, 0,
+                                                    &column_group);
+    if (status != LXA_OK) return status;
+    column_group = column_group && !named(target, "colgroup");
+    if (column_group) view.bytes.length -= sizeof(lxa_dom_ref_t);
+    status = find_scoped_end_target(tree, &view,
+        0, target, scope, &index);
+    if (status == LXA_OK && column_group)
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                    &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    if (index == lxa_vector_length(&view)) {
+        if (column_group) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        return LXA_OK;
+    }
+    if (scope == SCOPE_TABLE)
+        return pop_table_elements(tree, index);
+    while (lxa_vector_length(&tree->open_elements) > index) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
+    if (formatting_marker_tag(target))
+        clear_formatting_to_marker(tree);
     return LXA_OK;
 }
 
 static lxa_status_t
-close_open_heading(lxa_html_tree_t *tree)
+close_current_heading(lxa_html_tree_t *tree)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 0) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+    lxa_dom_ref_t current = current_element(tree);
+    lxa_dom_namespace_t ns;
+    lxa_span_t name;
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_namespace(tree->nodes, current, &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes, current, &name);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML && heading(name)) {
+        status = pop_element(tree);
         if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (heading(name)) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
-        if (!inline_container(name))
-            break;
     }
     return LXA_OK;
 }
@@ -1186,25 +1373,62 @@ close_open_button(lxa_html_tree_t *tree)
                               tree->open_elements.bytes.data;
     while (i > 0) {
         lxa_span_t name;
+        lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        if (named(name, "button")) {
+        if (ns == LXA_DOM_NS_HTML && named(name, "button")) {
             while (lxa_vector_length(&tree->open_elements) > i) {
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
             }
             return LXA_OK;
         }
-        if (named(name, "body") || named(name, "li")
-            || named(name, "td") || named(name, "th")
-            || named(name, "caption"))
+        if (scope_boundary(name, ns, SCOPE_NORMAL))
             break;
     }
     return LXA_OK;
+}
+
+static lxa_status_t
+insert_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+            lxa_dom_ref_t before, lxa_span_t bytes)
+{
+    lxa_dom_ref_t previous, child, actual;
+    lxa_dom_record_t record;
+    lxa_status_t status;
+    if (bytes.length == 0) return LXA_OK;
+    status = lxa_dom_nodes_last_child(tree->nodes, parent, &previous);
+    if (status == LXA_OK && before.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_parent(tree->nodes, before, &actual);
+        if (status == LXA_OK && actual.handle != parent.handle)
+            return LXA_ERROR_ARGUMENT;
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_prev_sibling(tree->nodes, before, &previous);
+    }
+    if (status != LXA_OK) return status;
+    if (previous.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_read(tree->nodes, previous, &record);
+        if (status != LXA_OK) return status;
+        if (record.parent != (lxa_id_t) parent.handle
+            || record.next != (before.handle == LXA_HANDLE_NONE
+                              ? LXA_ID_NONE : (lxa_id_t) before.handle))
+            return LXA_ERROR_ARGUMENT;
+        if (record.kind == LXA_DOM_KIND_TEXT)
+            return lxa_dom_nodes_append_text_data(tree->nodes, previous, bytes);
+    }
+    status = lxa_dom_nodes_append_character(
+        tree->nodes, LXA_DOM_KIND_TEXT, bytes, &child);
+    if (status != LXA_OK) return status;
+    return before.handle == LXA_HANDLE_NONE
+        ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+        : lxa_dom_nodes_insert_constructed_before(tree->nodes, parent, child,
+                                                   before);
 }
 
 static lxa_status_t
@@ -1212,11 +1436,59 @@ append_character(lxa_html_tree_t *tree,
                  lxa_dom_ref_t parent, lxa_dom_kind_t kind, lxa_span_t bytes)
 {
     lxa_dom_ref_t child;
-    lxa_status_t status = lxa_dom_nodes_append_character(
-        tree->nodes, kind, bytes, &child);
+    lxa_status_t status;
+    if (kind == LXA_DOM_KIND_TEXT)
+        return insert_text(tree, parent, (lxa_dom_ref_t){0}, bytes);
+    status = lxa_dom_nodes_append_character(tree->nodes, kind, bytes, &child);
     return status == LXA_OK
            ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
            : status;
+}
+
+static lxa_status_t
+append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+                     const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t child;
+    lxa_status_t status;
+    if (token->kind == LXA_HTML_COMMENT)
+        return append_character(tree, parent, LXA_DOM_KIND_COMMENT,
+                                token->data);
+    status = lxa_dom_nodes_append_pi(tree->nodes, token->name, token->data,
+                                     &child);
+    return status == LXA_OK
+           ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+           : status;
+}
+
+static lxa_status_t
+prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
+{
+    size_t prefix = 0;
+    lxa_status_t status;
+    bool before_head = tree->mode == LXA_TREE_BEFORE_HTML
+                       || tree->mode == LXA_TREE_BEFORE_HEAD;
+    while (prefix < bytes->length
+           && lxa_html_byte_tree_space(bytes->data[prefix]))
+        ++prefix;
+    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+        prefix + (prefix < bytes->length), &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    if (!before_head && prefix != 0) {
+        status = append_character(tree,
+            tree->mode == LXA_TREE_IN_HEAD ? tree->head : tree->html,
+            LXA_DOM_KIND_TEXT, (lxa_span_t){bytes->data, prefix});
+        if (status != LXA_OK) return status;
+    }
+    if (prefix != 0) bytes->data += prefix;
+    bytes->length -= prefix;
+    if (bytes->length == 0) return LXA_OK;
+    if (before_head) {
+        status = ensure_head(tree);
+        if (status != LXA_OK) return status;
+    }
+    tree->mode = LXA_TREE_AFTER_HEAD;
+    return LXA_OK;
 }
 
 static lxa_status_t
@@ -1262,9 +1534,274 @@ foster_location(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+formatting_end_ordinary(lxa_html_tree_t *tree, lxa_span_t subject)
+{
+    lxa_vector_t *elements = formatting_elements(tree);
+    size_t index;
+    lxa_status_t status = find_ordinary_end_target(tree, elements,
+        formatting_boundary(tree), subject, &index);
+    if (status == LXA_OK) {
+        status = formatting_pop_elements(tree, index);
+        if (status != LXA_OK) return status;
+    }
+    return status;
+}
+
+static lxa_status_t
+place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
+                    lxa_dom_ref_t parent, lxa_dom_ref_t before)
+{
+    lxa_dom_ref_t current;
+    lxa_dom_record_t host;
+    bool ancestor;
+    lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, node, &current);
+    if (status == LXA_OK && current.handle != LXA_HANDLE_NONE)
+        status = lxa_dom_nodes_detach_constructed_element(tree->nodes, node);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_parent(tree->nodes, node, &current);
+    if (status != LXA_OK || current.handle != LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_host_including_ancestor(tree->nodes, node, parent,
+                                                   &ancestor);
+    if (status != LXA_OK || ancestor) return status;
+    status = lxa_dom_nodes_read(tree->nodes, parent, &host);
+    if (status != LXA_OK) return status;
+    if (host.kind == LXA_DOM_KIND_DOCUMENT) {
+        size_t visits = 0;
+        status = lxa_dom_nodes_first_child(tree->nodes, parent, &current);
+        while (status == LXA_OK && current.handle != LXA_HANDLE_NONE) {
+            lxa_dom_record_t child;
+            if (++visits > lxa_dom_nodes_length(tree->nodes))
+                return LXA_ERROR_INTERNAL;
+            status = lxa_dom_nodes_read(tree->nodes, current, &child);
+            if (status != LXA_OK || child.kind == LXA_DOM_KIND_ELEMENT)
+                return status;
+            status = lxa_dom_nodes_next_sibling(tree->nodes, current, &current);
+        }
+        if (status != LXA_OK) return status;
+    }
+    if (before.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_parent(tree->nodes, before, &current);
+        if (status != LXA_OK || current.handle != parent.handle) return status;
+    }
+    return lxa_dom_nodes_insert_constructed_subtree(tree->nodes, parent, node,
+                                                    before);
+}
+
+static lxa_status_t
+adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
+{
+    lxa_status_t status;
+    lxa_dom_namespace_t ns;
+    lxa_span_t name;
+    size_t index;
+    lxa_vector_t *elements = formatting_elements(tree);
+    size_t boundary = formatting_boundary(tree);
+    if (lxa_vector_length(elements) > boundary) {
+        lxa_dom_ref_t current = formatting_parent(tree);
+        status = lxa_dom_nodes_element_namespace(tree->nodes, current, &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, current, &name);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && name.length == subject.length
+            && memcmp(name.data, subject.data, name.length) == 0) {
+            status = find_formatting_reference(tree, current, &index);
+            if (status != LXA_OK) return status;
+            if (index == lxa_vector_length(&tree->formatting)) {
+                status = formatting_pop_elements(tree, lxa_vector_length(elements) - 1);
+                if (status != LXA_OK) return status;
+                return LXA_OK;
+            }
+        }
+    }
+    for (unsigned int outer = 0; outer < 8; ++outer) {
+        lxa_dom_ref_t formatting, furthest, common, last, clone;
+        const lxa_dom_ref_t *open;
+        size_t formatting_index, stack_index, furthest_index, bookmark, node;
+        size_t scoped_index;
+        status = find_formatting(tree, subject, &formatting_index);
+        if (status != LXA_OK) return status;
+        if (formatting_index == lxa_vector_length(&tree->formatting))
+            return formatting_end_ordinary(tree, subject);
+        formatting = formatting_entries(tree)[formatting_index].element;
+        status = find_open_reference(tree, elements, boundary,
+                                     formatting, &stack_index);
+        if (status != LXA_OK) return status;
+        if (stack_index == lxa_vector_length(elements)) {
+            remove_formatting(tree, formatting_index);
+            return LXA_OK;
+        }
+        status = find_scoped_reference(tree, elements, boundary,
+                                         formatting, &scoped_index);
+        if (status != LXA_OK || scoped_index == lxa_vector_length(elements))
+            return status;
+        open = (const lxa_dom_ref_t *) elements->bytes.data;
+        furthest_index = stack_index + 1;
+        while (furthest_index < lxa_vector_length(elements)) {
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                                       1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_namespace(tree->nodes,
+                    open[furthest_index], &ns);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_name(tree->nodes,
+                    open[furthest_index], &name);
+            if (status != LXA_OK) return status;
+            if (special_element(name, ns)) break;
+            ++furthest_index;
+        }
+        if (furthest_index == lxa_vector_length(elements)) {
+            status = formatting_pop_elements(tree, stack_index);
+            if (status != LXA_OK) return status;
+            remove_formatting(tree, formatting_index);
+            return LXA_OK;
+        }
+        if (stack_index == boundary && tree->mode != LXA_TREE_TEMPLATE_TEXT)
+            return LXA_ERROR_INTERNAL;
+        common = stack_index == boundary ? tree->template_fragment
+                                         : open[stack_index - 1];
+        furthest = open[furthest_index];
+        last = furthest;
+        bookmark = formatting_index;
+        node = furthest_index;
+        for (size_t inner = 1; ; ++inner) {
+            lxa_dom_ref_t ref;
+            size_t entry;
+            open = (const lxa_dom_ref_t *) elements->bytes.data;
+            ref = open[--node];
+            if (ref.handle == formatting.handle) break;
+            status = find_formatting_reference(tree, ref, &entry);
+            if (status != LXA_OK) return status;
+            if (inner > 3 && entry != lxa_vector_length(&tree->formatting)) {
+                remove_formatting(tree, entry);
+                if (entry < bookmark) --bookmark;
+                entry = lxa_vector_length(&tree->formatting);
+            }
+            if (entry == lxa_vector_length(&tree->formatting)) {
+                status = remove_open_element(tree, elements, node);
+                if (status != LXA_OK) return status;
+                --furthest_index;
+                continue;
+            }
+            status = lxa_dom_nodes_clone_element(tree->nodes, ref, &clone);
+            /* Construction attaches leaves; attach replacements before moving
+             * subtrees so failures retain valid parent/sibling links. */
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                                 common, clone);
+            if (status != LXA_OK) return status;
+            formatting_entries(tree)[entry].element = clone;
+            ((lxa_dom_ref_t *) elements->bytes.data)[node] = clone;
+            if (last.handle == furthest.handle) bookmark = entry + 1;
+            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
+                                                               clone, last);
+            if (status != LXA_OK) return status;
+            last = clone;
+        }
+        {
+            lxa_dom_ref_t parent, before;
+            status = formatting_insertion_location(tree, common, &parent, &before);
+            if (status == LXA_OK)
+                status = place_adoption_node(tree, last, parent, before);
+        }
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_clone_element(tree->nodes, formatting, &clone);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                             furthest, clone);
+        if (status != LXA_OK) return status;
+        for (;;) {
+            lxa_dom_ref_t child;
+            status = lxa_dom_nodes_first_child(tree->nodes, furthest, &child);
+            if (status != LXA_OK) return status;
+            if (child.handle == clone.handle) break;
+            if (child.handle == LXA_HANDLE_NONE) return LXA_ERROR_INTERNAL;
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                                       1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
+                                                                   clone, child);
+            if (status != LXA_OK) return status;
+        }
+        status = find_formatting_reference(tree, formatting, &formatting_index);
+        if (status != LXA_OK) return status;
+        if (formatting_index == lxa_vector_length(&tree->formatting))
+            return LXA_ERROR_INTERNAL;
+        if (formatting_index < bookmark) --bookmark;
+        remove_formatting(tree, formatting_index);
+        {
+            lxa_html_formatting_entry_t entry = {.element = clone};
+            status = lxa_budget_charge(tree->nodes->budget,
+                LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            status = lxa_vector_insert(&tree->formatting, bookmark, &entry);
+            if (status != LXA_OK) {
+                lxa_budget_release(tree->nodes->budget,
+                                    LXA_BUDGET_ACTIVE_FORMATTING, 1);
+                return status;
+            }
+        }
+        lxa_vector_erase(elements, stack_index, 1);
+        /* Removing formatting shifts furthest up by one. Insert below it. */
+        status = lxa_vector_insert(elements, furthest_index, &clone);
+        if (status != LXA_OK) {
+            lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+            return status;
+        }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+prepare_formatting_start(lxa_html_tree_t *tree,
+                         const lxa_html_token_t *token, size_t *drop)
+{
+    lxa_status_t status;
+    lxa_vector_t *elements = formatting_elements(tree);
+    size_t boundary = formatting_boundary(tree);
+    if (named(token->name, "a")) {
+        size_t index;
+        status = find_formatting(tree, token->name, &index);
+        if (status != LXA_OK) return status;
+        if (index != lxa_vector_length(&tree->formatting)) {
+            lxa_dom_ref_t old = formatting_entries(tree)[index].element;
+            status = adopt_formatting(tree, token->name);
+            if (status == LXA_OK)
+                status = find_formatting_reference(tree, old, &index);
+            if (status != LXA_OK) return status;
+            if (index != lxa_vector_length(&tree->formatting))
+                remove_formatting(tree, index);
+            status = find_open_reference(tree, elements, boundary,
+                                          old, &index);
+            if (status != LXA_OK) return status;
+            if (index != lxa_vector_length(elements)) {
+                lxa_vector_erase(elements, index, 1);
+                lxa_budget_release(tree->nodes->budget,
+                                    LXA_BUDGET_OPEN_ELEMENTS, 1);
+            }
+        }
+    }
+    if (named(token->name, "nobr")) {
+        size_t index;
+        status = reconstruct_formatting(tree);
+        if (status == LXA_OK)
+            status = find_scoped_end_target(tree, elements, boundary,
+                token->name, SCOPE_NORMAL, &index);
+        if (status == LXA_OK
+            && index != lxa_vector_length(elements)) {
+            status = adopt_formatting(tree, token->name);
+            if (status == LXA_OK) status = reconstruct_formatting(tree);
+        }
+        return status == LXA_OK ? plan_formatting_add(tree, token, drop) : status;
+    }
+    status = plan_formatting_add(tree, token, drop);
+    if (status == LXA_OK) status = reconstruct_formatting(tree);
+    return status;
+}
+
+static lxa_status_t
 flush_table_text(lxa_html_tree_t *tree)
 {
-    lxa_dom_ref_t table, parent, child;
+    lxa_dom_ref_t table, parent;
     lxa_span_t bytes, top;
     size_t prefix = 0;
     lxa_status_t status;
@@ -1274,7 +1811,7 @@ flush_table_text(lxa_html_tree_t *tree)
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if (space_only(bytes)) {
+    if (null_or_space_only(bytes)) {
         status = append_character(tree, current_element(tree),
                                   LXA_DOM_KIND_TEXT, bytes);
     }
@@ -1292,12 +1829,8 @@ flush_table_text(lxa_html_tree_t *tree)
                        || bytes.data[prefix] == '\t'
                        || bytes.data[prefix] == '\f'))
                 ++prefix;
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       prefix != 0 ? 2 : 1,
-                                       &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
+            status = lxa_budget_check(tree->nodes->budget,
+                LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             if (prefix != 0) {
                 lxa_span_t spaces = {bytes.data, prefix};
@@ -1310,16 +1843,12 @@ flush_table_text(lxa_html_tree_t *tree)
             bytes.data += prefix;
             bytes.length -= prefix;
         }
-        status = foster_location(tree, &parent, &table);
-        if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_append_character(tree->nodes,
-                                                LXA_DOM_KIND_TEXT, bytes, &child);
+        status = reconstruct_formatting(tree);
         if (status == LXA_OK)
-            status = table.handle == LXA_HANDLE_NONE
-                ? lxa_dom_nodes_append_constructed_child(
-                    tree->nodes, parent, child)
-                : lxa_dom_nodes_insert_constructed_before(
-                    tree->nodes, parent, child, table);
+            status = root_insertion_location(tree, current_element(tree),
+                                              &parent, &table);
+        if (status != LXA_OK) return status;
+        status = insert_text(tree, parent, table, bytes);
     }
     if (status == LXA_OK) lxa_buffer_clear(&tree->table_text);
     return status;
@@ -1345,6 +1874,8 @@ queue_table_text(lxa_html_tree_t *tree, lxa_span_t bytes)
     return status;
 }
 
+static lxa_status_t flush_template_table_text(lxa_html_tree_t *tree);
+
 /* DATA nulls have tree-context semantics. Scan bounded token spans so text
  * across nulls is retained without allocating or treating NUL as a terminator. */
 static lxa_status_t
@@ -1353,6 +1884,7 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 {
     static const uint8_t replacement[] = {0xef, 0xbf, 0xbd};
     size_t offset = 0;
+    bool check_column_group = table && !foreign;
     lxa_status_t status;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                bytes.length, &tree->nodes->limit_reason);
@@ -1370,6 +1902,25 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             if (status != LXA_OK) return status;
         }
         if (nul == NULL) break;
+        if (check_column_group) {
+            bool column_group;
+            check_column_group = false;
+            status = current_html_column_group(tree, formatting_elements(tree),
+                formatting_boundary(tree), &column_group);
+            if (status != LXA_OK) return status;
+            /* Pending nonspace closes colgroup at flush. Otherwise preserve
+             * whitespace there and reprocess NUL after the pop. */
+            if (column_group && space_only((lxa_span_t) {
+                    tree->table_text.data, tree->table_text.length
+                })) {
+                status = tree->mode == LXA_TREE_TEMPLATE_TEXT
+                    ? flush_template_table_text(tree) : flush_table_text(tree);
+                if (status == LXA_OK)
+                    status = formatting_pop_elements(tree,
+                        lxa_vector_length(formatting_elements(tree)) - 1);
+                if (status != LXA_OK) return status;
+            }
+        }
         if (foreign) {
             lxa_span_t segment = {replacement, sizeof(replacement)};
             status = append_character(tree, parent, LXA_DOM_KIND_TEXT, segment);
@@ -1400,8 +1951,7 @@ apply_attributes(lxa_html_tree_t *tree,
             || (entry.value.data == NULL && entry.value.length != 0))
             return LXA_ERROR_ARGUMENT;
         if (ns != LXA_DOM_NS_HTML) {
-            if (named(entry.name, "xml:base") || named(entry.name, "xml:lang")
-                || named(entry.name, "xml:space"))
+            if (named(entry.name, "xml:lang") || named(entry.name, "xml:space"))
                 attr_ns = LXA_DOM_ATTR_NS_XML;
             else if (named(entry.name, "xlink:actuate")
                      || named(entry.name, "xlink:arcrole")
@@ -1428,7 +1978,7 @@ apply_attributes(lxa_html_tree_t *tree,
         if (status != LXA_OK) return status;
         if (existing.handle != LXA_HANDLE_NONE) continue;
         status = ns == LXA_DOM_NS_HTML
-            ? lxa_dom_nodes_append_html_attribute(tree->nodes, entry.name,
+            ? lxa_dom_nodes_append_parsed_html_attribute(tree->nodes, entry.name,
                                                    entry.value, &attribute)
             : lxa_dom_nodes_append_foreign_attribute(tree->nodes, entry.name,
                                                       entry.value, attr_ns,
@@ -1442,12 +1992,15 @@ apply_attributes(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-open_container_ns(lxa_html_tree_t *tree,
-                  const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+open_container_at(lxa_html_tree_t *tree,
+                  const lxa_html_token_t *token, lxa_dom_namespace_t ns,
+                  lxa_dom_ref_t parent, lxa_dom_ref_t before)
 {
     lxa_dom_ref_t child;
     lxa_span_t name = token->name;
-    lxa_status_t status;
+    bool marker = ns == LXA_DOM_NS_HTML && formatting_marker_tag(name);
+    lxa_status_t status = marker ? reserve_formatting(tree, 1) : LXA_OK;
+    if (status != LXA_OK) return status;
     if (ns == LXA_DOM_NS_SVG) {
         status = lxa_html_svg_tag_name(name, &name);
         if (status != LXA_OK) return status;
@@ -1456,15 +2009,27 @@ open_container_ns(lxa_html_tree_t *tree,
                                                       name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                        current_element(tree), child);
+        status = before.handle == LXA_HANDLE_NONE
+            ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+            : lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                parent, child, before);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "selectedcontent")
         && tree->mode != LXA_TREE_TEMPLATE_TEXT)
         status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK) status = push_element(tree, child);
+    if (status == LXA_OK && marker)
+        status = append_formatting(tree, child, true);
     return status;
+}
+
+static lxa_status_t
+open_container_ns(lxa_html_tree_t *tree,
+                  const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+{
+    return open_container_at(tree, token, ns, current_element(tree),
+                             (lxa_dom_ref_t){0});
 }
 
 static lxa_status_t
@@ -1475,21 +2040,66 @@ open_container(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
-                     const lxa_html_token_t *token)
+plan_foreign_breakout(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                       size_t boundary, size_t *keep)
 {
-    lxa_dom_ref_t child;
-    lxa_status_t status;
-    if (token->kind == LXA_HTML_COMMENT)
-        return append_character(tree, parent, LXA_DOM_KIND_COMMENT,
-                                token->data);
-    status = lxa_dom_nodes_append_pi(tree->nodes, token->name, token->data,
-                                     &child);
-    return status == LXA_OK
-           ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
-           : status;
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t i = lxa_vector_length(elements);
+    while (i > boundary) {
+        bool integrated;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = foreign_breakout_boundary(tree, open[i - 1], &integrated);
+        if (status != LXA_OK) return status;
+        if (integrated) break;
+        --i;
+    }
+    *keep = i;
+    return LXA_OK;
 }
 
+static lxa_status_t
+plan_foreign_end(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                 size_t boundary, lxa_span_t name, size_t *keep,
+                 bool *reprocess)
+{
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t i = lxa_vector_length(elements);
+    *keep = i;
+    *reprocess = false;
+    while (i > boundary) {
+        lxa_dom_namespace_t ns;
+        lxa_span_t top, target = name;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        --i;
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML) {
+            *reprocess = true;
+            return LXA_OK;
+        }
+        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &top);
+        if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
+            status = lxa_html_svg_tag_name(target, &target);
+        if (status != LXA_OK) return status;
+        if (top.length == target.length) {
+            size_t blocks = top.length / 8 + (top.length % 8 != 0);
+            status = lxa_budget_charge(tree->nodes->budget,
+                LXA_BUDGET_WORK, blocks, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            if (memcmp(top.data, target.data, top.length) == 0) {
+                *keep = i;
+                return LXA_OK;
+            }
+        }
+    }
+    /* html and the active template are virtual HTML stack boundaries. */
+    *reprocess = true;
+    return LXA_OK;
+}
 
 /* Foreign descendants retain their parent's namespace unless an integration
  * point dispatches the token through HTML construction instead. */
@@ -1498,124 +2108,37 @@ consume_foreign(lxa_html_tree_t *tree,
                 const lxa_html_token_t *token, lxa_dom_namespace_t ns,
                 bool *reprocess)
 {
-    lxa_span_t top;
     lxa_status_t status;
-    bool known;
     *reprocess = false;
     if (token->kind == LXA_HTML_COMMENT
         || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
         return append_comment_or_pi(tree, current_element(tree), token);
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
-    if (token->kind == LXA_HTML_TEXT)
+    if (token->kind == LXA_HTML_TEXT) {
+        if (tree->frameset_ok && !null_or_space_only(token->data))
+            tree->frameset_ok = false;
         return insert_data_text(tree, current_element(tree), token->data,
                                 true, false);
+    }
     if (token->kind == LXA_HTML_END_TAG) {
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                                  tree->open_elements.bytes.data;
-        size_t i = lxa_vector_length(&tree->open_elements);
-        while (i > 0) {
-            lxa_dom_namespace_t ancestor_ns;
-            lxa_span_t target = token->name;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            --i;
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i],
-                                                      &ancestor_ns);
-            if (status != LXA_OK) return status;
-            if (ancestor_ns == LXA_DOM_NS_HTML) {
-                if (named(token->name, "body")
-                    || named(token->name, "html")) {
-                    *reprocess = true;
-                    return LXA_OK;
-                }
-                /* A matching ordinary HTML container closes through its
-                 * foreign descendants. Do not let an unrelated HTML end
-                 * tear down this subtree before its mode is supported. */
-                if (named(token->name, "span")
-                    || named(token->name, "div")
-                    || named(token->name, "section")
-                    || named(token->name, "article")
-                    || named(token->name, "main")
-                    || named(token->name, "aside")
-                    || named(token->name, "header")
-                    || named(token->name, "footer")
-                    || named(token->name, "nav")) {
-                    status = lxa_dom_nodes_element_name(tree->nodes, open[i],
-                                                        &top);
-                    if (status != LXA_OK) return status;
-                    if (top.length == token->name.length
-                        && memcmp(top.data, token->name.data, top.length) == 0) {
-                        while (lxa_vector_length(&tree->open_elements) > i) {
-                            status = pop_element(tree);
-                            if (status != LXA_OK) return status;
-                        }
-                        return LXA_OK;
-                    }
-                }
-                break;
-            }
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &top);
-            if (status != LXA_OK) return status;
-            if (ancestor_ns == LXA_DOM_NS_SVG) {
-                status = lxa_html_svg_tag_name(target, &target);
-                if (status != LXA_OK) return status;
-            }
-            if (top.length == target.length
-                && memcmp(top.data, target.data, top.length) == 0) {
-                while (lxa_vector_length(&tree->open_elements) > i) {
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                return LXA_OK;
-            }
-        }
-        /* Once the search reaches an HTML element, an unknown end tag is
-         * ignored by the in-body fallback. An unmatched foreign root end
-         * is ignored there too. Other known HTML ends still require their
-         * insertion-mode rules; do not close the foreign stack. */
-        status = in_tag_table(tree, token->name, liblexa_html_elements,
-                              LIBLEXA_HTML_ELEMENT_COUNT, &known);
+        size_t keep;
+        status = plan_foreign_end(tree, &tree->open_elements, 0,
+                                  token->name, &keep, reprocess);
         if (status != LXA_OK) return status;
-        if (!known)
-            status = in_tag_table(tree, token->name,
-                liblexa_html_obsolete_elements, LIBLEXA_HTML_OBSOLETE_COUNT,
-                &known);
-        return status != LXA_OK ? status
-               : known && !named(token->name, "svg")
-                       && !named(token->name, "math")
-                       && !named(token->name, "span")
-                 ? LXA_ERROR_UNSUPPORTED : LXA_OK;
+        while (lxa_vector_length(&tree->open_elements) > keep) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        return LXA_OK;
     }
     if (token->kind != LXA_HTML_START_TAG)
-        return LXA_ERROR_UNSUPPORTED;
-    /* HTML breakout starts must be reprocessed outside the foreign stack;
-     * until that algorithm exists, reject rather than construct false SVG/
-     * MathML descendants. A foreign <a> is allowed too. */
-    status = in_tag_table(tree, token->name, liblexa_html_elements,
-                          LIBLEXA_HTML_ELEMENT_COUNT, &known);
-    if (status != LXA_OK) return status;
-    if (!known)
-        status = in_tag_table(tree, token->name, liblexa_html_obsolete_elements,
-                              LIBLEXA_HTML_OBSOLETE_COUNT, &known);
-    if (status != LXA_OK) return status;
-    if (known && !named(token->name, "a")
-        && !named(token->name, "font")
-        && !named(token->name, "svg")
-        && !named(token->name, "math")
-        && !(ns == LXA_DOM_NS_SVG
-             && (named(token->name, "desc")
-                 || named(token->name, "title")
-                 || named(token->name, "template"))))
         return LXA_ERROR_UNSUPPORTED;
     status = reserve_open_elements(tree, 1);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                    1, &tree->nodes->limit_reason);
     if (status == LXA_OK)
-        status = open_container_ns(tree, token,
-            named(token->name, "svg") ? LXA_DOM_NS_SVG
-            : named(token->name, "math") ? LXA_DOM_NS_MATHML : ns);
+        status = open_container_ns(tree, token, ns);
     if (status == LXA_OK && token->self_closing) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
@@ -1627,201 +2150,123 @@ static lxa_status_t
 append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             const lxa_html_token_t *token);
 
+/* Preflight the same select stack actions for document and template rules. */
 static lxa_status_t
-close_select(lxa_html_tree_t *tree)
+plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                  size_t boundary, const lxa_html_token_t *token,
+                  size_t *keep, bool *ignore)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 1) {
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t length = lxa_vector_length(elements), select = length, i = length;
+    bool option = named(token->name, "option");
+    bool group = named(token->name, "optgroup");
+    bool foreign_end = token->kind == LXA_HTML_END_TAG;
+    bool foreign_boundary = false;
+    lxa_status_t status;
+    *keep = length;
+    *ignore = false;
+    if (token->kind == LXA_HTML_END_TAG) {
+        if (!named(token->name, "select")) return LXA_OK;
+        *ignore = true;
+    }
+    else if (token->kind != LXA_HTML_START_TAG
+             || (!named(token->name, "select")
+                 && !named(token->name, "input")
+                 && !named(token->name, "hr") && !option && !group))
+        return LXA_OK;
+    if (token->kind == LXA_HTML_START_TAG && length > boundary) {
+        lxa_dom_namespace_t ns;
+        status = lxa_dom_nodes_element_namespace(tree->nodes,
+                                                  open[length - 1], &ns);
+        if (status != LXA_OK || ns != LXA_DOM_NS_HTML) return status;
+    }
+    while (i > boundary) {
         lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "select")) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
+        if (token->kind == LXA_HTML_END_TAG && i == length - 1
+            && ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
+            *keep = i;
             return LXA_OK;
         }
-    }
-    return LXA_ERROR_INTERNAL;
-}
-
-static lxa_status_t
-select_open(lxa_html_tree_t *tree, bool *found)
-{
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->open_elements);
-    *found = false;
-    while (i > 1) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[--i],
-                                                &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "select")) {
-            *found = true;
+        if (foreign_end && ns != LXA_DOM_NS_HTML) {
+            if (named(name, "select")) {
+                *ignore = false; /* Let foreign end-tag matching consume it. */
+                return LXA_OK;
+            }
+            foreign_boundary |= scope_boundary(name, ns, SCOPE_NORMAL);
+            continue;
+        }
+        foreign_end = false;
+        if (foreign_boundary) return LXA_OK;
+        if (ns == LXA_DOM_NS_HTML && named(name, "select")) {
+            select = i;
             break;
         }
-        if (!named(name, "option") && !named(name, "optgroup")) break;
+        if (scope_boundary(name, ns, SCOPE_NORMAL)) break;
     }
+    if (select != length && (named(token->name, "select")
+                             || named(token->name, "input"))) {
+        *keep = select;
+        *ignore = named(token->name, "select");
+        return LXA_OK;
+    }
+    if (!option && !group && !named(token->name, "hr")) return LXA_OK;
+    if (select == length && !option && !group) return LXA_OK;
+    i = length;
+    while (i > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        bool implied = false;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i - 1], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i - 1], &name);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) break;
+        if (select == length) {
+            if (named(name, "option")) --i;
+            break;
+        }
+        if (option && named(name, "optgroup")) break;
+        implied = implied_end_tag(name);
+        if (!implied) break;
+        --i;
+    }
+    *keep = i;
     return LXA_OK;
 }
 
-typedef enum {
-    SELECT_PARENT_OTHER, SELECT_PARENT_TABLE, SELECT_PARENT_SECTION,
-    SELECT_PARENT_ROW, SELECT_PARENT_COLGROUP
-} select_parent_t;
-
 static lxa_status_t
-select_table_scope(lxa_html_tree_t *tree, bool *found,
-                   bool *cell, bool *caption, select_parent_t *parent)
+table_in_scope(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+               size_t boundary, bool *found)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    bool below_select = false;
-    *found = *cell = *caption = false;
-    *parent = SELECT_PARENT_OTHER;
-    while (i > 1) {
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
+    size_t i = lxa_vector_length(elements);
+    *found = false;
+    while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) {
-            below_select = false;
-            continue;
-        }
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (below_select) {
-            if (named(name, "table")) *parent = SELECT_PARENT_TABLE;
-            else if (table_section(name)) *parent = SELECT_PARENT_SECTION;
-            else if (named(name, "tr")) *parent = SELECT_PARENT_ROW;
-            else if (named(name, "colgroup"))
-                *parent = SELECT_PARENT_COLGROUP;
-            below_select = false;
-        }
-        if (named(name, "select")) below_select = true;
-        if (named(name, "td") || named(name, "th")) *cell = true;
-        if (named(name, "caption")) *caption = true;
-        if (named(name, "table")) {
-            *found = true;
-            return LXA_OK;
-        }
-        if (named(name, "html")) break;
-    }
-    return LXA_OK;
-}
-
-/* A select admits options and groups rather than ordinary body containers.
- * Keep unsupported select-mode tags explicit until their reprocessing rules
- * are implemented. */
-static lxa_status_t
-consume_select(lxa_html_tree_t *tree,
-               const lxa_html_token_t *token, lxa_span_t top)
-{
-    lxa_status_t status;
-    if (token->kind == LXA_HTML_START_TAG) {
-        if (named(token->name, "select")) return close_select(tree);
-        if (named(token->name, "hr")) {
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (named(top, "option")) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                                                    current_element(tree),
-                                                    &top);
-                if (status != LXA_OK) return status;
-            }
-            if (named(top, "optgroup")) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return append_void(tree, current_element(tree), token);
-        }
-        if (!named(token->name, "option")
-            && !named(token->name, "optgroup")) {
-            /* Ordinary start tags inside a select are ignored. Keep tokens
-             * requiring a different insertion mode or reprocessing explicit
-             * until that mode is implemented. */
-            return named(token->name, "input")
-                   || named(token->name, "textarea")
-                   || named(token->name, "keygen")
-                   || named(token->name, "script")
-                   || named(token->name, "template")
-                   ? LXA_ERROR_UNSUPPORTED : LXA_OK;
-        }
-        status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
-        if (named(top, "option")) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                current_element(tree), &top);
-            if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && named(name, "table")) {
+            *found = true;
+            break;
         }
-        if (named(token->name, "optgroup") && named(top, "optgroup")) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        return open_container(tree, token);
-    }
-    if (token->kind == LXA_HTML_END_TAG) {
-        if (named(token->name, "select")) return close_select(tree);
-        if (named(token->name, "option")) {
-            if (named(top, "option")) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
-        if (named(token->name, "optgroup")) {
-            if (named(top, "option")) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                                          tree->open_elements.bytes.data;
-                size_t i = lxa_vector_length(&tree->open_elements);
-                if (i > 1) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                                                        open[i - 2], &top);
-                    if (status != LXA_OK) return status;
-                    if (named(top, "optgroup")) {
-                        status = pop_element(tree);
-                        if (status != LXA_OK) return status;
-                    }
-                }
-                else return LXA_OK;
-            }
-            if (named(top, "optgroup")) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
-        /* Other end tags are parse errors in select mode. Table and
-         * template endings still require their own insertion-mode rules. */
-        return table_part(token->name) || named(token->name, "template")
-               ? LXA_ERROR_UNSUPPORTED : LXA_OK;
+        if (scope_boundary(name, ns, SCOPE_TABLE)) break;
     }
     return LXA_OK;
 }
@@ -1831,24 +2276,45 @@ foster_element(lxa_html_tree_t *tree,
                const lxa_html_token_t *token, bool is_void)
 {
     lxa_dom_ref_t table, parent, child;
-    lxa_status_t status = foster_location(tree, &parent, &table);
+    bool formatting = formatting_tag(token->name);
+    bool marker = formatting_marker_tag(token->name);
+    size_t drop = SIZE_MAX;
+    lxa_status_t status = LXA_OK;
+    if (formatting) status = prepare_formatting_start(tree, token, &drop);
+    else if (!is_void && container_reconstructs(token->name))
+        status = reconstruct_formatting(tree);
+    else if (is_void && !named(token->name, "hr")
+             && !named(token->name, "param") && !named(token->name, "source")
+             && !named(token->name, "track"))
+        status = reconstruct_formatting(tree);
+    if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
+    if (status == LXA_OK)
+        status = root_insertion_location(tree, current_element(tree),
+                                          &parent, &table);
     if (status != LXA_OK) return status;
     if (!is_void) {
         status = reserve_open_elements(tree, 1);
         if (status != LXA_OK) return status;
     }
-    status = lxa_dom_nodes_append_html_element(tree->nodes,
+    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                                                 token->name, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
-    if (status == LXA_OK)
-        status = table.handle == LXA_HANDLE_NONE
-            ? lxa_dom_nodes_append_constructed_child(
-                tree->nodes, parent, child)
-            : lxa_dom_nodes_insert_constructed_before(
-                tree->nodes, parent, child, table);
+    if (status == LXA_OK) {
+        if (table.handle != LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                              parent, child, table);
+        else status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                              parent, child);
+    }
     if (status == LXA_OK && named(token->name, "selectedcontent"))
         status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
+    if (status == LXA_OK && formatting) {
+        if (drop != SIZE_MAX) remove_formatting(tree, drop);
+        status = append_formatting(tree, child, false);
+    }
+    if (status == LXA_OK && marker)
+        status = append_formatting(tree, child, true);
     return status;
 }
 
@@ -1858,23 +2324,27 @@ foster_foreign(lxa_html_tree_t *tree,
 {
     lxa_dom_ref_t table, parent, child;
     lxa_span_t name = token->name;
-    lxa_status_t status = reserve_open_elements(tree, 1);
+    lxa_status_t status = reconstruct_formatting(tree);
+    if (status == LXA_OK) status = reserve_open_elements(tree, 1);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                    1, &tree->nodes->limit_reason);
-    if (status == LXA_OK) status = foster_location(tree, &parent, &table);
+    if (status == LXA_OK)
+        status = root_insertion_location(tree, current_element(tree),
+                                          &parent, &table);
     if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
         status = lxa_html_svg_tag_name(name, &name);
     if (status == LXA_OK)
         status = lxa_dom_nodes_append_namespaced_element(tree->nodes,
                                                           name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
-    if (status == LXA_OK)
-        status = table.handle == LXA_HANDLE_NONE
-            ? lxa_dom_nodes_append_constructed_child(
-                tree->nodes, parent, child)
-            : lxa_dom_nodes_insert_constructed_before(
-                tree->nodes, parent, child, table);
+    if (status == LXA_OK) {
+        if (table.handle == LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                             parent, child);
+        else status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                               parent, child, table);
+    }
     if (status == LXA_OK) status = push_element(tree, child);
     if (status == LXA_OK && token->self_closing) {
         status = pop_element(tree);
@@ -1894,12 +2364,16 @@ close_open_table_part(lxa_html_tree_t *tree,
     size_t i = lxa_vector_length(&tree->open_elements);
     while (i > 1) {
         lxa_span_t name;
+        lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         --i;
         status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
         if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) continue;
         if ((group == TABLE_CELL
              && (named(name, "td") || named(name, "th")))
             || (group == TABLE_ROW && named(name, "tr"))
@@ -1907,11 +2381,7 @@ close_open_table_part(lxa_html_tree_t *tree,
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
+            return pop_table_elements(tree, i);
         }
         if (named(name, "table")
             || (group == TABLE_CELL && table_context(name))
@@ -1922,38 +2392,23 @@ close_open_table_part(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-end_table_part(lxa_html_tree_t *tree, lxa_span_t target);
-
-static lxa_status_t
 close_caption_for_table_start(lxa_html_tree_t *tree,
                               lxa_span_t incoming)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->open_elements);
+    size_t i;
     size_t needed = named(incoming, "td") || named(incoming, "th") ? 3
                     : named(incoming, "tr") || named(incoming, "col") ? 2 : 1;
-    while (i > 1) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "caption")) {
-            /* Reprocessing may allocate implicit tbody/tr nodes. Preflight
-             * before discarding the open caption and its descendants. */
-            status = reserve_open_elements(tree, needed);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            return end_table_part(tree, literal("caption"));
-        }
-        if (named(name, "table")) break;
-    }
-    return LXA_OK;
+    lxa_status_t status = find_scoped_end_target(tree, &tree->open_elements,
+        0, literal("caption"), SCOPE_TABLE, &i);
+    if (status != LXA_OK || i == lxa_vector_length(&tree->open_elements))
+        return status;
+    /* Reprocessing may allocate implicit tbody/tr nodes. */
+    status = reserve_open_elements(tree, needed);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget,
+            LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    return pop_table_elements(tree, i);
 }
 
 static lxa_status_t
@@ -1963,44 +2418,71 @@ open_table_part(lxa_html_tree_t *tree,
     lxa_html_token_t implied = {0};
     lxa_span_t top;
     bool section, row, cell;
+    bool column = named(token->name, "col") || named(token->name, "colgroup");
     size_t extra = 1;
     lxa_status_t status = ensure_body(tree);
     if (status != LXA_OK) return status;
     tree->mode = LXA_TREE_IN_BODY;
+    if (!named(token->name, "table")) {
+        bool found;
+        status = table_in_scope(tree, &tree->open_elements, 0, &found);
+        if (status != LXA_OK || !found) return status;
+    }
     status = lxa_dom_nodes_element_name(tree->nodes,
                                         current_element(tree), &top);
     if (status != LXA_OK) return status;
-    if ((block_container(top) || named(top, "p")
-         || named(top, "span"))
-        && (named(token->name, "tr")
-            || named(token->name, "td") || named(token->name, "th"))) {
+    if (!named(token->name, "table")
+        && (!table_context(top)
+            || (column && !named(top, "table") && !named(top, "colgroup")))) {
         const lxa_dom_ref_t *open =
             (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-        size_t length = lxa_vector_length(&tree->open_elements);
-        lxa_span_t below;
-        if (length > 2) {
+        size_t i = lxa_vector_length(&tree->open_elements);
+        while (i > 1) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
             status = lxa_budget_charge(tree->nodes->budget,
                 LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
+                status = lxa_dom_nodes_element_namespace(tree->nodes,
+                                                          open[--i], &ns);
+            if (status == LXA_OK)
                 status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[length - 2], &below);
+                                                     open[i], &name);
             if (status != LXA_OK) return status;
-            if (named(below, "table")) {
-                size_t needed = named(token->name, "tr") ? 2 : 3;
-                status = reserve_open_elements(tree, needed);
+            if (ns != LXA_DOM_NS_HTML
+                || (!table_context(name) && !named(name, "td")
+                    && !named(name, "th") && !named(name, "caption")))
+                continue;
+            if (column && (table_section(name) || named(name, "tr")
+                           || named(name, "td") || named(name, "th")))
+                continue;
+            if (named(name, "table") || table_section(name)
+                || named(name, "tr")) {
+                size_t needed = named(token->name, "td")
+                    || named(token->name, "th")
+                    ? (named(name, "table") ? 3
+                       : table_section(name) ? 2 : 1)
+                    : named(token->name, "tr") || named(token->name, "col")
+                      ? (named(name, "table") ? 2 : 1) : 1;
+                size_t removed = lxa_vector_length(&tree->open_elements)
+                                 - (i + 1);
+                size_t slots = named(token->name, "col") ? 1 : needed;
+                status = reserve_open_elements(tree,
+                    slots > removed ? slots - removed : 0);
                 if (status == LXA_OK)
                     status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, needed,
-                        &tree->nodes->limit_reason);
+                        LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                status = pop_element(tree);
+                status = pop_table_elements(tree, i + 1);
                 if (status != LXA_OK) return status;
-                top = below;
+                top = name;
             }
+            break;
         }
     }
     if (named(token->name, "table")) {
         bool close_existing = table_context(top);
+        tree->frameset_ok = false;
         if (!close_existing) {
             const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
                                       tree->open_elements.bytes.data;
@@ -2033,10 +2515,11 @@ open_table_part(lxa_html_tree_t *tree,
                                        1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         if (close_existing) {
-            status = end_table_part(tree, literal("table"));
+            status = end_scoped_element(tree, literal("table"), SCOPE_TABLE);
             if (status != LXA_OK) return status;
         }
-        status = close_paragraph(tree, NULL);
+        status = tree->document_mode == LXA_HTML_QUIRKS ? LXA_OK
+                 : close_paragraph(tree, NULL);
         if (status != LXA_OK) return status;
         return open_container(tree, token);
     }
@@ -2142,57 +2625,36 @@ open_table_part(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-end_table_part(lxa_html_tree_t *tree, lxa_span_t target)
+append_closed_element_at(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+                        lxa_dom_ref_t before, const lxa_html_token_t *token,
+                        lxa_dom_ref_t *out)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 1) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (table_part(name) && name.length == target.length
-            && memcmp(name.data, target.data, name.length) == 0) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return LXA_OK;
-        }
-        /* A mismatched cell or a different table ends this scope. */
-        if (named(name, "table")
-            || ((named(target, "td") || named(target, "th"))
-                && (named(name, "td") || named(name, "th"))))
-            break;
-    }
-    /* A table-part end without a match in this table's scope is ignored.
-     * A mismatched cell must not close the currently open cell. */
-    return LXA_OK;
+    lxa_dom_ref_t element;
+    lxa_status_t status = lxa_dom_nodes_append_parsed_html_element(
+        tree->nodes, token->name, &element);
+    if (status == LXA_OK)
+        status = apply_attributes(tree, element, token);
+    if (status == LXA_OK)
+        status = before.handle != LXA_HANDLE_NONE
+            ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                       parent, element, before)
+            : lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                       parent, element);
+    if (status == LXA_OK && out != NULL) *out = element;
+    return status;
 }
 
 static lxa_status_t
 append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             const lxa_html_token_t *token)
 {
-    lxa_dom_ref_t element;
-    lxa_status_t status = lxa_dom_nodes_append_html_element(
-        tree->nodes, token->name, &element);
-    if (status == LXA_OK)
-        status = apply_attributes(tree, element, token);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         parent, element);
-    return status;
+    return append_closed_element_at(tree, parent, (lxa_dom_ref_t){0}, token, NULL);
 }
 
 static lxa_status_t
-enter_text_mode(lxa_html_tree_t *tree,
+set_tokenizer_text_mode(
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
-    lxa_html_text_mode_t text_mode, lxa_dom_ref_t element)
+    lxa_html_text_mode_t text_mode)
 {
     lxa_html_result_t result;
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
@@ -2203,6 +2665,16 @@ enter_text_mode(lxa_html_tree_t *tree,
                : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
                : result == LXA_HTML_OVERFLOW ? LXA_ERROR_OVERFLOW
                : LXA_ERROR_ARGUMENT;
+    return LXA_OK;
+}
+
+static lxa_status_t
+enter_text_mode(lxa_html_tree_t *tree,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_text_mode_t text_mode, lxa_dom_ref_t element)
+{
+    lxa_status_t status = set_tokenizer_text_mode(tokenizer, token, text_mode);
+    if (status != LXA_OK) return status;
     tree->text_element = element;
     tree->text_return_mode = tree->mode;
     tree->mode = LXA_TREE_TEXT;
@@ -2210,23 +2682,162 @@ enter_text_mode(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-begin_text_element(lxa_html_tree_t *tree,
-    lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent,
+begin_text_element_at(lxa_html_tree_t *tree,
+    lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent, lxa_dom_ref_t before,
     const lxa_html_token_t *token, lxa_html_text_mode_t text_mode)
 {
     lxa_dom_ref_t element;
     lxa_status_t status;
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-    status = lxa_dom_nodes_append_html_element(tree->nodes, token->name,
+    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, token->name,
                                                 &element);
     if (status == LXA_OK)
         status = apply_attributes(tree, element, token);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         parent, element);
+        status = before.handle != LXA_HANDLE_NONE
+            ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                       parent, element, before)
+            : lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                       parent, element);
     return status == LXA_OK
            ? enter_text_mode(tree, tokenizer, token, text_mode, element)
            : status;
+}
+
+static lxa_status_t
+begin_text_element(lxa_html_tree_t *tree,
+    lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent,
+    const lxa_html_token_t *token, lxa_html_text_mode_t text_mode)
+{
+    return begin_text_element_at(tree, tokenizer, parent, (lxa_dom_ref_t){0},
+                                  token, text_mode);
+}
+
+static lxa_status_t
+begin_root_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
+                const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t parent, before;
+    lxa_span_t top;
+    lxa_dom_namespace_t ns;
+    lxa_status_t status;
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    status = ensure_body(tree);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES, 1,
+                                   &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_namespace(tree->nodes,
+                                                  current_element(tree), &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes,
+                                             current_element(tree), &top);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML && named(top, "colgroup")) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
+    status = close_paragraph(tree, NULL);
+    if (status == LXA_OK) status = reconstruct_formatting(tree);
+    if (status == LXA_OK)
+        status = root_insertion_location(tree, current_element(tree),
+                                          &parent, &before);
+    if (status != LXA_OK) return status;
+    tree->mode = LXA_TREE_IN_BODY;
+    tree->frameset_ok = false;
+    return begin_text_element_at(tree, tokenizer, parent, before, token,
+                                   LXA_HTML_RAWTEXT);
+}
+
+static lxa_status_t
+begin_root_plaintext(lxa_html_tree_t *tree,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t parent, before;
+    lxa_dom_namespace_t ns;
+    lxa_span_t top;
+    bool column_group;
+    lxa_status_t status;
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    status = ensure_body(tree);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget,
+            LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = close_paragraph(tree, NULL);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_namespace(tree->nodes,
+            current_element(tree), &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes,
+            current_element(tree), &top);
+    if (status != LXA_OK) return status;
+    column_group = ns == LXA_DOM_NS_HTML && named(top, "colgroup");
+    status = reserve_open_elements(tree, column_group ? 0 : 1);
+    if (status == LXA_OK)
+        status = root_insertion_location(tree, current_element(tree),
+                                          &parent, &before);
+    if (status != LXA_OK) return status;
+    if (column_group) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
+    status = open_container_at(tree, token, LXA_DOM_NS_HTML, parent, before);
+    if (status != LXA_OK) return status;
+    tree->mode = LXA_TREE_IN_BODY;
+    return set_tokenizer_text_mode(tokenizer, token, LXA_HTML_PLAINTEXT);
+}
+
+static lxa_status_t
+begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                    bool replace_body)
+{
+    lxa_dom_ref_t child, parent;
+    lxa_budget_t after = *tree->nodes->budget;
+    size_t pop_count = replace_body
+        ? lxa_vector_length(&tree->open_elements) : 0;
+    size_t needed = 1;
+    lxa_status_t status = lxa_budget_release(&after, LXA_BUDGET_OPEN_ELEMENTS,
+                                             pop_count);
+    if (status != LXA_OK) return LXA_ERROR_INTERNAL;
+    if (tree->head.handle == LXA_HANDLE_NONE) ++needed;
+    if (tree->html.handle == LXA_HANDLE_NONE) ++needed;
+    status = lxa_budget_check(&after, LXA_BUDGET_OPEN_ELEMENTS, 1,
+                              &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget,
+            LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_vector_reserve(&tree->open_elements, 1);
+    if (status == LXA_ERROR_LIMIT
+        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
+        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
+    if (status == LXA_OK)
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+            pop_count, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = ensure_head(tree);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
+                                                    token->name, &child);
+    if (status == LXA_OK) status = apply_attributes(tree, child, token);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                         tree->html, child);
+    if (status != LXA_OK) return status;
+    if (replace_body) {
+        status = lxa_dom_nodes_parent(tree->nodes, tree->body, &parent);
+        if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_detach_constructed_element(tree->nodes,
+                                                               tree->body);
+        if (status != LXA_OK) return status;
+        while (lxa_vector_length(&tree->open_elements) != 0) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        tree->body = (lxa_dom_ref_t){0};
+    }
+    status = push_element(tree, child);
+    if (status == LXA_OK) tree->mode = LXA_TREE_IN_FRAMESET;
+    return status;
 }
 
 lxa_status_t
@@ -2237,10 +2848,17 @@ lxa_html_tree_init(lxa_html_tree_t *tree,
     if (tree == NULL || nodes == NULL)
         return LXA_ERROR_ARGUMENT;
     memset(tree, 0, sizeof(*tree));
+    tree->frameset_ok = true;
+    tree->formatting_marker = SIZE_MAX;
     status = lxa_vector_init(&tree->open_elements, &nodes->allocator,
                              sizeof(lxa_dom_ref_t));
     if (status == LXA_OK)
         status = lxa_vector_bind_budget(&tree->open_elements, nodes->budget);
+    if (status == LXA_OK)
+        status = lxa_vector_init(&tree->formatting, &nodes->allocator,
+                                 sizeof(lxa_html_formatting_entry_t));
+    if (status == LXA_OK)
+        status = lxa_vector_bind_budget(&tree->formatting, nodes->budget);
     if (status == LXA_OK)
         status = lxa_vector_init(&tree->template_stack, &nodes->allocator,
                                  sizeof(lxa_html_template_frame_t));
@@ -2252,20 +2870,14 @@ lxa_html_tree_init(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = lxa_vector_bind_budget(&tree->template_elements, nodes->budget);
     if (status == LXA_OK)
-        status = lxa_vector_init(&tree->pending_template_extras,
-                                 &nodes->allocator, sizeof(lxa_dom_ref_t));
-    if (status == LXA_OK)
-        status = lxa_vector_bind_budget(&tree->pending_template_extras,
-                                        nodes->budget);
-    if (status == LXA_OK)
         status = lxa_buffer_init(&tree->table_text, &nodes->allocator);
     if (status == LXA_OK)
         status = lxa_buffer_bind_budget(&tree->table_text, nodes->budget);
     if (status != LXA_OK) {
         lxa_buffer_destroy(&tree->table_text);
-        lxa_vector_destroy(&tree->pending_template_extras);
         lxa_vector_destroy(&tree->template_elements);
         lxa_vector_destroy(&tree->template_stack);
+        lxa_vector_destroy(&tree->formatting);
         lxa_vector_destroy(&tree->open_elements);
         return status;
     }
@@ -2273,14 +2885,15 @@ lxa_html_tree_init(lxa_html_tree_t *tree,
                                         &tree->document);
     if (status != LXA_OK) {
         lxa_buffer_destroy(&tree->table_text);
-        lxa_vector_destroy(&tree->pending_template_extras);
         lxa_vector_destroy(&tree->template_elements);
         lxa_vector_destroy(&tree->template_stack);
+        lxa_vector_destroy(&tree->formatting);
         lxa_vector_destroy(&tree->open_elements);
         return status;
     }
     tree->nodes = nodes;
     tree->mode = LXA_TREE_INITIAL;
+    tree->document_mode = LXA_HTML_NO_QUIRKS;
     return LXA_OK;
 }
 
@@ -2288,21 +2901,9 @@ void
 lxa_html_tree_destroy(lxa_html_tree_t *tree)
 {
     if (tree == NULL) return;
-    if (tree->nodes != NULL) forget_anchor(tree);
-    if (tree->nodes != NULL) forget_pending_formatting(tree);
-    if (tree->nodes != NULL) {
-        size_t i;
-        const lxa_html_template_frame_t *frames =
-            (const lxa_html_template_frame_t *) tree->template_stack.bytes.data;
-        forget_pending_template_formatting(tree);
-        lxa_budget_release(tree->nodes->budget,
-            LXA_BUDGET_ACTIVE_FORMATTING,
-            lxa_vector_length(&tree->pending_template_extras));
-        for (i = 0; i < lxa_vector_length(&tree->template_stack); ++i)
-            if (frames[i].pending_formatting.handle != LXA_HANDLE_NONE)
-                lxa_budget_release(tree->nodes->budget,
-                                   LXA_BUDGET_ACTIVE_FORMATTING, 1);
-    }
+    if (tree->nodes != NULL)
+        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                            lxa_vector_length(&tree->formatting));
     if (tree->nodes != NULL)
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                             lxa_vector_length(&tree->open_elements));
@@ -2312,9 +2913,9 @@ lxa_html_tree_destroy(lxa_html_tree_t *tree)
             + lxa_vector_length(&tree->template_elements)
             + (tree->template_fragment.handle != LXA_HANDLE_NONE ? 1 : 0));
     lxa_buffer_destroy(&tree->table_text);
-    lxa_vector_destroy(&tree->pending_template_extras);
     lxa_vector_destroy(&tree->template_elements);
     lxa_vector_destroy(&tree->template_stack);
+    lxa_vector_destroy(&tree->formatting);
     lxa_vector_destroy(&tree->open_elements);
     memset(tree, 0, sizeof(*tree));
 }
@@ -2325,12 +2926,10 @@ template_pop_elements(lxa_html_tree_t *tree, size_t keep)
     return pop_elements(tree, &tree->template_elements, keep);
 }
 
-
 static lxa_status_t
 close_template(lxa_html_tree_t *tree)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
-    size_t extra_count;
     lxa_html_template_frame_t frame = {0};
     size_t boundary = 0;
     lxa_status_t status;
@@ -2341,17 +2940,10 @@ close_template(lxa_html_tree_t *tree)
     }
     status = template_pop_elements(tree, boundary);
     if (status != LXA_OK) return status;
-    forget_pending_template_formatting(tree);
-    extra_count = lxa_vector_length(&tree->pending_template_extras)
-                  - frame.pending_extra_count;
-    lxa_vector_erase(&tree->pending_template_extras,
-        frame.pending_extra_count, extra_count);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
-                       extra_count);
+    clear_formatting_to_marker(tree);
     lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
     if (length != 0) {
         tree->template_fragment = frame.fragment;
-        tree->pending_template_formatting = frame.pending_formatting;
         tree->template_insertion_mode = frame.insertion_mode;
         lxa_vector_erase(&tree->template_stack, length - 1, 1);
     }
@@ -2372,15 +2964,6 @@ template_boundary(const lxa_html_tree_t *tree)
            tree->template_stack.bytes.data)[length - 1].element_count;
 }
 
-static size_t
-template_pending_extra_start(const lxa_html_tree_t *tree)
-{
-    size_t length = lxa_vector_length(&tree->template_stack);
-    return length == 0 ? 0
-        : ((const lxa_html_template_frame_t *)
-           tree->template_stack.bytes.data)[length - 1].pending_extra_count;
-}
-
 static lxa_dom_ref_t
 template_parent(const lxa_html_tree_t *tree)
 {
@@ -2390,60 +2973,53 @@ template_parent(const lxa_html_tree_t *tree)
 }
 
 static lxa_status_t
+template_foster_location(lxa_html_tree_t *tree,
+                         lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
+{
+    return foster_location_in(tree, &tree->template_elements,
+        template_boundary(tree), tree->template_fragment, parent, before);
+}
+
+static lxa_status_t
+template_insertion_location(lxa_html_tree_t *tree,
+                            lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
+{
+    lxa_span_t name;
+    lxa_dom_namespace_t ns;
+    lxa_status_t status;
+    *parent = template_parent(tree);
+    *before = (lxa_dom_ref_t){0};
+    if (lxa_vector_length(&tree->template_elements) == template_boundary(tree))
+        return LXA_OK;
+    status = lxa_dom_nodes_element_namespace(tree->nodes, *parent, &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes, *parent, &name);
+    if (status != LXA_OK) return status;
+    return ns == LXA_DOM_NS_HTML && table_context(name)
+           ? template_foster_location(tree, parent, before) : LXA_OK;
+}
+
+static lxa_status_t
 template_foster_element(lxa_html_tree_t *tree,
                         const lxa_html_token_t *token, bool keep_open,
                         lxa_dom_ref_t *created, lxa_dom_namespace_t ns)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    lxa_dom_ref_t table = {0}, parent, child;
-    size_t i = lxa_vector_length(&tree->template_elements), depth, after;
-    lxa_status_t status;
-    bool before_table = false;
-    while (i > template_boundary(tree)) {
-        lxa_span_t name;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        table = open[--i];
-        status = lxa_dom_nodes_element_name(tree->nodes, table, &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "table")) {
-            status = lxa_dom_nodes_parent(tree->nodes, table, &parent);
-            if (status != LXA_OK) return status;
-            if (parent.handle == LXA_HANDLE_NONE) return LXA_ERROR_INTERNAL;
-            before_table = true;
-            break;
-        }
-    }
-    if (!before_table) {
-        lxa_span_t name;
-        size_t length = lxa_vector_length(&tree->template_elements);
-        if (length != template_boundary(tree) + 1
-            && !(length == template_boundary(tree) + 2
-                 && tree->template_insertion_mode == LXA_TEMPLATE_TABLE))
-            return LXA_ERROR_UNSUPPORTED;
-        status = lxa_dom_nodes_element_name(tree->nodes,
-            open[template_boundary(tree)], &name);
-        if (status != LXA_OK) return status;
-        if (length == template_boundary(tree) + 2) {
-            lxa_span_t row;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[template_boundary(tree) + 1], &row);
-            if (status != LXA_OK) return status;
-            if (!table_section(name) || !named(row, "tr"))
-                return LXA_ERROR_UNSUPPORTED;
-        }
-        else if (!((tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-               && named(name, "tr"))
-              || (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                  && table_section(name))))
-            return LXA_ERROR_UNSUPPORTED;
-        parent = tree->template_fragment;
-    }
+    lxa_dom_ref_t before, parent, child;
+    size_t depth, after, drop = SIZE_MAX;
+    bool formatting = ns == LXA_DOM_NS_HTML && formatting_tag(token->name);
+    bool marker = ns == LXA_DOM_NS_HTML && formatting_marker_tag(token->name);
+    lxa_status_t status = LXA_OK;
+    if (formatting) status = prepare_formatting_start(tree, token, &drop);
+    else if (ns != LXA_DOM_NS_HTML
+             || (keep_open && container_reconstructs(token->name))
+             || (body_void(token->name) && !named(token->name, "hr")
+                 && !named(token->name, "param") && !named(token->name, "source")
+                 && !named(token->name, "track")))
+        status = reconstruct_formatting(tree);
+    if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
+    if (status == LXA_OK)
+        status = template_insertion_location(tree, &parent, &before);
+    if (status != LXA_OK) return status;
     if (keep_open) {
         status = lxa_size_add(
             lxa_vector_length(&tree->template_elements), 1, &after);
@@ -2483,15 +3059,15 @@ template_foster_element(lxa_html_tree_t *tree,
     }
     else if (status == LXA_OK)
         status = ns == LXA_DOM_NS_HTML
-            ? lxa_dom_nodes_append_html_element(tree->nodes,
+            ? lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                 token->name, &child)
             : lxa_dom_nodes_append_namespaced_element(tree->nodes,
                 token->name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = before_table
+        status = before.handle != LXA_HANDLE_NONE
             ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                         parent, child, table)
+                                                         parent, child, before)
             : lxa_dom_nodes_append_constructed_child(tree->nodes,
                                                        parent, child);
     if (status == LXA_OK && keep_open)
@@ -2503,6 +3079,12 @@ template_foster_element(lxa_html_tree_t *tree,
             lxa_budget_release(tree->nodes->budget,
                                 LXA_BUDGET_OPEN_ELEMENTS, 1);
     }
+    if (status == LXA_OK && formatting) {
+        if (drop != SIZE_MAX) remove_formatting(tree, drop);
+        status = append_formatting(tree, child, false);
+    }
+    if (status == LXA_OK && marker)
+        status = append_formatting(tree, child, true);
     if (status == LXA_OK && created != NULL) *created = child;
     return status;
 }
@@ -2510,46 +3092,27 @@ template_foster_element(lxa_html_tree_t *tree,
 static lxa_status_t
 flush_template_table_text(lxa_html_tree_t *tree)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    lxa_dom_ref_t table = {0}, parent, child;
+    lxa_dom_ref_t table = {0}, parent;
     lxa_span_t bytes = {tree->table_text.data, tree->table_text.length};
     size_t i = lxa_vector_length(&tree->template_elements), prefix = 0;
     bool colgroup = false;
     lxa_status_t status;
     if (bytes.length == 0) return LXA_OK;
-    if (i <= template_boundary(tree)) return LXA_ERROR_INTERNAL;
+    if (i < template_boundary(tree)) return LXA_ERROR_INTERNAL;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                 bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if (space_only(bytes)) {
+    if (null_or_space_only(bytes)) {
         status = append_character(tree, template_parent(tree),
                                    LXA_DOM_KIND_TEXT, bytes);
     }
     else {
-        lxa_span_t top;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i - 1], &top);
-        if (status != LXA_OK) return status;
-        colgroup = named(top, "colgroup");
-        while (i > template_boundary(tree)) {
-            lxa_span_t name;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes, open[--i],
-                                                     &name);
+        if (i > template_boundary(tree)) {
+            lxa_span_t top;
+            status = lxa_dom_nodes_element_name(tree->nodes,
+                                                 template_parent(tree), &top);
             if (status != LXA_OK) return status;
-            if (named(name, "table")) {
-                table = open[i];
-                break;
-            }
-        }
-        if (table.handle == LXA_HANDLE_NONE)
-            parent = tree->template_fragment;
-        else {
-            status = lxa_dom_nodes_parent(tree->nodes, table, &parent);
-            if (status != LXA_OK || parent.handle == LXA_HANDLE_NONE)
-                return status == LXA_OK ? LXA_ERROR_INTERNAL : status;
+            colgroup = named(top, "colgroup");
         }
         if (colgroup) {
             while (prefix < bytes.length
@@ -2560,10 +3123,6 @@ flush_template_table_text(lxa_html_tree_t *tree)
                        || bytes.data[prefix] == '\f'))
                 ++prefix;
         }
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   prefix != 0 ? 2 : 1,
-                                   &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
         if (prefix != 0) {
             lxa_span_t spaces = {bytes.data, prefix};
             status = append_character(tree, template_parent(tree),
@@ -2577,26 +3136,13 @@ flush_template_table_text(lxa_html_tree_t *tree)
         }
         bytes.data += prefix;
         bytes.length -= prefix;
-        status = lxa_dom_nodes_append_character(tree->nodes,
-                                                 LXA_DOM_KIND_TEXT,
-                                                 bytes, &child);
+        status = reconstruct_formatting(tree);
         if (status == LXA_OK)
-            status = table.handle == LXA_HANDLE_NONE
-                ? lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                           parent, child)
-                : lxa_dom_nodes_insert_constructed_before(
-                    tree->nodes, parent, child, table);
+            status = template_insertion_location(tree, &parent, &table);
+        if (status == LXA_OK) status = insert_text(tree, parent, table, bytes);
     }
     if (status == LXA_OK) lxa_buffer_clear(&tree->table_text);
     return status;
-}
-
-static bool
-template_formatting(lxa_span_t name)
-{
-    return named(name, "a") || named(name, "b") || named(name, "em")
-        || named(name, "strong") || named(name, "i")
-        || named(name, "code");
 }
 
 static bool
@@ -2611,608 +3157,54 @@ template_sectioning(lxa_span_t name)
 static bool
 template_simple_inline(lxa_span_t name)
 {
-    return named(name, "label") || named(name, "q")
-           || named(name, "cite") || named(name, "abbr");
+    return inline_container(name) && !formatting_tag(name);
+}
+
+static bool
+template_simple_text_element(lxa_span_t name)
+{
+    return named(name, "title") || named(name, "style")
+        || named(name, "script") || named(name, "textarea")
+        || named(name, "iframe") || named(name, "noembed")
+        || named(name, "noframes");
 }
 
 static bool
 template_html_text_element(lxa_span_t name)
 {
-    return named(name, "title") || named(name, "style")
-        || named(name, "script") || named(name, "textarea")
-        || named(name, "iframe") || named(name, "noembed")
-        || named(name, "noframes") || named(name, "xmp")
+    return template_simple_text_element(name) || named(name, "xmp")
         || named(name, "plaintext");
 }
 
-static bool
-template_crossed_inline(lxa_span_t name)
-{
-    return named(name, "span") || named(name, "ruby")
-        || template_simple_inline(name);
-}
-
-static bool
-template_adoption_block(lxa_span_t name)
-{
-    /* These ordinary containers are not furthest blocks in adoption. */
-    return (named(name, "p") || heading(name) || block_container(name))
-        && !named(name, "dialog") && !named(name, "search");
-}
-
 static lxa_status_t
-template_reparent_after(lxa_html_tree_t *tree,
-                        lxa_dom_ref_t parent, lxa_dom_ref_t child,
-                        lxa_dom_ref_t preceding)
-{
-    lxa_dom_ref_t following;
-    lxa_status_t status = lxa_dom_nodes_next_sibling(tree->nodes, preceding,
-                                                      &following);
-    if (status != LXA_OK) return status;
-    return following.handle == LXA_HANDLE_NONE
-        ? lxa_dom_nodes_reparent_constructed_child(tree->nodes, parent, child)
-        : lxa_dom_nodes_reparent_constructed_before(tree->nodes, parent,
-                                                     child, following);
-}
-
-/* Direct furthest-block case under an open formatting element. The block
- * moves beside the original; its children move under a formatting clone. */
-static lxa_status_t
-template_close_crossed_block(lxa_html_tree_t *tree,
-                             size_t outer_index, const size_t formatting_offsets[5],
-                             size_t reconstruct_count)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    lxa_dom_ref_t outer = open[outer_index], block = open[outer_index + 1];
-    lxa_dom_ref_t parent, actual, clone, first, continuation;
-    lxa_span_t name;
-    size_t visits = 0, j;
-    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, block, &name);
-    if (status != LXA_OK) return status;
-    if (!template_adoption_block(name))
-        return LXA_ERROR_UNSUPPORTED;
-    status = lxa_dom_nodes_parent(tree->nodes, outer, &parent);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_parent(tree->nodes, block, &actual);
-    if (status != LXA_OK) return status;
-    if (actual.handle != outer.handle) return LXA_ERROR_UNSUPPORTED;
-    status = clone_formatting_element(tree, outer, &clone);
-    if (status == LXA_OK)
-        status = template_reparent_after(tree, parent, block, outer);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         block, clone);
-    while (status == LXA_OK) {
-        status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
-        if (status != LXA_OK || first.handle == clone.handle) break;
-        if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_INTERNAL;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                clone, first);
-    }
-    for (j = 0; status == LXA_OK && j < reconstruct_count; ++j) {
-        lxa_dom_ref_t reconstructed;
-        status = clone_formatting_element(tree,
-            open[outer_index + formatting_offsets[j]], &reconstructed);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                j == 0 ? block : continuation, reconstructed);
-        if (status == LXA_OK) {
-            lxa_dom_ref_t *entries =
-                (lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            entries[outer_index + 1 + j] = reconstructed;
-            continuation = reconstructed;
-        }
-    }
-    if (status == LXA_OK) {
-        lxa_dom_ref_t *entries =
-            (lxa_dom_ref_t *) tree->template_elements.bytes.data;
-        entries[outer_index] = block;
-        status = template_pop_elements(tree, outer_index + 1 + reconstruct_count);
-        if (status != LXA_OK) return status;
-    }
-    return status;
-}
-
-static bool
-template_crossed_list_furthest_block(lxa_span_t name)
-{
-    return named(name, "div") || named(name, "section")
-        || named(name, "p") || named(name, "main")
-        || named(name, "article") || named(name, "aside")
-        || named(name, "nav") || named(name, "header")
-        || named(name, "footer") || named(name, "figure")
-        || named(name, "blockquote") || named(name, "address")
-        || named(name, "center") || named(name, "pre")
-        || named(name, "details") || named(name, "fieldset")
-        || named(name, "summary") || named(name, "dl")
-        || named(name, "hgroup") || named(name, "ul")
-        || named(name, "ol") || named(name, "menu")
-        || heading(name);
-}
-
-/* A still-open li is the next block in the crossed-list adoption chain.
- * Preceding text, comments and closed items move under the list clone;
- * the open item retains a second clone. Formatting descendants are
- * reconstructed for text after the crossed end tag. */
-static lxa_status_t
-template_close_crossed_list_item(lxa_html_tree_t *tree,
-                                 size_t outer_index, size_t span_count,
-                                 size_t formatting_count, bool direct_block,
-                                 size_t block_span_count, size_t nested_blocks,
-                                 const size_t inline_gaps[4],
-                                 size_t preblock_length)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    lxa_dom_ref_t outer = open[outer_index], list = open[outer_index + 1];
-    lxa_dom_ref_t item = open[outer_index + 2], parent, actual, first, cursor;
-    lxa_dom_ref_t list_clone, item_clone, continuation, block = {0};
-    lxa_dom_ref_t last_formatting_clone = {0};
-    lxa_dom_ref_t nested[4] = {0};
-    lxa_span_t name;
-    size_t visits = 0, j;
-    size_t count = lxa_vector_length(&tree->template_elements) - outer_index;
-    size_t next_formatting = outer_index + 3 + span_count;
-    size_t formatting_start = preblock_length > 3 ? preblock_length - 3 : 0;
-    size_t kept_formatting = 0;
-    size_t cloned_formatting = 0;
-    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, list,
-                                                      &name);
-    if (status != LXA_OK) return status;
-    if (!named(name, "menu") && !named(name, "ul") && !named(name, "ol"))
-        return LXA_ERROR_UNSUPPORTED;
-    status = lxa_dom_nodes_element_name(tree->nodes, item, &name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_parent(tree->nodes, outer, &parent);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_parent(tree->nodes, list, &actual);
-    if (status != LXA_OK) return status;
-    if (!named(name, "li") || actual.handle != outer.handle)
-        return LXA_ERROR_UNSUPPORTED;
-    status = lxa_dom_nodes_parent(tree->nodes, item, &actual);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_first_child(tree->nodes, list, &first);
-    if (status != LXA_OK) return status;
-    if (actual.handle != list.handle) return LXA_ERROR_UNSUPPORTED;
-    if (direct_block) {
-        if (preblock_length != 0) {
-            if (count < 4 || preblock_length > count - 4
-                || count - 4 - preblock_length != block_span_count
-                || span_count != 0 || formatting_count != 0
-                || nested_blocks != 0)
-                return LXA_ERROR_UNSUPPORTED;
-            for (j = 0; j < preblock_length; ++j) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[outer_index + 3 + j], &name);
-                if (status != LXA_OK) return status;
-                if ((j == 0 && !template_formatting(name))
-                    || (!template_formatting(name)
-                        && !template_crossed_inline(name)))
-                    return LXA_ERROR_UNSUPPORTED;
-                if (j >= formatting_start && template_formatting(name))
-                    ++kept_formatting;
-                status = lxa_dom_nodes_parent(tree->nodes,
-                    open[outer_index + 3 + j], &actual);
-                if (status != LXA_OK) return status;
-                if (actual.handle
-                    != open[outer_index + 2 + j].handle)
-                    return LXA_ERROR_UNSUPPORTED;
-            }
-        }
-        block = open[outer_index + 3 + span_count + preblock_length];
-        status = lxa_dom_nodes_element_name(tree->nodes,
-                                             block, &name);
-        if (status == LXA_OK
-            && !template_crossed_list_furthest_block(name))
-            return LXA_ERROR_UNSUPPORTED;
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_parent(tree->nodes,
-                                           block, &actual);
-        if (status != LXA_OK) return status;
-        if (actual.handle != (preblock_length != 0
-                                ? open[outer_index + 2 + preblock_length].handle
-                                : span_count == 0 ? item.handle
-                                : open[outer_index + 2 + span_count].handle))
-            return LXA_ERROR_UNSUPPORTED;
-        if (nested_blocks != 0
-            && !named(name, "div") && !named(name, "section"))
-            return LXA_ERROR_UNSUPPORTED;
-        if (nested_blocks > 4) return LXA_ERROR_UNSUPPORTED;
-        continuation = block;
-        {
-            size_t k = 4 + span_count + preblock_length;
-            size_t gap_total = 0, n;
-            for (n = 0; n < nested_blocks; ++n) {
-                if (inline_gaps[n] > block_span_count - gap_total)
-                    return LXA_ERROR_INTERNAL;
-                gap_total += inline_gaps[n];
-                for (j = 0; j < inline_gaps[n]; ++j, ++k) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[outer_index + k], &name);
-                    if (status == LXA_OK && !template_crossed_inline(name))
-                        return LXA_ERROR_UNSUPPORTED;
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_parent(tree->nodes,
-                            open[outer_index + k], &actual);
-                    if (status != LXA_OK) return status;
-                    if (actual.handle != continuation.handle)
-                        return LXA_ERROR_UNSUPPORTED;
-                    continuation = open[outer_index + k];
-                }
-                nested[n] = open[outer_index + k++];
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        nested[n], &name);
-                if (status != LXA_OK) return status;
-                if (!named(name, "section") && !named(name, "div")
-                    && !named(name, "p"))
-                    return LXA_ERROR_UNSUPPORTED;
-                if (n + 1 < nested_blocks && named(name, "p"))
-                    return LXA_ERROR_UNSUPPORTED;
-                status = lxa_dom_nodes_parent(tree->nodes, nested[n], &actual);
-                if (status != LXA_OK) return status;
-                if (actual.handle != continuation.handle)
-                    return LXA_ERROR_UNSUPPORTED;
-                continuation = nested[n];
-            }
-            j = k;
-        }
-        for (; j < count; ++j) {
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                                                     open[outer_index + j],
-                                                     &name);
-            if (status == LXA_OK
-                && (j < 4 + span_count + nested_blocks + block_span_count
-                          + preblock_length
-                    ? !template_crossed_inline(name)
-                    : !template_formatting(name)))
-                return LXA_ERROR_UNSUPPORTED;
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_parent(tree->nodes,
-                                               open[outer_index + j], &actual);
-            if (status != LXA_OK) return status;
-            if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
-            continuation = open[outer_index + j];
-        }
-    }
-    /* Inline containers stay with the old content; only active formatting
-     * descendants are reconstructed after the crossed end tag. */
-    continuation = item;
-    for (j = 0; j < span_count; ++j) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                 open[outer_index + 3 + j],
-                                                 &name);
-        if (status == LXA_OK && !template_crossed_inline(name))
-            return LXA_ERROR_UNSUPPORTED;
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_parent(tree->nodes,
-                                           open[outer_index + 3 + j], &actual);
-        if (status != LXA_OK) return status;
-        if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
-        continuation = open[outer_index + 3 + j];
-    }
-    for (j = 0; !direct_block && j < count - 3 - span_count; ++j) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                    open[outer_index + 3 + span_count + j],
-                                    &name);
-        if (status == LXA_OK && !template_formatting(name)
-            && !template_crossed_inline(name))
-            return LXA_ERROR_UNSUPPORTED;
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_parent(tree->nodes,
-                                    open[outer_index + 3 + span_count + j],
-                                    &actual);
-        if (status != LXA_OK) return status;
-        if (actual.handle != continuation.handle) return LXA_ERROR_UNSUPPORTED;
-        continuation = open[outer_index + 3 + span_count + j];
-    }
-    cursor = first;
-    while (cursor.handle != item.handle) {
-        lxa_dom_ref_t next;
-        lxa_dom_record_t record;
-        if (cursor.handle == LXA_HANDLE_NONE
-            || ++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_INTERNAL;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_read(tree->nodes, cursor, &record);
-        if (status != LXA_OK) return status;
-        if (record.kind == LXA_DOM_KIND_ELEMENT) {
-            status = lxa_dom_nodes_element_name(tree->nodes, cursor, &name);
-            if (status != LXA_OK) return status;
-        }
-        if (record.kind != LXA_DOM_KIND_TEXT
-            && record.kind != LXA_DOM_KIND_COMMENT
-            && (record.kind != LXA_DOM_KIND_ELEMENT || !named(name, "li")))
-            return LXA_ERROR_UNSUPPORTED; /* Other prior content needs more recovery. */
-        status = lxa_dom_nodes_next_sibling(tree->nodes, cursor, &next);
-        if (status != LXA_OK) return status;
-        cursor = next;
-    }
-    status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                               2 + formatting_count + (direct_block ? 1 : 0)
-                               + nested_blocks + kept_formatting,
-                               &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = clone_formatting_element(tree, outer, &list_clone);
-    if (status == LXA_OK)
-        status = clone_formatting_element(tree, outer, &item_clone);
-    if (status == LXA_OK)
-        status = template_reparent_after(tree, parent, list, outer);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                          list, list_clone, item);
-    visits = 0;
-    while (status == LXA_OK) {
-        status = lxa_dom_nodes_first_child(tree->nodes, list, &first);
-        if (status != LXA_OK || first.handle == list_clone.handle) break;
-        if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_INTERNAL;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                list_clone, first);
-    }
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         item, item_clone);
-    visits = 0;
-    while (status == LXA_OK) {
-        status = lxa_dom_nodes_first_child(tree->nodes, item, &first);
-        if (status != LXA_OK || first.handle == item_clone.handle) break;
-        if (++visits > lxa_dom_nodes_length(tree->nodes))
-            return LXA_ERROR_UNSUPPORTED;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                item_clone, first);
-    }
-    if (status == LXA_OK && direct_block) {
-        lxa_dom_ref_t clone;
-        if (status == LXA_OK)
-            status = clone_formatting_element(tree, outer, &clone);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                item, block);
-        /* The adoption inner loop visits at most three ancestors. Earlier
-         * originals and inline gaps stay inside the displaced <b>. */
-        for (j = formatting_start;
-             status == LXA_OK && j < preblock_length; ++j) {
-            lxa_dom_ref_t formatting_clone;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                open[outer_index + 3 + j], &name);
-            if (status != LXA_OK) return status;
-            if (!template_formatting(name)) continue;
-            status = clone_formatting_element(tree,
-                open[outer_index + 3 + j], &formatting_clone);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                    last_formatting_clone.handle == LXA_HANDLE_NONE
-                    ? item : last_formatting_clone,
-                    formatting_clone);
-            if (status == LXA_OK) {
-                lxa_dom_ref_t *entries =
-                    (lxa_dom_ref_t *) tree->template_elements.bytes.data;
-                entries[outer_index + 2 + cloned_formatting]
-                    = formatting_clone;
-                ++cloned_formatting;
-                last_formatting_clone = formatting_clone;
-            }
-        }
-        if (status == LXA_OK && kept_formatting != 0)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                last_formatting_clone, block);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             block, clone);
-        visits = 0;
-        while (status == LXA_OK) {
-            status = lxa_dom_nodes_first_child(tree->nodes, block, &first);
-            if (status != LXA_OK || first.handle == clone.handle) break;
-            if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_INTERNAL;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                    clone, first);
-        }
-    }
-    for (j = 0; status == LXA_OK && j < nested_blocks; ++j) {
-        lxa_dom_ref_t clone, inner = nested[j];
-        lxa_dom_ref_t container = j == 0 ? block
-                                         : nested[j - 1];
-        status = clone_formatting_element(tree, outer, &clone);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                container, inner);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             inner, clone);
-        visits = 0;
-        while (status == LXA_OK) {
-            status = lxa_dom_nodes_first_child(tree->nodes, inner, &first);
-            if (status != LXA_OK || first.handle == clone.handle) break;
-            if (++visits > lxa_dom_nodes_length(tree->nodes))
-                return LXA_ERROR_INTERNAL;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_reparent_constructed_child(tree->nodes,
-                                                                    clone, first);
-        }
-    }
-    continuation = nested_blocks != 0 ? nested[nested_blocks - 1]
-                   : direct_block ? block : item;
-    for (j = 0; status == LXA_OK && j < formatting_count; ++j) {
-        lxa_dom_ref_t clone;
-        if (!direct_block) {
-            while (next_formatting < outer_index + count) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[next_formatting], &name);
-                if (status != LXA_OK) return status;
-                if (template_formatting(name)) break;
-                ++next_formatting;
-            }
-            if (next_formatting == outer_index + count)
-                return LXA_ERROR_INTERNAL;
-        }
-        status = clone_formatting_element(tree,
-                                          open[direct_block
-                                               ? outer_index + 4 + span_count
-                                                 + block_span_count
-                                                 + nested_blocks + j
-                                               : next_formatting++],
-                                          &clone);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             continuation, clone);
-        if (status == LXA_OK) {
-            lxa_dom_ref_t *entries =
-                (lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            entries[outer_index + 2 + (direct_block ? 1 : 0)
-                    + nested_blocks + j] = clone;
-            continuation = clone;
-        }
-    }
-    if (status == LXA_OK) {
-        lxa_dom_ref_t *entries =
-            (lxa_dom_ref_t *) tree->template_elements.bytes.data;
-        entries[outer_index] = list;
-        entries[outer_index + 1] = item;
-        if (direct_block)
-            entries[outer_index + 2 + kept_formatting] = block;
-        for (j = 0; j < nested_blocks; ++j)
-            entries[outer_index + 3 + j] = nested[j];
-        status = template_pop_elements(tree, outer_index + 2 + formatting_count
-                               + (direct_block ? 1 : 0)
-                               + nested_blocks + kept_formatting);
-        if (status != LXA_OK) return status;
-    }
-    return status;
-}
-
-/* Locate the active paragraph in this template's content, stopping at its
- * fragment boundary. Reconstructing formatting left open inside that
- * paragraph needs the adoption algorithm; reject rather than misplace it. */
-static lxa_status_t
-template_open_paragraph(lxa_html_tree_t *tree, size_t *index)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->template_elements), i;
-    bool formatting_after = false;
-    *index = length;
-    for (i = template_boundary(tree); i < length; ++i) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "p")) {
-            *index = i;
-            formatting_after = false;
-        }
-        else if (*index != length && template_formatting(name))
-            formatting_after = true;
-    }
-    return formatting_after ? LXA_ERROR_UNSUPPORTED : LXA_OK;
-}
-
-static lxa_status_t
-template_open_list_item(lxa_html_tree_t *tree, size_t *index)
+template_open_list_item(lxa_html_tree_t *tree, bool definition, size_t *index)
 {
     const lxa_dom_ref_t *open =
         (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
     size_t i = lxa_vector_length(&tree->template_elements);
-    bool formatting_above = false;
     *index = i;
     while (i > template_boundary(tree)) {
         lxa_span_t name;
+        lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "li")) {
-            if (formatting_above) return LXA_ERROR_UNSUPPORTED;
-            *index = i;
-            return LXA_OK;
-        }
-        if (named(name, "ul") || named(name, "ol")) break;
-        if (template_formatting(name)) formatting_above = true;
-        /* A special block stops the search before the earlier li. Formatting
-         * above that block stays open; a later crossed end still needs
-         * adoption recovery. */
-        if (block_container(name) && !named(name, "address")
-            && !named(name, "div") && !named(name, "p"))
-            if (special_element(name, LXA_DOM_NS_HTML))
-                return LXA_OK;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-template_select_scope(lxa_html_tree_t *tree, size_t *index,
-                      bool *option, bool *group)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->template_elements);
-    lxa_span_t name;
-    lxa_status_t status;
-    *index = i;
-    *option = *group = false;
-    if (i == template_boundary(tree)) return LXA_OK;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                               &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i - 1], &name);
-    if (status != LXA_OK) return status;
-    *option = named(name, "option");
-    *group = named(name, "optgroup");
-    if (!*option && !*group && !named(name, "select")) return LXA_OK;
-    while (i > template_boundary(tree)) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
         if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &name);
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
         if (status != LXA_OK) return status;
-        if (named(name, "select")) {
+        if (ns == LXA_DOM_NS_HTML
+            && ((!definition && named(name, "li"))
+                || (definition && (named(name, "dt") || named(name, "dd"))))) {
             *index = i;
             return LXA_OK;
         }
-        if (!named(name, "option") && !named(name, "optgroup"))
-            return LXA_OK; /* Orphan options use ordinary body handling. */
+        /* A special block stops the search before the earlier item. */
+        if (special_element(name, ns)
+            && !(ns == LXA_DOM_NS_HTML
+                 && (named(name, "address") || named(name, "div")
+                     || named(name, "p"))))
+            return LXA_OK;
     }
     return LXA_OK;
 }
@@ -3249,13 +3241,14 @@ begin_template(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = reserve_formatting(tree, 1);
     if (status == LXA_OK && nested)
         status = lxa_vector_reserve(&tree->template_stack, depth - 1);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
     if (status != LXA_OK) return status;
-    status = lxa_dom_nodes_append_html_element(tree->nodes, token->name, &child);
+    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, token->name, &child);
     if (status == LXA_OK)
         status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
@@ -3273,9 +3266,6 @@ begin_template(lxa_html_tree_t *tree,
     if (!nested) tree->template_return_mode = tree->mode;
     if (nested) {
         frame.fragment = tree->template_fragment;
-        frame.pending_formatting = tree->pending_template_formatting;
-        frame.pending_extra_count =
-            lxa_vector_length(&tree->pending_template_extras);
         frame.element_count = lxa_vector_length(&tree->template_elements);
         frame.insertion_mode = tree->template_insertion_mode;
         status = lxa_vector_push(&tree->template_stack, &frame);
@@ -3283,6 +3273,11 @@ begin_template(lxa_html_tree_t *tree,
     }
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                                 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) {
+        status = append_formatting(tree, child, true);
+        if (status != LXA_OK)
+            lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    }
     if (status != LXA_OK) {
         if (nested)
             lxa_vector_erase(&tree->template_stack,
@@ -3290,9 +3285,9 @@ begin_template(lxa_html_tree_t *tree,
         return status;
     }
     tree->template_fragment = fragment;
-    tree->pending_template_formatting = (lxa_dom_ref_t){0};
     tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
     tree->mode = LXA_TREE_TEMPLATE_TEXT;
+    tree->frameset_ok = false;
     return LXA_OK;
 }
 
@@ -3301,8 +3296,11 @@ template_push_table_part(lxa_html_tree_t *tree,
                          const lxa_html_token_t *token)
 {
     lxa_dom_ref_t child;
-    lxa_status_t status = lxa_dom_nodes_append_html_element(
-        tree->nodes, token->name, &child);
+    bool marker = formatting_marker_tag(token->name);
+    lxa_status_t status = marker ? reserve_formatting(tree, 1) : LXA_OK;
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_parsed_html_element(
+            tree->nodes, token->name, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
         status = lxa_dom_nodes_append_constructed_child(tree->nodes,
@@ -3317,7 +3315,38 @@ template_push_table_part(lxa_html_tree_t *tree,
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
     if (status != LXA_OK)
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    if (status == LXA_OK && marker)
+        status = append_formatting(tree, child, true);
     return status;
+}
+
+static lxa_status_t
+template_pop_table_elements(lxa_html_tree_t *tree, size_t keep)
+{
+    const lxa_dom_ref_t *open =
+        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
+    size_t length = lxa_vector_length(&tree->template_elements), markers = 0;
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+        LXA_BUDGET_WORK, length - keep, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = keep; i < length; ++i) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML
+            && (named(name, "td") || named(name, "th") || named(name, "caption")))
+            ++markers;
+    }
+    status = template_pop_elements(tree, keep);
+    if (status != LXA_OK) return status;
+    while (markers != 0) {
+        clear_formatting_to_marker(tree);
+        --markers;
+    }
+    return LXA_OK;
 }
 
 static lxa_status_t
@@ -3385,7 +3414,7 @@ template_open_foreign(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-template_fostered_descendant(lxa_span_t name,
+template_fostered_descendant(lxa_html_tree_t *tree, lxa_span_t name,
                              lxa_dom_namespace_t ns, bool *result)
 {
     if (ns != LXA_DOM_NS_HTML) {
@@ -3396,7 +3425,7 @@ template_fostered_descendant(lxa_span_t name,
         || named(name, "p") || named(name, "li")
         || named(name, "form")
         || named(name, "dt") || named(name, "dd")
-        || template_crossed_inline(name)
+        || named(name, "ruby") || template_simple_inline(name)
         || named(name, "rt") || named(name, "rp")
         || named(name, "datalist") || named(name, "output")
         || named(name, "progress") || named(name, "meter")
@@ -3405,7 +3434,8 @@ template_fostered_descendant(lxa_span_t name,
         || named(name, "audio") || named(name, "object")
         || named(name, "legend")
         || named(name, "marquee") || named(name, "applet")
-        || named(name, "noscript") || named(name, "option")
+        || named(name, "noscript") || named(name, "select")
+        || named(name, "option")
         || named(name, "optgroup")
         || named(name, "ins") || named(name, "slot")
         || named(name, "data") || named(name, "dfn")
@@ -3413,13 +3443,11 @@ template_fostered_descendant(lxa_span_t name,
         || named(name, "del") || named(name, "samp")
         || named(name, "kbd") || named(name, "sub")
         || named(name, "sup") || named(name, "var")
-        || template_formatting(name);
+        || formatting_tag(name);
+    if (!*result)
+        return supported_container(tree, name, result);
     return LXA_OK;
 }
-
-static lxa_status_t
-template_retain_formatting_chain(lxa_html_tree_t *tree,
-                                 size_t first, size_t count, size_t keep);
 
 static lxa_status_t
 template_open_table_part(lxa_html_tree_t *tree,
@@ -3451,11 +3479,18 @@ template_open_table_part(lxa_html_tree_t *tree,
         return LXA_ERROR_UNSUPPORTED;
     while (i > template_boundary(tree)) {
         lxa_span_t name;
+        lxa_dom_namespace_t ns;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
                                     &tree->nodes->limit_reason);
         if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &name);
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
         if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) {
+            ordinary_above = true;
+            continue;
+        }
         if (context == SIZE_MAX && table_context(name)) context = i;
         if (named(name, "table")) {
             table = i;
@@ -3492,8 +3527,6 @@ template_open_table_part(lxa_html_tree_t *tree,
             && tree->template_insertion_mode == LXA_TEMPLATE_TABLE
             && (ordinary_above || caption_open)) {
             lxa_span_t root;
-            size_t j;
-            bool clearable = true;
             status = lxa_budget_charge(tree->nodes->budget,
                 LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
             if (status == LXA_OK)
@@ -3501,22 +3534,12 @@ template_open_table_part(lxa_html_tree_t *tree,
                     open[template_boundary(tree)], &root);
             if (status != LXA_OK) return status;
             if (named(root, "caption") || !table_context(root)) {
-                for (j = template_boundary(tree); j < length; ++j) {
-                    lxa_span_t name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &name);
-                    if (status != LXA_OK) return status;
-                    if (template_formatting(name)) clearable = false;
-                }
-                if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, cell ? 3 : row || column ? 2 : 1,
                     &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                status = template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_table_elements(tree,
+                                                      template_boundary(tree));
                 if (status != LXA_OK) return status;
                 return template_open_table_part(tree, token);
             }
@@ -3524,6 +3547,16 @@ template_open_table_part(lxa_html_tree_t *tree,
         /* A direct row leaves the template in table-body mode even after
          * the row closes; the next cell then needs another implied row. */
         if (length != template_boundary(tree)) {
+            if (cell_index == template_boundary(tree)
+                && tree->template_insertion_mode == LXA_TEMPLATE_ROW) {
+                if (!cell) {
+                    status = template_pop_table_elements(tree, cell_index);
+                    if (status != LXA_OK) return status;
+                    return LXA_OK;
+                }
+                keep = cell_index;
+                goto reserve_part;
+            }
             if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
                 && (section || caption || group)
                 && length > template_boundary(tree) + 1) {
@@ -3552,11 +3585,13 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (j == template_boundary(tree) + 1
                         && (named(name, "td") || named(name, "th")))
                         continue;
-                    status = template_fostered_descendant(name, ns, &clearable);
+                    status = template_fostered_descendant(tree, name, ns,
+                                                          &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable) return LXA_ERROR_UNSUPPORTED;
                 }
-                status = template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_table_elements(tree,
+                                                      template_boundary(tree));
                 if (status != LXA_OK) return status;
                 return LXA_OK; /* No table remains to receive this part. */
             }
@@ -3590,18 +3625,6 @@ template_open_table_part(lxa_html_tree_t *tree,
                 return template_open_table_part(tree, token);
             }
             if (length == template_boundary(tree) + 1
-                && tree->template_insertion_mode == LXA_TEMPLATE_ROW
-                && (named(top, "td") || named(top, "th"))) {
-                /* Close the direct cell before reprocessing in row mode.
-                 * With no tr in scope, only another cell can be inserted. */
-                if (!cell) {
-                    status = template_pop_elements(tree, length - 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                --length;
-            }
-            else if (length == template_boundary(tree) + 1
                      && tree->template_insertion_mode == LXA_TEMPLATE_TABLE
                      && table_section(top)
                      && (row || cell || section || caption || group)) {
@@ -3696,7 +3719,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(name, ns, &clearable);
+                        status = template_fostered_descendant(tree, name, ns,
+                                                              &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
                         return LXA_ERROR_UNSUPPORTED;
@@ -3778,7 +3802,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(name, ns, &clearable);
+                        status = template_fostered_descendant(tree, name, ns,
+                                                              &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable)
                         return LXA_ERROR_UNSUPPORTED;
@@ -3920,44 +3945,8 @@ reserve_part:
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
     if (status != LXA_OK) return status;
-    if (((group && table != SIZE_MAX && keep == table + 1)
-         || (row && table != SIZE_MAX && context != SIZE_MAX
-             && context > table && keep == context + 1))
-        && length > keep
-        && tree->pending_template_formatting.handle == LXA_HANDLE_NONE) {
-        size_t j, first = length;
-        bool retain = true;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    length - keep,
-                                    &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        for (j = keep; j < length; ++j) {
-            lxa_span_t name;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                 open[j], &name);
-            if (status != LXA_OK) return status;
-            if (template_formatting(name)) {
-                if (first == length) first = j;
-            }
-            else if (first != length
-                     || (!named(name, "span") && !named(name, "div"))) {
-                retain = false;
-                break;
-            }
-        }
-        if (retain && first < length)
-            status = template_retain_formatting_chain(tree, first,
-                                                       length - first, keep);
-        else {
-            status = template_pop_elements(tree, keep);
-            if (status != LXA_OK) return status;
-        }
-        if (status != LXA_OK) return status;
-    }
-    else {
-        status = template_pop_elements(tree, keep);
-        if (status != LXA_OK) return status;
-    }
+    status = template_pop_table_elements(tree, keep);
+    if (status != LXA_OK) return status;
     implied.kind = LXA_HTML_START_TAG;
     if (implied_section) {
         implied.name = literal("tbody");
@@ -3990,10 +3979,11 @@ template_open_column(lxa_html_tree_t *tree,
     lxa_html_token_t implied = {0};
     lxa_span_t top;
     size_t length = lxa_vector_length(&tree->template_elements);
+    const size_t boundary = template_boundary(tree);
     size_t depth, count, after;
     bool add_group;
     lxa_status_t status;
-    if (length == template_boundary(tree)) {
+    if (length == boundary) {
         if (tree->template_insertion_mode == LXA_TEMPLATE_ROW
             || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY)
             return LXA_OK; /* No table can receive this column. */
@@ -4013,10 +4003,10 @@ template_open_column(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
                                             &top);
         if (status != LXA_OK) return status;
-        if (length == template_boundary(tree) + 1
+        if (length == boundary + 1
             && tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
             && named(top, "tr")) {
-            status = template_pop_elements(tree, template_boundary(tree));
+            status = template_pop_elements(tree, boundary);
             if (status != LXA_OK) return status;
             return LXA_OK;
         }
@@ -4024,7 +4014,7 @@ template_open_column(lxa_html_tree_t *tree,
             && !named(top, "table") && !named(top, "colgroup")) {
             size_t i = length;
             bool table = false, formatting = false;
-            while (i > template_boundary(tree)) {
+            while (i > boundary) {
                 lxa_span_t name;
                 status = lxa_budget_charge(tree->nodes->budget,
                     LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
@@ -4036,19 +4026,20 @@ template_open_column(lxa_html_tree_t *tree,
                     table = true;
                     break;
                 }
-                if (template_formatting(name)) formatting = true;
+                if (formatting_tag(name)) formatting = true;
             }
             if (!table && !formatting) {
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 2, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
-                status = template_pop_elements(tree, template_boundary(tree));
+                status = template_pop_table_elements(tree,
+                                                      boundary);
                 if (status != LXA_OK) return status;
                 return template_open_column(tree, token);
             }
         }
     }
-    if (length == template_boundary(tree)
+    if (length == boundary
         || (!named(top, "table") && !named(top, "colgroup"))) {
         /* The in-table col rule clears an open row/cell (or fostered
          * descendant) before inserting its implicit column group. */
@@ -4095,7 +4086,7 @@ template_open_column(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-template_column_text(lxa_html_tree_t *tree, lxa_span_t bytes)
+append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes)
 {
     lxa_buffer_t spaces;
     size_t i = 0, start;
@@ -4118,7 +4109,7 @@ template_column_text(lxa_html_tree_t *tree, lxa_span_t bytes)
         if (i < bytes.length) ++i;
     }
     if (status == LXA_OK && spaces.length != 0)
-        status = append_character(tree, template_parent(tree),
+        status = append_character(tree, parent,
             LXA_DOM_KIND_TEXT, (lxa_span_t){spaces.data, spaces.length});
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
@@ -4127,409 +4118,12 @@ template_column_text(lxa_html_tree_t *tree, lxa_span_t bytes)
     return status;
 }
 
-static bool
-template_pending_at_top(const lxa_html_tree_t *tree)
-{
-    size_t count = lxa_vector_length(&tree->template_elements);
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    return count > template_boundary(tree)
-        && open[count - 1].handle == tree->pending_template_formatting.handle;
-}
-
 static lxa_status_t
-template_pending_paragraph_chain(lxa_html_tree_t *tree,
-                                 size_t paragraph, bool *match)
+template_plan_paragraph_close(lxa_html_tree_t *tree, size_t *index)
 {
-    size_t start = template_pending_extra_start(tree);
-    size_t extras = lxa_vector_length(&tree->pending_template_extras) - start;
-    size_t boundary = template_boundary(tree), j;
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    const lxa_dom_ref_t *entries =
-        (const lxa_dom_ref_t *) tree->pending_template_extras.bytes.data;
-    lxa_status_t status;
-    *match = false;
-    if (extras == 0 || paragraph != boundary
-        || !template_pending_at_top(tree)
-        || lxa_vector_length(&tree->template_elements) - boundary
-           != extras + 2)
-        return LXA_OK;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                               extras + 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    for (j = 0; j < extras; ++j)
-        if (open[boundary + 1 + j].handle != entries[start + j].handle)
-            return LXA_OK;
-    *match = true;
-    return LXA_OK;
+    return find_scoped_end_target(tree, &tree->template_elements,
+        template_boundary(tree), literal("p"), SCOPE_BUTTON, index);
 }
-
-static bool
-template_pending_parent_of_top(const lxa_html_tree_t *tree)
-{
-    size_t count = lxa_vector_length(&tree->template_elements);
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    return count > template_boundary(tree) + 1
-        && open[count - 2].handle
-           == tree->pending_template_formatting.handle;
-}
-
-static lxa_status_t
-template_pending_span_chain(lxa_html_tree_t *tree,
-                            size_t length, size_t *index)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t i = length;
-    *index = SIZE_MAX;
-    while (i > template_boundary(tree)) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        if (open[i].handle == tree->pending_template_formatting.handle) {
-            *index = i;
-            return LXA_OK;
-        }
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (!named(name, "span")) break;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-template_pending_on_stack(lxa_html_tree_t *tree, bool *found)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->template_elements);
-    *found = false;
-    while (i > template_boundary(tree)) {
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (open[--i].handle == tree->pending_template_formatting.handle) {
-            *found = true;
-            break;
-        }
-    }
-    return LXA_OK;
-}
-
-static bool
-template_pending_chain_block(lxa_span_t name)
-{
-    return named(name, "div") || named(name, "section")
-        || named(name, "blockquote");
-}
-
-static bool
-template_pending_direct_block(lxa_span_t name)
-{
-    return named(name, "article") || named(name, "address")
-        || named(name, "figure") || named(name, "pre")
-        || named(name, "listing") || heading(name);
-}
-
-static bool
-template_pending_marker(lxa_span_t name)
-{
-    return named(name, "object") || named(name, "marquee")
-        || named(name, "applet");
-}
-
-static bool
-template_pending_foreign_name(lxa_span_t name)
-{
-    return named(name, "svg") || named(name, "math")
-        || named(name, "g") || named(name, "path")
-        || named(name, "circle") || named(name, "mi")
-        || named(name, "mo") || named(name, "mn");
-}
-
-static lxa_status_t
-template_pending_block_chain(lxa_html_tree_t *tree,
-                             size_t length, bool *found)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t i = template_boundary(tree);
-    *found = length > i;
-    while (i < length) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                open[i], &name);
-        if (status != LXA_OK) return status;
-        if (!template_pending_chain_block(name)) {
-            *found = false;
-            break;
-        }
-        ++i;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-template_pending_list_index(lxa_html_tree_t *tree,
-                            size_t *index)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t count = lxa_vector_length(&tree->template_elements);
-    size_t i = template_boundary(tree);
-    lxa_span_t name;
-    lxa_status_t status;
-    *index = SIZE_MAX;
-    while (i < count) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                open[i], &name);
-        if (status != LXA_OK) return status;
-        if (named(name, "ul") || named(name, "ol")) {
-            *index = i;
-            if (++i >= count) break;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                       &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[i], &name);
-            if (status != LXA_OK) return status;
-            if (!named(name, "li")) break;
-            ++i;
-            if (i < count
-                && open[i].handle
-                   == tree->pending_template_formatting.handle)
-                ++i;
-            continue;
-        }
-        if (!template_pending_chain_block(name)) break;
-        ++i;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-template_pending_list_block_tail(lxa_html_tree_t *tree,
-                                 size_t length, bool *found)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t list, i;
-    lxa_span_t name;
-    lxa_status_t status = template_pending_list_index(tree, &list);
-    *found = false;
-    if (status != LXA_OK || list == SIZE_MAX || length < list + 2)
-        return status;
-    for (i = list + 1; i < length; ++i) {
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status == LXA_OK && i == list + 2
-            && open[i].handle
-               == tree->pending_template_formatting.handle)
-            continue;
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                open[i], &name);
-        if (status != LXA_OK) return status;
-        if (!(i == list + 1 ? named(name, "li")
-                            : template_pending_chain_block(name)))
-            return LXA_OK;
-    }
-    *found = true;
-    return LXA_OK;
-}
-
-static lxa_status_t
-reconstruct_template_formatting(lxa_html_tree_t *tree)
-{
-    size_t count, depth, start, extra_count, kept = 0, needed, j;
-    bool pending_open;
-    lxa_dom_ref_t clone;
-    lxa_status_t status;
-    if (tree->pending_template_formatting.handle == LXA_HANDLE_NONE)
-        return LXA_OK;
-    count = lxa_vector_length(&tree->template_elements);
-    if (template_pending_at_top(tree)
-        || template_pending_parent_of_top(tree))
-        return LXA_OK;
-    status = template_pending_on_stack(tree, &pending_open);
-    if (status != LXA_OK || pending_open) return status;
-    start = template_pending_extra_start(tree);
-    extra_count = lxa_vector_length(&tree->pending_template_extras) - start;
-    if (extra_count != 0 && count > template_boundary(tree)
-        && count - template_boundary(tree) <= extra_count) {
-        const lxa_dom_ref_t *open =
-            (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-        const lxa_dom_ref_t *extras =
-            (const lxa_dom_ref_t *) tree->pending_template_extras.bytes.data;
-        size_t length = count - template_boundary(tree);
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                   length, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        for (j = 0; j < length; ++j)
-            if (open[template_boundary(tree) + j].handle
-                != extras[start + j].handle)
-                break;
-        if (j == length) kept = length;
-    }
-    status = lxa_size_add(extra_count - kept, 1, &needed);
-    if (status == LXA_OK) status = lxa_size_add(count, needed, &count);
-    if (status == LXA_OK)
-        status = lxa_size_add(lxa_vector_length(&tree->template_stack), 1,
-                              &depth);
-    if (status == LXA_OK) status = lxa_size_mul(depth, 2, &depth);
-    if (status == LXA_OK) status = lxa_size_add(depth, 2, &depth);
-    if (status == LXA_OK) status = lxa_size_add(depth, count, &depth);
-    if (status == LXA_OK
-        && tree->template_return_mode == LXA_TREE_IN_BODY) {
-        size_t body = lxa_vector_length(&tree->open_elements);
-        if (body == 0) return LXA_ERROR_INTERNAL;
-        status = lxa_size_add(depth, body - 1, &depth);
-    }
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_TREE_DEPTH,
-                                   depth, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES, needed,
-                                   &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget,
-            LXA_BUDGET_OPEN_ELEMENTS, needed, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_vector_reserve(&tree->template_elements, count);
-    if (status == LXA_ERROR_LIMIT
-        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
-        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
-    if (status != LXA_OK) return status;
-    for (j = 0; j < needed; ++j) {
-        lxa_dom_ref_t *extras = (lxa_dom_ref_t *)
-            tree->pending_template_extras.bytes.data;
-        lxa_dom_ref_t source = j < extra_count - kept
-                                               ? extras[start + kept + j]
-                                               : tree->pending_template_formatting;
-        status = clone_formatting_element(tree, source, &clone);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                template_parent(tree), clone);
-        if (status == LXA_OK)
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        status = lxa_vector_push(&tree->template_elements, &clone);
-        if (status != LXA_OK) {
-            lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
-                               1);
-            if (status == LXA_ERROR_LIMIT
-                && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
-                tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
-            return status;
-        }
-        if (j < extra_count - kept) extras[start + kept + j] = clone;
-        else tree->pending_template_formatting = clone;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-template_retain_formatting_chain(lxa_html_tree_t *tree,
-                                 size_t first, size_t count, size_t keep)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->pending_template_extras);
-    size_t after, j, format_count = 0, last = SIZE_MAX;
-    lxa_status_t status;
-    if (count == 0 || tree->pending_template_formatting.handle
-                     != LXA_HANDLE_NONE)
-        return LXA_ERROR_UNSUPPORTED;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, count,
-                               &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    for (j = 0; j < count; ++j) {
-        lxa_span_t name;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[first + j],
-                                            &name);
-        if (status != LXA_OK) return status;
-        if (template_formatting(name)) {
-            ++format_count;
-            last = j;
-        }
-        else if (format_count == 0 || !template_crossed_inline(name))
-            return LXA_ERROR_UNSUPPORTED;
-    }
-    status = lxa_size_add(length, format_count - 1, &after);
-    if (status == LXA_OK)
-        status = lxa_vector_reserve(&tree->pending_template_extras, after);
-    if (status == LXA_OK)
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                   count, &tree->nodes->limit_reason);
-    if (status == LXA_ERROR_LIMIT
-        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
-        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
-    if (status == LXA_OK)
-        status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_ACTIVE_FORMATTING, format_count,
-            &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    for (j = 0; j < last; ++j) {
-        lxa_span_t name;
-        status = lxa_dom_nodes_element_name(tree->nodes,
-                                             open[first + j], &name);
-        if (status != LXA_OK) {
-            lxa_vector_erase(&tree->pending_template_extras, length,
-                lxa_vector_length(&tree->pending_template_extras) - length);
-            lxa_budget_release(tree->nodes->budget,
-                                LXA_BUDGET_ACTIVE_FORMATTING, format_count);
-            return status;
-        }
-        if (!template_formatting(name)) continue;
-        status = lxa_vector_push(&tree->pending_template_extras,
-                                 &open[first + j]);
-        if (status != LXA_OK) {
-            lxa_vector_erase(&tree->pending_template_extras, length,
-                lxa_vector_length(&tree->pending_template_extras) - length);
-            lxa_budget_release(tree->nodes->budget,
-                                LXA_BUDGET_ACTIVE_FORMATTING, format_count);
-            return status;
-        }
-    }
-    tree->pending_template_formatting = open[first + last];
-    status = template_pop_elements(tree, keep);
-    if (status != LXA_OK) return status;
-    return LXA_OK;
-}
-
-static lxa_status_t
-current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                          size_t boundary, bool *column_group)
-{
-    size_t length = lxa_vector_length(elements);
-    lxa_status_t status;
-    *column_group = false;
-    if (length > boundary) {
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-        lxa_dom_namespace_t ns;
-        lxa_span_t name;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[length - 1],
-                                                  &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
-                                                 &name);
-        if (status != LXA_OK) return status;
-        *column_group = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
-    }
-    return LXA_OK;
-}
-
 
 static bool
 body_control_start(lxa_span_t name)
@@ -4538,6 +4132,272 @@ body_control_start(lxa_span_t name)
         || named(name, "frameset") || named(name, "frame");
 }
 
+static bool
+template_paragraph_container(lxa_span_t name)
+{
+    return (block_container(name) && !named(name, "button"))
+        || named(name, "p") || heading(name);
+}
+
+static bool
+template_marker_container(lxa_span_t name)
+{
+    return named(name, "object") || named(name, "marquee")
+        || named(name, "applet");
+}
+
+static bool
+template_list_item(lxa_span_t name)
+{
+    return named(name, "li") || named(name, "dt") || named(name, "dd");
+}
+
+static bool
+template_scoped_end(lxa_span_t name)
+{
+    return named(name, "p") || template_list_item(name)
+        || named(name, "form") || block_container(name) || heading(name);
+}
+
+static bool
+template_ordinary_end(lxa_span_t name)
+{
+    if (block_container(name) || heading(name) || table_part(name)
+        || template_marker_container(name)
+        || named(name, "p") || named(name, "li") || named(name, "dt")
+        || named(name, "dd") || named(name, "select") || named(name, "form")
+        || named(name, "template") || named(name, "body") || named(name, "html")
+        || named(name, "br"))
+        return false;
+    return !formatting_tag(name);
+}
+
+static lxa_status_t
+template_close_elements(lxa_html_tree_t *tree, size_t index)
+{
+    return template_pop_elements(tree, index);
+}
+
+static lxa_status_t
+begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
+                   const lxa_html_token_t *token)
+{
+    size_t paragraph, length = lxa_vector_length(&tree->template_elements);
+    lxa_dom_ref_t parent, before;
+    lxa_status_t status;
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    status = template_plan_paragraph_close(tree, &paragraph);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES, 1,
+                                   &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    if (paragraph != length) {
+        status = template_pop_elements(tree, paragraph);
+        if (status != LXA_OK) return status;
+    }
+    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_dom_nodes_element_namespace(tree->nodes,
+                                                  template_parent(tree), &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes,
+                                                 template_parent(tree), &name);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
+            status = template_pop_elements(tree,
+            lxa_vector_length(&tree->template_elements) - 1);
+            if (status != LXA_OK) return status;
+        }
+    }
+    status = reconstruct_formatting(tree);
+    if (status == LXA_OK)
+        status = template_insertion_location(tree, &parent, &before);
+    if (status == LXA_OK)
+        status = begin_text_element_at(tree, tokenizer, parent, before, token,
+                                         LXA_HTML_RAWTEXT);
+    if (status == LXA_OK
+        && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
+        tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+    return status;
+}
+
+static lxa_status_t
+template_end_missing_table(lxa_html_tree_t *tree)
+{
+    const lxa_dom_ref_t *open =
+        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
+    size_t length = lxa_vector_length(&tree->template_elements);
+    size_t boundary = template_boundary(tree), keep = length;
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+        LXA_BUDGET_WORK, length - boundary, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = length; i > boundary; ) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        --i;
+        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) continue;
+        /* A missing table cannot close a cell. */
+        if (named(name, "td") || named(name, "th"))
+            break;
+        if (named(name, "tr")) keep = i;
+        else if (table_section(name) || named(name, "caption")
+                 || named(name, "colgroup")) {
+            keep = i;
+            break;
+        }
+        if (scope_boundary(name, ns, SCOPE_TABLE)) break;
+    }
+    if (keep == length) return LXA_OK;
+    return template_pop_table_elements(tree, keep);
+}
+
+static lxa_status_t
+template_end_formatting_boundary(lxa_html_tree_t *tree,
+                                 const lxa_html_token_t *token, bool *handled)
+{
+    size_t index, length = lxa_vector_length(&tree->template_elements);
+    bool table = named(token->name, "table");
+    bool part = table_part(token->name), reprocess;
+    lxa_status_t status;
+    *handled = false;
+    if (token->kind != LXA_HTML_END_TAG
+        || (!part && !formatting_marker_tag(token->name)))
+        return LXA_OK;
+    status = plan_foreign_end(tree, &tree->template_elements,
+        template_boundary(tree), token->name, &index, &reprocess);
+    if (status != LXA_OK) return status;
+    if (reprocess) {
+        status = find_scoped_end_target(tree, &tree->template_elements,
+            template_boundary(tree), token->name,
+            part ? SCOPE_TABLE : SCOPE_NORMAL,
+            &index);
+        if (status != LXA_OK) return status;
+        if (index == length) {
+            if (table) {
+                status = template_end_missing_table(tree);
+                if (status != LXA_OK) return status;
+            }
+            else if (!named(token->name, "col")
+                     && length > template_boundary(tree)) {
+                lxa_span_t name;
+                lxa_dom_namespace_t ns;
+                status = lxa_budget_charge(tree->nodes->budget,
+                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+                if (status == LXA_OK)
+                    status = lxa_dom_nodes_element_namespace(tree->nodes,
+                        template_parent(tree), &ns);
+                if (status == LXA_OK)
+                    status = lxa_dom_nodes_element_name(tree->nodes,
+                        template_parent(tree), &name);
+                if (status != LXA_OK) return status;
+                if (ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
+                    status = template_pop_table_elements(tree, length - 1);
+                    if (status != LXA_OK) return status;
+                }
+            }
+            *handled = true;
+            return LXA_OK;
+        }
+    }
+    if (reprocess && part) {
+        status = template_pop_table_elements(tree, index);
+        if (status != LXA_OK) return status;
+        *handled = true;
+        return LXA_OK;
+    }
+    status = template_pop_elements(tree, index);
+    if (status != LXA_OK) return status;
+    if (reprocess && formatting_marker_tag(token->name))
+        clear_formatting_to_marker(tree);
+    *handled = true;
+    return LXA_OK;
+}
+
+static bool
+template_table_context(const lxa_html_tree_t *tree)
+{
+    return tree->template_insertion_mode == LXA_TEMPLATE_TABLE
+        || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
+        || tree->template_insertion_mode == LXA_TEMPLATE_ROW;
+}
+
+static lxa_status_t
+plan_table_context(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                     size_t boundary, bool virtual_table,
+                     size_t *keep, bool *in_table)
+{
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
+        elements->bytes.data;
+    size_t length = lxa_vector_length(elements), i = length;
+    lxa_status_t status;
+    *keep = length;
+    *in_table = virtual_table;
+    while (i > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                    &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) continue;
+        if (named(name, "td") || named(name, "th") || named(name, "caption")) {
+            *in_table = false;
+            return LXA_OK;
+        }
+        if (table_context(name)) {
+            *in_table = true;
+            if (i == length - 1 && named(name, "colgroup")) {
+                status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
+                                            1, &tree->nodes->limit_reason);
+                if (status != LXA_OK) return status;
+                *keep = i;
+            }
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+insert_hidden_table_input(lxa_html_tree_t *tree,
+                          const lxa_html_token_t *token, bool *handled)
+{
+    lxa_vector_t *elements;
+    size_t keep, boundary;
+    bool hidden, in_table;
+    lxa_status_t status;
+    *handled = false;
+    if (token->kind != LXA_HTML_START_TAG || !named(token->name, "input"))
+        return LXA_OK;
+    status = hidden_input(tree, token, &hidden);
+    if (status != LXA_OK || !hidden) return status;
+    elements = formatting_elements(tree);
+    boundary = formatting_boundary(tree);
+    status = plan_table_context(tree, elements, boundary,
+        tree->mode == LXA_TREE_TEMPLATE_TEXT && template_table_context(tree),
+        &keep, &in_table);
+    if (status != LXA_OK || !in_table) return status;
+    if (keep == boundary) {
+        if (tree->mode != LXA_TREE_TEMPLATE_TEXT) return LXA_ERROR_INTERNAL;
+        status = append_void(tree, tree->template_fragment, token);
+    }
+    else {
+        const lxa_dom_ref_t *open =
+            (const lxa_dom_ref_t *) elements->bytes.data;
+        status = append_void(tree, open[keep - 1], token);
+    }
+    if (status == LXA_OK) status = formatting_pop_elements(tree, keep);
+    if (status == LXA_OK) *handled = true;
+    return status;
+}
 
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
@@ -4548,13 +4408,6 @@ consume(lxa_html_tree_t *tree,
     lxa_dom_ref_t parent, child;
     lxa_dom_doctype_data_t declaration;
     bool template_ordinary;
-    bool template_cell_scope = false;
-    bool template_table_scope = false;
-    bool integration_object = false;
-    bool pending_table_context = false, pending_column_context = false;
-    bool pending_cell_context = false, pending_cell_end = false;
-    bool pending_section_start = false, pending_row_start = false;
-    size_t template_select_close = SIZE_MAX;
     if (token == NULL
         || (unsigned int) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
         || (token->name.data == NULL && token->name.length != 0)
@@ -4563,6 +4416,21 @@ consume(lxa_html_tree_t *tree,
         || (token->kind != LXA_HTML_START_TAG
             && token->attribute_count != 0)) {
         return LXA_ERROR_ARGUMENT;
+    }
+    if (tree->mode == LXA_TREE_INITIAL) {
+        if (token->kind == LXA_HTML_COMMENT
+            || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
+            return append_comment_or_pi(tree, tree->document, token);
+        if (token->kind == LXA_HTML_TEXT && space_only(token->data))
+            return LXA_OK;
+        if (token->kind != LXA_HTML_DOCTYPE) {
+            tree->document_mode = LXA_HTML_QUIRKS;
+            tree->mode = LXA_TREE_BEFORE_HTML;
+        }
+    }
+    if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
+        tree->mode = tree->text_return_mode;
+        tree->text_element = (lxa_dom_ref_t){0};
     }
     if (token->kind != LXA_HTML_TEXT) {
         status = tree->mode == LXA_TREE_TEMPLATE_TEXT
@@ -4582,466 +4450,10 @@ consume(lxa_html_tree_t *tree,
     }
     if (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
 reprocess_template_token:
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "template")) {
-            size_t work;
-            size_t length = lxa_vector_length(&tree->template_elements);
-            if (length > template_boundary(tree)) {
-                const lxa_dom_ref_t *open =
-                    (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-                lxa_dom_namespace_t ns;
-                lxa_span_t name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        open[length - 1], &ns);
-                if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[length - 1], &name);
-                if (status != LXA_OK) return status;
-                if (ns == LXA_DOM_NS_SVG && named(name, "template")) {
-                    status = template_pop_elements(tree, length - 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-            }
-            status = lxa_size_add(
-                length - template_boundary(tree), 1, &work);
-            if (status == LXA_OK)
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = close_template(tree);
-            if (status != LXA_OK) return status;
-            return LXA_OK;
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && ((token->kind == LXA_HTML_START_TAG
-                 && named(token->name, "col"))
-                || (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "colgroup")
-                        || named(token->name, "table"))))) {
-            size_t count = lxa_vector_length(&tree->template_elements);
-            size_t boundary = template_boundary(tree);
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            if (count > boundary) {
-                lxa_span_t top;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 1], &top);
-                if (status != LXA_OK) return status;
-                pending_table_context = named(top, "table");
-                if (named(top, "colgroup") && count > boundary + 1) {
-                    lxa_span_t below;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[count - 2], &below);
-                    if (status != LXA_OK) return status;
-                    pending_column_context = named(below, "table");
-                    pending_table_context = pending_column_context;
-                }
-                if (!pending_table_context
-                    && token->kind == LXA_HTML_END_TAG
-                    && named(token->name, "table")) {
-                    size_t j = count - 1;
-                    while (j > boundary) {
-                        lxa_span_t ancestor;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[--j], &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (named(ancestor, "table")) {
-                            pending_table_context = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && table_section(token->name)
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            lxa_span_t top;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[lxa_vector_length(&tree->template_elements) - 1],
-                    &top);
-            if (status != LXA_OK) return status;
-            pending_section_start = named(top, "table");
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && named(token->name, "tr")
-            && lxa_vector_length(&tree->template_elements)
-               >= template_boundary(tree) + 2) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            size_t count = lxa_vector_length(&tree->template_elements);
-            lxa_span_t top, below;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        2, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[count - 1], &top);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[count - 2], &below);
-            if (status != LXA_OK) return status;
-            pending_row_start = table_section(top) && named(below, "table");
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "td") || named(token->name, "th"))) {
-            size_t count = lxa_vector_length(&tree->template_elements);
-            size_t boundary = template_boundary(tree);
-            if (count >= boundary + 3) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                lxa_span_t row_name, section_name, table_name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 3, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 1], &row_name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 2], &section_name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 3], &table_name);
-                if (status != LXA_OK) return status;
-                pending_cell_context = named(row_name, "tr")
-                    && table_section(section_name)
-                    && named(table_name, "table");
-            }
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_END_TAG
-            && (named(token->name, "td") || named(token->name, "th"))) {
-            size_t count = lxa_vector_length(&tree->template_elements);
-            size_t boundary = template_boundary(tree);
-            if (count >= boundary + 4) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                lxa_span_t cell_name, row_name, section_name, table_name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 4, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 1], &cell_name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 2], &row_name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 3], &section_name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 4], &table_name);
-                if (status != LXA_OK) return status;
-                pending_cell_end = cell_name.length == token->name.length
-                    && memcmp(cell_name.data, token->name.data,
-                              cell_name.length) == 0
-                    && named(row_name, "tr") && table_section(section_name)
-                    && named(table_name, "table");
-            }
-        }
-        if (lxa_vector_length(&tree->pending_template_extras)
-            > template_pending_extra_start(tree)
-            && token->kind != LXA_HTML_TEXT
-            && !(token->kind == LXA_HTML_START_TAG
-                 && (named(token->name, "template")
-                     || named(token->name, "span")
-                     || template_pending_chain_block(token->name)
-                     || template_pending_direct_block(token->name)
-                     || named(token->name, "p")
-                     || template_pending_foreign_name(token->name)
-                     || named(token->name, "br")
-                     || named(token->name, "img")
-                     || named(token->name, "wbr")
-                     || named(token->name, "hr")
-                     || named(token->name, "ul")
-                     || named(token->name, "ol")
-                     || named(token->name, "li")
-                     || pending_section_start
-                     || pending_row_start
-                     || (named(token->name, "col")
-                         && pending_column_context)
-                     || ((named(token->name, "td")
-                          || named(token->name, "th"))
-                         && pending_cell_context)))
-            && !(token->kind == LXA_HTML_END_TAG
-                 && (named(token->name, "span")
-                     || template_pending_chain_block(token->name)
-                     || template_pending_direct_block(token->name)
-                     || named(token->name, "p")
-                     || template_formatting(token->name)
-                     || template_pending_foreign_name(token->name)
-                     || named(token->name, "ul")
-                     || named(token->name, "ol")
-                     || named(token->name, "li")
-                     || pending_cell_end
-                     || ((named(token->name, "colgroup")
-                          || named(token->name, "table"))
-                         && pending_table_context))))
-            return LXA_ERROR_UNSUPPORTED;
-        bool pending_block_list = false;
-        bool pending_list_block = false;
-        bool pending_nested_list = false;
-        bool pending_span_descendant = false;
-        bool pending_foreign_child = false;
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "circle")
-                || named(token->name, "g")
-                || named(token->name, "path")
-                || named(token->name, "mi")
-                || named(token->name, "mo")
-                || named(token->name, "mn"))
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            lxa_dom_namespace_t ns;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_namespace(tree->nodes,
-                    template_parent(tree), &ns);
-            if (status != LXA_OK) return status;
-            pending_foreign_child = (named(token->name, "circle")
-                || named(token->name, "g") || named(token->name, "path"))
-                ? ns == LXA_DOM_NS_SVG : ns == LXA_DOM_NS_MATHML;
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "span")
-                || named(token->name, "br")
-                || named(token->name, "img")
-                || named(token->name, "wbr")
-                || named(token->name, "hr")
-                || named(token->name, "svg")
-                || named(token->name, "math")
-                || named(token->name, "p")
-                || named(token->name, "div")
-                || named(token->name, "section")
-                || named(token->name, "article")
-                || named(token->name, "blockquote")
-                || named(token->name, "address")
-                || named(token->name, "figure")
-                || named(token->name, "pre")
-                || named(token->name, "listing")
-                || heading(token->name))
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            size_t ancestor;
-            status = template_pending_span_chain(tree,
-                lxa_vector_length(&tree->template_elements), &ancestor);
-            if (status != LXA_OK) return status;
-            pending_span_descendant = ancestor != SIZE_MAX;
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "ul") || named(token->name, "ol")
-                || template_pending_chain_block(token->name))
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            status = template_pending_block_chain(tree,
-                lxa_vector_length(&tree->template_elements),
-                &pending_block_list);
-            if (status != LXA_OK) return status;
-            status = template_pending_list_block_tail(tree,
-                lxa_vector_length(&tree->template_elements),
-                &pending_list_block);
-            if (status != LXA_OK) return status;
-        }
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "span")
-            && lxa_vector_length(&tree->pending_template_extras)
-               > template_pending_extra_start(tree)
-            && lxa_vector_length(&tree->template_elements)
-               == template_boundary(tree) + 1) {
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            lxa_span_t parent_name;
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[template_boundary(tree)], &parent_name);
-            if (status != LXA_OK) return status;
-            if (template_pending_chain_block(parent_name))
-                pending_span_descendant = true;
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "ul") || named(token->name, "ol"))) {
-            size_t list, count = lxa_vector_length(&tree->template_elements);
-            lxa_span_t item_name;
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            status = template_pending_list_index(tree, &list);
-            if (status != LXA_OK) return status;
-            if (list != SIZE_MAX && template_pending_at_top(tree)) {
-                size_t start = template_pending_extra_start(tree);
-                size_t extras =
-                    lxa_vector_length(&tree->pending_template_extras) - start;
-                if (extras != 0 && count - list == extras + 3) {
-                    const lxa_dom_ref_t *entries = (const lxa_dom_ref_t *)
-                        tree->pending_template_extras.bytes.data;
-                    size_t j;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, extras + 1,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[list + 1], &item_name);
-                    if (status != LXA_OK) return status;
-                    if (named(item_name, "li")) {
-                        for (j = 0; j < extras; ++j)
-                            if (open[list + 2 + j].handle
-                                != entries[start + j].handle)
-                                break;
-                        if (j == extras) pending_nested_list = true;
-                    }
-                }
-            }
-            if (list != SIZE_MAX
-                && (count == list + 2
-                    || (count == list + 3
-                        && template_pending_at_top(tree)))) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[list + 1], &item_name);
-                if (status != LXA_OK) return status;
-                pending_nested_list = named(item_name, "li");
-            }
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && named(token->name, "li")) {
-            size_t count = lxa_vector_length(&tree->template_elements);
-            size_t list;
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            lxa_span_t item_name;
-            bool nested_item = false;
-            if (count > template_boundary(tree) + 1
-                && open[count - 2].handle
-                   == tree->pending_template_formatting.handle) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 1], &item_name);
-                if (status != LXA_OK) return status;
-                nested_item = named(item_name, "ul")
-                              || named(item_name, "ol");
-            }
-            if (!nested_item) {
-                status = template_pending_list_index(tree, &list);
-                if (status != LXA_OK) return status;
-                if (list == SIZE_MAX || count > list + 3
-                    || (count == list + 3
-                        && !template_pending_at_top(tree)))
-                    return LXA_ERROR_UNSUPPORTED;
-                if (count > list + 1) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, count - list - 1,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[list + 1], &item_name);
-                    if (status != LXA_OK) return status;
-                    if (!named(item_name, "li")) return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, list + 1);
-                    if (status != LXA_OK) return status;
-                }
-            }
-        }
-        if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-            && token->kind == LXA_HTML_START_TAG
-            && !named(token->name, "template")
-            && !((named(token->name, "p") || named(token->name, "div")
-                  || named(token->name, "section")
-                  || named(token->name, "article")
-                  || named(token->name, "blockquote")
-                  || named(token->name, "address")
-                  || named(token->name, "figure")
-                  || named(token->name, "pre")
-                  || named(token->name, "listing")
-                  || heading(token->name))
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || template_pending_at_top(tree)
-                     || pending_span_descendant))
-            && !((named(token->name, "ul") || named(token->name, "ol"))
-                 && lxa_vector_length(&tree->template_elements)
-                    == template_boundary(tree))
-            && !((named(token->name, "title")
-                  || named(token->name, "textarea")
-                  || named(token->name, "script")
-                  || named(token->name, "style")
-                  || named(token->name, "iframe")
-                  || named(token->name, "noembed")
-                  || named(token->name, "noframes")
-                  || named(token->name, "xmp")
-                  || named(token->name, "plaintext"))
-                 && lxa_vector_length(&tree->template_elements)
-                    == template_boundary(tree))
-            && !((named(token->name, "svg")
-                  || named(token->name, "math"))
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || pending_span_descendant))
-            && !(named(token->name, "plaintext")
-                 && template_pending_at_top(tree))
-            && !(named(token->name, "hr")
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || template_pending_at_top(tree)
-                     || pending_span_descendant))
-            && !((named(token->name, "br") || named(token->name, "img")
-                  || named(token->name, "wbr"))
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || template_pending_at_top(tree)
-                     || pending_span_descendant))
-            && !(named(token->name, "span")
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || pending_span_descendant))
-            && !(template_pending_marker(token->name)
-                 && (lxa_vector_length(&tree->template_elements)
-                     == template_boundary(tree)
-                     || template_pending_at_top(tree)))
-            && !pending_block_list
-            && !pending_list_block
-            && !pending_nested_list
-            && !pending_foreign_child
-            && !pending_section_start
-            && !pending_row_start
-            && !(named(token->name, "col") && pending_column_context)
-            && !((named(token->name, "td") || named(token->name, "th"))
-                 && pending_cell_context)
-            && !named(token->name, "li")) {
-            /* Other starts need formatting-list rules. */
-            return LXA_ERROR_UNSUPPORTED;
-        }
+        if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
+        if (token->kind == LXA_HTML_COMMENT
+            || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
+            return append_comment_or_pi(tree, template_parent(tree), token);
         if (lxa_vector_length(&tree->template_elements)
             > template_boundary(tree)
             && (token->kind == LXA_HTML_START_TAG
@@ -5053,20 +4465,27 @@ reprocess_template_token:
             status = lxa_dom_nodes_element_namespace(tree->nodes,
                 open[length - 1], &ns);
             if (status != LXA_OK) return status;
+            if (ns != LXA_DOM_NS_HTML && token->kind == LXA_HTML_TEXT) {
+                bool integrated;
+                status = foreign_breakout_boundary(tree, open[length - 1],
+                                                     &integrated);
+                if (status != LXA_OK) return status;
+                if (!integrated)
+                    return insert_data_text(tree, template_parent(tree),
+                                            token->data, true, false);
+                if (null_only(token->data))
+                    return LXA_OK;
+                status = reconstruct_formatting(tree);
+                return status == LXA_OK
+                    ? insert_data_text(tree, template_parent(tree),
+                                       token->data, false, false) : status;
+            }
             if (ns == LXA_DOM_NS_SVG) {
                 lxa_span_t current;
                 bool font = false;
-                if (token->kind == LXA_HTML_TEXT)
-                    return insert_data_text(tree, template_parent(tree),
-                                            token->data, true, false);
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[length - 1], &current);
                 if (status != LXA_OK) return status;
-                if (named(token->name, "svg")
-                    || named(token->name, "math"))
-                    return template_open_foreign(tree, token,
-                        named(token->name, "svg") ? LXA_DOM_NS_SVG
-                                                  : LXA_DOM_NS_MATHML);
                 if (named(token->name, "font")) {
                     status = font_breakout(tree, token, &font);
                     if (status != LXA_OK) return status;
@@ -5075,86 +4494,33 @@ reprocess_template_token:
                     && !named(current, "title")
                     && !named(current, "desc")
                     && (foreign_html_start_breakout(token->name) || font)) {
-                    size_t keep = length;
-                    while (keep > template_boundary(tree)) {
-                        lxa_dom_namespace_t ancestor_ns;
-                        lxa_span_t ancestor;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_namespace(
-                                tree->nodes, open[keep - 1], &ancestor_ns);
-                        if (status != LXA_OK) return status;
-                        if (ancestor_ns == LXA_DOM_NS_HTML) break;
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[keep - 1], &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (ancestor_ns == LXA_DOM_NS_MATHML) {
-                            bool integrated =
-                                mathml_text_integration(ancestor);
-                            if (named(ancestor, "annotation-xml")) {
-                                status = annotation_html_integration(tree,
-                                    open[keep - 1], &integrated);
-                                if (status != LXA_OK) return status;
-                            }
-                            if (integrated) break;
-                        }
-                        else if (ancestor_ns != LXA_DOM_NS_SVG)
-                            return LXA_ERROR_UNSUPPORTED;
-                        else if (named(ancestor, "foreignObject")
-                                 || named(ancestor, "title")
-                                 || named(ancestor, "desc"))
-                            break;
-                        --keep;
-                    }
+                    size_t keep;
+                    status = plan_foreign_breakout(tree,
+                        &tree->template_elements, template_boundary(tree),
+                        &keep);
+                    if (status != LXA_OK) return status;
                     status = template_pop_elements(tree, keep);
                     if (status != LXA_OK) return status;
                     goto reprocess_template_token;
                 }
-                /* Only the qualified HTML integration child is routed
-                 * through the template's in-body construction below. */
-                if (named(current, "foreignObject")
-                    || named(current, "title") || named(current, "desc")) {
-                    integration_object = named(token->name, "object");
-                    if (!template_formatting(token->name)
-                        && !template_simple_inline(token->name)
-                        && !integration_object
-                        && !named(token->name, "span")
-                        && !named(token->name, "p")
-                        && !named(token->name, "div")
-                        && !named(token->name, "button")
-                        && !template_sectioning(token->name)
-                        && !named(token->name, "ul")
-                        && !named(token->name, "ol")
-                        && !named(token->name, "li")
-                        && !named(token->name, "template")
-                        && !template_html_text_element(token->name)) {
-                        bool ordinary;
-                        status = supported_container(tree, token->name,
-                                                      &ordinary);
-                        if (status != LXA_OK) return status;
-                        if (!ordinary) return LXA_ERROR_UNSUPPORTED;
-                    }
-                }
-                else {
+                /* Integration-point starts continue through the HTML consumers. */
+                if (!named(current, "foreignObject")
+                    && !named(current, "title") && !named(current, "desc")) {
                     return template_open_foreign(tree, token, ns);
                 }
             }
             if (ns == LXA_DOM_NS_MATHML) {
                 lxa_span_t current;
-                bool ordinary, integrated, font = false;
-                if (token->kind == LXA_HTML_TEXT)
-                    return insert_data_text(tree, template_parent(tree),
-                                            token->data, true, false);
+                bool integrated, font = false;
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[length - 1], &current);
                 if (status != LXA_OK) return status;
-                if (named(token->name, "svg"))
+                if (named(current, "annotation-xml")
+                    && named(token->name, "svg"))
                     return template_open_foreign(tree, token, LXA_DOM_NS_SVG);
-                if (named(token->name, "math")
-                    || (mathml_text_integration(current)
-                        && (named(token->name, "mglyph")
-                            || named(token->name, "malignmark"))))
+                if (mathml_text_integration(current)
+                    && (named(token->name, "mglyph")
+                        || named(token->name, "malignmark")))
                     return template_open_foreign(tree, token,
                                                  LXA_DOM_NS_MATHML);
                 integrated = mathml_text_integration(current);
@@ -5163,8 +4529,6 @@ reprocess_template_token:
                         open[length - 1], &integrated);
                     if (status != LXA_OK) return status;
                 }
-                integration_object = integrated
-                    && named(token->name, "object");
                 if (integrated && table_part(token->name)
                     && !named(token->name, "table")) {
                     size_t j = length;
@@ -5237,50 +4601,91 @@ reprocess_template_token:
                 }
                 if (!integrated
                     && (foreign_html_start_breakout(token->name) || font)) {
-                    size_t keep = length;
-                    while (keep > template_boundary(tree)) {
-                        lxa_dom_namespace_t ancestor_ns;
-                        lxa_span_t ancestor;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_namespace(
-                                tree->nodes, open[keep - 1], &ancestor_ns);
-                        if (status != LXA_OK) return status;
-                        if (ancestor_ns == LXA_DOM_NS_HTML) break;
-                        if (ancestor_ns != LXA_DOM_NS_MATHML)
-                            return LXA_ERROR_UNSUPPORTED;
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[keep - 1], &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (mathml_text_integration(ancestor))
-                            return LXA_ERROR_UNSUPPORTED;
-                        --keep;
-                    }
+                    size_t keep;
+                    status = plan_foreign_breakout(tree,
+                        &tree->template_elements, template_boundary(tree),
+                        &keep);
+                    if (status != LXA_OK) return status;
                     status = template_pop_elements(tree, keep);
                     if (status != LXA_OK) return status;
                     goto reprocess_template_token;
                 }
                 if (!integrated)
                     return template_open_foreign(tree, token, ns);
-                if (!template_html_text_element(token->name)
-                    && !body_void(token->name)
-                    && !integration_object
-                    && !named(token->name, "image")
-                    && !named(token->name, "base")
-                    && !named(token->name, "link")
-                    && !named(token->name, "meta")
-                    && !named(token->name, "table")
-                    && !named(token->name, "template")
-                    && !named(token->name, "ruby")
-                    && !named(token->name, "rt")
-                    && !named(token->name, "rp")) {
-                    status = supported_container(tree, token->name,
-                                                  &ordinary);
+            }
+        }
+        if (token->kind == LXA_HTML_END_TAG
+            && lxa_vector_length(&tree->template_elements)
+               > template_boundary(tree)) {
+            lxa_dom_namespace_t ns;
+            status = lxa_dom_nodes_element_namespace(tree->nodes,
+                template_parent(tree), &ns);
+            if (status != LXA_OK) return status;
+            if (ns != LXA_DOM_NS_HTML) {
+                size_t keep;
+                bool reprocess;
+                if (named(token->name, "br") || named(token->name, "p")) {
+                    status = plan_foreign_breakout(tree,
+                        &tree->template_elements, template_boundary(tree),
+                        &keep);
                     if (status != LXA_OK) return status;
-                    if (!ordinary) return LXA_ERROR_UNSUPPORTED;
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
+                }
+                else {
+                    status = plan_foreign_end(tree, &tree->template_elements,
+                        template_boundary(tree), token->name, &keep, &reprocess);
+                    if (status != LXA_OK) return status;
+                    if (!reprocess) {
+                        status = template_pop_elements(tree, keep);
+                        if (status != LXA_OK) return status;
+                        return LXA_OK;
+                    }
                 }
             }
+        }
+        if (token->kind == LXA_HTML_END_TAG && named(token->name, "br")
+            && (lxa_vector_length(&tree->template_elements)
+                > template_boundary(tree)
+                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE
+                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
+                || tree->template_insertion_mode == LXA_TEMPLATE_ROW
+                || tree->template_insertion_mode == LXA_TEMPLATE_BODY)) {
+            adjusted = *token;
+            adjusted.kind = LXA_HTML_START_TAG;
+            adjusted.attributes = NULL;
+            adjusted.attribute_count = 0;
+            adjusted.self_closing = false;
+            token = &adjusted;
+        }
+        {
+            size_t keep;
+            bool ignore;
+            status = plan_select_token(tree, &tree->template_elements,
+                template_boundary(tree), token, &keep, &ignore);
+            if (status != LXA_OK) return status;
+            status = template_pop_elements(tree, keep);
+            if (status != LXA_OK) return status;
+            if (ignore) return LXA_OK;
+        }
+        if (token->kind == LXA_HTML_END_TAG
+            && named(token->name, "template")) {
+            size_t work;
+            size_t length = lxa_vector_length(&tree->template_elements);
+            status = lxa_size_add(
+                length - template_boundary(tree), 1, &work);
+            if (status == LXA_OK)
+                status = lxa_budget_charge(tree->nodes->budget,
+                    LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            status = close_template(tree);
+            if (status != LXA_OK) return status;
+            return LXA_OK;
+        }
+        {
+            bool handled;
+            status = template_end_formatting_boundary(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG
             && body_control_start(token->name))
@@ -5309,23 +4714,10 @@ reprocess_template_token:
         if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
             && token->kind == LXA_HTML_START_TAG
             && table_part(token->name) && !named(token->name, "table")) {
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            size_t i = lxa_vector_length(&tree->template_elements);
             bool table_found = false;
-            while (i > template_boundary(tree)) {
-                lxa_span_t name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                                                         open[--i], &name);
-                if (status != LXA_OK) return status;
-                if (named(name, "table")) {
-                    table_found = true;
-                    break;
-                }
-            }
+            status = table_in_scope(tree, &tree->template_elements,
+                                     template_boundary(tree), &table_found);
+            if (status != LXA_OK) return status;
             if (!table_found)
                 return LXA_OK; /* No table in scope for in-body starts. */
         }
@@ -5335,13 +4727,39 @@ reprocess_template_token:
             /* Without an open colgroup, ordinary starts and nonspace
              * characters are ignored in column-group mode. */
             if (token->kind == LXA_HTML_TEXT)
-                return template_column_text(tree, token->data);
+                return append_space_text(tree, template_parent(tree),
+                                         token->data);
             if ((token->kind == LXA_HTML_START_TAG
                  && !named(token->name, "col")
                  && !named(token->name, "template")
                  && !named(token->name, "html"))
                 || token->kind == LXA_HTML_END_TAG)
                 return LXA_OK;
+        }
+        {
+            bool handled;
+            status = insert_hidden_table_input(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
+        }
+        if (token->kind == LXA_HTML_START_TAG && named(token->name, "form")) {
+            size_t keep, boundary = template_boundary(tree);
+            bool in_table;
+            bool virtual_table = template_table_context(tree);
+            status = plan_table_context(tree, &tree->template_elements,
+                boundary, virtual_table, &keep, &in_table);
+            if (status != LXA_OK) return status;
+            if (in_table) {
+                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
+                    tree->template_elements.bytes.data;
+                parent = keep == boundary ? tree->template_fragment
+                                          : open[keep - 1];
+                status = append_void(tree, parent, token);
+                if (status == LXA_OK) {
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
+                }
+                return status;
+            }
         }
         if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "svg") || named(token->name, "math"))) {
@@ -5361,42 +4779,20 @@ reprocess_template_token:
                         template_parent(tree), &parent_name);
                 if (status != LXA_OK) return status;
                 html_parent = parent_ns == LXA_DOM_NS_HTML
-                    && (named(parent_name, "div")
-                        || named(parent_name, "p")
-                        || named(parent_name, "li")
-                        || named(parent_name, "section")
-                        || named(parent_name, "span")
-                        || named(parent_name, "td")
-                        || named(parent_name, "th")
-                        || named(parent_name, "caption")
-                        || (template_pending_at_top(tree)
-                            && template_formatting(parent_name)));
-            }
-            if (html_parent) {
-                if (tree->pending_template_formatting.handle
-                    != LXA_HANDLE_NONE) {
-                    status = reconstruct_template_formatting(tree);
+                    && !table_context(parent_name);
+                if (parent_ns != LXA_DOM_NS_HTML) {
+                    status = foreign_breakout_boundary(tree,
+                        template_parent(tree), &html_parent);
                     if (status != LXA_OK) return status;
                 }
+            }
+            if (html_parent) {
+                status = reconstruct_formatting(tree);
+                if (status != LXA_OK) return status;
                 return template_open_foreign(tree, token,
                     named(token->name, "svg") ? LXA_DOM_NS_SVG
                                                : LXA_DOM_NS_MATHML);
             }
-        }
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "br")
-            && (lxa_vector_length(&tree->template_elements)
-                > template_boundary(tree)
-                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-                || tree->template_insertion_mode == LXA_TEMPLATE_ROW
-                || tree->template_insertion_mode == LXA_TEMPLATE_BODY)) {
-            adjusted = *token;
-            adjusted.kind = LXA_HTML_START_TAG;
-            adjusted.attributes = NULL;
-            adjusted.attribute_count = 0;
-            adjusted.self_closing = false;
-            token = &adjusted;
         }
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "col")
@@ -5405,56 +4801,30 @@ reprocess_template_token:
             return template_open_column(tree, token);
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "table")) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            size_t i = lxa_vector_length(&tree->template_elements);
-            bool fostered = false, blocked = false;
-            while (i > template_boundary(tree)) {
-                lxa_span_t name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+            size_t keep, index, boundary = template_boundary(tree);
+            size_t length = lxa_vector_length(&tree->template_elements);
+            bool in_table;
+            bool virtual_table = template_table_context(tree);
+            status = plan_table_context(tree, &tree->template_elements,
+                boundary, virtual_table, &keep, &in_table);
+            if (status == LXA_OK && in_table)
+                status = find_scoped_end_target(tree, &tree->template_elements,
+                    boundary, literal("table"), SCOPE_TABLE, &index);
+            if (status != LXA_OK) return status;
+            if (in_table) {
+                if (index == length) {
+                    /* A virtual table mode has no table to close and reprocess. */
+                    status = template_pop_elements(tree, keep);
+                    if (status != LXA_OK) return status;
+                    return LXA_OK;
+                }
+                status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                                           1, &tree->nodes->limit_reason);
                 if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[--i], &name);
+                    status = template_pop_table_elements(tree, index);
                 if (status != LXA_OK) return status;
-                if (named(name, "td") || named(name, "th")
-                    || named(name, "caption")) {
-                    blocked = true;
-                    break; /* A table inside a cell or caption can nest. */
-                }
-                if (named(name, "select") || named(name, "option")
-                    || named(name, "optgroup")) {
-                    blocked = true;
-                    break; /* Select/table reprocessing closes the select. */
-                }
-                if (named(name, "table")) {
-                    if (fostered) {
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_NODES, 1,
-                            &tree->nodes->limit_reason);
-                        if (status != LXA_OK) return status;
-                        status = template_pop_elements(tree, i);
-                        if (status != LXA_OK) return status;
-                        goto reprocess_template_token;
-                    }
-                    break;
-                }
-                if (i == template_boundary(tree)
-                    && fostered
-                    && (table_section(name) || named(name, "tr")))
-                    return LXA_OK; /* No table to close in this fragment. */
-                if (!table_context(name)) {
-                    if (template_formatting(name)) {
-                        blocked = true;
-                        break; /* Active formatting needs reconstruction. */
-                    }
-                    fostered = true;
-                }
+                goto reprocess_template_token;
             }
-            if (!blocked && fostered
-                && i == template_boundary(tree)
-                && tree->template_insertion_mode == LXA_TEMPLATE_TABLE)
-                return LXA_OK; /* No table exists in this fragment mode. */
         }
         if (lxa_vector_length(&tree->template_elements)
             > template_boundary(tree)) {
@@ -5486,14 +4856,11 @@ reprocess_template_token:
                 && !named(token->name, "template")) {
                 if (template_html_text_element(token->name)
                     && tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                if (!named(token->name, "form"))
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1,
-                        &tree->nodes->limit_reason);
+                status = lxa_budget_check(tree->nodes->budget,
+                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
                 status = template_pop_elements(tree, last);
                 if (status != LXA_OK) return status;
-                if (named(token->name, "form")) return LXA_OK;
                 goto reprocess_template_token;
             }
             if (ns == LXA_DOM_NS_HTML
@@ -5502,11 +4869,7 @@ reprocess_template_token:
                     || named(top, "tr"))) {
                 if (named(top, "colgroup")
                     && token->kind == LXA_HTML_END_TAG
-                    && (table_section(token->name)
-                        || named(token->name, "tr")
-                        || named(token->name, "td")
-                        || named(token->name, "th")
-                        || named(token->name, "select")
+                    && (named(token->name, "select")
                         || named(token->name, "frameset")
                         || named(token->name, "body")
                         || named(token->name, "html")
@@ -5519,11 +4882,9 @@ reprocess_template_token:
                         || named(token->name, "ruby")
                         || named(token->name, "rt")
                         || named(token->name, "rp")
-                        || template_pending_marker(token->name)
                         || block_container(token->name))) {
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
-                    if (template_pending_marker(token->name)) return LXA_OK;
                     goto reprocess_template_token;
                 }
                 if (token->kind == LXA_HTML_TEXT) {
@@ -5594,38 +4955,12 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "form")) {
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    /* A template in scope suppresses in-table forms. */
-                    return LXA_OK;
-                }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "input")) {
-                    bool hidden, in_colgroup = named(top, "colgroup");
-                    status = hidden_input(tree, token, &hidden);
-                    if (status != LXA_OK) return status;
-                    if (hidden) {
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_NODES, 1,
-                            &tree->nodes->limit_reason);
-                        if (status != LXA_OK) return status;
-                        /* In colgroup, input closes the group before its
-                         * in-table rule inserts the hidden element. */
-                        if (in_colgroup) {
-                            status = template_pop_elements(tree, last);
-                            if (status != LXA_OK) return status;
-                        }
-                        return append_void(tree, template_parent(tree), token);
-                    }
-                }
+                    && named(token->name, "xmp"))
+                    return begin_template_xmp(tree, tokenizer, token);
                 if (token->kind == LXA_HTML_START_TAG
                     && (named(token->name, "textarea")
                         || named(token->name, "iframe")
                         || named(token->name, "noembed")
-                        || named(token->name, "xmp")
                         || named(token->name, "plaintext"))) {
                     bool textarea = named(token->name, "textarea");
                     bool plaintext = named(token->name, "plaintext");
@@ -5634,12 +4969,14 @@ reprocess_template_token:
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
                     }
-                    status = template_foster_element(tree, token, false,
+                    status = template_foster_element(tree, token, plaintext,
                                                       &child, LXA_DOM_NS_HTML);
-                    if (status == LXA_OK)
+                    if (status == LXA_OK && plaintext)
+                        status = set_tokenizer_text_mode(tokenizer, token,
+                                                         LXA_HTML_PLAINTEXT);
+                    else if (status == LXA_OK)
                         status = enter_text_mode(tree, tokenizer, token,
                             textarea ? LXA_HTML_RCDATA
-                            : plaintext ? LXA_HTML_PLAINTEXT
                             : LXA_HTML_RAWTEXT,
                             child);
                     if (status == LXA_OK && textarea)
@@ -5672,12 +5009,12 @@ reprocess_template_token:
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
-                    && (template_formatting(token->name)
+                    && (formatting_tag(token->name)
                         || inline_container(token->name)
                         || named(token->name, "object")
                         || named(token->name, "marquee")
                         || named(token->name, "applet")
-                        || template_crossed_inline(token->name)
+                        || named(token->name, "ruby")
                         || named(token->name, "button")
                         || named(token->name, "p")
                         || named(token->name, "div")
@@ -5747,32 +5084,6 @@ reprocess_template_token:
                         || named(token->name, "th")))
                     return template_open_table_part(tree, token);
                 if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "table")) {
-                    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                        tree->template_elements.bytes.data;
-                    size_t i = last + 1;
-                    bool found = false;
-                    while (i > template_boundary(tree)) {
-                        lxa_span_t name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[--i], &name);
-                        if (status != LXA_OK) return status;
-                        if (named(name, "table")) {
-                            status = template_pop_elements(tree, i);
-                            if (status != LXA_OK) return status;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                        return named(top, "tr") || table_section(top)
-                            ? LXA_OK : LXA_ERROR_UNSUPPORTED;
-                    /* Reprocess as an ordinary table start in the fragment. */
-                }
-                if (token->kind == LXA_HTML_START_TAG
                     && !named(token->name, "template")
                     && !named(token->name, "table")
                     && !named(token->name, "style")
@@ -5811,9 +5122,6 @@ reprocess_template_token:
                                                    NULL, LXA_DOM_NS_HTML);
                 }
                 if (token->kind == LXA_HTML_END_TAG
-                    && named(token->name, "select"))
-                    return LXA_OK; /* Input may have closed the select already. */
-                if (token->kind == LXA_HTML_END_TAG
                     && (named(token->name, "body")
                         || named(token->name, "html")))
                     return LXA_OK; /* The template cannot close either root. */
@@ -5828,7 +5136,7 @@ reprocess_template_token:
                 if (token->kind == LXA_HTML_END_TAG
                     && (named(token->name, "option")
                         || named(token->name, "optgroup")))
-                    return LXA_OK; /* No select is open in this table scope. */
+                    return LXA_OK; /* Unmatched ends stop at this table element. */
                 if (token->kind == LXA_HTML_END_TAG
                     && (named(token->name, "ruby")
                         || named(token->name, "rt")
@@ -5838,13 +5146,7 @@ reprocess_template_token:
                     && block_container(token->name))
                     return LXA_OK; /* The table ends ordinary block scope. */
                 if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "col")
-                        || named(token->name, "td")
-                        || named(token->name, "th")))
-                    return LXA_OK; /* No cell or column is open in this mode. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "caption")
-                        || named(token->name, "frameset"))) {
+                    && named(token->name, "frameset")) {
                     if (named(top, "colgroup")) {
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
@@ -5852,11 +5154,23 @@ reprocess_template_token:
                     return LXA_OK; /* No match in this table scope. */
                 }
                 if (token->kind == LXA_HTML_END_TAG
-                    && !named(token->name, "table")
-                    && !named(token->name, "colgroup")
-                    && !table_section(token->name)
-                    && !named(token->name, "tr"))
-                    return LXA_ERROR_UNSUPPORTED;
+                    && template_ordinary_end(token->name)) {
+                    size_t index;
+                    status = plan_ordinary_end_target(tree,
+                        &tree->template_elements,
+                        template_boundary(tree), token->name, &index);
+                    if (status != LXA_OK) return status;
+                    return template_close_elements(tree, index);
+                }
+                if (token->kind == LXA_HTML_END_TAG
+                    && formatting_tag(token->name) && named(top, "colgroup")) {
+                    status = lxa_budget_charge(tree->nodes->budget,
+                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+                    if (status != LXA_OK) return status;
+                    status = template_pop_elements(tree, last);
+                    if (status != LXA_OK) return status;
+                    goto reprocess_template_token;
+                }
             }
             else if (ns == LXA_DOM_NS_HTML
                      && (named(top, "caption")
@@ -5869,168 +5183,9 @@ reprocess_template_token:
                          || named(token->name, "th")))
                 return template_open_table_part(tree, token);
         }
-        if ((token->kind == LXA_HTML_START_TAG
-             && table_part(token->name))
-            || (token->kind == LXA_HTML_END_TAG
-                && table_part(token->name)
-                && !named(token->name, "col")
-                && !named(token->name, "colgroup"))) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            size_t select, i;
-            bool option, group, table_scope_found = false;
-            bool target_found = token->kind == LXA_HTML_START_TAG;
-            status = template_select_scope(tree, &select, &option, &group);
-            if (status != LXA_OK) return status;
-            if (select != lxa_vector_length(&tree->template_elements)) {
-                if (token->kind == LXA_HTML_START_TAG
-                    && (named(token->name, "col")
-                        || named(token->name, "colgroup")))
-                    return LXA_OK; /* Neither start exits select mode. */
-                i = select;
-                while (i > template_boundary(tree)) {
-                    lxa_span_t name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[--i], &name);
-                    if (status != LXA_OK) return status;
-                    if (name.length == token->name.length
-                        && memcmp(name.data, token->name.data,
-                                  name.length) == 0)
-                        target_found = true;
-                    if (i == template_boundary(tree)
-                        && (table_section(name) || named(name, "tr")
-                            || named(name, "td") || named(name, "th")
-                            || (named(name, "caption")
-                                && named(token->name, "table"))))
-                        table_scope_found = true;
-                    if (named(name, "table")) {
-                        table_scope_found = true;
-                        break;
-                    }
-                }
-                if (!table_scope_found || !target_found) return LXA_OK;
-                /* Table tokens close the select in table scope before their
-                 * table rule sees the open stack. */
-                status = template_pop_elements(tree, select);
-                if (status != LXA_OK) return status;
-                goto reprocess_template_token;
-            }
-        }
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "col"))
             return template_open_column(tree, token);
-        if (token->kind == LXA_HTML_START_TAG
-            || token->kind == LXA_HTML_END_TAG) {
-            size_t select;
-            bool option, group;
-            size_t length = lxa_vector_length(&tree->template_elements);
-            status = template_select_scope(tree, &select, &option, &group);
-            if (status != LXA_OK) return status;
-            if (select != length) {
-                if (token->kind == LXA_HTML_END_TAG) {
-                    if (named(token->name, "select")) {
-                        status = template_pop_elements(tree, select);
-                        if (status != LXA_OK) return status;
-                    }
-                    else if (named(token->name, "option") && option) {
-                        status = template_pop_elements(tree, length - 1);
-                        if (status != LXA_OK) return status;
-                    }
-                    else if (named(token->name, "optgroup")) {
-                        if (group) {
-                            status = template_pop_elements(tree, length - 1);
-                            if (status != LXA_OK) return status;
-                        }
-                        else if (option && length > select + 1) {
-                            lxa_span_t previous;
-                            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                                tree->template_elements.bytes.data;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[length - 2], &previous);
-                            if (status != LXA_OK) return status;
-                            if (named(previous, "optgroup")) {
-                                status = template_pop_elements(tree, length - 2);
-                                if (status != LXA_OK) return status;
-                            }
-                        }
-                    }
-                    return LXA_OK;
-                }
-                if (named(token->name, "select")) {
-                    status = template_pop_elements(tree, select);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                if (named(token->name, "option")
-                    || named(token->name, "optgroup")) {
-                    template_select_close = length;
-                    if (option) --template_select_close;
-                    if (named(token->name, "optgroup")
-                        && template_select_close > select) {
-                        lxa_span_t previous;
-                        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                            tree->template_elements.bytes.data;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[template_select_close - 1], &previous);
-                        if (status != LXA_OK) return status;
-                        if (named(previous, "optgroup"))
-                            --template_select_close;
-                    }
-                }
-                else if (named(token->name, "hr")) {
-                    size_t keep = length;
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    if (option) --keep;
-                    if (keep > select + 1) {
-                        lxa_span_t previous;
-                        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                            tree->template_elements.bytes.data;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[keep - 1], &previous);
-                        if (status != LXA_OK) return status;
-                        if (named(previous, "optgroup")) --keep;
-                    }
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                    return append_void(tree, template_parent(tree), token);
-                }
-                else if (named(token->name, "input")
-                         || named(token->name, "textarea")
-                         || named(token->name, "keygen")) {
-                    if (named(token->name, "textarea")
-                        && tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = template_pop_elements(tree, select);
-                    if (status != LXA_OK) return status;
-                    /* Reprocess against the underlying table or fragment. */
-                    goto reprocess_template_token;
-                }
-                else if (named(token->name, "html"))
-                    return apply_attributes(tree, tree->html, token);
-                else if (!named(token->name, "script")
-                         && !named(token->name, "template"))
-                    return LXA_OK; /* Ordinary starts in select are ignored. */
-            }
-        }
         if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "caption")
                 || named(token->name, "colgroup")
@@ -6040,1070 +5195,85 @@ reprocess_template_token:
                 || named(token->name, "th")))
             return template_open_table_part(tree, token);
         if (token->kind == LXA_HTML_END_TAG
-            && table_section(token->name)
-            && (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                || tree->template_insertion_mode == LXA_TEMPLATE_BODY)) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            size_t boundary = template_boundary(tree);
-            size_t length = lxa_vector_length(&tree->template_elements);
-            if (length >= boundary + 2) {
-                lxa_span_t section_name, row_name;
-                size_t section = boundary, j = length;
-                while (j > boundary) {
-                    lxa_span_t name;
-                    lxa_dom_namespace_t ns;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[--j], &name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                            open[j], &ns);
-                    if (status != LXA_OK) return status;
-                    if (ns == LXA_DOM_NS_HTML && named(name, "table")) {
-                        section = j + 1;
-                        break;
-                    }
-                }
-                if (length >= section + 2) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[section], &section_name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[section + 1], &row_name);
-                    if (status != LXA_OK) return status;
-                    if (table_section(section_name)
-                        && (section_name.length != token->name.length
-                            || memcmp(section_name.data, token->name.data,
-                                      section_name.length) != 0)
-                        && named(row_name, "tr")) {
-                        for (j = section + 2; j < length; ++j) {
-                            lxa_span_t name;
-                            lxa_dom_namespace_t ns;
-                            bool clearable;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 2,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[j], &name);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_namespace(
-                                    tree->nodes, open[j], &ns);
-                            if (status != LXA_OK) return status;
-                            if (named(name, "td") || named(name, "th"))
-                                return LXA_OK; /* End inside a cell is ignored. */
-                            status = template_fostered_descendant(name, ns, &clearable);
-                            if (status != LXA_OK) return status;
-                            if (!clearable) return LXA_ERROR_UNSUPPORTED;
-                        }
-                        status = template_pop_elements(tree, section + 1);
-                        if (status != LXA_OK) return status;
-                        return LXA_OK;
-                    }
-                    if (table_section(section_name)
-                        && section_name.length == token->name.length
-                        && memcmp(section_name.data, token->name.data,
-                                  section_name.length) == 0
-                        && template_formatting(row_name)
-                        && tree->pending_template_formatting.handle
-                           == LXA_HANDLE_NONE)
-                        return template_retain_formatting_chain(tree,
-                            section + 1, length - section - 1, section);
-                }
+            && template_scoped_end(token->name) && !named(token->name, "p")) {
+            size_t index;
+            bool reprocess;
+            status = plan_foreign_end(tree, &tree->template_elements,
+                template_boundary(tree), token->name, &index, &reprocess);
+            if (status != LXA_OK) return status;
+            if (!reprocess) {
+                status = template_pop_elements(tree, index);
+                if (status != LXA_OK) return status;
+                return LXA_OK;
             }
+            status = find_scoped_end_target(tree, &tree->template_elements,
+                template_boundary(tree), token->name,
+                named(token->name, "li") ? SCOPE_LIST_ITEM : SCOPE_NORMAL,
+                &index);
+            if (status != LXA_OK) return status;
+            return index == lxa_vector_length(&tree->template_elements)
+                ? LXA_OK : template_close_elements(tree, index);
+        }
+        if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
+            && (tree->template_insertion_mode != LXA_TEMPLATE_INITIAL
+                || lxa_vector_length(&tree->template_elements)
+                   > template_boundary(tree))) {
+            size_t index;
+            status = find_scoped_end_target(tree, &tree->template_elements,
+                template_boundary(tree), token->name, SCOPE_BUTTON, &index);
+            if (status != LXA_OK) return status;
+            if (index == lxa_vector_length(&tree->template_elements)) {
+                lxa_dom_ref_t paragraph, before;
+                status = template_insertion_location(tree, &parent, &before);
+                if (status == LXA_OK)
+                    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
+                        literal("p"), &paragraph);
+                if (status != LXA_OK) return status;
+                return before.handle == LXA_HANDLE_NONE
+                    ? lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                              parent, paragraph)
+                    : lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                               parent, paragraph,
+                                                               before);
+            }
+            return template_close_elements(tree, index);
         }
         if (token->kind == LXA_HTML_END_TAG
-            && (named(token->name, "table")
-                || (tree->template_insertion_mode
-                    == LXA_TEMPLATE_TABLE_BODY
-                    && table_section(token->name)))
-            && (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                || tree->template_insertion_mode
-                   == LXA_TEMPLATE_TABLE_BODY)) {
-            const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                tree->template_elements.bytes.data;
-            size_t j = lxa_vector_length(&tree->template_elements);
-            lxa_span_t root = {0};
-            lxa_dom_namespace_t root_ns = LXA_DOM_NS_HTML;
-            while (j > template_boundary(tree)) {
-                lxa_span_t name;
-                lxa_dom_namespace_t ns;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[--j], &name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        open[j], &ns);
-                if (status != LXA_OK) return status;
-                if (ns == LXA_DOM_NS_HTML
-                    && (named(name, "table") || named(name, "td")
-                        || named(name, "th")))
-                    break;
-                if (j == template_boundary(tree)) {
-                    root = name;
-                    root_ns = ns;
-                }
-            }
-            if (j == template_boundary(tree) && root.data != NULL
-                && root_ns == LXA_DOM_NS_HTML
-                && (named(root, "tr") || table_section(root))) {
-                status = template_pop_elements(tree, j);
+            && template_ordinary_end(token->name)) {
+            size_t index;
+            bool reprocess;
+            status = plan_foreign_end(tree, &tree->template_elements,
+                template_boundary(tree), token->name, &index, &reprocess);
+            if (status != LXA_OK) return status;
+            if (!reprocess) {
+                status = template_pop_elements(tree, index);
                 if (status != LXA_OK) return status;
                 return LXA_OK;
             }
-        }
-        if (token->kind == LXA_HTML_END_TAG) {
-            size_t i = lxa_vector_length(&tree->template_elements);
-            bool formatting_above = false;
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            size_t extra_start = template_pending_extra_start(tree);
-            size_t extra_count =
-                lxa_vector_length(&tree->pending_template_extras)
-                - extra_start;
-            if (extra_count != 0 && template_formatting(token->name)) {
-                lxa_span_t pending_name;
-                bool pending_open;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        tree->pending_template_formatting, &pending_name);
-                if (status != LXA_OK) return status;
-                if (pending_name.length != token->name.length
-                    || memcmp(pending_name.data, token->name.data,
-                              pending_name.length) != 0) {
-                    const lxa_dom_ref_t *extras = (const lxa_dom_ref_t *)
-                        tree->pending_template_extras.bytes.data + extra_start;
-                    size_t boundary = template_boundary(tree), j;
-                    size_t matched = SIZE_MAX;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, extra_count,
-                        &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    for (j = 0; j < extra_count; ++j) {
-                        lxa_span_t name;
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            extras[j], &name);
-                        if (status != LXA_OK) return status;
-                        if (name.length == token->name.length
-                            && memcmp(name.data, token->name.data,
-                                      name.length) == 0)
-                            matched = j;
-                    }
-                    if (matched != SIZE_MAX) {
-                        if (i != boundary) {
-                            size_t chain_start = boundary;
-                            if (matched == 0) {
-                                while (chain_start < i
-                                    && open[chain_start].handle
-                                       != extras[0].handle) {
-                                    lxa_span_t parent_name;
-                                    status = lxa_budget_charge(
-                                        tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-                                    if (status == LXA_OK)
-                                        status = lxa_dom_nodes_element_name(
-                                            tree->nodes, open[chain_start],
-                                            &parent_name);
-                                    if (status != LXA_OK) return status;
-                                    if (!template_pending_chain_block(
-                                        parent_name))
-                                        return LXA_ERROR_UNSUPPORTED;
-                                    ++chain_start;
-                                }
-                            }
-                            if (i - chain_start < extra_count + 1
-                                || open[chain_start + extra_count].handle
-                                   != tree->pending_template_formatting.handle)
-                                return LXA_ERROR_UNSUPPORTED;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, i - chain_start - 1,
-                                &tree->nodes->limit_reason);
-                            if (status != LXA_OK) return status;
-                            for (j = 0; j < extra_count; ++j)
-                                if (open[chain_start + j].handle
-                                    != extras[j].handle)
-                                    return LXA_ERROR_UNSUPPORTED;
-                            for (j = chain_start + extra_count + 1;
-                                 j < i; ++j) {
-                                lxa_span_t name;
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[j], &name);
-                                if (status != LXA_OK) return status;
-                                if (!named(name, "span"))
-                                    return LXA_ERROR_UNSUPPORTED;
-                            }
-                            status = template_pop_elements(tree, chain_start + matched);
-                            if (status != LXA_OK) return status;
-                        }
-                        lxa_vector_erase(&tree->pending_template_extras,
-                                         extra_start + matched, 1);
-                        lxa_budget_release(tree->nodes->budget,
-                            LXA_BUDGET_ACTIVE_FORMATTING, 1);
-                        return LXA_OK;
-                    }
-                }
-                if (pending_name.length != token->name.length
-                    || memcmp(pending_name.data, token->name.data,
-                              pending_name.length) != 0)
-                    return LXA_ERROR_UNSUPPORTED;
-                status = template_pending_on_stack(tree, &pending_open);
-                if (status != LXA_OK) return status;
-                if (pending_open && !template_pending_at_top(tree))
-                    return LXA_ERROR_UNSUPPORTED;
-                if (pending_open) {
-                    status = template_pop_elements(tree, i - 1);
-                    if (status != LXA_OK) return status;
-                }
-                forget_pending_template_formatting(tree);
-                tree->pending_template_formatting =
-                    ((const lxa_dom_ref_t *)
-                     tree->pending_template_extras.bytes.data)
-                    [extra_start + extra_count - 1];
-                lxa_vector_erase(&tree->pending_template_extras,
-                    extra_start + extra_count - 1, 1);
+            status = find_ordinary_end_target(tree, &tree->template_elements,
+                template_boundary(tree), token->name, &index);
+            if (status != LXA_OK) return status;
+            if (index == lxa_vector_length(&tree->template_elements))
                 return LXA_OK;
-            }
-            if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-                && i > template_boundary(tree)) {
-                lxa_dom_namespace_t ns;
-                lxa_span_t name, target = token->name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        open[i - 1], &ns);
-                if (status != LXA_OK) return status;
-                if (ns != LXA_DOM_NS_HTML) {
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[i - 1], &name);
-                    if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
-                        status = lxa_html_svg_tag_name(target, &target);
-                    if (status != LXA_OK) return status;
-                    if (name.length != target.length
-                        || memcmp(name.data, target.data, name.length) != 0)
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, i - 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-            }
-            if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-                && !(pending_table_context
-                     && (named(token->name, "colgroup")
-                         || named(token->name, "table")))
-                && !pending_cell_end) {
-                lxa_span_t pending_name;
-                bool found = false;
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    tree->pending_template_formatting, &pending_name);
-                if (status != LXA_OK) return status;
-                if (pending_name.length == token->name.length
-                    && memcmp(pending_name.data, token->name.data,
-                              pending_name.length) == 0) {
-                    for (size_t j = template_boundary(tree); j < i; ++j) {
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status != LXA_OK) return status;
-                        if (open[j].handle
-                            == tree->pending_template_formatting.handle) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        forget_pending_template_formatting(tree);
-                        return LXA_OK;
-                    }
-                    if (i > template_boundary(tree) + 1
-                        && open[template_boundary(tree)].handle
-                           == tree->pending_template_formatting.handle) {
-                        size_t ancestor;
-                        status = template_pending_span_chain(tree, i,
-                                                             &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (ancestor == template_boundary(tree)) {
-                            status = template_pop_elements(tree, ancestor);
-                            if (status != LXA_OK) return status;
-                            forget_pending_template_formatting(tree);
-                            return LXA_OK;
-                        }
-                    }
-                }
-                else if (named(token->name, "p")
-                         || named(token->name, "div")
-                         || named(token->name, "section")
-                         || named(token->name, "article")
-                         || named(token->name, "blockquote")
-                         || named(token->name, "address")
-                         || named(token->name, "figure")
-                         || named(token->name, "pre")
-                         || named(token->name, "listing")
-                         || heading(token->name)) {
-                    size_t boundary = template_boundary(tree);
-                    lxa_span_t block_name;
-                    if (template_pending_chain_block(token->name)) {
-                        size_t end = i;
-                        bool block_chain, list_block;
-                        if (template_pending_at_top(tree)) --end;
-                        status = template_pending_block_chain(tree, end,
-                                                              &block_chain);
-                        if (status != LXA_OK) return status;
-                        status = template_pending_list_block_tail(tree, end,
-                                                                  &list_block);
-                        if (status != LXA_OK) return status;
-                        if (block_chain || list_block) {
-                            lxa_span_t top_name;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[end - 1], &top_name);
-                            if (status != LXA_OK) return status;
-                            if (top_name.length == token->name.length
-                                && memcmp(top_name.data, token->name.data,
-                                          top_name.length) == 0) {
-                                status = template_pop_elements(tree, end - 1);
-                                if (status != LXA_OK) return status;
-                                return LXA_OK;
-                            }
-                        }
-                    }
-                    if (template_pending_chain_block(token->name)
-                        || named(token->name, "p")
-                        || template_pending_direct_block(token->name)) {
-                        size_t start = template_pending_extra_start(tree);
-                        size_t extras =
-                            lxa_vector_length(&tree->pending_template_extras)
-                            - start;
-                        const lxa_dom_ref_t *entries =
-                            (const lxa_dom_ref_t *)
-                            tree->pending_template_extras.bytes.data;
-                        size_t j, block_end, matched = SIZE_MAX;
-                        if (extras != 0 && i - boundary > extras
-                            && open[i - 1].handle
-                               == tree->pending_template_formatting.handle) {
-                            block_end = i - extras - 1;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, i - boundary - 1,
-                                &tree->nodes->limit_reason);
-                            if (status != LXA_OK) return status;
-                            for (j = 0; j < extras; ++j)
-                                if (open[block_end + j].handle
-                                    != entries[start + j].handle)
-                                    break;
-                            if (j == extras) {
-                                for (j = boundary; j < block_end; ++j) {
-                                    status = lxa_dom_nodes_element_name(
-                                        tree->nodes, open[j], &block_name);
-                                    if (status != LXA_OK) return status;
-                                    if (!template_pending_chain_block(
-                                            block_name)
-                                        && !(j == boundary
-                                             && block_end == boundary + 1
-                                             && (named(block_name, "p")
-                                                 || template_pending_direct_block(
-                                                     block_name))))
-                                        break;
-                                    if ((block_name.length
-                                         == token->name.length
-                                         && memcmp(block_name.data,
-                                                   token->name.data,
-                                                   block_name.length) == 0)
-                                        || (heading(block_name)
-                                            && heading(token->name)))
-                                        matched = j;
-                                }
-                                if (j == block_end && matched != SIZE_MAX) {
-                                    status = template_pop_elements(tree, matched);
-                                    if (status != LXA_OK) return status;
-                                    return LXA_OK;
-                                }
-                            }
-                        }
-                    }
-                    if (i > boundary + 2) {
-                        size_t ancestor;
-                        status = template_pending_span_chain(tree, i - 1,
-                                                             &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (ancestor != SIZE_MAX) {
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[i - 1], &block_name);
-                            if (status != LXA_OK) return status;
-                            if (block_name.length != token->name.length
-                                || memcmp(block_name.data, token->name.data,
-                                          block_name.length) != 0)
-                                return LXA_ERROR_UNSUPPORTED;
-                            status = template_pop_elements(tree, i - 1);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                    }
-                    if (i == boundary + 2
-                        && open[boundary].handle
-                           == tree->pending_template_formatting.handle) {
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &block_name);
-                        if (status != LXA_OK) return status;
-                        if (block_name.length != token->name.length
-                            || memcmp(block_name.data, token->name.data,
-                                      block_name.length) != 0)
-                            return LXA_ERROR_UNSUPPORTED;
-                        status = template_pop_elements(tree, i - 1);
-                        if (status != LXA_OK) return status;
-                        return LXA_OK;
-                    }
-                    if (i != boundary + 1
-                        && (i != boundary + 2
-                            || open[i - 1].handle
-                               != tree->pending_template_formatting.handle))
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, i - boundary,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[boundary], &block_name);
-                    if (status != LXA_OK) return status;
-                    if (block_name.length != token->name.length
-                        || memcmp(block_name.data, token->name.data,
-                                  block_name.length) != 0)
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, boundary);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                else if (named(token->name, "ul")
-                         || named(token->name, "ol")) {
-                    if (i > template_boundary(tree) + 2
-                        && open[i - 3].handle
-                           == tree->pending_template_formatting.handle) {
-                        lxa_span_t list_name, item_name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 2,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 2], &list_name);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &item_name);
-                        if (status != LXA_OK) return status;
-                        if (list_name.length == token->name.length
-                            && memcmp(list_name.data, token->name.data,
-                                      list_name.length) == 0
-                            && named(item_name, "li")) {
-                            status = template_pop_elements(tree, i - 2);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                    }
-                    if (i > template_boundary(tree) + 1
-                        && open[i - 2].handle
-                           == tree->pending_template_formatting.handle) {
-                        lxa_span_t top_name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &top_name);
-                        if (status != LXA_OK) return status;
-                        if (top_name.length == token->name.length
-                            && memcmp(top_name.data, token->name.data,
-                                      top_name.length) == 0) {
-                            status = template_pop_elements(tree, i - 1);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                    }
-                    size_t start = template_pending_extra_start(tree);
-                    size_t extras =
-                        lxa_vector_length(&tree->pending_template_extras)
-                        - start;
-                    size_t list;
-                    lxa_span_t list_name, item_name;
-                    status = template_pending_list_index(tree, &list);
-                    if (status != LXA_OK) return status;
-                    if (extras != 0 && list != SIZE_MAX
-                        && i - list >= extras + 3
-                        && i - list <= extras + 5
-                        && open[list + extras + 2].handle
-                           == tree->pending_template_formatting.handle) {
-                        const lxa_dom_ref_t *entries = (const lxa_dom_ref_t *)
-                            tree->pending_template_extras.bytes.data;
-                        size_t j, suffix = i - list - extras - 3;
-                        bool nested = true;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, i - list - 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[list], &list_name);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[list + 1], &item_name);
-                        if (status != LXA_OK) return status;
-                        if (suffix != 0) {
-                            lxa_span_t nested_name;
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[list + extras + 3], &nested_name);
-                            if (status != LXA_OK) return status;
-                            nested = named(nested_name, "ul")
-                                     || named(nested_name, "ol");
-                            if (suffix == 2) {
-                                status = lxa_dom_nodes_element_name(tree->nodes,
-                                    open[i - 1], &nested_name);
-                                if (status != LXA_OK) return status;
-                                nested = nested && named(nested_name, "li");
-                            }
-                        }
-                        if (list_name.length == token->name.length
-                            && memcmp(list_name.data, token->name.data,
-                                      list_name.length) == 0
-                            && named(item_name, "li") && nested) {
-                            for (j = 0; j < extras; ++j)
-                                if (open[list + 2 + j].handle
-                                    != entries[start + j].handle)
-                                    break;
-                            if (j == extras) {
-                                status = template_pop_elements(tree, list);
-                                if (status != LXA_OK) return status;
-                                return LXA_OK;
-                            }
-                        }
-                    }
-                    if (list == SIZE_MAX || i > list + 3
-                        || (i == list + 3
-                            && open[i - 1].handle
-                               != tree->pending_template_formatting.handle))
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, i - list,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[list], &list_name);
-                    if (status == LXA_OK && i > list + 1)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[list + 1], &item_name);
-                    if (status != LXA_OK) return status;
-                    if (list_name.length != token->name.length
-                        || memcmp(list_name.data, token->name.data,
-                                  list_name.length) != 0
-                        || (i > list + 1 && !named(item_name, "li")))
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, list);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                else if (named(token->name, "li")) {
-                    if (i > template_boundary(tree) + 2
-                        && open[i - 3].handle
-                           == tree->pending_template_formatting.handle) {
-                        lxa_span_t list_name, item_name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 2,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 2], &list_name);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &item_name);
-                        if (status != LXA_OK) return status;
-                        if ((named(list_name, "ul")
-                             || named(list_name, "ol"))
-                            && named(item_name, "li")) {
-                            status = template_pop_elements(tree, i - 1);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                    }
-                    size_t start = template_pending_extra_start(tree);
-                    size_t extras =
-                        lxa_vector_length(&tree->pending_template_extras)
-                        - start;
-                    size_t list;
-                    lxa_span_t item_name;
-                    status = template_pending_list_index(tree, &list);
-                    if (status != LXA_OK) return status;
-                    if (extras != 0 && list != SIZE_MAX
-                        && i - list == extras + 3
-                        && open[i - 1].handle
-                           == tree->pending_template_formatting.handle) {
-                        const lxa_dom_ref_t *entries = (const lxa_dom_ref_t *)
-                            tree->pending_template_extras.bytes.data;
-                        size_t j;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, extras + 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[list + 1], &item_name);
-                        if (status != LXA_OK) return status;
-                        if (named(item_name, "li")) {
-                            for (j = 0; j < extras; ++j)
-                                if (open[list + 2 + j].handle
-                                    != entries[start + j].handle)
-                                    break;
-                            if (j == extras) {
-                                status = template_pop_elements(tree, list + 1);
-                                if (status != LXA_OK) return status;
-                                return LXA_OK;
-                            }
-                        }
-                    }
-                    if (list == SIZE_MAX
-                        || (i != list + 2
-                            && (i != list + 3
-                            || open[i - 1].handle
-                               != tree->pending_template_formatting.handle)))
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, i - list - 1,
-                        &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[list + 1], &item_name);
-                    if (status != LXA_OK) return status;
-                    if (!named(item_name, "li"))
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, list + 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                else if (named(token->name, "span")) {
-                    size_t ancestor;
-                    status = template_pending_span_chain(tree, i, &ancestor);
-                    if (status != LXA_OK) return status;
-                    if (ancestor == SIZE_MAX) return LXA_ERROR_UNSUPPORTED;
-                    if (i == ancestor + 1) return LXA_OK;
-                    status = template_pop_elements(tree, i - 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                else if (template_pending_marker(token->name)) {
-                    lxa_span_t top_name;
-                    if (i != template_boundary(tree) + 2
-                        || open[i - 2].handle
-                           != tree->pending_template_formatting.handle)
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[i - 1], &top_name);
-                    if (status != LXA_OK) return status;
-                    if (top_name.length != token->name.length
-                        || memcmp(top_name.data, token->name.data,
-                                  top_name.length) != 0)
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = template_pop_elements(tree, i - 1);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                else
-                    return LXA_ERROR_UNSUPPORTED; /* Other ends need list rules. */
-            }
-            while (i > template_boundary(tree)) {
-                lxa_span_t name, target = token->name;
-                lxa_dom_namespace_t ns;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = lxa_dom_nodes_element_name(tree->nodes, open[--i],
-                                                     &name);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        open[i], &ns);
-                if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
-                    status = lxa_html_svg_tag_name(target, &target);
-                if (status != LXA_OK) return status;
-                if ((name.length == target.length
-                     && memcmp(name.data, target.data, name.length) == 0)
-                    || (ns == LXA_DOM_NS_HTML
-                        && heading(token->name) && heading(name))) {
-                    size_t count = lxa_vector_length(&tree->template_elements)
-                                   - i;
-                    if (count >= 2 && template_formatting(name)
-                        && tree->pending_template_formatting.handle
-                           == LXA_HANDLE_NONE
-                        && i >= template_boundary(tree) + 2) {
-                        lxa_span_t list_name, item_name;
-                        lxa_dom_ref_t parent;
-                        size_t j, formatting_count = 0;
-                        bool direct_adoption = false;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 2,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 2], &list_name);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &item_name);
-                        if (status != LXA_OK) return status;
-                        if (count >= 3 && count <= 7
-                            && (named(list_name, "ul")
-                                || named(list_name, "ol"))
-                            && named(item_name, "li")) {
-                            lxa_span_t first;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[i + 1], &first);
-                            if (status != LXA_OK) return status;
-                            direct_adoption = template_adoption_block(first)
-                                && !named(first, "menu")
-                                && !named(first, "ul")
-                                && !named(first, "ol");
-                        }
-                        if ((named(list_name, "ul")
-                             || named(list_name, "ol"))
-                            && named(item_name, "li") && !direct_adoption) {
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, count + 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_parent(tree->nodes,
-                                    open[i - 1], &parent);
-                            if (status != LXA_OK) return status;
-                            if (parent.handle != open[i - 2].handle)
-                                return LXA_ERROR_UNSUPPORTED;
-                            status = lxa_dom_nodes_parent(tree->nodes,
-                                open[i], &parent);
-                            if (status != LXA_OK) return status;
-                            if (parent.handle != open[i - 1].handle)
-                                return LXA_ERROR_UNSUPPORTED;
-                            for (j = 1; j < count; ++j) {
-                                lxa_span_t descendant;
-                                status = lxa_dom_nodes_element_name(
-                                    tree->nodes, open[i + j], &descendant);
-                                if (status != LXA_OK) return status;
-                                if (count == 2 && j == 1
-                                    && template_adoption_block(descendant))
-                                    return template_close_crossed_block(tree,
-                                                                        i,
-                                                                        NULL,
-                                                                        0);
-                                if (template_formatting(descendant))
-                                    ++formatting_count;
-                                else if (formatting_count == 0
-                                         || !template_crossed_inline(
-                                             descendant))
-                                    return LXA_ERROR_UNSUPPORTED;
-                                status = lxa_dom_nodes_parent(tree->nodes,
-                                    open[i + j], &parent);
-                                if (status != LXA_OK) return status;
-                                if (parent.handle
-                                    != open[i + j - 1].handle)
-                                    return LXA_ERROR_UNSUPPORTED;
-                            }
-                            return template_retain_formatting_chain(tree,
-                                i + 1, count - 1, i);
-                        }
-                    }
-                    if (template_formatting(name)
-                        && (((count >= 2)
-                             && !formatting_above)
-                            || (count >= 3 && formatting_above))) {
-                        lxa_span_t top;
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                                                             open[i + 1], &top);
-                        if (status != LXA_OK) return status;
-                        if (count == 2
-                            && (named(top, "dialog")
-                                || named(top, "search"))) {
-                            status = template_pop_elements(tree, i);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                        if (template_adoption_block(top)
-                            && (count == 2
-                                || (count <= 7 && !named(top, "menu")
-                                    && !named(top, "ul")
-                                    && !named(top, "ol")))) {
-                            size_t reconstruct_count = 0, j;
-                            size_t formatting_offsets[5];
-                            for (j = 2; j < count; ++j) {
-                                lxa_dom_ref_t inline_parent;
-                                status = lxa_budget_charge(tree->nodes->budget,
-                                    LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-                                if (status == LXA_OK)
-                                    status = lxa_dom_nodes_element_name(
-                                        tree->nodes, open[i + j], &top);
-                                if (status != LXA_OK) return status;
-                                if (template_formatting(top))
-                                    formatting_offsets[reconstruct_count++] = j;
-                                else if (!template_crossed_inline(top))
-                                    return LXA_ERROR_UNSUPPORTED;
-                                status = lxa_dom_nodes_parent(tree->nodes,
-                                    open[i + j], &inline_parent);
-                                if (status != LXA_OK) return status;
-                                if (inline_parent.handle
-                                    != open[i + j - 1].handle)
-                                    return LXA_ERROR_UNSUPPORTED;
-                            }
-                            return template_close_crossed_block(tree, i,
-                                formatting_offsets, reconstruct_count);
-                        }
-                        if (named(top, "menu") || named(top, "ul")
-                            || named(top, "ol")) {
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i + 2], &top);
-                            if (status != LXA_OK) return status;
-                            if (named(top, "li")) {
-                                size_t spans = 0, block_spans = 0, j;
-                                bool direct_block = false;
-                                size_t list_formatting = 0;
-                                size_t nested_blocks = 0, accounted_spans = 0;
-                                size_t inline_gaps[4] = {0};
-                                if (count >= 5) {
-                                    lxa_span_t next;
-                                    size_t preblock_formatting = 0;
-                                    size_t k = 3;
-                                    while (k < count) {
-                                        status = lxa_budget_charge(
-                                            tree->nodes->budget,
-                                            LXA_BUDGET_WORK, 1,
-                                            &tree->nodes->limit_reason);
-                                        if (status == LXA_OK)
-                                            status = lxa_dom_nodes_element_name(
-                                                tree->nodes, open[i + k],
-                                                &next);
-                                        if (status != LXA_OK) return status;
-                                        if (template_formatting(next))
-                                            ++preblock_formatting;
-                                        else if (preblock_formatting == 0
-                                                 || !template_crossed_inline(
-                                                     next))
-                                            break;
-                                        ++k;
-                                    }
-                                    if (preblock_formatting != 0 && k < count
-                                        && template_crossed_list_furthest_block(
-                                            next))
-                                        return template_close_crossed_list_item(
-                                            tree, i, 0, 0, true,
-                                            count - k - 1, 0,
-                                            inline_gaps, k - 3);
-                                }
-                                for (j = 3; j < count; ++j) {
-                                    status = lxa_budget_charge(
-                                        tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-                                    if (status == LXA_OK)
-                                        status = lxa_dom_nodes_element_name(
-                                            tree->nodes, open[i + j], &top);
-                                    if (status != LXA_OK) return status;
-                                    if (direct_block) {
-                                        if (template_crossed_inline(top)
-                                            && block_spans == j - 4 - spans
-                                                              - nested_blocks)
-                                            ++block_spans;
-                                        else if (nested_blocks < 4
-                                                 && j == 4 + spans + block_spans
-                                                          + nested_blocks
-                                                 && (named(top, "section")
-                                                     || named(top, "div")
-                                                     || named(top, "p"))) {
-                                            inline_gaps[nested_blocks] =
-                                                block_spans - accounted_spans;
-                                            accounted_spans = block_spans;
-                                            ++nested_blocks;
-                                        }
-                                        else if (!template_formatting(top))
-                                            return LXA_ERROR_UNSUPPORTED;
-                                        continue;
-                                    }
-                                    if (template_crossed_inline(top)
-                                        && spans == j - 3) ++spans;
-                                    else if (j == 3 + spans
-                                             && (named(top, "div")
-                                                 || named(top, "section")
-                                                 || named(top, "p")))
-                                        direct_block = true;
-                                    else if (template_formatting(top))
-                                        ++list_formatting;
-                                    else if (!template_crossed_inline(top))
-                                        return LXA_ERROR_UNSUPPORTED;
-                                }
-                                if (nested_blocks == 0 && formatting_above
-                                    != (count > (direct_block
-                                                 ? 4 + spans + block_spans
-                                                 : 3 + spans)))
-                                    return LXA_ERROR_UNSUPPORTED;
-                                return template_close_crossed_list_item(
-                                    tree, i, spans,
-                                    direct_block
-                                    ? count - 4 - spans - block_spans
-                                      - nested_blocks : list_formatting,
-                                    direct_block, block_spans, nested_blocks,
-                                    inline_gaps, 0);
-                            }
-                        }
-                    }
-                    if (formatting_above
-                        && (named(name, "ul") || named(name, "ol"))
-                        && tree->template_insertion_mode == LXA_TEMPLATE_BODY
-                        && tree->pending_template_formatting.handle
-                           == LXA_HANDLE_NONE) {
-                        lxa_dom_ref_t pending = {0};
-                        size_t j, format_count = 0;
-                        bool direct_chain = false;
-                        for (j = i + 1; j < i + count; ++j) {
-                            lxa_span_t descendant;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(tree->nodes,
-                                    open[j], &descendant);
-                            if (status != LXA_OK) return status;
-                            if (template_formatting(descendant)) {
-                                ++format_count;
-                                pending = open[j];
-                            }
-                            else if (j == i + 1 && named(descendant, "li"))
-                                direct_chain = true;
-                            else
-                                direct_chain = false;
-                        }
-                        if (pending.handle == LXA_HANDLE_NONE)
-                            return LXA_ERROR_UNSUPPORTED;
-                        if (format_count > 1 && !direct_chain)
-                            return LXA_ERROR_UNSUPPORTED;
-                        if (format_count > 1)
-                            return template_retain_formatting_chain(tree,
-                                i + 2, format_count, i);
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_ACTIVE_FORMATTING, 1,
-                            &tree->nodes->limit_reason);
-                        if (status != LXA_OK) return status;
-                        tree->pending_template_formatting = pending;
-                        status = template_pop_elements(tree, i);
-                        if (status != LXA_OK) return status;
-                        return LXA_OK;
-                    }
-                    if (formatting_above && named(name, "li")
-                        && count >= 2 && i > template_boundary(tree)
-                        && tree->template_insertion_mode == LXA_TEMPLATE_BODY
-                        && tree->pending_template_formatting.handle
-                           == LXA_HANDLE_NONE) {
-                        lxa_span_t list_name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &list_name);
-                        if (status != LXA_OK) return status;
-                        if (named(list_name, "ul")
-                            || named(list_name, "ol"))
-                            return template_retain_formatting_chain(tree,
-                                i + 1, count - 1, i);
-                    }
-                    if (formatting_above && named(name, "p")
-                        && count >= 2 && i > template_boundary(tree)
-                        && tree->pending_template_formatting.handle
-                           == LXA_HANDLE_NONE) {
-                        lxa_span_t parent_name;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[i - 1], &parent_name);
-                        if (status != LXA_OK) return status;
-                        if (named(parent_name, "li")) {
-                            status = template_retain_formatting_chain(tree,
-                                i + 1, count - 1, i + 1);
-                            if (status != LXA_OK) return status;
-                            status = template_pop_elements(tree, i);
-                            if (status != LXA_OK) return status;
-                            return LXA_OK;
-                        }
-                    }
-                    if (formatting_above
-                        || (template_formatting(name) && count != 1))
-                        return LXA_ERROR_UNSUPPORTED;
-                    if (open[i].handle
-                        == tree->pending_template_formatting.handle)
-                        forget_pending_template_formatting(tree);
-                    status = template_pop_elements(tree, i);
-                    if (status != LXA_OK) return status;
-                    break;
-                }
-                if (template_formatting(name))
-                    formatting_above = true;
-            }
-            return LXA_OK; /* An unmatched end leaves the fragment open. */
+            return template_close_elements(tree, index);
         }
+        if (token->kind == LXA_HTML_END_TAG && formatting_tag(token->name))
+            return adopt_formatting(tree, token->name);
+        if (token->kind == LXA_HTML_END_TAG) return LXA_OK;
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "template"))
             return begin_template(tree, token);
-        if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "span")
-                || template_pending_marker(token->name))
-            && tree->pending_template_formatting.handle != LXA_HANDLE_NONE) {
-            status = reconstruct_template_formatting(tree);
-            if (status != LXA_OK) return status;
-        }
         if (token->kind == LXA_HTML_TEXT) {
-            size_t count = lxa_vector_length(&tree->template_elements);
-            if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-                && count > template_boundary(tree)) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                lxa_span_t top;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[count - 1], &top);
-                if (status != LXA_OK) return status;
-                if (named(top, "td") || named(top, "th")) {
-                    size_t j = count - 1;
-                    while (j > template_boundary(tree)) {
-                        lxa_span_t ancestor;
-                        status = lxa_budget_charge(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                open[--j], &ancestor);
-                        if (status != LXA_OK) return status;
-                        if (named(ancestor, "table"))
-                            return insert_data_text(tree, template_parent(tree),
-                                                    token->data, false, false);
-                    }
-                }
-            }
+            if (null_only(token->data))
+                return LXA_OK;
             if (tree->template_fragment.handle == LXA_HANDLE_NONE)
                 return LXA_ERROR_INTERNAL;
-            status = reconstruct_template_formatting(tree);
+            if (lxa_vector_length(&tree->template_elements)
+                == template_boundary(tree)
+                && template_table_context(tree))
+                return insert_data_text(tree, tree->template_fragment,
+                                         token->data, false, true);
+            status = reconstruct_formatting(tree);
             if (status != LXA_OK) return status;
             return insert_data_text(tree, template_parent(tree),
                                     token->data, false, false);
@@ -7114,21 +5284,16 @@ reprocess_template_token:
             return append_void(tree, template_parent(tree), token);
         if (token->kind == LXA_HTML_START_TAG
             && (body_void(token->name) || named(token->name, "image"))) {
-            if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-                && !named(token->name, "hr")) {
-                status = reconstruct_template_formatting(tree);
+            if (!named(token->name, "hr")
+                && !named(token->name, "param")
+                && !named(token->name, "source")
+                && !named(token->name, "track")) {
+                status = reconstruct_formatting(tree);
                 if (status != LXA_OK) return status;
             }
             if (named(token->name, "hr")) {
                 size_t paragraph;
-                bool pending_chain;
-                status = template_open_paragraph(tree, &paragraph);
-                if (status == LXA_ERROR_UNSUPPORTED) {
-                    status = template_pending_paragraph_chain(tree, paragraph,
-                                                              &pending_chain);
-                    if (status != LXA_OK) return status;
-                    if (!pending_chain) return LXA_ERROR_UNSUPPORTED;
-                }
+                status = template_plan_paragraph_close(tree, &paragraph);
                 if (status == LXA_OK)
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -7138,14 +5303,18 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
             }
-            /* The in-template fallback reprocesses these in body mode.
-             * Their insertion parent is the template content fragment. */
             if (named(token->name, "image")) {
                 adjusted = *token;
                 adjusted.name = literal("img");
                 token = &adjusted;
             }
-            status = append_void(tree, template_parent(tree), token);
+            {
+                lxa_dom_ref_t parent, before;
+                status = template_insertion_location(tree, &parent, &before);
+                if (status == LXA_OK)
+                    status = append_closed_element_at(tree, parent, before,
+                                                       token, NULL);
+            }
             if (status == LXA_OK
                 && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
                 && lxa_vector_length(&tree->template_elements)
@@ -7154,11 +5323,8 @@ reprocess_template_token:
             return status;
         }
         if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "title") || named(token->name, "style")
-                || named(token->name, "script")
-                || named(token->name, "noframes")
-                || named(token->name, "iframe")
-                || named(token->name, "noembed"))) {
+            && template_simple_text_element(token->name)
+            && !named(token->name, "textarea")) {
             status = begin_text_element(tree, tokenizer, template_parent(tree),
                 token, named(token->name, "title") ? LXA_HTML_RCDATA
                        : named(token->name, "script") ? LXA_HTML_SCRIPT_DATA
@@ -7183,72 +5349,29 @@ reprocess_template_token:
         }
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "xmp")) {
-            size_t paragraph;
-            if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-            if (tree->pending_template_formatting.handle != LXA_HANDLE_NONE) {
-                status = reconstruct_template_formatting(tree);
-                if (status != LXA_OK) return status;
-            }
-            status = template_open_paragraph(tree, &paragraph);
+            return begin_template_xmp(tree, tokenizer, token);
+        }
+        if (token->kind == LXA_HTML_START_TAG
+            && named(token->name, "button")) {
+            size_t index;
+            status = find_scoped_end_target(tree, &tree->template_elements,
+                template_boundary(tree), token->name, SCOPE_NORMAL, &index);
             if (status == LXA_OK)
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = template_close_elements(tree, index);
+            if (status == LXA_OK)
+                status = reconstruct_formatting(tree);
             if (status != LXA_OK) return status;
-            if (paragraph != lxa_vector_length(&tree->template_elements)) {
-                status = template_pop_elements(tree, paragraph);
-                if (status != LXA_OK) return status;
-            }
-            status = begin_text_element(tree, tokenizer, template_parent(tree),
-                                        token, LXA_HTML_RAWTEXT);
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
-            return status;
-        }
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "plaintext")) {
-            status = begin_text_element(tree, tokenizer, template_parent(tree),
-                                        token, LXA_HTML_PLAINTEXT);
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
-            return status;
         }
         template_ordinary = false;
-        template_cell_scope = false;
-        template_table_scope = false;
         if (token->kind == LXA_HTML_START_TAG) {
-            if (named(token->name, "form")
-                || named(token->name, "object")) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                size_t j = lxa_vector_length(&tree->template_elements);
-                while (j > template_boundary(tree)) {
-                    lxa_span_t ancestor;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[--j], &ancestor);
-                    if (status != LXA_OK) return status;
-                    if (named(ancestor, "td") || named(ancestor, "th")
-                        || named(ancestor, "caption")) {
-                        template_cell_scope = true;
-                        break;
-                    }
-                    if (table_context(ancestor)) {
-                        template_table_scope = true;
-                        if (named(token->name, "object")) break;
-                        return LXA_OK; /* Template suppresses in-table forms. */
-                    }
-                }
-            }
             template_ordinary =
                 named(token->name, "form")
-                || (named(token->name, "object")
-                    && (template_cell_scope || template_table_scope
-                        || integration_object))
+                || template_marker_container(token->name)
                 || inline_container(token->name)
+                || named(token->name, "plaintext")
                 || named(token->name, "p") || named(token->name, "div")
                 || named(token->name, "address")
                 || named(token->name, "dialog")
@@ -7273,8 +5396,6 @@ reprocess_template_token:
                 || named(token->name, "dt")
                 || named(token->name, "dd")
                 || named(token->name, "noscript")
-                || named(token->name, "marquee")
-                || named(token->name, "applet")
                 || named(token->name, "ul")
                 || named(token->name, "ol")
                 || named(token->name, "menu")
@@ -7284,9 +5405,7 @@ reprocess_template_token:
                 || named(token->name, "rp")
                 || heading(token->name)
                 || named(token->name, "table")
-                || named(token->name, "select")
-                || named(token->name, "option")
-                || named(token->name, "optgroup")
+                || select_container(token->name)
                 || named(token->name, "span")
                 || named(token->name, "label")
                 || named(token->name, "button")
@@ -7304,10 +5423,7 @@ reprocess_template_token:
                 || named(token->name, "var")
                 || named(token->name, "nobr")
                 || named(token->name, "font")
-                || (named(token->name, "object")
-                    && lxa_vector_length(&tree->template_elements)
-                       == template_boundary(tree))
-                || template_formatting(token->name);
+                || formatting_tag(token->name);
             if (!template_ordinary) {
                 status = supported_container(tree, token->name,
                                               &template_ordinary);
@@ -7318,113 +5434,35 @@ reprocess_template_token:
                 if (simple_container(token->name))
                     template_ordinary = false;
             }
-            if (!template_ordinary && named(token->name, "object")
-                && lxa_vector_length(&tree->template_elements)
-                   > template_boundary(tree)) {
-                lxa_span_t top;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        template_parent(tree), &top);
-                if (status != LXA_OK) return status;
-                template_ordinary = named(top, "object");
-                if (!template_ordinary
-                    && tree->template_insertion_mode == LXA_TEMPLATE_BODY)
-                    template_ordinary = named(top, "p")
-                        || named(top, "div") || named(top, "span")
-                        || named(top, "li") || named(top, "section")
-                        || named(top, "td") || named(top, "th")
-                        || named(top, "caption") || template_formatting(top);
-            }
         }
         if (template_ordinary) {
-            size_t count, depth, i, close_at;
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            close_at = template_select_close == SIZE_MAX
-                ? lxa_vector_length(&tree->template_elements)
-                : template_select_close;
-            if (template_select_close == SIZE_MAX
-                && (named(token->name, "option")
-                    || named(token->name, "optgroup"))
-                && close_at > template_boundary(tree)) {
-                lxa_span_t current;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[close_at - 1], &current);
+            size_t count, depth, close_at, drop = SIZE_MAX;
+            lxa_dom_ref_t parent, before = {0};
+            bool formatting = formatting_tag(token->name);
+            bool marker = formatting_marker_tag(token->name);
+            const lxa_dom_ref_t *open;
+            if (named(token->name, "plaintext") && tokenizer == NULL)
+                return LXA_ERROR_ARGUMENT;
+            if (formatting) status = prepare_formatting_start(tree, token, &drop);
+            else if (container_reconstructs(token->name)
+                     && !named(token->name, "table")
+                     && !named(token->name, "form")
+                     && !named(token->name, "button")
+                     && !named(token->name, "plaintext"))
+                status = reconstruct_formatting(tree);
+            if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
+            if (status != LXA_OK) return status;
+            open = (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
+            close_at = lxa_vector_length(&tree->template_elements);
+            if (ruby_annotation(token->name)) {
+                status = plan_ruby_start(tree, &tree->template_elements,
+                    template_boundary(tree), token->name, &close_at);
                 if (status != LXA_OK) return status;
-                if (named(current, "option")) {
-                    --close_at;
-                }
-                if (close_at < lxa_vector_length(&tree->template_elements)
-                    && close_at > template_boundary(tree)) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[close_at - 1], &current);
-                    if (status != LXA_OK) return status;
-                    if (table_context(current)) {
-                        status = template_pop_elements(tree, close_at);
-                        if (status != LXA_OK) return status;
-                        return template_foster_element(tree, token, true,
-                                                       NULL, LXA_DOM_NS_HTML);
-                    }
-                }
             }
-            if (named(token->name, "rt") || named(token->name, "rp")) {
-                lxa_span_t top;
-                if (close_at > template_boundary(tree)) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[close_at - 1], &top);
-                    if (status != LXA_OK) return status;
-                    if (named(top, "rt") || named(top, "rp")) {
-                        size_t j = close_at - 1;
-                        while (j > template_boundary(tree)) {
-                            lxa_span_t ancestor;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(tree->nodes,
-                                    open[--j], &ancestor);
-                            if (status != LXA_OK) return status;
-                            if (named(ancestor, "ruby")) {
-                                --close_at;
-                                break;
-                            }
-                        }
-                    }
-                    else if (!named(top, "ruby")) {
-                        size_t j = close_at - 1;
-                        bool ruby = false;
-                        if (!named(top, "span")) return LXA_ERROR_UNSUPPORTED;
-                        while (j > template_boundary(tree)) {
-                            lxa_span_t ancestor;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(tree->nodes,
-                                    open[--j], &ancestor);
-                            if (status != LXA_OK) return status;
-                            if (named(ancestor, "ruby")) {
-                                ruby = true;
-                                break;
-                            }
-                        }
-                        if (!ruby) return LXA_ERROR_UNSUPPORTED;
-                    }
-                }
-            }
-            if (named(token->name, "li")) {
-                status = template_open_list_item(tree, &close_at);
+            if (template_list_item(token->name)) {
+                status = template_open_list_item(tree,
+                                                 !named(token->name, "li"),
+                                                 &close_at);
                 if (status != LXA_OK) return status;
                 if (close_at > template_boundary(tree)
                     && close_at < lxa_vector_length(&tree->template_elements)) {
@@ -7443,53 +5481,16 @@ reprocess_template_token:
                     }
                 }
                 if (close_at == lxa_vector_length(&tree->template_elements)) {
-                    status = template_open_paragraph(tree, &close_at);
+                    status = template_plan_paragraph_close(tree, &close_at);
                     if (status != LXA_OK) return status;
                 }
             }
-            else if (named(token->name, "button")) {
-                for (i = close_at; i > template_boundary(tree);) {
-                    lxa_span_t current;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[--i], &current);
-                    if (status != LXA_OK) return status;
-                    if (named(current, "button")) {
-                        close_at = i;
-                        break;
-                    }
-                    if (table_context(current)) break;
-                }
-                if (close_at < lxa_vector_length(&tree->template_elements)
-                    && close_at > template_boundary(tree)) {
-                    lxa_span_t parent_name;
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[close_at - 1], &parent_name);
-                    if (status != LXA_OK) return status;
-                    if (named(parent_name, "table")) {
-                        status = template_pop_elements(tree, close_at);
-                        if (status != LXA_OK) return status;
-                        return template_foster_element(tree, token, true,
-                                                       NULL, LXA_DOM_NS_HTML);
-                    }
-                }
-            }
-            else if (named(token->name, "p")
-                     || block_container(token->name)
-                     || heading(token->name)) {
-                status = template_open_paragraph(tree, &close_at);
-                if (status == LXA_ERROR_UNSUPPORTED
-                    && (named(token->name, "p")
-                        || template_pending_chain_block(token->name)
-                        || template_pending_direct_block(token->name))) {
-                    bool pending_chain;
-                    status = template_pending_paragraph_chain(tree, close_at,
-                                                              &pending_chain);
-                    if (status != LXA_OK) return status;
-                    if (!pending_chain) return LXA_ERROR_UNSUPPORTED;
-                }
+            else if (template_paragraph_container(token->name)
+                     || named(token->name, "form")
+                     || named(token->name, "plaintext")
+                     || (named(token->name, "table")
+                         && tree->document_mode != LXA_HTML_QUIRKS)) {
+                status = template_plan_paragraph_close(tree, &close_at);
                 if (status != LXA_OK) return status;
                 if (heading(token->name)
                     && close_at > template_boundary(tree)) {
@@ -7501,19 +5502,6 @@ reprocess_template_token:
                             open[close_at - 1], &current);
                     if (status != LXA_OK) return status;
                     if (heading(current)) --close_at;
-                }
-            }
-            if (named(token->name, "a")) {
-                for (i = template_boundary(tree);
-                     i < lxa_vector_length(&tree->template_elements); ++i) {
-                    lxa_span_t name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = lxa_dom_nodes_element_name(tree->nodes, open[i],
-                                                         &name);
-                    if (status != LXA_OK) return status;
-                    if (named(name, "a")) return LXA_ERROR_UNSUPPORTED;
                 }
             }
             status = lxa_size_add(close_at, 1, &count);
@@ -7545,7 +5533,7 @@ reprocess_template_token:
                 && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
                 tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
             if (status != LXA_OK) return status;
-            status = lxa_dom_nodes_append_html_element(tree->nodes,
+            status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                                                         token->name, &child);
             if (status == LXA_OK)
                 status = apply_attributes(tree, child, token);
@@ -7554,8 +5542,15 @@ reprocess_template_token:
                 status = template_pop_elements(tree, close_at);
                 if (status != LXA_OK) return status;
             }
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                template_parent(tree), child);
+            parent = template_parent(tree);
+            if (!named(token->name, "table"))
+                status = template_insertion_location(tree, &parent, &before);
+            if (status == LXA_OK)
+                status = before.handle != LXA_HANDLE_NONE
+                    ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                                                          parent, child, before)
+                    : lxa_dom_nodes_append_constructed_child(tree->nodes,
+                                                          parent, child);
             if (status == LXA_OK && named(token->name, "option"))
                 status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
             if (status != LXA_OK) return status;
@@ -7567,6 +5562,12 @@ reprocess_template_token:
                     lxa_budget_release(tree->nodes->budget,
                                         LXA_BUDGET_OPEN_ELEMENTS, 1);
             }
+            if (status == LXA_OK && formatting) {
+                if (drop != SIZE_MAX) remove_formatting(tree, drop);
+                status = append_formatting(tree, child, false);
+            }
+            if (status == LXA_OK && marker)
+                status = append_formatting(tree, child, true);
             if (status == LXA_OK
                 && (named(token->name, "pre")
                     || named(token->name, "listing")))
@@ -7576,12 +5577,12 @@ reprocess_template_token:
                 && lxa_vector_length(&tree->template_elements)
                    == template_boundary(tree) + 1)
                 tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+            if (status == LXA_OK && named(token->name, "plaintext"))
+                status = set_tokenizer_text_mode(tokenizer, token,
+                                                 LXA_HTML_PLAINTEXT);
             return status;
         }
-        if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
-        if (token->kind != LXA_HTML_EOF
-            && token->kind != LXA_HTML_COMMENT
-            && token->kind != LXA_HTML_PROCESSING_INSTRUCTION)
+        if (token->kind != LXA_HTML_EOF)
             return LXA_ERROR_UNSUPPORTED; /* Element modes still needed. */
         if (token->kind == LXA_HTML_EOF) {
             size_t work;
@@ -7600,41 +5601,40 @@ reprocess_template_token:
         }
     }
     if (tree->mode == LXA_TREE_IN_FRAMESET
-        || tree->mode == LXA_TREE_AFTER_FRAMESET) {
+        || tree->mode == LXA_TREE_AFTER_FRAMESET
+        || tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET) {
         if (token->kind == LXA_HTML_EOF) {
             status = pop_elements(tree, &tree->open_elements, 0);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_DONE;
             return LXA_OK;
         }
-        if (token->kind == LXA_HTML_COMMENT) {
-            return append_character(tree,
-                tree->mode == LXA_TREE_IN_FRAMESET
-                    ? current_element(tree) : tree->document,
-                LXA_DOM_KIND_COMMENT, token->data);
-        }
+        parent = tree->mode == LXA_TREE_IN_FRAMESET
+                 ? current_element(tree) : tree->html;
+        if (token->kind == LXA_HTML_COMMENT
+            || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
+            return append_comment_or_pi(tree,
+                tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
+                    ? tree->document : parent, token);
         if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "html"))
             return apply_attributes(tree, tree->html, token);
-        if (token->kind == LXA_HTML_TEXT && space_only(token->data))
-            return append_character(tree,
-                tree->mode == LXA_TREE_IN_FRAMESET
-                    ? current_element(tree) : tree->html,
-                LXA_DOM_KIND_TEXT, token->data);
+        if (token->kind == LXA_HTML_TEXT)
+            return append_space_text(tree, parent, token->data);
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "noframes")) {
             status = lxa_budget_check(tree->nodes->budget,
                 LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             return status == LXA_OK
                 ? begin_text_element(tree, tokenizer,
-                    tree->mode == LXA_TREE_IN_FRAMESET
-                        ? current_element(tree) : tree->html,
-                    token, LXA_HTML_RAWTEXT) : status;
+                    parent, token, LXA_HTML_RAWTEXT) : status;
         }
-        if (tree->mode == LXA_TREE_AFTER_FRAMESET)
-            return token->kind == LXA_HTML_END_TAG
-                && named(token->name, "html") ? LXA_OK : LXA_ERROR_UNSUPPORTED;
+        if (tree->mode != LXA_TREE_IN_FRAMESET) {
+            if (token->kind == LXA_HTML_END_TAG && named(token->name, "html"))
+                tree->mode = LXA_TREE_AFTER_AFTER_FRAMESET;
+            return LXA_OK;
+        }
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "frameset")) {
             status = reserve_open_elements(tree, 1);
@@ -7658,47 +5658,6 @@ reprocess_template_token:
                 tree->mode = LXA_TREE_AFTER_FRAMESET;
             return LXA_OK;
         }
-        if ((token->kind == LXA_HTML_START_TAG
-             || token->kind == LXA_HTML_END_TAG)
-            && (named(token->name, "template")
-                || named(token->name, "frame")))
-            return LXA_OK;
-        return LXA_ERROR_UNSUPPORTED;
-    }
-    if (token->kind == LXA_HTML_START_TAG
-        && named(token->name, "frameset")
-        && (tree->mode == LXA_TREE_INITIAL
-            || tree->mode == LXA_TREE_BEFORE_HTML
-            || tree->mode == LXA_TREE_BEFORE_HEAD
-            || tree->mode == LXA_TREE_IN_HEAD
-            || tree->mode == LXA_TREE_AFTER_HEAD)
-        && tree->body.handle == LXA_HANDLE_NONE) {
-        size_t needed = 1;
-        if (tree->head.handle == LXA_HANDLE_NONE) ++needed;
-        if (tree->html.handle == LXA_HANDLE_NONE) ++needed;
-        status = reserve_open_elements(tree, 1);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget,
-                LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
-        if (status == LXA_OK) status = ensure_head(tree);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_html_element(tree->nodes,
-                                                        token->name, &child);
-        if (status == LXA_OK) status = apply_attributes(tree, child, token);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             tree->html, child);
-        if (status == LXA_OK) status = push_element(tree, child);
-        if (status == LXA_OK) tree->mode = LXA_TREE_IN_FRAMESET;
-        return status;
-    }
-    if (token->kind == LXA_HTML_EOF
-        && tree->mode == LXA_TREE_TEXT
-        && (tree->text_return_mode == LXA_TREE_IN_FRAMESET
-            || tree->text_return_mode == LXA_TREE_AFTER_FRAMESET)) {
-        status = pop_elements(tree, &tree->open_elements, 0);
-        if (status != LXA_OK) return status;
-        tree->mode = LXA_TREE_DONE;
         return LXA_OK;
     }
     if (token->kind == LXA_HTML_EOF) {
@@ -7711,31 +5670,6 @@ reprocess_template_token:
     if (tree->mode == LXA_TREE_TEXT) {
         lxa_span_t name;
         if (token->kind == LXA_HTML_TEXT) {
-            if (token->data.length != 0
-                && tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT
-                && tree->pending_template_formatting.handle != LXA_HANDLE_NONE
-                && lxa_vector_length(&tree->template_elements)
-                   == template_boundary(tree)) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        tree->text_element, &name);
-                if (status != LXA_OK) return status;
-                if (named(name, "plaintext")) {
-                    lxa_dom_ref_t clone;
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = clone_formatting_element(tree,
-                            tree->pending_template_formatting, &clone);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_append_constructed_child(
-                            tree->nodes, tree->text_element, clone);
-                    if (status != LXA_OK) return status;
-                    tree->text_element = clone;
-                }
-            }
             return append_character(tree, tree->text_element,
                                     LXA_DOM_KIND_TEXT, token->data);
         }
@@ -7756,13 +5690,7 @@ reprocess_template_token:
             tree->mode = LXA_TREE_IN_HEAD;
             return LXA_OK;
         }
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "br")) {
-            tree->head_noscript = (lxa_dom_ref_t){0};
-            tree->mode = LXA_TREE_IN_HEAD;
-            return LXA_OK;
-        }
-        if (token->kind == LXA_HTML_END_TAG)
+        if (token->kind == LXA_HTML_END_TAG && !named(token->name, "br"))
             return LXA_OK;
         if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "head")
@@ -7809,6 +5737,16 @@ reprocess_template_token:
             tree->mode = LXA_TREE_IN_HEAD;
         }
     }
+    if (token->kind == LXA_HTML_START_TAG
+        && named(token->name, "frameset")
+        && (tree->mode == LXA_TREE_INITIAL
+            || tree->mode == LXA_TREE_BEFORE_HTML
+            || tree->mode == LXA_TREE_BEFORE_HEAD
+            || tree->mode == LXA_TREE_IN_HEAD
+            || tree->mode == LXA_TREE_AFTER_HEAD)
+        && tree->body.handle == LXA_HANDLE_NONE) {
+        return begin_root_frameset(tree, token, false);
+    }
     if ((tree->mode == LXA_TREE_IN_BODY
          || tree->mode == LXA_TREE_AFTER_BODY
          || tree->mode == LXA_TREE_AFTER_HTML)
@@ -7847,19 +5785,7 @@ reprocess_template_token:
                 integration_owner = named(current_name, "title")
                                     || named(current_name, "desc")
                                     || named(current_name, "foreignObject");
-                html_integration_child = named(current_name, "foreignObject")
-                    || (integration_owner
-                    && (token->kind == LXA_HTML_TEXT
-                        || named(token->name, "b")
-                        || named(token->name, "span")
-                        || named(token->name, "em")
-                        || named(token->name, "strong")
-                        || named(token->name, "i") || named(token->name, "code")
-                        || named(token->name, "p") || named(token->name, "div")
-                        || named(token->name, "a") || named(token->name, "img")
-                        || named(token->name, "br")
-                        || named(token->name, "td")
-                        || named(token->name, "th")));
+                html_integration_child = integration_owner;
             }
         }
         if (ns != LXA_DOM_NS_HTML && !integration_owner
@@ -7873,36 +5799,13 @@ reprocess_template_token:
                  && (named(token->name, "br")
                      || named(token->name, "p")))
                 || (!integration_owner && token->kind == LXA_HTML_START_TAG
-                    && (named(token->name, "p") || named(token->name, "div")
-                || named(token->name, "br") || named(token->name, "img")
-                || named(token->name, "hr") || named(token->name, "span")
-                || heading(token->name) || named(token->name, "ul")
-                || named(token->name, "ol") || named(token->name, "li")
-                || named(token->name, "blockquote") || named(token->name, "pre")
-                || named(token->name, "dl") || named(token->name, "dt")
-                || named(token->name, "dd") || named(token->name, "table")
-                || named(token->name, "center")
-                || named(token->name, "menu")
-                || named(token->name, "head")
-                || named(token->name, "body")
-                || named(token->name, "meta")
-                || named(token->name, "embed")
-                || named(token->name, "listing")
-                || named(token->name, "b") || named(token->name, "big")
-                || named(token->name, "small")
-                || named(token->name, "code")
-                || named(token->name, "em") || named(token->name, "i")
-                || named(token->name, "s") || named(token->name, "strong")
-                || named(token->name, "strike") || named(token->name, "sub")
-                || named(token->name, "sup") || named(token->name, "var")
-                || breakout_font)))) {
+                    && (foreign_html_start_breakout(token->name)
+                        || breakout_font)))) {
             /* An HTML breakout closes foreign open elements and reprocesses
              * the token in body mode. Preflight the scan and required
              * node/stack capacity before popping; construction is unpublished
              * until the entire parse succeeds. */
-            const lxa_dom_ref_t *open;
-            size_t i = lxa_vector_length(&tree->open_elements);
-            bool found_html = false;
+            size_t keep;
             status = body_void(token->name) || named(token->name, "head")
                      || named(token->name, "body")
                      ? LXA_OK : reserve_open_elements(tree, 1);
@@ -7911,28 +5814,18 @@ reprocess_template_token:
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-            while (i > 0) {
-                lxa_dom_namespace_t ancestor;
-                status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                            1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                --i;
-                status = lxa_dom_nodes_element_namespace(tree->nodes, open[i],
-                                                          &ancestor);
-                if (status != LXA_OK) return status;
-                if (ancestor == LXA_DOM_NS_HTML) {
-                    found_html = true;
-                    break;
-                }
-            }
-            if (!found_html) return LXA_ERROR_INTERNAL;
-            while (lxa_vector_length(&tree->open_elements) > i + 1) {
+            status = plan_foreign_breakout(tree, &tree->open_elements, 0,
+                                           &keep);
+            if (status != LXA_OK) return status;
+            if (keep == 0) return LXA_ERROR_INTERNAL;
+            while (lxa_vector_length(&tree->open_elements) > keep) {
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
             }
         }
-        else if (ns != LXA_DOM_NS_HTML && !html_integration_child) {
+        else if (ns != LXA_DOM_NS_HTML
+            && !html_integration_child)
+        {
             bool reprocess;
             status = consume_foreign(tree, token, ns, &reprocess);
             if (status != LXA_OK || !reprocess) return status;
@@ -7945,10 +5838,10 @@ reprocess_template_token:
         adjusted.name = literal("img");
         token = &adjusted;
     }
-    if (token->kind == LXA_HTML_DOCTYPE
-        && (tree->mode == LXA_TREE_INITIAL
-            || tree->mode == LXA_TREE_BEFORE_HTML)) {
-        if (tree->doctype_seen) return LXA_OK;
+    if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
+        lxa_html_document_mode_t document_mode;
+        status = doctype_document_mode(tree, token, &document_mode);
+        if (status != LXA_OK) return status;
         declaration = (lxa_dom_doctype_data_t){0};
         declaration.name = token->name;
         declaration.public_id = token->public_id;
@@ -7961,12 +5854,11 @@ reprocess_template_token:
             status = lxa_dom_nodes_append_constructed_child(tree->nodes,
                                                              tree->document, child);
         if (status == LXA_OK) {
-            tree->doctype_seen = true;
+            tree->document_mode = document_mode;
             tree->mode = LXA_TREE_BEFORE_HTML;
         }
         return status;
     }
-    if (tree->mode == LXA_TREE_INITIAL) tree->mode = LXA_TREE_BEFORE_HTML;
     if (token->kind == LXA_HTML_COMMENT
         || token->kind == LXA_HTML_PROCESSING_INSTRUCTION) {
         if (tree->mode == LXA_TREE_BEFORE_HTML) parent = tree->document;
@@ -7974,8 +5866,6 @@ reprocess_template_token:
         else if (tree->mode == LXA_TREE_AFTER_BODY) parent = tree->html;
         else if (tree->mode == LXA_TREE_IN_BODY)
             parent = current_element(tree);
-        else if (tree->mode == LXA_TREE_TEMPLATE_TEXT)
-            parent = template_parent(tree);
         else {
             status = ensure_html(tree);
             if (status != LXA_OK) return status;
@@ -7989,13 +5879,40 @@ reprocess_template_token:
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (tree->mode == LXA_TREE_AFTER_BODY
         || tree->mode == LXA_TREE_AFTER_HTML) {
-        if (token->kind == LXA_HTML_TEXT && space_only(token->data))
-            return insert_data_text(tree, tree->body, token->data,
+        if (token->kind == LXA_HTML_TEXT && space_only(token->data)) {
+            status = reconstruct_formatting(tree);
+            if (status != LXA_OK) return status;
+            return insert_data_text(tree, current_element(tree), token->data,
                                     false, false);
+        }
         /* An html start uses body rules without leaving the current mode. */
         if (token->kind != LXA_HTML_START_TAG
             || !named(token->name, "html"))
             tree->mode = LXA_TREE_IN_BODY;
+    }
+    if (token->kind == LXA_HTML_END_TAG
+        && (tree->mode == LXA_TREE_BEFORE_HTML
+            || tree->mode == LXA_TREE_BEFORE_HEAD)) {
+        if (!named(token->name, "head") && !named(token->name, "body")
+            && !named(token->name, "html") && !named(token->name, "br"))
+            return LXA_OK;
+        if (tree->mode == LXA_TREE_BEFORE_HTML) {
+            status = ensure_html(tree);
+            if (status != LXA_OK) return status;
+            tree->mode = LXA_TREE_BEFORE_HEAD;
+        }
+        status = ensure_head(tree);
+        if (status != LXA_OK) return status;
+        tree->mode = LXA_TREE_IN_HEAD;
+    }
+    if (token->kind == LXA_HTML_END_TAG
+        && tree->mode == LXA_TREE_AFTER_HEAD) {
+        if (!named(token->name, "body") && !named(token->name, "html")
+            && !named(token->name, "br"))
+            return LXA_OK;
+        status = ensure_body(tree);
+        if (status != LXA_OK) return status;
+        tree->mode = LXA_TREE_IN_BODY;
     }
     if (tree->mode == LXA_TREE_IN_BODY
         && token->kind == LXA_HTML_END_TAG
@@ -8026,29 +5943,55 @@ reprocess_body_start:
             if (status != LXA_OK) return status;
             status = pop_element(tree);
             if (status != LXA_OK) return status;
-            if (token->kind == LXA_HTML_START_TAG
-                && (named(token->name, "frame")
-                    || named(token->name, "frameset")))
-                return LXA_OK;
         }
+    }
+    if (token->kind == LXA_HTML_START_TAG
+        && tree->mode == LXA_TREE_IN_BODY) {
+        if (named(token->name, "frameset")) {
+            const lxa_dom_ref_t *open =
+                (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
+            if (!tree->frameset_ok || tree->body.handle == LXA_HANDLE_NONE
+                || lxa_vector_length(&tree->open_elements) == 0
+                || open[0].handle != tree->body.handle)
+                return LXA_OK;
+            return begin_root_frameset(tree, token, true);
+        }
+        if (named(token->name, "frame")) return LXA_OK;
     }
     /* A template end without an active template is ignored by the in-head
      * rule, including when that rule is reached from body/table/select. */
     if (token->kind == LXA_HTML_END_TAG
         && named(token->name, "template"))
         return LXA_OK;
-    /* An unmatched head end after the head phase does not close the body
-     * or the current table insertion scope. */
+    /* Ignore unmatched head ends after column-group recovery. */
     if (token->kind == LXA_HTML_END_TAG
         && named(token->name, "head")
-        && tree->mode >= LXA_TREE_AFTER_HEAD)
+        && tree->mode >= LXA_TREE_AFTER_HEAD) {
         return LXA_OK;
-    /* After-head and in-body both ignore another head start. In table
+    }
+    /* In-head, after-head and in-body ignore another head start. In table
      * context, fostering reprocesses it under the in-body rule as well. */
     if (token->kind == LXA_HTML_START_TAG
         && named(token->name, "head")
-        && tree->mode >= LXA_TREE_AFTER_HEAD)
+        && tree->mode >= LXA_TREE_IN_HEAD)
         return LXA_OK;
+    if (tree->mode == LXA_TREE_IN_BODY) {
+        size_t keep;
+        bool ignore;
+        status = plan_select_token(tree, &tree->open_elements, 0, token,
+                                   &keep, &ignore);
+        if (status != LXA_OK) return status;
+        while (lxa_vector_length(&tree->open_elements) > keep) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        if (ignore) return LXA_OK;
+        {
+            bool handled;
+            status = insert_hidden_table_input(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
+        }
+    }
     if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
         && lxa_vector_length(&tree->open_elements) > 1) {
         lxa_span_t top;
@@ -8058,8 +6001,7 @@ reprocess_body_start:
         if (table_context(top) && !table_part(token->name)
             && !named(token->name, "html")
             && !named(token->name, "body")
-            && !((named(top, "table") || table_section(top)
-                   || named(top, "tr")) && named(token->name, "form"))) {
+            && !named(token->name, "form")) {
             bool container;
             /* Table insertion modes process a template start using the
              * head rule, retaining its content fragment under this table
@@ -8080,19 +6022,20 @@ reprocess_body_start:
                     named(token->name, "style") ? LXA_HTML_RAWTEXT
                                                 : LXA_HTML_SCRIPT_DATA);
             }
+            if (named(token->name, "plaintext"))
+                return begin_root_plaintext(tree, tokenizer, token);
+            if (named(token->name, "xmp"))
+                return begin_root_xmp(tree, tokenizer, token);
             if (named(token->name, "textarea")
                 || named(token->name, "title")
                 || named(token->name, "iframe")
                 || named(token->name, "noembed")
-                || named(token->name, "noframes")
-                || named(token->name, "xmp")
-                || named(token->name, "plaintext")) {
+                || named(token->name, "noframes")) {
                 lxa_dom_ref_t table, foster_parent, element;
                 bool in_colgroup = named(top, "colgroup");
                 bool textarea = named(token->name, "textarea");
                 lxa_html_text_mode_t text_mode =
-                    named(token->name, "plaintext") ? LXA_HTML_PLAINTEXT
-                    : (textarea || named(token->name, "title"))
+                    (textarea || named(token->name, "title"))
                       ? LXA_HTML_RCDATA : LXA_HTML_RAWTEXT;
                 if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_budget_check(tree->nodes->budget,
@@ -8100,7 +6043,7 @@ reprocess_body_start:
                 if (status == LXA_OK)
                     status = foster_location(tree, &foster_parent, &table);
                 if (status == LXA_OK)
-                    status = lxa_dom_nodes_append_html_element(tree->nodes,
+                    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                         token->name, &element);
                 if (status == LXA_OK)
                     status = apply_attributes(tree, element, token);
@@ -8122,9 +6065,6 @@ reprocess_body_start:
                 }
                 return status;
             }
-            if (named(token->name, "form")
-                && tree->form.handle != LXA_HANDLE_NONE)
-                return LXA_OK;
             if (named(token->name, "base")
                 || named(token->name, "link")
                 || named(token->name, "meta")) {
@@ -8142,31 +6082,17 @@ reprocess_body_start:
                 return foster_element(tree, token, true);
             }
             if (named(top, "colgroup") && body_void(token->name)) {
-                bool hidden = false;
-                if (named(token->name, "input"))
-                    status = hidden_input(tree, token, &hidden);
-                else status = LXA_OK;
+                status = lxa_budget_check(tree->nodes->budget,
+                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                 if (status == LXA_OK)
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK && !hidden)
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
-                return hidden ? append_void(tree, current_element(tree), token)
-                              : foster_element(tree, token, true);
+                return foster_element(tree, token, true);
             }
             if (body_void(token->name)) {
-                if (named(token->name, "input")) {
-                    bool hidden;
-                    status = hidden_input(tree, token, &hidden);
-                    if (status != LXA_OK) return status;
-                    if (hidden)
-                        return append_void(tree, current_element(tree),
-                                           token);
-                }
                 return foster_element(tree, token, true);
             }
             if (named(token->name, "svg") || named(token->name, "math")) {
@@ -8204,139 +6130,13 @@ reprocess_body_start:
                              : LXA_ERROR_UNSUPPORTED;
         }
     }
-    if (tree->mode == LXA_TREE_IN_BODY
-        && lxa_vector_length(&tree->open_elements) > 1
-        && token->kind != LXA_HTML_TEXT) {
-        lxa_span_t top;
-        status = lxa_dom_nodes_element_name(tree->nodes,
-                                            current_element(tree), &top);
-        if (status != LXA_OK) return status;
-        /* The in-head script rule keeps the current insertion parent and
-         * switches the tokenizer to script data; the body branch below does
-         * the same thing, without closing the select. */
-        if ((named(top, "select") || named(top, "option")
-             || named(top, "optgroup"))
-            && !(token->kind == LXA_HTML_START_TAG
-                 && named(token->name, "script"))) {
-            bool active;
-            status = select_open(tree, &active);
-            if (status != LXA_OK) return status;
-            if (!active
-                && !(token->kind == LXA_HTML_START_TAG
-                     && (named(token->name, "option")
-                         || named(token->name, "optgroup")
-                         || named(token->name, "hr")))
-                && !(token->kind == LXA_HTML_END_TAG
-                     && (named(token->name, "option")
-                         || named(token->name, "optgroup"))))
-                goto after_select_mode;
-            /* Select mode delegates template starts to the in-head rule.
-             * Keep the select and any option/group on the body stack. */
-            if (token->kind == LXA_HTML_START_TAG
-                && named(token->name, "template"))
-                return begin_template(tree, token);
-            if (token->kind == LXA_HTML_END_TAG
-                && table_part(token->name))
-                return named(token->name, "col") ? LXA_OK
-                       : end_table_part(tree, token->name);
-            if (token->kind == LXA_HTML_START_TAG
-                && named(token->name, "html"))
-                return apply_attributes(tree, tree->html, token);
-            if (token->kind == LXA_HTML_START_TAG
-                && (named(token->name, "table")
-                    || named(token->name, "tr")
-                    || named(token->name, "td")
-                    || named(token->name, "th")
-                    || named(token->name, "caption")
-                    || table_section(token->name))) {
-                bool in_table, in_cell, in_caption;
-                select_parent_t select_parent;
-                size_t needed = 1;
-                size_t foreign_above_table = 0;
-                status = select_table_scope(tree, &in_table, &in_cell,
-                    &in_caption, &select_parent);
-                if (status != LXA_OK) return status;
-                if (in_table
-                    && (named(token->name, "table") || in_cell
-                        || in_caption
-                        || select_parent != SELECT_PARENT_OTHER)) {
-                    if (named(token->name, "table")) {
-                        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                            tree->open_elements.bytes.data;
-                        size_t i = lxa_vector_length(&tree->open_elements);
-                        bool after_select = false;
-                        while (i > 1) {
-                            lxa_dom_namespace_t ns;
-                            lxa_span_t name;
-                            status = lxa_budget_charge(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 1,
-                                &tree->nodes->limit_reason);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_namespace(
-                                    tree->nodes, open[--i], &ns);
-                            if (status != LXA_OK) return status;
-                            if (ns != LXA_DOM_NS_HTML) {
-                                if (after_select) ++foreign_above_table;
-                                continue;
-                            }
-                            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                                 open[i], &name);
-                            if (status != LXA_OK) return status;
-                            if (after_select) break;
-                            if (named(name, "select")) after_select = true;
-                        }
-                    }
-                    if ((in_caption
-                         || select_parent == SELECT_PARENT_TABLE
-                         || select_parent == SELECT_PARENT_COLGROUP)
-                        && !named(token->name, "table")
-                        && (named(token->name, "td")
-                            || named(token->name, "th")))
-                        needed = 3; /* implied tbody, tr and cell */
-                    else if ((in_caption
-                              || select_parent == SELECT_PARENT_TABLE
-                              || select_parent == SELECT_PARENT_COLGROUP)
-                             && named(token->name, "tr"))
-                        needed = 2; /* implied tbody and row */
-                    else if (select_parent == SELECT_PARENT_SECTION
-                             && (named(token->name, "td")
-                                 || named(token->name, "th")))
-                        needed = 2; /* implied tr and cell */
-                    status = reserve_open_elements(tree,
-                        named(token->name, "table") ? 0 : needed);
-                    if (status == LXA_OK)
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_NODES, needed,
-                            &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = close_select(tree);
-                    if (status != LXA_OK) return status;
-                    while (foreign_above_table != 0) {
-                        --foreign_above_table;
-                        status = pop_element(tree);
-                        if (status != LXA_OK) return status;
-                    }
-                    goto reprocess_body_start;
-                }
-                if (in_table) return LXA_ERROR_UNSUPPORTED;
-            }
-            if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "input")
-                || named(token->name, "textarea")
-                || named(token->name, "keygen"))) {
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = close_select(tree);
-                if (status != LXA_OK) return status;
-                goto reprocess_body_start;
-            }
-            return consume_select(tree, token, top);
-        }
-    }
-after_select_mode:
     if (token->kind == LXA_HTML_START_TAG) {
         bool container;
+        if (named(token->name, "frame")) {
+            status = ensure_body(tree);
+            if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
+            return status;
+        }
         if (named(token->name, "template")
             && tree->mode <= LXA_TREE_BEFORE_HEAD) {
             status = ensure_head(tree);
@@ -8354,7 +6154,7 @@ after_select_mode:
             && tree->mode <= LXA_TREE_IN_HEAD) {
             status = ensure_head(tree);
             if (status == LXA_OK)
-                status = lxa_dom_nodes_append_html_element(tree->nodes,
+                status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                                                             token->name, &child);
             if (status == LXA_OK)
                 status = apply_attributes(tree, child, token);
@@ -8385,35 +6185,46 @@ after_select_mode:
             if (status == LXA_OK) tree->mode = LXA_TREE_IN_HEAD;
             return status;
         }
-        if (named(token->name, "head")
-            && tree->mode == LXA_TREE_AFTER_HEAD)
-            return LXA_OK;
         if (named(token->name, "body")) {
             status = ensure_body(tree);
-            if (status == LXA_OK)
+            if (status == LXA_OK) {
+                tree->frameset_ok = false;
                 status = apply_attributes(tree, tree->body, token);
+            }
             if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
             return status;
         }
         if (named(token->name, "form")) {
-            lxa_span_t top;
+            size_t keep;
             bool in_table;
-            if (tree->form.handle != LXA_HANDLE_NONE)
-                return LXA_OK; /* nested start tags are ignored */
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                current_element(tree), &top);
-            if (status != LXA_OK
-                || (table_context(top)
-                    && !named(top, "table")
-                    && !table_section(top) && !named(top, "tr"))) {
-                return status == LXA_OK ? LXA_ERROR_UNSUPPORTED : status;
+            status = plan_table_context(tree, &tree->open_elements, 0, false,
+                                            &keep, &in_table);
+            if (status != LXA_OK) return status;
+            if (tree->form.handle != LXA_HANDLE_NONE) {
+                while (lxa_vector_length(&tree->open_elements) > keep) {
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
+                return LXA_OK;
             }
-            /* Element construction can relocate the string buffer holding
-             * top; retain only this decision across that mutation. */
-            in_table = table_context(top);
+            if (in_table) {
+                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
+                    tree->open_elements.bytes.data;
+                if (keep == 0) return LXA_ERROR_INTERNAL;
+                status = append_closed_element_at(tree, open[keep - 1],
+                    (lxa_dom_ref_t){0}, token, &child);
+                if (status == LXA_OK) {
+                    while (lxa_vector_length(&tree->open_elements) > keep) {
+                        status = pop_element(tree);
+                        if (status != LXA_OK) return status;
+                    }
+                    tree->form = child;
+                }
+                return status;
+            }
             status = reserve_open_elements(tree, 1);
             if (status == LXA_OK)
                 status = lxa_budget_check(tree->nodes->budget,
@@ -8422,14 +6233,7 @@ after_select_mode:
             status = close_paragraph(tree, NULL);
             if (status != LXA_OK) return status;
             status = open_container(tree, token);
-            if (status == LXA_OK) {
-                tree->form = current_element(tree);
-                /* In-table forms are inserted but never stay open. */
-                if (in_table) {
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-            }
+            if (status == LXA_OK) tree->form = current_element(tree);
             return status;
         }
         if (named(token->name, "title") || named(token->name, "style")
@@ -8475,6 +6279,7 @@ after_select_mode:
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
+            tree->frameset_ok = false;
             status = begin_text_element(tree, tokenizer, current_element(tree),
                                         token, LXA_HTML_RCDATA);
             if (status == LXA_OK) tree->skip_pre_newline = true;
@@ -8485,24 +6290,15 @@ after_select_mode:
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
+            if (named(token->name, "iframe")) tree->frameset_ok = false;
             return begin_text_element(tree, tokenizer, current_element(tree),
                                        token, LXA_HTML_RAWTEXT);
         }
         if (named(token->name, "xmp")) {
-            status = ensure_body(tree);
-            if (status == LXA_OK) status = close_paragraph(tree, NULL);
-            if (status == LXA_OK) status = reconstruct_anchor(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            return begin_text_element(tree, tokenizer, current_element(tree),
-                                       token, LXA_HTML_RAWTEXT);
+            return begin_root_xmp(tree, tokenizer, token);
         }
         if (named(token->name, "plaintext")) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            return begin_text_element(tree, tokenizer, current_element(tree),
-                                       token, LXA_HTML_PLAINTEXT);
+            return begin_root_plaintext(tree, tokenizer, token);
         }
         if (named(token->name, "base") || named(token->name, "link")
             || named(token->name, "meta")
@@ -8522,12 +6318,31 @@ after_select_mode:
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
-            if (named(token->name, "hr")) {
-                status = close_paragraph(tree, NULL);
-                if (status != LXA_OK) return status;
+            if (tree->frameset_ok) {
+                if (named(token->name, "input")) {
+                    bool hidden;
+                    status = hidden_input(tree, token, &hidden);
+                    if (status != LXA_OK) return status;
+                    if (!hidden) tree->frameset_ok = false;
+                }
+                else if (!named(token->name, "param")
+                         && !named(token->name, "source")
+                         && !named(token->name, "track"))
+                    tree->frameset_ok = false;
             }
-            else {
-                status = reconstruct_anchor(tree);
+            if (named(token->name, "hr")) {
+                lxa_dom_ref_t parent, before;
+                status = close_paragraph(tree, NULL);
+                if (status == LXA_OK)
+                    status = root_insertion_location(tree, current_element(tree),
+                                                      &parent, &before);
+                if (status != LXA_OK) return status;
+                return append_closed_element_at(tree, parent, before, token, NULL);
+            }
+            else if (!named(token->name, "param")
+                     && !named(token->name, "source")
+                     && !named(token->name, "track")) {
+                status = reconstruct_formatting(tree);
                 if (status != LXA_OK) return status;
             }
             return append_void(tree, current_element(tree), token);
@@ -8542,7 +6357,7 @@ after_select_mode:
             if (status == LXA_OK)
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK) status = reconstruct_anchor(tree);
+            if (status == LXA_OK) status = reconstruct_formatting(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
             status = open_container_ns(tree, token, ns);
@@ -8552,103 +6367,76 @@ after_select_mode:
             }
             return status;
         }
-        if (named(token->name, "nobr")) {
-            const lxa_dom_ref_t *open;
-            size_t i, length;
-            bool close_previous = false;
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            length = lxa_vector_length(&tree->open_elements);
-            open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-            for (i = length; i > 1; ) {
-                lxa_span_t name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                                                     open[--i], &name);
-                if (status != LXA_OK) return status;
-                if (named(name, "nobr")) {
-                    /* A crossed entry needs adoption-agency reconstruction.
-                     * Only the current element can be closed in place. */
-                    if (i != length - 1) return LXA_ERROR_UNSUPPORTED;
-                    close_previous = true;
-                    break;
-                }
-            }
-            status = reserve_open_elements(tree, close_previous ? 0 : 1);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (close_previous) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            status = reconstruct_anchor(tree);
-            if (status == LXA_OK)
-                status = reconstruct_pending_formatting(tree);
-            return status == LXA_OK ? open_container(tree, token) : status;
-        }
         status = supported_container(tree, token->name, &container);
         if (status != LXA_OK) return status;
         if (container) {
-            bool new_anchor = named(token->name, "a");
-            bool previous_anchor_open = false;
+            lxa_dom_ref_t before;
+            bool formatting = formatting_tag(token->name);
+            size_t drop = SIZE_MAX;
+            bool reconstruct = container_reconstructs(token->name);
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
-            if (new_anchor && tree->active_anchor.handle != LXA_HANDLE_NONE)
-                status = reference_is_open(tree, tree->active_anchor,
-                                           &previous_anchor_open);
-            if (status != LXA_OK) return status;
-            status = reserve_open_elements(tree,
-                                            previous_anchor_open ? 0 : 1);
-            if (status != LXA_OK) return status;
+            if (tree->frameset_ok
+                && (named(token->name, "pre") || named(token->name, "listing")
+                || named(token->name, "li") || named(token->name, "dt")
+                || named(token->name, "dd") || named(token->name, "button")
+                || named(token->name, "select")
+                || formatting_marker_tag(token->name)))
+                tree->frameset_ok = false;
+            if (!formatting) {
+                status = reserve_open_elements(tree, heading(token->name) ? 0 : 1);
+                if (status != LXA_OK) return status;
+            }
+            if (ruby_annotation(token->name)) {
+                size_t keep;
+                status = lxa_budget_check(tree->nodes->budget,
+                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+                if (status == LXA_OK)
+                    status = plan_ruby_start(tree, &tree->open_elements, 0,
+                                              token->name, &keep);
+                if (status != LXA_OK) return status;
+                while (lxa_vector_length(&tree->open_elements) > keep) {
+                    status = pop_element(tree);
+                    if (status != LXA_OK) return status;
+                }
+            }
             if (named(token->name, "li") || named(token->name, "dt")
                 || named(token->name, "dd")) {
                 status = close_list_item(tree, !named(token->name, "li"));
                 if (status != LXA_OK) return status;
             }
             if (named(token->name, "p") || heading(token->name)
-                || block_container(token->name)
+                || (block_container(token->name)
+                    && !named(token->name, "button"))
                 || named(token->name, "li") || named(token->name, "dt")
                 || named(token->name, "dd")) {
                 status = close_paragraph(tree, NULL);
                 if (status != LXA_OK) return status;
             }
             if (heading(token->name)) {
-                status = close_open_heading(tree);
+                status = close_current_heading(tree);
+                if (status == LXA_OK) status = reserve_open_elements(tree, 1);
                 if (status != LXA_OK) return status;
             }
             if (named(token->name, "button")) {
                 status = close_open_button(tree);
                 if (status != LXA_OK) return status;
             }
-            if (new_anchor) {
-                /* A nested anchor closes the earlier formatting entry,
-                 * including a reconstructed entry from the preceding li. */
-                if (tree->active_anchor.handle == LXA_HANDLE_NONE) {
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_ACTIVE_FORMATTING, 1,
-                        &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                }
-                status = close_active_anchor(tree);
+            if (formatting) {
+                status = prepare_formatting_start(tree, token, &drop);
+                if (status == LXA_OK) status = reserve_open_elements(tree, 1);
             }
-            else if (inline_container(token->name))
-                status = reconstruct_anchor(tree);
-            if (status == LXA_OK && inline_container(token->name))
-                status = reconstruct_pending_formatting(tree);
+            else if (reconstruct) status = reconstruct_formatting(tree);
             if (status != LXA_OK) return status;
-            status = open_container(tree, token);
-            if (status == LXA_OK && new_anchor) {
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_ACTIVE_FORMATTING, 1,
-                    &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    tree->active_anchor = current_element(tree);
+            status = root_insertion_location(tree, current_element(tree),
+                                              &parent, &before);
+            if (status == LXA_OK)
+                status = open_container_at(tree, token, LXA_DOM_NS_HTML,
+                                            parent, before);
+            if (status == LXA_OK && formatting) {
+                if (drop != SIZE_MAX) remove_formatting(tree, drop);
+                status = append_formatting(tree, current_element(tree), false);
             }
             if (status == LXA_OK
                 && (named(token->name, "pre")
@@ -8687,6 +6475,27 @@ after_select_mode:
         token = &adjusted;
         goto reprocess_body_start;
     }
+    if (token->kind == LXA_HTML_END_TAG
+        && (named(token->name, "body") || named(token->name, "html"))
+        && tree->mode == LXA_TREE_IN_BODY) {
+        lxa_vector_t elements = tree->open_elements;
+        size_t index;
+        bool column_group;
+        status = current_html_column_group(tree, &elements, 0, &column_group);
+        if (status != LXA_OK) return status;
+        if (column_group) elements.bytes.length -= sizeof(lxa_dom_ref_t);
+        status = find_scoped_end_target(tree, &elements, 0,
+            literal("body"), SCOPE_NORMAL, &index);
+        if (status == LXA_OK && column_group)
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                        &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        if (column_group) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        if (index == lxa_vector_length(&elements)) return LXA_OK;
+    }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "body")
         && tree->mode == LXA_TREE_IN_BODY) {
         /* The open stack retains ordinary descendants until EOF; </body>
@@ -8710,116 +6519,80 @@ after_select_mode:
     if (token->kind == LXA_HTML_END_TAG && table_part(token->name)
         && tree->mode == LXA_TREE_IN_BODY)
         return named(token->name, "col") ? LXA_OK
-               : end_table_part(tree, token->name);
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && (named(token->name, "svg") || named(token->name, "math"))) {
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                                  tree->open_elements.bytes.data;
-        size_t i = lxa_vector_length(&tree->open_elements);
-        /* A breakout already removed the foreign stack. Its later close
-         * tag has no matching open element and is ignored in body mode.
-         * Do not swallow a close through an active integration point. */
-        while (i > 0) {
-            lxa_dom_namespace_t ns;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i],
-                                                      &ns);
-            if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_UNSUPPORTED;
-        }
-        return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "a")
+               : end_scoped_element(tree, token->name, SCOPE_TABLE);
+    if (token->kind == LXA_HTML_END_TAG && formatting_tag(token->name)
         && tree->mode == LXA_TREE_IN_BODY) {
-        bool closed;
-        status = close_crossed_anchor_formatting(tree, &closed);
-        if (status != LXA_OK || closed) return status;
-        return tree->active_anchor.handle == LXA_HANDLE_NONE
-               ? LXA_OK : close_active_anchor(tree);
-    }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "nobr")
-        && tree->mode == LXA_TREE_IN_BODY) {
-        lxa_span_t top;
-        size_t i = lxa_vector_length(&tree->open_elements);
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                                  tree->open_elements.bytes.data;
-        while (i > 1) {
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
+        bool column_group;
+        status = current_html_column_group(tree, &tree->open_elements, 0,
+                                            &column_group);
+        if (status != LXA_OK) return status;
+        if (column_group) {
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 2,
+                                        &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &top);
+            status = pop_element(tree);
             if (status != LXA_OK) return status;
-            if (named(top, "nobr")) {
-                if (i != lxa_vector_length(&tree->open_elements) - 1)
-                    return LXA_ERROR_UNSUPPORTED;
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-                return LXA_OK;
-            }
         }
-        return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && basic_formatting(token->name)) {
-        bool closed;
-        if (tree->pending_formatting.handle != LXA_HANDLE_NONE) {
-            lxa_span_t pending_name;
-            bool pending_open;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                tree->pending_formatting, &pending_name);
-            if (status != LXA_OK) return status;
-            if (pending_name.length == token->name.length
-                && memcmp(pending_name.data, token->name.data,
-                          pending_name.length) == 0) {
-                status = reference_is_open(tree, tree->pending_formatting,
-                                            &pending_open);
-                if (status != LXA_OK) return status;
-                if (pending_open) {
-                    if (current_element(tree).handle
-                        != tree->pending_formatting.handle)
-                        return LXA_ERROR_UNSUPPORTED;
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                forget_pending_formatting(tree);
-                return LXA_OK;
-            }
-        }
-        status = close_crossed_paragraph(tree, token->name, &closed);
-        if (status != LXA_OK || closed) return status;
-        status = close_crossed_formatting(tree, token->name, &closed);
-        if (status != LXA_OK || closed) return status;
+        return adopt_formatting(tree, token->name);
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "form")
         && tree->mode == LXA_TREE_IN_BODY) {
+        lxa_vector_t view = tree->open_elements;
+        bool column_group;
         lxa_dom_ref_t form = tree->form;
         const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
                                   tree->open_elements.bytes.data;
-        size_t i;
-        if (form.handle == LXA_HANDLE_NONE) return LXA_OK;
-        /* Removing a form pointer does not discard open descendants; their
-         * canonical parent links remain under the form until they close. */
-        for (i = lxa_vector_length(&tree->open_elements); i != 0; --i) {
+        size_t index, keep;
+        status = current_html_column_group(tree, &view, 0, &column_group);
+        if (status != LXA_OK) return status;
+        if (column_group) view.bytes.length -= sizeof(lxa_dom_ref_t);
+        keep = lxa_vector_length(&view);
+        index = keep;
+        if (form.handle != LXA_HANDLE_NONE)
+            status = find_scoped_reference(tree, &view, 0, form, &index);
+        if (status == LXA_OK && column_group)
+            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+                                        &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        if (index == keep) {
+            if (column_group) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
+            tree->form = (lxa_dom_ref_t){0};
+            return LXA_OK;
+        }
+        while (keep > index + 1) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
             status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                         1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_namespace(tree->nodes,
+                    open[keep - 1], &ns);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_name(tree->nodes,
+                    open[keep - 1], &name);
             if (status != LXA_OK) return status;
-            if (open[i - 1].handle == form.handle) {
-                lxa_vector_erase(&tree->open_elements, i - 1, 1);
-                lxa_budget_release(tree->nodes->budget,
-                                   LXA_BUDGET_OPEN_ELEMENTS, 1);
-                break;
-            }
+            if (ns != LXA_DOM_NS_HTML || !implied_end_tag(name)) break;
+            --keep;
         }
         tree->form = (lxa_dom_ref_t){0};
+        while (lxa_vector_length(&tree->open_elements) > keep) {
+            status = pop_element(tree);
+            if (status != LXA_OK) return status;
+        }
+        /* Ordinary descendants retain their open references and DOM parents. */
+        lxa_vector_erase(&tree->open_elements, index, 1);
+        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
         return LXA_OK;
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
         && tree->mode == LXA_TREE_IN_BODY) {
-        bool closed;
+        bool closed, column_group;
+        lxa_dom_namespace_t ns;
+        lxa_span_t top;
+        lxa_dom_ref_t before;
         status = close_paragraph(tree, &closed);
         if (status != LXA_OK || closed) return status;
         /* A stray </p> implies an empty paragraph at the insertion point. */
@@ -8827,15 +6600,34 @@ after_select_mode:
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
         }
-        status = reserve_open_elements(tree, 1);
+        status = lxa_dom_nodes_element_namespace(tree->nodes,
+            current_element(tree), &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes,
+                current_element(tree), &top);
+        if (status != LXA_OK) return status;
+        column_group = ns == LXA_DOM_NS_HTML && named(top, "colgroup");
+        status = reserve_open_elements(tree, column_group ? 0 : 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
-        {
-            lxa_html_token_t implied = {0};
-            implied.name = literal("p");
-            status = open_container(tree, &implied);
+        status = root_insertion_location(tree, current_element(tree),
+                                          &parent, &before);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
+                literal("p"), &child);
+        if (status == LXA_OK)
+            status = before.handle == LXA_HANDLE_NONE
+                ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+                : lxa_dom_nodes_insert_constructed_before(tree->nodes,
+                    parent, child, before);
+        if (status == LXA_OK) {
+            if (column_group) {
+                status = pop_element(tree);
+                if (status != LXA_OK) return status;
+            }
+            status = push_element(tree, child);
         }
         if (status == LXA_OK) {
             status = pop_element(tree);
@@ -8843,103 +6635,39 @@ after_select_mode:
         }
         return status;
     }
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && (named(token->name, "ul") || named(token->name, "ol")
-            || named(token->name, "dl") || named(token->name, "menu")
-            || named(token->name, "fieldset")))
-        return close_list(tree, token->name);
     /* The heading end-tag rule accepts any h1-h6 in scope, and ignores a
      * stray heading end without creating content. */
     if (token->kind == LXA_HTML_END_TAG
         && tree->mode == LXA_TREE_IN_BODY && heading(token->name))
-        return close_open_heading(tree);
+        return end_scoped_element(tree, token->name, SCOPE_NORMAL);
     if (token->kind == LXA_HTML_END_TAG
         && tree->mode == LXA_TREE_IN_BODY
-        && block_container(token->name))
-        return end_scoped_container(tree, token->name);
+        && (block_container(token->name) || formatting_marker_tag(token->name)))
+        return end_scoped_element(tree, token->name, SCOPE_NORMAL);
     if (token->kind == LXA_HTML_END_TAG
         && tree->mode == LXA_TREE_IN_BODY
         && (named(token->name, "li") || named(token->name, "dt")
             || named(token->name, "dd")))
-        return end_list_item(tree, token->name);
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && (named(token->name, "span")
-            || !simple_container(token->name))) {
-        bool ordinary;
-        status = supported_container(tree, token->name, &ordinary);
-        if (status != LXA_OK) return status;
-        if (ordinary) return end_ordinary_element(tree, token->name);
-    }
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && named(token->name, "option")) {
-        lxa_span_t top;
-        if (lxa_vector_length(&tree->open_elements) <= 1) return LXA_OK;
-        status = lxa_dom_nodes_element_name(tree->nodes,
-                                            current_element(tree), &top);
-        if (status != LXA_OK) return status;
-        /* Without an active select, the in-body option end only closes
-         * the current option. A stray end must not abort the document. */
-        if (!named(top, "option")) return LXA_OK;
-    }
-    /* An active select is handled above by consume_select(). Once a table
-     * start has closed it, its later end tag has no select in scope. */
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && named(token->name, "select"))
-        return LXA_OK;
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && named(token->name, "noscript")) {
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-            tree->open_elements.bytes.data;
-        size_t i = lxa_vector_length(&tree->open_elements);
-        bool found = false;
-        while (i > 1) {
-            lxa_span_t name;
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[--i], &name);
-            if (status != LXA_OK) return status;
-            if (named(name, "noscript")) {
-                found = true;
-                break;
-            }
-            if (named(name, "body")) break;
-        }
-        if (!found)
-            return LXA_OK; /* Head noscript may have closed on body text. */
-    }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY
-        && lxa_vector_length(&tree->open_elements) > 1) {
-        lxa_span_t top_name;
-        bool container;
-        status = supported_container(tree, token->name, &container);
-        if (status != LXA_OK) return status;
-        if (!container) return LXA_ERROR_UNSUPPORTED;
-        status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree),
-                                             &top_name);
-        if (status != LXA_OK) return status;
-        if (top_name.length != token->name.length
-            || memcmp(top_name.data, token->name.data, top_name.length) != 0)
-            return LXA_ERROR_UNSUPPORTED;
-        status = pop_element(tree);
-        if (status != LXA_OK) return status;
-        return LXA_OK;
-    }
+        return end_scoped_element(tree, token->name,
+            named(token->name, "li") ? SCOPE_LIST_ITEM : SCOPE_NORMAL);
+    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
+        return end_ordinary_element(tree, token->name);
     if (token->kind == LXA_HTML_TEXT) {
-        if (space_only(token->data)
-            && tree->mode != LXA_TREE_IN_BODY) return LXA_OK;
-        if (token->data.length == 0
-            || (token->data.length == 1 && token->data.data[0] == 0))
-            return LXA_OK;
+        if (tree->mode == LXA_TREE_BEFORE_HTML
+            || tree->mode == LXA_TREE_BEFORE_HEAD
+            || tree->mode == LXA_TREE_IN_HEAD
+            || tree->mode == LXA_TREE_AFTER_HEAD) {
+            adjusted = *token;
+            status = prepare_prebody_text(tree, &adjusted.data);
+            if (status != LXA_OK) return status;
+            token = &adjusted;
+        }
+        if (token->data.length == 0) return LXA_OK;
         status = ensure_body(tree);
         if (status != LXA_OK) return status;
         tree->mode = LXA_TREE_IN_BODY;
+        if (tree->frameset_ok && !null_or_space_only(token->data))
+            tree->frameset_ok = false;
         if (lxa_vector_length(&tree->open_elements) > 1) {
             lxa_span_t top;
             status = lxa_dom_nodes_element_name(tree->nodes,
@@ -8948,14 +6676,10 @@ after_select_mode:
             if (table_context(top))
                 return insert_data_text(tree, current_element(tree),
                                         token->data, false, true);
-            if (named(top, "select") || named(top, "option")
-                || named(top, "optgroup"))
-                return insert_data_text(tree, current_element(tree),
-                                        token->data, false, false);
         }
-        status = reconstruct_anchor(tree);
-        if (status != LXA_OK) return status;
-        status = reconstruct_pending_formatting(tree);
+        if (null_only(token->data))
+            return LXA_OK;
+        status = reconstruct_formatting(tree);
         if (status != LXA_OK) return status;
         return insert_data_text(tree, current_element(tree), token->data,
                                 false, false);
@@ -8975,29 +6699,20 @@ lxa_html_tree_on_token(void *context,
     if (tree->failure == LXA_OK && tokenizer != NULL
         && token != NULL && token->kind != LXA_HTML_EOF) {
         lxa_dom_namespace_t ns = LXA_DOM_NS_HTML;
-        lxa_span_t name;
-        bool integration = false;
-        if (lxa_vector_length(&tree->open_elements) != 0)
+        lxa_dom_ref_t current = {0};
+        if (tree->template_fragment.handle != LXA_HANDLE_NONE) {
+            if (lxa_vector_length(&tree->template_elements)
+                > template_boundary(tree))
+                current = template_parent(tree);
+        }
+        else if (lxa_vector_length(&tree->open_elements) != 0)
+            current = current_element(tree);
+        if (current.handle != LXA_HANDLE_NONE)
             tree->failure = lxa_dom_nodes_element_namespace(
-                tree->nodes, current_element(tree), &ns);
-        if (tree->failure == LXA_OK && ns == LXA_DOM_NS_SVG) {
-            tree->failure = lxa_dom_nodes_element_name(tree->nodes,
-                                                        current_element(tree),
-                                                        &name);
-            if (tree->failure == LXA_OK)
-                integration = named(name, "title") || named(name, "desc");
-        }
-        if (tree->failure == LXA_OK && ns == LXA_DOM_NS_MATHML) {
-            tree->failure = lxa_dom_nodes_element_name(tree->nodes,
-                                                        current_element(tree),
-                                                        &name);
-            if (tree->failure == LXA_OK && named(name, "annotation-xml"))
-                tree->failure = annotation_html_integration(tree,
-                    current_element(tree), &integration);
-        }
+                tree->nodes, current, &ns);
         if (tree->failure == LXA_OK
             && lxa_html_tokenizer_allow_cdata(tokenizer,
-                ns != LXA_DOM_NS_HTML && !integration) != LXA_HTML_OK)
+                ns != LXA_DOM_NS_HTML) != LXA_HTML_OK)
             tree->failure = LXA_ERROR_INTERNAL;
     }
     /* All deliberate grammar boundaries return UNSUPPORTED. A rejected

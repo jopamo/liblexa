@@ -352,7 +352,7 @@ typedef struct {
     size_t max_name_bytes;
     uint32_t max_tree_depth;
     uint32_t max_open_elements;
-    uint32_t max_active_formatting;
+    uint32_t max_active_formatting; /* HTML entries, including scope markers */
     uint32_t max_css_nesting;
     uint32_t max_tokens;
     uint64_t initial_work_credit;

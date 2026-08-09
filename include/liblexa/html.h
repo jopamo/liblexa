@@ -45,7 +45,7 @@ typedef lxa_status_t (*lxa_html_input_error_callback_t)(void *context,
  * CALLBACK_FAILURE instead identifies a diagnostic callback rejection,
  * whose exact status is returned. reason identifies the
  * limited resource when known. parser_result and reason may be NULL;
- * out is required. See docs/html-api.md for the bx contract.
+ * out is required.
  */
 typedef struct lxa_html_document lxa_html_document_t;
 

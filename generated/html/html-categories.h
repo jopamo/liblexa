@@ -1,7 +1,7 @@
 /* DO NOT EDIT: generated from WHATWG HTML source.html.
  * Revision: 2f441941fc523877bd9d5cd7de3b91a81a00ca2e
  * SHA-256: bec5f8ad394043ac0ee18ba090ec74ae8760b38af5bdf584db58220c299bb9de
- * See data/whatwg/html/{source.json,LICENSE}. */
+ * See LICENSE for the WHATWG standards-data license. */
 #ifndef LIBLEXA_GENERATED_HTML_CATEGORIES_H
 #define LIBLEXA_GENERATED_HTML_CATEGORIES_H
 typedef struct { const char *namespace_name, *tag; } liblexa_html_special_tag;
@@ -158,4 +158,94 @@ static const liblexa_html_integration_point liblexa_html_integration_points[] = 
     {"svg", "title", 2, 0},
 };
 #define LIBLEXA_HTML_INTEGRATION_COUNT 9
+static const char *const liblexa_html_implied_end_tags[] = {
+    "dd",
+    "dt",
+    "li",
+    "optgroup",
+    "option",
+    "p",
+    "rb",
+    "rp",
+    "rt",
+    "rtc",
+};
+#define LIBLEXA_HTML_IMPLIED_END_COUNT 10
+typedef enum {
+    LIBLEXA_DOCTYPE_PUBLIC_EXACT, LIBLEXA_DOCTYPE_SYSTEM_EXACT,
+    LIBLEXA_DOCTYPE_PUBLIC_PREFIX,
+    LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM,
+    LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM
+} liblexa_html_doctype_condition;
+typedef struct { const char *identifier; unsigned length;
+    liblexa_html_doctype_condition condition; unsigned limited;
+} liblexa_html_doctype_rule;
+static const liblexa_html_doctype_rule liblexa_html_doctype_rules[] = {
+    {"-//w3o//dtd w3 html strict 3.0//en//", 36, LIBLEXA_DOCTYPE_PUBLIC_EXACT, 0},
+    {"-/w3c/dtd html 4.0 transitional/en", 34, LIBLEXA_DOCTYPE_PUBLIC_EXACT, 0},
+    {"html", 4, LIBLEXA_DOCTYPE_PUBLIC_EXACT, 0},
+    {"http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd", 58, LIBLEXA_DOCTYPE_SYSTEM_EXACT, 0},
+    {"+//silmaril//dtd html pro v0r11 19970101//", 42, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//as//dtd html 3.0 aswedit + extensions//", 42, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//advasoft ltd//dtd html 3.0 aswedit + extensions//", 52, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0 level 1//", 31, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0 level 2//", 31, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0 strict level 1//", 38, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0 strict level 2//", 38, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0 strict//", 30, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.0//", 23, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 2.1e//", 24, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 3.0//", 23, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 3.2 final//", 29, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 3.2//", 23, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html 3//", 21, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html level 0//", 27, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html level 1//", 27, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html level 2//", 27, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html level 3//", 27, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html strict level 0//", 34, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html strict level 1//", 34, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html strict level 2//", 34, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html strict level 3//", 34, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html strict//", 26, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//ietf//dtd html//", 19, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//metrius//dtd metrius presentational//", 40, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 2.0 html strict//", 53, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 2.0 html//", 46, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 2.0 tables//", 48, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 3.0 html strict//", 53, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 3.0 html//", 46, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//microsoft//dtd internet explorer 3.0 tables//", 48, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//netscape comm. corp.//dtd html//", 35, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//netscape comm. corp.//dtd strict html//", 42, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//o'reilly and associates//dtd html 2.0//", 42, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//o'reilly and associates//dtd html extended 1.0//", 51, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//o'reilly and associates//dtd html extended relaxed 1.0//", 59, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//sq//dtd html 2.0 hotmetal + extensions//", 43, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//softquad software//dtd hotmetal pro 6.0::19990601::extensions to html 4.0//", 78, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//softquad//dtd hotmetal pro 4.0::19971010::extensions to html 4.0//", 69, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//spyglass//dtd html 2.0 extended//", 36, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//sun microsystems corp.//dtd hotjava html//", 45, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//sun microsystems corp.//dtd hotjava strict html//", 52, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 3 1995-03-24//", 31, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 3.2 draft//", 28, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 3.2 final//", 28, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 3.2//", 22, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 3.2s draft//", 29, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 4.0 frameset//", 31, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 4.0 transitional//", 35, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html experimental 19960712//", 40, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html experimental 970421//", 38, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd w3 html//", 21, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3o//dtd w3 html 3.0//", 25, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//webtechs//dtd mozilla html 2.0//", 35, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//webtechs//dtd mozilla html//", 31, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 0},
+    {"-//w3c//dtd html 4.01 frameset//", 32, LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM, 0},
+    {"-//w3c//dtd html 4.01 transitional//", 36, LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM, 0},
+    {"-//w3c//dtd xhtml 1.0 frameset//", 32, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 1},
+    {"-//w3c//dtd xhtml 1.0 transitional//", 36, LIBLEXA_DOCTYPE_PUBLIC_PREFIX, 1},
+    {"-//w3c//dtd html 4.01 frameset//", 32, LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM, 1},
+    {"-//w3c//dtd html 4.01 transitional//", 36, LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM, 1},
+};
+#define LIBLEXA_HTML_DOCTYPE_RULE_COUNT 65
 #endif

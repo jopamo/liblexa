@@ -1,7 +1,7 @@
 /* DO NOT EDIT: generated from WHATWG HTML source.html.
  * Revision: 2f441941fc523877bd9d5cd7de3b91a81a00ca2e
  * SHA-256: bec5f8ad394043ac0ee18ba090ec74ae8760b38af5bdf584db58220c299bb9de
- * See data/whatwg/html/{source.json,LICENSE}. */
+ * See LICENSE for the WHATWG standards-data license. */
 #ifndef LIBLEXA_GENERATED_HTML_CHARREF_OVERRIDES_H
 #define LIBLEXA_GENERATED_HTML_CHARREF_OVERRIDES_H
 #include <stdint.h>

@@ -1,15 +1,15 @@
-/* LXA_HTML_STATE(name, id, eof_action, ...scalar_transition).
+/* LXA_HTML_STATE(name, id, eof_action, scan_class, ...scalar_transition).
  * Empty transitions fall through to the next state entry. */
-LXA_HTML_STATE(RCDATA, 1, TEXT,)
-LXA_HTML_STATE(RAWTEXT, 2, TEXT,)
-LXA_HTML_STATE(PLAINTEXT, 3, TEXT,)
-LXA_HTML_STATE(SCRIPT_DATA, 4, TEXT,)
-LXA_HTML_STATE(SCRIPT_ESCAPED, 7, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_ESCAPED_DASH, 8, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_ESCAPED_DASH_DASH, 9, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED, 11, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH, 12, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED,
+LXA_HTML_STATE(RCDATA, 1, TEXT, DATA,)
+LXA_HTML_STATE(RAWTEXT, 2, TEXT, RAW,)
+LXA_HTML_STATE(PLAINTEXT, 3, TEXT, PLAIN,)
+LXA_HTML_STATE(SCRIPT_DATA, 4, TEXT, RAW,)
+LXA_HTML_STATE(SCRIPT_ESCAPED, 7, SCRIPT_ESCAPED, ESCAPED,)
+LXA_HTML_STATE(SCRIPT_ESCAPED_DASH, 8, SCRIPT_ESCAPED, ESCAPED,)
+LXA_HTML_STATE(SCRIPT_ESCAPED_DASH_DASH, 9, SCRIPT_ESCAPED, ESCAPED,)
+LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED, 11, SCRIPT_ESCAPED, ESCAPED,)
+LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH, 12, SCRIPT_ESCAPED, ESCAPED,)
+LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED, ESCAPED,
     {
     bool doubled = tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED
                    || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED_DASH
@@ -138,19 +138,14 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED,
     }
     {
         size_t start = i;
-        bool rcdata = tokenizer->state == STATE_RCDATA;
-        bool escaped = tokenizer->state == STATE_SCRIPT_ESCAPED
-                       || tokenizer->state == STATE_SCRIPT_DOUBLE_ESCAPED;
-        while (i < input.length) {
-            c = input.data[i];
-            if ((c == '<' && tokenizer->state != STATE_PLAINTEXT)
-                || (rcdata && c == '&') || c == '\r'
-                || (escaped && c == '-')
-                || c >= 0x7f || (c < ' ' && !lxa_html_byte_space(c))) {
-                break;
-            }
-            i++;
+        size_t count;
+        result = scan_run(tokenizer->state, (lxa_span_t) {
+            input.data + i, input.length - i
+        }, &count);
+        if (result != LXA_HTML_OK) {
+            goto fail;
         }
+        i += count;
         if (i > accepted) {
             result = account_run(tokenizer, i - accepted);
             if (result != LXA_HTML_OK) {
@@ -170,7 +165,7 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED,
     break;
     }
 )
-LXA_HTML_STATE(RAW_LESS_THAN, 16, RAW_CANDIDATE,
+LXA_HTML_STATE(RAW_LESS_THAN, 16, RAW_CANDIDATE, NONE,
     if (c == '/') {
         tokenizer->state = STATE_RAW_END_TAG_OPEN;
         i++;
@@ -213,7 +208,7 @@ LXA_HTML_STATE(RAW_LESS_THAN, 16, RAW_CANDIDATE,
     }
     break;
 )
-LXA_HTML_STATE(SCRIPT_DOUBLE_LESS_THAN, 14, SCRIPT_ESCAPED,
+LXA_HTML_STATE(SCRIPT_DOUBLE_LESS_THAN, 14, SCRIPT_ESCAPED, NONE,
     if (c == '/') {
         lxa_span_t slash = {&c, 1};
         result = buffer_append(tokenizer, &tokenizer->text, slash,
@@ -231,8 +226,8 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_LESS_THAN, 14, SCRIPT_ESCAPED,
     }
     break;
 )
-LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_START, 10, SCRIPT_ESCAPED,)
-LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_END, 15, SCRIPT_ESCAPED,
+LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_START, 10, SCRIPT_ESCAPED, NONE,)
+LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_END, 15, SCRIPT_ESCAPED, NONE,
     if (lxa_html_byte_alpha(c)) {
         static const char script[] = "script";
         uint8_t lower = lxa_html_byte_upper(c) ? c + ('a' - 'A') : c;
@@ -272,8 +267,8 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPE_END, 15, SCRIPT_ESCAPED,
     }
     break;
 )
-LXA_HTML_STATE(SCRIPT_ESCAPE_START, 5, SCRIPT_ESCAPE_START,)
-LXA_HTML_STATE(SCRIPT_ESCAPE_START_DASH, 6, SCRIPT_ESCAPE_START,
+LXA_HTML_STATE(SCRIPT_ESCAPE_START, 5, SCRIPT_ESCAPE_START, NONE,)
+LXA_HTML_STATE(SCRIPT_ESCAPE_START_DASH, 6, SCRIPT_ESCAPE_START, NONE,
     if (c == '-') {
         lxa_span_t dash = {&c, 1};
         result = buffer_append(tokenizer, &tokenizer->text, dash,
@@ -292,7 +287,7 @@ LXA_HTML_STATE(SCRIPT_ESCAPE_START_DASH, 6, SCRIPT_ESCAPE_START,
     }
     break;
 )
-LXA_HTML_STATE(RAW_END_TAG_OPEN, 17, RAW_CANDIDATE,
+LXA_HTML_STATE(RAW_END_TAG_OPEN, 17, RAW_CANDIDATE, NONE,
     if (lxa_html_byte_alpha(c)) {
         tokenizer->state = STATE_RAW_END_TAG_NAME;
     }
@@ -304,7 +299,7 @@ LXA_HTML_STATE(RAW_END_TAG_OPEN, 17, RAW_CANDIDATE,
     }
     break;
 )
-LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE,
+LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE, NONE,
     if (lxa_html_byte_alpha(c)) {
         lxa_span_t character = {&c, 1};
         size_t pending, total;
@@ -382,7 +377,7 @@ LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE,
     }
     break;
 )
-LXA_HTML_STATE(DATA, 0, TEXT,
+LXA_HTML_STATE(DATA, 0, TEXT, DATA,
     if (c == 0 && !tokenizer->utf8_pending) {
         lxa_span_t character = {&c, 1};
         result = emit_error(tokenizer, "unexpected-null-character",
@@ -452,14 +447,14 @@ LXA_HTML_STATE(DATA, 0, TEXT,
     }
     else {
         size_t start = i;
-        while (i < input.length) {
-            c = input.data[i];
-            if (c == '<' || c == '&' || c == '\r' || c >= 0x7f
-                || (c < ' ' && !lxa_html_byte_space(c))) {
-                break;
-            }
-            i++;
+        size_t count;
+        result = scan_run(tokenizer->state, (lxa_span_t) {
+            input.data + i, input.length - i
+        }, &count);
+        if (result != LXA_HTML_OK) {
+            goto fail;
         }
+        i += count;
         if (i > accepted) {
             result = account_run(tokenizer, i - accepted);
             if (result != LXA_HTML_OK) {
@@ -483,7 +478,7 @@ LXA_HTML_STATE(DATA, 0, TEXT,
     }
     break;
 )
-LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX,
+LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX, NONE,
     if (c == '!') {
         tokenizer->state = STATE_DECLARATION_DASH;
         i++;
@@ -519,7 +514,7 @@ LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX,
     tokenizer->state = STATE_NAME_BEGIN;
     break;
 )
-LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX,
+LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX, NONE,
     if (!lxa_html_byte_alpha(c)) {
         if (tokenizer->end_tag && c == '>') {
             result = emit_error(tokenizer, "missing-end-tag-name",
@@ -550,7 +545,29 @@ LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX,
     /* Name processing below consumes this byte. */
     break;
 )
-LXA_HTML_STATE(NAME, 21, TAG,
+LXA_HTML_STATE(NAME, 21, TAG, NAME,
+    if (!tokenizer->utf8_pending) {
+        size_t start = i, count;
+        lxa_span_t run = {input.data + i, input.length - i};
+        run = limit_run(run, tokenizer->budget->limits.max_name_bytes,
+                        tokenizer->name.length);
+        run = limit_run(run, tokenizer->budget->limits.max_token_bytes,
+                        tokenizer->name.length);
+        result = scan_run(tokenizer->state, run, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            if (i > accepted) {
+                result = account_run(tokenizer, i - accepted);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i;
+            }
+            result = buffer_append(tokenizer, &tokenizer->name,
+                (lxa_span_t) {input.data + start, count}, LXA_BUDGET_NAME_BYTES);
+            if (result != LXA_HTML_OK) goto fail;
+            break;
+        }
+    }
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -617,7 +634,7 @@ LXA_HTML_STATE(NAME, 21, TAG,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_NAME, 22, TAG,
+LXA_HTML_STATE(AFTER_NAME, 22, TAG, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -653,7 +670,38 @@ LXA_HTML_STATE(AFTER_NAME, 22, TAG,
     }
     break;
 )
-LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
+LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG, ATTRIBUTE_NAME,
+    if (!tokenizer->utf8_pending) {
+        size_t start = i, count, total;
+        attribute_slot_t *slot = current_attribute(tokenizer);
+        lxa_span_t run = {input.data + i, input.length - i};
+        if (slot == NULL) {
+            result = LXA_HTML_INTERNAL;
+            goto fail;
+        }
+        if (lxa_size_add(tokenizer->attribute_bytes.length,
+                         tokenizer->name.length, &total) != LXA_OK) {
+            result = LXA_HTML_OVERFLOW;
+            goto fail;
+        }
+        run = limit_run(run, tokenizer->budget->limits.max_name_bytes,
+                        slot->name_length);
+        run = limit_run(run, tokenizer->budget->limits.max_token_bytes, total);
+        result = scan_run(tokenizer->state, run, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            if (i > accepted) {
+                result = account_run(tokenizer, i - accepted);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i;
+            }
+            result = append_attribute(tokenizer,
+                (lxa_span_t) {input.data + start, count}, true);
+            if (result != LXA_HTML_OK) goto fail;
+            break;
+        }
+    }
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -706,7 +754,7 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG,
     i++;
     break;
 )
-LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG,
+LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -733,7 +781,7 @@ LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG,
     }
     break;
 )
-LXA_HTML_STATE(BEFORE_ATTRIBUTE_VALUE, 25, TAG,
+LXA_HTML_STATE(BEFORE_ATTRIBUTE_VALUE, 25, TAG, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -761,27 +809,19 @@ LXA_HTML_STATE(BEFORE_ATTRIBUTE_VALUE, 25, TAG,
     }
     break;
 )
-LXA_HTML_STATE(ATTRIBUTE_VALUE_DOUBLE, 26, TAG,)
-LXA_HTML_STATE(ATTRIBUTE_VALUE_SINGLE, 27, TAG,)
-LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
+LXA_HTML_STATE(ATTRIBUTE_VALUE_DOUBLE, 26, TAG, VALUE_DOUBLE,)
+LXA_HTML_STATE(ATTRIBUTE_VALUE_SINGLE, 27, TAG, VALUE_SINGLE,)
+LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG, VALUE_UNQUOTED,
     if (!tokenizer->utf8_pending) {
         size_t start = i;
-        while (i < input.length) {
-            uint8_t raw = input.data[i];
-            if (raw == '&' || raw == 0 || raw == '\r' || raw >= 0x7f
-                || (raw < ' ' && !lxa_html_byte_space(raw))
-                || (tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
-                    && raw == '"')
-                || (tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-                    && raw == '\'')
-                || (tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED
-                    && (lxa_html_byte_space(raw) || raw == '>' || raw == '"'
-                        || raw == '\'' || raw == '<' || raw == '='
-                        || raw == '`'))) {
-                break;
-            }
-            i++;
+        size_t count;
+        result = scan_run(tokenizer->state, (lxa_span_t) {
+            input.data + i, input.length - i
+        }, &count);
+        if (result != LXA_HTML_OK) {
+            goto fail;
         }
+        i += count;
         if (i != start) {
             if (i > accepted) {
                 result = account_run(tokenizer, i - accepted);
@@ -871,7 +911,7 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG,
     i++;
     break;
 )
-LXA_HTML_STATE(AFTER_ATTRIBUTE_VALUE, 29, TAG,
+LXA_HTML_STATE(AFTER_ATTRIBUTE_VALUE, 29, TAG, NONE,
     if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_AFTER_NAME;
         i++;
@@ -898,7 +938,7 @@ LXA_HTML_STATE(AFTER_ATTRIBUTE_VALUE, 29, TAG,
     }
     break;
 )
-LXA_HTML_STATE(SELF_CLOSING, 30, TAG,
+LXA_HTML_STATE(SELF_CLOSING, 30, TAG, NONE,
     if (c != '>') {
         result = emit_error(tokenizer, "unexpected-solidus-in-tag",
                             tokenizer->offset + i);
@@ -922,7 +962,7 @@ LXA_HTML_STATE(SELF_CLOSING, 30, TAG,
     i++;
     break;
 )
-LXA_HTML_STATE(DECLARATION_DASH, 31, DECLARATION_DASH,
+LXA_HTML_STATE(DECLARATION_DASH, 31, DECLARATION_DASH, NONE,
     if (c == '[') {
         tokenizer->declaration[0] = '[';
         tokenizer->declaration_length = 1;
@@ -951,7 +991,7 @@ LXA_HTML_STATE(DECLARATION_DASH, 31, DECLARATION_DASH,
     }
     break;
 )
-LXA_HTML_STATE(DECLARATION_DOCTYPE, 32, DECLARATION_PREFIX,
+LXA_HTML_STATE(DECLARATION_DOCTYPE, 32, DECLARATION_PREFIX, NONE,
     {
         static const char keyword[] = "doctype";
         uint8_t lower = lxa_html_byte_upper(c) ? c + ('a' - 'A') : c;
@@ -983,7 +1023,7 @@ LXA_HTML_STATE(DECLARATION_DOCTYPE, 32, DECLARATION_PREFIX,
     }
     break;
 )
-LXA_HTML_STATE(DECLARATION_CDATA, 33, DECLARATION_PREFIX,
+LXA_HTML_STATE(DECLARATION_CDATA, 33, DECLARATION_PREFIX, NONE,
     {
         static const char keyword[] = "[CDATA[";
         if (c == (uint8_t) keyword[tokenizer->declaration_length]) {
@@ -1034,9 +1074,9 @@ LXA_HTML_STATE(DECLARATION_CDATA, 33, DECLARATION_PREFIX,
     }
     break;
 )
-LXA_HTML_STATE(CDATA, 34, CDATA,)
-LXA_HTML_STATE(CDATA_BRACKET, 35, CDATA,)
-LXA_HTML_STATE(CDATA_END, 36, CDATA,
+LXA_HTML_STATE(CDATA, 34, CDATA, NONE,)
+LXA_HTML_STATE(CDATA_BRACKET, 35, CDATA, NONE,)
+LXA_HTML_STATE(CDATA_END, 36, CDATA, NONE,
     if (c == ']' && !tokenizer->utf8_pending) {
         if (tokenizer->state == STATE_CDATA_END) {
             lxa_span_t bracket = {&c, 1};
@@ -1103,7 +1143,7 @@ LXA_HTML_STATE(CDATA_END, 36, CDATA,
     }
     break;
 )
-LXA_HTML_STATE(DOCTYPE, 37, DOCTYPE,
+LXA_HTML_STATE(DOCTYPE, 37, DOCTYPE, NONE,
     if (!lxa_html_byte_space(c) && c != '>') {
         result = emit_error(tokenizer,
                         "missing-whitespace-before-doctype-name",
@@ -1118,7 +1158,7 @@ LXA_HTML_STATE(DOCTYPE, 37, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(BEFORE_DOCTYPE_NAME, 38, DOCTYPE,
+LXA_HTML_STATE(BEFORE_DOCTYPE_NAME, 38, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -1139,7 +1179,7 @@ LXA_HTML_STATE(BEFORE_DOCTYPE_NAME, 38, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE,
+LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE, NONE,
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -1196,7 +1236,7 @@ LXA_HTML_STATE(DOCTYPE_NAME, 39, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_DOCTYPE_NAME, 40, DOCTYPE,
+LXA_HTML_STATE(AFTER_DOCTYPE_NAME, 40, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -1227,7 +1267,7 @@ LXA_HTML_STATE(AFTER_DOCTYPE_NAME, 40, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(DOCTYPE_KEYWORD, 41, DOCTYPE_KEYWORD,
+LXA_HTML_STATE(DOCTYPE_KEYWORD, 41, DOCTYPE_KEYWORD, NONE,
     {
         const char *keyword =
             tokenizer->doctype_keyword[0] == 'p'
@@ -1258,8 +1298,8 @@ LXA_HTML_STATE(DOCTYPE_KEYWORD, 41, DOCTYPE_KEYWORD,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_PUBLIC_KEYWORD, 42, DOCTYPE,)
-LXA_HTML_STATE(BEFORE_PUBLIC_ID, 43, DOCTYPE,
+LXA_HTML_STATE(AFTER_PUBLIC_KEYWORD, 42, DOCTYPE, NONE,)
+LXA_HTML_STATE(BEFORE_PUBLIC_ID, 43, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BEFORE_PUBLIC_ID;
         i++;
@@ -1302,10 +1342,10 @@ LXA_HTML_STATE(BEFORE_PUBLIC_ID, 43, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(PUBLIC_ID_DOUBLE, 44, DOCTYPE,)
-LXA_HTML_STATE(PUBLIC_ID_SINGLE, 45, DOCTYPE,)
-LXA_HTML_STATE(SYSTEM_ID_DOUBLE, 50, DOCTYPE,)
-LXA_HTML_STATE(SYSTEM_ID_SINGLE, 51, DOCTYPE,
+LXA_HTML_STATE(PUBLIC_ID_DOUBLE, 44, DOCTYPE, NONE,)
+LXA_HTML_STATE(PUBLIC_ID_SINGLE, 45, DOCTYPE, NONE,)
+LXA_HTML_STATE(SYSTEM_ID_DOUBLE, 50, DOCTYPE, NONE,)
+LXA_HTML_STATE(SYSTEM_ID_SINGLE, 51, DOCTYPE, NONE,
     {
         bool public_id = tokenizer->state == STATE_PUBLIC_ID_DOUBLE
                          || tokenizer->state == STATE_PUBLIC_ID_SINGLE;
@@ -1371,8 +1411,8 @@ LXA_HTML_STATE(SYSTEM_ID_SINGLE, 51, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_PUBLIC_ID, 46, DOCTYPE,)
-LXA_HTML_STATE(BETWEEN_PUBLIC_SYSTEM_IDS, 47, DOCTYPE,
+LXA_HTML_STATE(AFTER_PUBLIC_ID, 46, DOCTYPE, NONE,)
+LXA_HTML_STATE(BETWEEN_PUBLIC_SYSTEM_IDS, 47, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BETWEEN_PUBLIC_SYSTEM_IDS;
         i++;
@@ -1410,8 +1450,8 @@ LXA_HTML_STATE(BETWEEN_PUBLIC_SYSTEM_IDS, 47, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_SYSTEM_KEYWORD, 48, DOCTYPE,)
-LXA_HTML_STATE(BEFORE_SYSTEM_ID, 49, DOCTYPE,
+LXA_HTML_STATE(AFTER_SYSTEM_KEYWORD, 48, DOCTYPE, NONE,)
+LXA_HTML_STATE(BEFORE_SYSTEM_ID, 49, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         tokenizer->state = STATE_BEFORE_SYSTEM_ID;
         i++;
@@ -1454,7 +1494,7 @@ LXA_HTML_STATE(BEFORE_SYSTEM_ID, 49, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(AFTER_SYSTEM_ID, 52, DOCTYPE,
+LXA_HTML_STATE(AFTER_SYSTEM_ID, 52, DOCTYPE, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -1476,7 +1516,7 @@ LXA_HTML_STATE(AFTER_SYSTEM_ID, 52, DOCTYPE,
     }
     break;
 )
-LXA_HTML_STATE(BOGUS_DOCTYPE, 53, BOGUS_DOCTYPE,
+LXA_HTML_STATE(BOGUS_DOCTYPE, 53, BOGUS_DOCTYPE, NONE,
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -1514,7 +1554,7 @@ LXA_HTML_STATE(BOGUS_DOCTYPE, 53, BOGUS_DOCTYPE,
     i++;
     break;
 )
-LXA_HTML_STATE(COMMENT_OPEN, 54, COMMENT_OPEN,
+LXA_HTML_STATE(COMMENT_OPEN, 54, COMMENT_OPEN, NONE,
     if (c != '-') {
         lxa_span_t dash = {(const uint8_t *) "-", 1};
         result = emit_error(tokenizer, "incorrectly-opened-comment",
@@ -1533,7 +1573,7 @@ LXA_HTML_STATE(COMMENT_OPEN, 54, COMMENT_OPEN,
     i++;
     break;
 )
-LXA_HTML_STATE(COMMENT_START, 55, COMMENT,
+LXA_HTML_STATE(COMMENT_START, 55, COMMENT, NONE,
     if (c == '-') {
         tokenizer->state = STATE_COMMENT_START_DASH;
         i++;
@@ -1555,7 +1595,7 @@ LXA_HTML_STATE(COMMENT_START, 55, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_START_DASH, 56, COMMENT,
+LXA_HTML_STATE(COMMENT_START_DASH, 56, COMMENT, NONE,
     if (c == '-') {
         tokenizer->state = STATE_COMMENT_END;
         i++;
@@ -1583,7 +1623,27 @@ LXA_HTML_STATE(COMMENT_START_DASH, 56, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT, 57, COMMENT,
+LXA_HTML_STATE(COMMENT, 57, COMMENT, ESCAPED,
+    if (!tokenizer->utf8_pending) {
+        size_t start = i, count;
+        lxa_span_t run = {input.data + i, input.length - i};
+        run = limit_run(run, tokenizer->budget->limits.max_token_bytes,
+                        tokenizer->text.length);
+        result = scan_run(tokenizer->state, run, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            if (i > accepted) {
+                result = account_run(tokenizer, i - accepted);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i;
+            }
+            result = buffer_append(tokenizer, &tokenizer->text,
+                (lxa_span_t) {input.data + start, count}, LXA_BUDGET_TOKEN_BYTES);
+            if (result != LXA_HTML_OK) goto fail;
+            break;
+        }
+    }
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -1641,7 +1701,7 @@ LXA_HTML_STATE(COMMENT, 57, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_LESS_THAN, 58, COMMENT,
+LXA_HTML_STATE(COMMENT_LESS_THAN, 58, COMMENT, NONE,
     if (c == '!' || c == '<') {
         lxa_span_t character = {&c, 1};
         result = buffer_append(tokenizer, &tokenizer->text,
@@ -1659,7 +1719,7 @@ LXA_HTML_STATE(COMMENT_LESS_THAN, 58, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_LESS_THAN_BANG, 59, COMMENT,
+LXA_HTML_STATE(COMMENT_LESS_THAN_BANG, 59, COMMENT, NONE,
     tokenizer->state = c == '-' ? STATE_COMMENT_LESS_THAN_BANG_DASH
                                  : STATE_COMMENT;
     if (c == '-') {
@@ -1667,7 +1727,7 @@ LXA_HTML_STATE(COMMENT_LESS_THAN_BANG, 59, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH, 60, COMMENT,
+LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH, 60, COMMENT, NONE,
     tokenizer->state = c == '-' ? STATE_COMMENT_LESS_THAN_BANG_DASH_DASH
                                  : STATE_COMMENT_DASH;
     if (c == '-') {
@@ -1675,7 +1735,7 @@ LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH, 60, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH_DASH, 61, COMMENT,
+LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH_DASH, 61, COMMENT, NONE,
     if (c != '>') {
         result = emit_error(tokenizer, "nested-comment",
                             tokenizer->offset + i);
@@ -1686,7 +1746,7 @@ LXA_HTML_STATE(COMMENT_LESS_THAN_BANG_DASH_DASH, 61, COMMENT,
     tokenizer->state = STATE_COMMENT_END;
     break;
 )
-LXA_HTML_STATE(COMMENT_DASH, 62, COMMENT,
+LXA_HTML_STATE(COMMENT_DASH, 62, COMMENT, NONE,
     if (c == '-') {
         tokenizer->state = STATE_COMMENT_END;
         i++;
@@ -1702,7 +1762,7 @@ LXA_HTML_STATE(COMMENT_DASH, 62, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_END, 63, COMMENT,
+LXA_HTML_STATE(COMMENT_END, 63, COMMENT, NONE,
     if (c == '>') {
         result = emit_comment(tokenizer);
         if (result != LXA_HTML_OK) {
@@ -1734,7 +1794,7 @@ LXA_HTML_STATE(COMMENT_END, 63, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(COMMENT_END_BANG, 64, COMMENT,
+LXA_HTML_STATE(COMMENT_END_BANG, 64, COMMENT, NONE,
     if (c == '>') {
         result = emit_error(tokenizer, "incorrectly-closed-comment",
                             tokenizer->offset + i);
@@ -1760,7 +1820,27 @@ LXA_HTML_STATE(COMMENT_END_BANG, 64, COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(BOGUS_COMMENT, 65, BOGUS_COMMENT,
+LXA_HTML_STATE(BOGUS_COMMENT, 65, BOGUS_COMMENT, BOGUS_COMMENT,
+    if (!tokenizer->utf8_pending) {
+        size_t start = i, count;
+        lxa_span_t run = {input.data + i, input.length - i};
+        run = limit_run(run, tokenizer->budget->limits.max_token_bytes,
+                        tokenizer->text.length);
+        result = scan_run(tokenizer->state, run, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            if (i > accepted) {
+                result = account_run(tokenizer, i - accepted);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i;
+            }
+            result = buffer_append(tokenizer, &tokenizer->text,
+                (lxa_span_t) {input.data + start, count}, LXA_BUDGET_TOKEN_BYTES);
+            if (result != LXA_HTML_OK) goto fail;
+            break;
+        }
+    }
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -1811,7 +1891,7 @@ LXA_HTML_STATE(BOGUS_COMMENT, 65, BOGUS_COMMENT,
     }
     break;
 )
-LXA_HTML_STATE(PI_OPEN, 66, PI,
+LXA_HTML_STATE(PI_OPEN, 66, PI, NONE,
     if (lxa_html_byte_alpha(c) || c == '_') {
         tokenizer->state = STATE_PI_TARGET;
         break;
@@ -1827,7 +1907,7 @@ LXA_HTML_STATE(PI_OPEN, 66, PI,
     }
     break;
 )
-LXA_HTML_STATE(PI_TARGET, 67, PI,
+LXA_HTML_STATE(PI_TARGET, 67, PI, NONE,
     if (lxa_html_byte_alnum(c) || c == '-' || c == '_') {
         lxa_span_t character = {&c, 1};
         result = buffer_append(tokenizer, &tokenizer->name,
@@ -1861,7 +1941,7 @@ LXA_HTML_STATE(PI_TARGET, 67, PI,
     }
     break;
 )
-LXA_HTML_STATE(PI_AFTER_TARGET, 68, PI,
+LXA_HTML_STATE(PI_AFTER_TARGET, 68, PI, NONE,
     if (lxa_html_byte_space(c)) {
         i++;
     }
@@ -1870,7 +1950,7 @@ LXA_HTML_STATE(PI_AFTER_TARGET, 68, PI,
     }
     break;
 )
-LXA_HTML_STATE(PI_DATA, 69, PI,
+LXA_HTML_STATE(PI_DATA, 69, PI, NONE,
     if (tokenizer->utf8_pending || c >= 0x80) {
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
@@ -1914,7 +1994,7 @@ LXA_HTML_STATE(PI_DATA, 69, PI,
     }
     break;
 )
-LXA_HTML_STATE(PI_QUESTIONABLE, 70, PI,
+LXA_HTML_STATE(PI_QUESTIONABLE, 70, PI, NONE,
     if (c == '>') {
         result = emit_pi(tokenizer);
         if (result != LXA_HTML_OK) {
@@ -1933,7 +2013,7 @@ LXA_HTML_STATE(PI_QUESTIONABLE, 70, PI,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_MARK, 71, REFERENCE_MARK,
+LXA_HTML_STATE(REFERENCE_MARK, 71, REFERENCE_MARK, NONE,
     if (c == '#') {
         tokenizer->state = STATE_REFERENCE_START;
         i++;
@@ -1946,7 +2026,7 @@ LXA_HTML_STATE(REFERENCE_MARK, 71, REFERENCE_MARK,
         tokenizer->reference_match_length = 0;
         tokenizer->state = STATE_REFERENCE_NAME;
         tokenizer->reference_name[2] = '\0';
-        result = find_entity(tokenizer, tokenizer->reference_name,
+        result = lxa_html_tokenizer_find_entity(tokenizer, tokenizer->reference_name,
                              &tokenizer->reference_match);
         if (result != LXA_HTML_OK) {
             goto fail;
@@ -1966,7 +2046,7 @@ LXA_HTML_STATE(REFERENCE_MARK, 71, REFERENCE_MARK,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
+LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME, NONE,
     if (c == ';') {
         if (tokenizer->reference_length >= sizeof(tokenizer->reference_name)
             - 1) {
@@ -1988,7 +2068,7 @@ LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
         tokenizer->reference_name[tokenizer->reference_length] = '\0';
         {
             const liblexa_html_entity_entry *entry;
-            result = find_entity(tokenizer, tokenizer->reference_name,
+            result = lxa_html_tokenizer_find_entity(tokenizer, tokenizer->reference_name,
                                  &entry);
             if (result != LXA_HTML_OK) {
                 goto fail;
@@ -2021,7 +2101,7 @@ LXA_HTML_STATE(REFERENCE_NAME, 72, REFERENCE_NAME,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_LONG_NAME, 73, REFERENCE_LONG_NAME,
+LXA_HTML_STATE(REFERENCE_LONG_NAME, 73, REFERENCE_LONG_NAME, NONE,
     if (lxa_html_byte_alnum(c) || c == ';') {
         lxa_span_t character = {&c, 1};
         if (c == ';') {
@@ -2046,7 +2126,7 @@ LXA_HTML_STATE(REFERENCE_LONG_NAME, 73, REFERENCE_LONG_NAME,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_START, 74, REFERENCE_NO_DIGITS,
+LXA_HTML_STATE(REFERENCE_START, 74, REFERENCE_NO_DIGITS, NONE,
     if (c == 'x' || c == 'X') {
         tokenizer->reference_hex_marker = c;
         tokenizer->state = STATE_REFERENCE_HEX_START;
@@ -2057,7 +2137,7 @@ LXA_HTML_STATE(REFERENCE_START, 74, REFERENCE_NO_DIGITS,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_HEX_START, 75, REFERENCE_NO_DIGITS,
+LXA_HTML_STATE(REFERENCE_HEX_START, 75, REFERENCE_NO_DIGITS, NONE,
     tokenizer->state = STATE_REFERENCE_HEX;
     if (!lxa_html_byte_hex(c)) {
         result = missing_numeric_digits(tokenizer,
@@ -2068,8 +2148,8 @@ LXA_HTML_STATE(REFERENCE_HEX_START, 75, REFERENCE_NO_DIGITS,
     }
     break;
 )
-LXA_HTML_STATE(REFERENCE_DECIMAL, 76, REFERENCE_NUMBER,)
-LXA_HTML_STATE(REFERENCE_HEX, 77, REFERENCE_NUMBER,
+LXA_HTML_STATE(REFERENCE_DECIMAL, 76, REFERENCE_NUMBER, NONE,)
+LXA_HTML_STATE(REFERENCE_HEX, 77, REFERENCE_NUMBER, NONE,
     {
         unsigned base = tokenizer->state == STATE_REFERENCE_HEX
                         ? 16 : 10;

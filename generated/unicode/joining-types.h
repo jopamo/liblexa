@@ -1,6 +1,6 @@
 /* DO NOT EDIT: Unicode 17.0.0 DerivedJoiningType.txt.
  * Input SHA-256: f39ebe974825d6736aee15582250307aa532b2cfab3caf3f86bd23fddc9c5c4d
- * See data/unicode/17.0.0/{source.json,LICENSE}. */
+ * See LICENSE for the Unicode standards-data license. */
 #ifndef LIBLEXA_GENERATED_JOINING_TYPES_H
 #define LIBLEXA_GENERATED_JOINING_TYPES_H
 #include <stdint.h>

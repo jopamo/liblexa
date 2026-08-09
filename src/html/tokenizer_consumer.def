@@ -1,0 +1,33 @@
+/* LXA_HTML_CONSUMER_HOOK(name, parameters, ...callback_body). */
+LXA_HTML_CONSUMER_HOOK(emit,
+    (lxa_html_tokenizer_t *tokenizer, lxa_html_token_t *token),
+    lxa_status_t status;
+    tokenizer->in_callback = true;
+    status = LXA_HTML_EMIT_TOKEN(tokenizer, token);
+    tokenizer->in_callback = false;
+    if (status != LXA_OK) {
+        tokenizer->callback_status = status;
+        return LXA_HTML_CALLBACK_FAILURE;
+    }
+    return LXA_HTML_OK;
+)
+LXA_HTML_CONSUMER_HOOK(emit_error,
+    (lxa_html_tokenizer_t *tokenizer, const char *code, size_t offset),
+    lxa_status_t status;
+    if (tokenizer->control_reported
+        && tokenizer->control_offset == offset
+        && strcmp(code, "control-character-in-input-stream") == 0) {
+        return LXA_HTML_OK;
+    }
+    if (!LXA_HTML_HAS_DIAGNOSTICS(tokenizer)) {
+        return LXA_HTML_OK;
+    }
+    tokenizer->in_callback = tokenizer->in_error = true;
+    status = LXA_HTML_EMIT_DIAGNOSTIC(tokenizer, code, offset);
+    tokenizer->in_error = tokenizer->in_callback = false;
+    if (status != LXA_OK) {
+        tokenizer->callback_status = status;
+        return LXA_HTML_CALLBACK_FAILURE;
+    }
+    return LXA_HTML_OK;
+)

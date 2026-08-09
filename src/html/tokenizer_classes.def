@@ -1,6 +1,8 @@
 /* LXA_HTML_BYTE_CLASS(name, predicate), ordered by predicate dependencies.
- * Grammar whitespace excludes CR because input preprocessing normalizes it. */
+ * Tokenizer whitespace excludes preprocessed CR; tree tokens can contain
+ * character-reference CR. */
 LXA_HTML_BYTE_CLASS(space, c == ' ' || c == '\t' || c == '\n' || c == '\f')
+LXA_HTML_BYTE_CLASS(tree_space, c == '\r' || lxa_html_byte_space(c))
 LXA_HTML_BYTE_CLASS(lower, c >= 'a' && c <= 'z')
 LXA_HTML_BYTE_CLASS(upper, c >= 'A' && c <= 'Z')
 LXA_HTML_BYTE_CLASS(digit, c >= '0' && c <= '9')
@@ -9,3 +11,5 @@ LXA_HTML_BYTE_CLASS(alnum, lxa_html_byte_alpha(c) || lxa_html_byte_digit(c))
 LXA_HTML_BYTE_CLASS(hex, lxa_html_byte_digit(c)
                         || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
 LXA_HTML_BYTE_CLASS(control, (c < ' ' && !lxa_html_byte_space(c)) || c == 0x7f)
+LXA_HTML_BYTE_CLASS(text_stop, c == '\r' || c >= 0x7f
+                             || (c < ' ' && !lxa_html_byte_space(c)))

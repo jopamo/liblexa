@@ -2,7 +2,7 @@
  * ucd/UnicodeData.txt SHA-256: 2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c
  * ucd/DerivedNormalizationProps.txt SHA-256: 71fd6a206a2c0cdd41feb6b7f656aa31091db45e9cedc926985d718397f9e488
  * ucd/CompositionExclusions.txt SHA-256: 2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f
- * See data/unicode/17.0.0/{source.json,LICENSE}. */
+ * See LICENSE for the Unicode standards-data license. */
 /* Hangul decomposition and composition use the Unicode algorithm, not these tables. */
 #ifndef LIBLEXA_GENERATED_NORMALIZATION_H
 #define LIBLEXA_GENERATED_NORMALIZATION_H
