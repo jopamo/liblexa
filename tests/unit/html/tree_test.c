@@ -189,6 +189,19 @@ check_table_transitions(void)
     static const struct {
         const char *input, *output;
     } cases[] = {
+        {"<template><colgroup></object><!--c-->",
+         "<html><head><template><colgroup></colgroup><!--c--></template>"
+         "</head><body></body></html>"},
+        {"<template><table><col></marquee> <col>",
+         "<html><head><template><table><colgroup><col></colgroup> "
+         "<colgroup><col></colgroup></table></template></head><body>"
+         "</body></html>"},
+        {"<template><colgroup></applet><?x y?>",
+         "<html><head><template><colgroup></colgroup><?x y?></template>"
+         "</head><body></body></html>"},
+        {"<template><svg><colgroup></object><!--c-->",
+         "<html><head><template><svg><colgroup><!--c--></colgroup></svg>"
+         "</template></head><body></body></html>"},
         {"<template><td><tr></br href=x><td>y",
          "<html><head><template><td></td><br><td>y</td></template></head>"
          "<body></body></html>"},

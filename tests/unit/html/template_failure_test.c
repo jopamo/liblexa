@@ -516,6 +516,10 @@ main(void)
         "<template><table><colgroup><b class=x><em id=y>text</em>"
         "</b><col></table></template>";
     static const unsigned char colgroup_foreign[] =
+        "<template><colgroup></object><!--c--></template>"
+        "<template><table><col></marquee> <col></template>"
+        "<template><colgroup></applet><?x y?></template>"
+        "<template><svg><colgroup></object><!--c--></template>"
         "<template><b><i><table><colgroup><input href=x>x</template>"
         "<template><b><table><colgroup><wbr><img src=x><image src=y> z</template>"
         "<template><b><table><colgroup><input type=hidden> x</template>"

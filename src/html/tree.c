@@ -5519,9 +5519,11 @@ reprocess_template_token:
                         || named(token->name, "ruby")
                         || named(token->name, "rt")
                         || named(token->name, "rp")
+                        || template_pending_marker(token->name)
                         || block_container(token->name))) {
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
+                    if (template_pending_marker(token->name)) return LXA_OK;
                     goto reprocess_template_token;
                 }
                 if (token->kind == LXA_HTML_TEXT) {
