@@ -3,6 +3,19 @@
 #include <stdio.h>
 #include <string.h>
 #include "liblexa/html.h"
+#include "liblexa/serialize.h"
+
+static lxa_write_result_t
+count_output(void *context, lxa_span_t bytes)
+{
+    size_t *written = context;
+    if (bytes.length != 0 && bytes.data == NULL)
+        return (lxa_write_result_t) {0, LXA_ERROR_ARGUMENT};
+    if (bytes.length > 4096 - *written)
+        return (lxa_write_result_t) {0, LXA_ERROR_LIMIT};
+    *written += bytes.length;
+    return (lxa_write_result_t) {bytes.length, LXA_OK};
+}
 
 static uint32_t
 next(uint32_t *state)
@@ -58,6 +71,26 @@ main(void)
                 case_id, status, result, reason);
             lxa_html_document_destroy(document);
             return 1;
+        }
+        if (document != NULL) {
+            size_t written = 0;
+            status = lxa_dom_nodes_validate(lxa_html_document_nodes(document));
+            if (status != LXA_OK) {
+                fprintf(stderr, "case %u: invalid tree, status %d\n",
+                        case_id, status);
+                lxa_html_document_destroy(document);
+                return 1;
+            }
+            status = lxa_html_serialize_document(
+                lxa_html_document_nodes(document),
+                lxa_html_document_root(document), count_output, &written,
+                &reason);
+            if (status != LXA_OK && status != LXA_ERROR_LIMIT) {
+                fprintf(stderr, "case %u: serialize status %d, reason %d\n",
+                        case_id, status, reason);
+                lxa_html_document_destroy(document);
+                return 1;
+            }
         }
         lxa_html_document_destroy(document);
     }
