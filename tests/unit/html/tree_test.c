@@ -184,6 +184,84 @@ check_template_br_limits(void)
 }
 
 static void
+check_template_option_pop_work_bound(void)
+{
+    static const size_t chunks[] = {SIZE_MAX, 1, 7};
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (unsigned templated = 0; templated < 2; ++templated) {
+        for (size_t part = 0; part < sizeof(chunks) / sizeof(chunks[0]); ++part) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_dom_ref_t option, outer, inner;
+            lxa_dom_record_t records[16];
+            lxa_vector_t *elements;
+            lxa_span_t input = span(templated
+                ? "<template><select><option selected>"
+                : "<select><option selected>");
+            size_t count, open;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget,
+                NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget, &tokenizer)
+                       == LXA_OK);
+            for (size_t offset = 0; offset < input.length;) {
+                size_t length = input.length - offset;
+                if (length > chunks[part]) length = chunks[part];
+                TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, (lxa_span_t) {
+                    input.data + offset, length
+                }) == LXA_HTML_OK);
+                offset += length;
+            }
+            elements = templated ? &tree.template_elements : &tree.open_elements;
+            open = lxa_vector_length(elements);
+            option = ((const lxa_dom_ref_t *) elements->bytes.data)[open - 1];
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
+                span("selectedcontent"), &outer) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                option, outer) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_html_element(nodes,
+                span("selectedcontent"), &inner) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_append_constructed_child(nodes,
+                outer, inner) == LXA_OK);
+            if (!templated) {
+                TEST_CHECK(lxa_dom_nodes_connect_selectedcontent(nodes, outer)
+                           == LXA_OK);
+                TEST_CHECK(lxa_dom_nodes_connect_selectedcontent(nodes, inner)
+                           == LXA_OK);
+            }
+            count = lxa_dom_nodes_length(nodes);
+            TEST_CHECK(count <= sizeof(records) / sizeof(records[0]));
+            memcpy(records, nodes->records.bytes.data, count * sizeof(records[0]));
+            budget.limits.max_work = budget.used[LXA_BUDGET_WORK] + 1000;
+            TEST_CHECK(lxa_html_tokenizer_finish(tokenizer)
+                       == (templated ? LXA_HTML_CALLBACK_FAILURE : LXA_HTML_OK));
+            if (templated) {
+                TEST_CHECK(tree.failure == LXA_ERROR_LIMIT
+                           && nodes->limit_reason == LXA_BUDGET_WORK
+                           && lxa_vector_length(elements) == open
+                           && memcmp(records, nodes->records.bytes.data,
+                                     count * sizeof(records[0])) == 0);
+                budget.limits.max_work = lxa_limits_default().max_work;
+                TEST_CHECK(lxa_html_tokenizer_finish(tokenizer)
+                           == LXA_HTML_CALLBACK_FAILURE);
+            }
+            budget.limits.max_work = lxa_limits_default().max_work;
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                       && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                       && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+    }
+}
+
+static void
 check_table_transitions(void)
 {
     static const struct {
@@ -867,6 +945,7 @@ int
 main(void)
 {
     check_table_transitions();
+    check_template_option_pop_work_bound();
     check_template_br_limits();
     check_foreign_after_body_namespace();
     check_template_column_admission_limits();
