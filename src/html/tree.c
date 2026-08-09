@@ -5385,10 +5385,12 @@ reprocess_template_token:
         }
         if (token->kind == LXA_HTML_END_TAG
             && named(token->name, "br")
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            /* At the fragment boundary in-template ignores end tags;
-             * with open elements the body/table/select rules apply. */
+            && (lxa_vector_length(&tree->template_elements)
+                > template_boundary(tree)
+                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE
+                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
+                || tree->template_insertion_mode == LXA_TEMPLATE_ROW
+                || tree->template_insertion_mode == LXA_TEMPLATE_BODY)) {
             adjusted = *token;
             adjusted.kind = LXA_HTML_START_TAG;
             adjusted.attributes = NULL;

@@ -1090,6 +1090,11 @@ main(void)
         "</template><template><tbody><tr><applet>a<tr><td>b"
         "</template>";
     static const unsigned char direct_row_ignored_parts[] =
+        "<template><td><tr></br href=x><td>y</template>"
+        "<template><tr><caption></br><tr><td>y</template>"
+        "<template><colgroup></colgroup></br><tbody><tr><td>y</template>"
+        "<template></br><col></colgroup></br><div>x</template>"
+        "<template><div></div></br></template>"
         "<template><tr><marquee>x<colgroup><col></template>"
         "<template><tr><td><div>y<caption>z</template>"
         "<template><tr><ins>w<thead><tr><td>q</template>";

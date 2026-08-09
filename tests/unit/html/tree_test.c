@@ -126,11 +126,83 @@ check_template_column_admission_limits(void)
 
 
 static void
+check_template_br_limits(void)
+{
+    static const char *inputs[] = {
+        "<template>", "<template><col>",
+        "<template><colgroup></colgroup>",
+        "<template><tr><caption>",
+        "<template><td><tr>",
+        "<template><div></div>"
+    };
+    lxa_allocator_t allocator = lxa_allocator_default();
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        for (uint32_t capacity = 0; capacity < 2; ++capacity) {
+            lxa_budget_t budget;
+            lxa_dom_nodes_t *nodes;
+            lxa_html_tree_t tree;
+            lxa_html_tokenizer_t *tokenizer;
+            lxa_html_token_t token = {.kind = LXA_HTML_END_TAG,
+                                      .name = span("br")};
+            size_t count, open;
+            lxa_html_template_mode_t mode;
+            bool ignored = i < 2, limited = !ignored && capacity == 0;
+            TEST_CHECK(lxa_budget_init(&budget, NULL) == LXA_OK);
+            TEST_CHECK(lxa_dom_nodes_create_with_budget(&allocator, &budget,
+                NULL, &nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tree_init(&tree, nodes) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_create_with_budget(&allocator,
+                lxa_html_tree_on_token, NULL, &tree, &budget,
+                &tokenizer) == LXA_OK);
+            TEST_CHECK(lxa_html_tokenizer_feed(tokenizer, span(inputs[i]))
+                       == LXA_HTML_OK);
+            count = lxa_dom_nodes_length(nodes);
+            open = lxa_vector_length(&tree.template_elements);
+            mode = tree.template_insertion_mode;
+            budget.limits.max_nodes = (uint32_t) count + capacity;
+            TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &token)
+                       == (limited ? LXA_ERROR_LIMIT : LXA_OK));
+            TEST_CHECK(lxa_dom_nodes_length(nodes)
+                       == count + (ignored || limited ? 0 : 1)
+                       && lxa_vector_length(&tree.template_elements) == open
+                       && tree.template_insertion_mode == mode);
+            if (limited)
+                TEST_CHECK(nodes->limit_reason == LXA_BUDGET_NODES);
+            budget.limits = lxa_limits_default();
+            if (limited)
+                TEST_CHECK(lxa_html_tree_on_token(&tree, NULL, &token)
+                           == LXA_ERROR_LIMIT);
+            TEST_CHECK(lxa_dom_nodes_validate(nodes) == LXA_OK);
+            lxa_html_tokenizer_destroy(tokenizer);
+            lxa_html_tree_destroy(&tree);
+            lxa_dom_nodes_destroy(nodes);
+            TEST_CHECK(budget.used[LXA_BUDGET_MEMORY] == 0
+                       && budget.used[LXA_BUDGET_OPEN_ELEMENTS] == 0
+                       && budget.used[LXA_BUDGET_ACTIVE_FORMATTING] == 0);
+        }
+    }
+}
+
+static void
 check_table_transitions(void)
 {
     static const struct {
         const char *input, *output;
     } cases[] = {
+        {"<template><td><tr></br href=x><td>y",
+         "<html><head><template><td></td><br><td>y</td></template></head>"
+         "<body></body></html>"},
+        {"<template><tr><caption></br><tr><td>y",
+         "<html><head><template><tr></tr><br><tr><td>y</td></tr></template>"
+         "</head><body></body></html>"},
+        {"<template><colgroup></colgroup></br><tbody><tr><td>y",
+         "<html><head><template><colgroup></colgroup><br><tbody><tr><td>y"
+         "</td></tr></tbody></template></head><body></body></html>"},
+        {"<template></br><col></colgroup></br><div>x",
+         "<html><head><template><col></template></head><body></body></html>"},
+        {"<template><div></div></br>",
+         "<html><head><template><div></div><br></template></head>"
+         "<body></body></html>"},
         {"<template><b><i><table><colgroup><input href=x>x",
          "<html><head><template><b><i><input href=\"x\">x<table><colgroup>"
          "</colgroup></table></i></b></template></head><body></body></html>"},
@@ -782,6 +854,7 @@ int
 main(void)
 {
     check_table_transitions();
+    check_template_br_limits();
     check_foreign_after_body_namespace();
     check_template_column_admission_limits();
     check_detached_table_fostering();
