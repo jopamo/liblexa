@@ -2533,6 +2533,96 @@ next_descendant(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     }
 }
 
+lxa_status_t
+lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
+    lxa_span_t name, lxa_dom_ref_t *start, lxa_dom_ref_t *end)
+{
+    lxa_dom_ref_t cursor, first = {0};
+    lxa_dom_record_t record;
+    size_t visits = 0, ascents = 0, length, nesting = 0;
+    lxa_status_t status;
+    if (start != NULL) *start = (lxa_dom_ref_t){0};
+    if (end != NULL) *end = (lxa_dom_ref_t){0};
+    if (nodes == NULL || start == NULL || end == NULL || start == end
+        || (name.data == NULL && name.length != 0))
+        return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = lxa_dom_nodes_read(nodes, scope, &record);
+    if (status != LXA_OK || (record.kind != LXA_DOM_KIND_ELEMENT
+                            && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT))
+        return LXA_ERROR_ARGUMENT;
+    if (record.kind == LXA_DOM_KIND_ELEMENT) {
+        lxa_dom_namespace_t ns;
+        status = lxa_dom_nodes_element_namespace(nodes, scope, &ns);
+        if (status != LXA_OK) return status;
+    }
+    length = lxa_vector_length(&nodes->records);
+    status = lxa_dom_nodes_first_child(nodes, scope, &cursor);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        if (++visits > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, cursor, &record);
+        if (status != LXA_OK) return status;
+        if (record.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION) {
+            lxa_span_t target, data;
+            bool marker, matches;
+            if (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE)
+                return LXA_ERROR_ARGUMENT;
+            status = lxa_dom_nodes_pi_read(nodes, cursor, &target, &data);
+            if (status != LXA_OK) return status;
+            marker = target.length == 6 && memcmp(target.data, "marker", 6) == 0;
+            if (marker || (target.length == 5 && memcmp(target.data, "start", 5) == 0)) {
+                status = lxa_dom_nodes_pi_attribute_matches(nodes, cursor,
+                    (lxa_span_t){(const uint8_t *) "name", 4}, name, &matches);
+                if (status != LXA_OK) return status;
+                if (matches) {
+                    if (marker) {
+                        *start = *end = cursor;
+                        return LXA_OK;
+                    }
+                    first = cursor;
+                    break;
+                }
+            }
+        }
+        status = next_descendant(nodes, scope, cursor,
+            record.kind == LXA_DOM_KIND_ELEMENT
+                || record.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT,
+            &ascents, &cursor);
+    }
+    if (status != LXA_OK || first.handle == LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_next_sibling(nodes, first, &cursor);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
+        if (++visits > length) return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, cursor, &record);
+        if (status != LXA_OK) return status;
+        if (record.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION) {
+            lxa_span_t target, data;
+            if (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE)
+                return LXA_ERROR_ARGUMENT;
+            status = lxa_dom_nodes_pi_read(nodes, cursor, &target, &data);
+            if (status != LXA_OK) return status;
+            if (target.length == 5 && memcmp(target.data, "start", 5) == 0) {
+                status = lxa_size_add(nesting, 1, &nesting);
+                if (status != LXA_OK) return status;
+            } else if (target.length == 3 && memcmp(target.data, "end", 3) == 0) {
+                if (nesting == 0) {
+                    *start = first;
+                    *end = cursor;
+                    return LXA_OK;
+                }
+                --nesting;
+            }
+        }
+        status = lxa_dom_nodes_next_sibling(nodes, cursor, &cursor);
+    }
+    if (status == LXA_OK) *start = first;
+    return status;
+}
+
 static lxa_status_t
 first_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
                         lxa_handle_t excluded, lxa_dom_ref_t *out)
