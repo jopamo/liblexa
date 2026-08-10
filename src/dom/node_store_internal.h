@@ -185,6 +185,12 @@ lxa_status_t lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes,
     lxa_span_t target, lxa_span_t data, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_pi_read(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t pi, lxa_span_t *target, lxa_span_t *data);
+/* Query immutable PI data using XML pseudo-attribute rules. Malformed data
+ * has no attributes. Compare decoded values without materializing a second
+ * representation; temporary duplicate-name storage is budgeted and released.
+ * Failure leaves matches false and preserves the PI and its raw data. */
+lxa_status_t lxa_dom_nodes_pi_attribute_matches(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t pi, lxa_span_t name, lxa_span_t value, bool *matches);
 /* Insert a detached parser-owned leaf before an existing child, preserving
  * document doctype/root ordering when the parent is a document. */
 lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
