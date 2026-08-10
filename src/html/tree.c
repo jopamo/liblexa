@@ -3470,7 +3470,6 @@ template_open_table_part(lxa_html_tree_t *tree,
     bool implied_section = false, implied_row = false;
     bool replace_section = false, clear_fostered = false;
     bool fostered_section = false;
-    lxa_html_template_mode_t next_mode = tree->template_insertion_mode;
     lxa_span_t top;
     lxa_status_t status;
     if (!section && !row && !cell && !caption && !group)
@@ -3859,11 +3858,6 @@ template_open_table_part(lxa_html_tree_t *tree,
                 implied_row = cell;
                 extra = cell ? 3 : 2;
             }
-            if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                next_mode = row ? LXA_TEMPLATE_TABLE_BODY
-                          : cell ? LXA_TEMPLATE_ROW
-                          : section || caption || group ? LXA_TEMPLATE_TABLE
-                          : LXA_TEMPLATE_INITIAL;
         }
         goto reserve_part;
     }
@@ -3964,7 +3958,6 @@ reserve_part:
     }
     else
         status = template_push_table_part(tree, token);
-    if (status == LXA_OK) tree->template_insertion_mode = next_mode;
     return status;
 }
 
@@ -3981,21 +3974,17 @@ template_open_column(lxa_html_tree_t *tree,
     size_t depth, count, after;
     bool add_group;
     lxa_status_t status;
+    if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP) {
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                                   1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = append_void(tree, template_parent(tree), token);
+        return status;
+    }
     if (length == boundary) {
         if (tree->template_insertion_mode == LXA_TEMPLATE_ROW
             || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY)
             return LXA_OK; /* No table can receive this column. */
-        if (tree->template_insertion_mode != LXA_TEMPLATE_TABLE) {
-            /* The first column in initial/column-group mode is direct. */
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = append_void(tree, template_parent(tree), token);
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_COLUMN_GROUP;
-            return status;
-        }
     }
     else {
         status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
@@ -4709,6 +4698,15 @@ reprocess_template_token:
                 tree->template_insertion_mode = LXA_TEMPLATE_BODY;
             return LXA_OK; /* None can enter a template fragment. */
         }
+        if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
+            && token->kind == LXA_HTML_START_TAG
+            && table_part(token->name) && !named(token->name, "table")) {
+            tree->template_insertion_mode = named(token->name, "col")
+                ? LXA_TEMPLATE_COLUMN_GROUP
+                : named(token->name, "tr") ? LXA_TEMPLATE_TABLE_BODY
+                : named(token->name, "td") || named(token->name, "th")
+                    ? LXA_TEMPLATE_ROW : LXA_TEMPLATE_TABLE;
+        }
         if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
             && token->kind == LXA_HTML_START_TAG
             && table_part(token->name) && !named(token->name, "table")) {
@@ -4719,19 +4717,33 @@ reprocess_template_token:
             if (!table_found)
                 return LXA_OK; /* No table in scope for in-body starts. */
         }
-        if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP
-            && lxa_vector_length(&tree->template_elements)
-               == template_boundary(tree)) {
+        if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP) {
+            bool group_open = false;
+            if (lxa_vector_length(&tree->template_elements)
+                > template_boundary(tree)) {
+                lxa_span_t name;
+                lxa_dom_namespace_t ns;
+                status = lxa_budget_charge(tree->nodes->budget,
+                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+                if (status == LXA_OK)
+                    status = lxa_dom_nodes_element_namespace(tree->nodes,
+                        template_parent(tree), &ns);
+                if (status == LXA_OK)
+                    status = lxa_dom_nodes_element_name(tree->nodes,
+                        template_parent(tree), &name);
+                if (status != LXA_OK) return status;
+                group_open = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
+            }
             /* Without an open colgroup, ordinary starts and nonspace
              * characters are ignored in column-group mode. */
-            if (token->kind == LXA_HTML_TEXT)
+            if (!group_open && token->kind == LXA_HTML_TEXT)
                 return append_space_text(tree, template_parent(tree),
                                          token->data);
-            if ((token->kind == LXA_HTML_START_TAG
+            if (!group_open && ((token->kind == LXA_HTML_START_TAG
                  && !named(token->name, "col")
                  && !named(token->name, "template")
                  && !named(token->name, "html"))
-                || token->kind == LXA_HTML_END_TAG)
+                || token->kind == LXA_HTML_END_TAG))
                 return LXA_OK;
         }
         {
