@@ -3706,6 +3706,76 @@ done:
     return status;
 }
 
+lxa_status_t
+lxa_dom_nodes_prepare_content_patch(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
+    lxa_span_t name, lxa_dom_content_patch_t *out)
+{
+    lxa_dom_content_patch_t patch = {0};
+    lxa_dom_record_t record;
+    lxa_dom_ref_t cursor;
+    lxa_vector_t removed = {0};
+    size_t visits = 0, length;
+    lxa_status_t status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = patch;
+    if (nodes == NULL || (name.data == NULL && name.length != 0))
+        return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    if (name.length == 0) {
+        status = lxa_dom_nodes_read(nodes, scope, &record);
+        if (status != LXA_OK || (record.kind != LXA_DOM_KIND_ELEMENT
+                                && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT))
+            return LXA_ERROR_ARGUMENT;
+        if (record.kind == LXA_DOM_KIND_ELEMENT) {
+            lxa_dom_namespace_t ns;
+            return lxa_dom_nodes_element_namespace(nodes, scope, &ns);
+        }
+        return LXA_OK;
+    }
+    status = lxa_dom_nodes_find_markers(nodes, scope, name, &patch.start, &patch.end);
+    if (status != LXA_OK || patch.start.handle == LXA_HANDLE_NONE) return status;
+    status = lxa_dom_nodes_parent(nodes, patch.start, &patch.target);
+    if (status != LXA_OK || patch.target.handle == LXA_HANDLE_NONE)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    if (patch.start.handle == patch.end.handle) {
+        *out = patch;
+        return LXA_OK;
+    }
+    status = lxa_vector_init(&removed, &nodes->allocator, sizeof(lxa_dom_ref_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&removed, nodes->budget);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_next_sibling(nodes, patch.start, &cursor);
+    length = lxa_vector_length(&nodes->records);
+    while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE
+           && cursor.handle != patch.end.handle) {
+        if (++visits > length) { status = LXA_ERROR_ARGUMENT; break; }
+        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
+                                   &nodes->limit_reason);
+        if (status == LXA_OK) status = lxa_vector_push(&removed, &cursor);
+        if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
+            nodes->limit_reason = LXA_BUDGET_MEMORY;
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_next_sibling(nodes, cursor, &cursor);
+    }
+    if (status != LXA_OK) goto done;
+    if (patch.end.handle != LXA_HANDLE_NONE && cursor.handle != patch.end.handle) {
+        status = LXA_ERROR_ARGUMENT;
+        goto done;
+    }
+    for (size_t i = 0; i < lxa_vector_length(&removed); ++i) {
+        lxa_dom_ref_t parent;
+        cursor = ((const lxa_dom_ref_t *) removed.bytes.data)[i];
+        status = lxa_dom_nodes_parent(nodes, cursor, &parent);
+        if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_detach_constructed_child(nodes, cursor);
+        if (status != LXA_OK) goto done;
+    }
+    *out = patch;
+done:
+    lxa_vector_destroy(&removed);
+    return status;
+}
+
 static lxa_status_t
 option_reparent_effect(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
                        const select_view_t *move,
