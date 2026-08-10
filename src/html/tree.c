@@ -3356,8 +3356,6 @@ template_open_foreign(lxa_html_tree_t *tree,
     lxa_dom_ref_t child;
     lxa_span_t name = token->name;
     size_t count, depth;
-    bool first = lxa_vector_length(&tree->template_elements)
-                 == template_boundary(tree);
     lxa_status_t status = lxa_size_add(
         lxa_vector_length(&tree->template_elements), 1, &count);
     if (status == LXA_OK)
@@ -3408,7 +3406,7 @@ template_open_foreign(lxa_html_tree_t *tree,
         status = template_pop_elements(tree, count - 1);
         if (status != LXA_OK) return status;
     }
-    if (first && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
+    if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
         tree->template_insertion_mode = LXA_TEMPLATE_BODY;
     return LXA_OK;
 }
@@ -5316,9 +5314,7 @@ reprocess_template_token:
                                                        token, NULL);
             }
             if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
-                && lxa_vector_length(&tree->template_elements)
-                   == template_boundary(tree))
+                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
                 tree->template_insertion_mode = LXA_TEMPLATE_BODY;
             return status;
         }
@@ -5573,9 +5569,7 @@ reprocess_template_token:
                     || named(token->name, "listing")))
                 tree->skip_pre_newline = true;
             if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
-                && lxa_vector_length(&tree->template_elements)
-                   == template_boundary(tree) + 1)
+                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
                 tree->template_insertion_mode = LXA_TEMPLATE_BODY;
             if (status == LXA_OK && named(token->name, "plaintext"))
                 status = set_tokenizer_text_mode(tokenizer, token,
