@@ -1556,7 +1556,7 @@ place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
     bool ancestor;
     lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, node, &current);
     if (status == LXA_OK && current.handle != LXA_HANDLE_NONE)
-        status = lxa_dom_nodes_detach_constructed_element(tree->nodes, node);
+        status = lxa_dom_nodes_detach_constructed_child(tree->nodes, node);
     if (status == LXA_OK)
         status = lxa_dom_nodes_parent(tree->nodes, node, &current);
     if (status != LXA_OK || current.handle != LXA_HANDLE_NONE) return status;
@@ -2826,8 +2826,8 @@ begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     if (replace_body) {
         status = lxa_dom_nodes_parent(tree->nodes, tree->body, &parent);
         if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
-            status = lxa_dom_nodes_detach_constructed_element(tree->nodes,
-                                                               tree->body);
+            status = lxa_dom_nodes_detach_constructed_child(tree->nodes,
+                                                             tree->body);
         if (status != LXA_OK) return status;
         while (lxa_vector_length(&tree->open_elements) != 0) {
             status = pop_element(tree);

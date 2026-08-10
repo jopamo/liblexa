@@ -3187,6 +3187,25 @@ document_child_kind(lxa_dom_kind_t kind)
            || kind == LXA_DOM_KIND_DOCUMENT_TYPE;
 }
 
+static bool
+constructed_child_payload_valid(const lxa_dom_nodes_t *nodes,
+                                const lxa_dom_record_t *child)
+{
+    switch (child->kind) {
+    case LXA_DOM_KIND_ELEMENT:
+        return child->payload < lxa_vector_length(&nodes->elements);
+    case LXA_DOM_KIND_TEXT:
+    case LXA_DOM_KIND_COMMENT:
+        return child->payload < lxa_vector_length(&nodes->characters);
+    case LXA_DOM_KIND_PROCESSING_INSTRUCTION:
+        return child->payload < lxa_vector_length(&nodes->pis);
+    case LXA_DOM_KIND_DOCUMENT_TYPE:
+        return child->payload < lxa_vector_length(&nodes->doctypes);
+    default:
+        return false;
+    }
+}
+
 static lxa_status_t
 check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
                          const lxa_dom_record_t *host,
@@ -3259,22 +3278,9 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     if ((host.kind != LXA_DOM_KIND_ELEMENT
          && host.kind != LXA_DOM_KIND_DOCUMENT
          && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
-        || (leaf.kind != LXA_DOM_KIND_ELEMENT
-            && leaf.kind != LXA_DOM_KIND_TEXT
-            && leaf.kind != LXA_DOM_KIND_COMMENT
-            && leaf.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION
-            && leaf.kind != LXA_DOM_KIND_DOCUMENT_TYPE)
+        || !constructed_child_payload_valid(nodes, &leaf)
         || (host.kind == LXA_DOM_KIND_ELEMENT
             && host.payload >= lxa_vector_length(&nodes->elements))
-        || (leaf.kind == LXA_DOM_KIND_ELEMENT
-            && leaf.payload >= lxa_vector_length(&nodes->elements))
-        || ((leaf.kind == LXA_DOM_KIND_TEXT
-             || leaf.kind == LXA_DOM_KIND_COMMENT)
-            && leaf.payload >= lxa_vector_length(&nodes->characters))
-        || (leaf.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
-            && leaf.payload >= lxa_vector_length(&nodes->pis))
-        || (leaf.kind == LXA_DOM_KIND_DOCUMENT_TYPE
-            && leaf.payload >= lxa_vector_length(&nodes->doctypes))
         || (host.kind != LXA_DOM_KIND_DOCUMENT
             && leaf.kind == LXA_DOM_KIND_DOCUMENT_TYPE)
         || (host.kind == LXA_DOM_KIND_DOCUMENT
@@ -3546,8 +3552,8 @@ affected_selectedcontent_removal(lxa_dom_nodes_t *nodes,
 }
 
 lxa_status_t
-lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
-                                         lxa_dom_ref_t element)
+lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
+                                       lxa_dom_ref_t child)
 {
     lxa_dom_record_t moved, *records;
     select_reset_plan_t plan = {.choice = LXA_ID_NONE};
@@ -3557,28 +3563,31 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
     lxa_status_t status;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
     nodes->limit_reason = LXA_BUDGET_COUNT;
-    status = lxa_dom_nodes_read(nodes, element, &moved);
+    status = lxa_dom_nodes_read(nodes, child, &moved);
     if (status != LXA_OK) return status;
-    if (moved.kind != LXA_DOM_KIND_ELEMENT
-        || moved.payload >= lxa_vector_length(&nodes->elements))
+    if (!constructed_child_payload_valid(nodes, &moved)
+        || (moved.kind != LXA_DOM_KIND_ELEMENT
+            && (moved.first_child != LXA_ID_NONE
+                || moved.last_child != LXA_ID_NONE)))
         return LXA_ERROR_ARGUMENT;
-    child_id = (lxa_id_t) element.handle;
+    child_id = (lxa_id_t) child.handle;
     status = attached_child_links(nodes, child_id, &moved);
     if (status == LXA_OK)
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
                                    &nodes->limit_reason);
     if (status != LXA_OK) return status;
-    status = html_option(nodes, element, &option);
+    if (moved.kind != LXA_DOM_KIND_ELEMENT) goto commit;
+    status = html_option(nodes, child, &option);
     if (status == LXA_OK) {
         lxa_dom_ref_t select;
-        if (option) status = option_select(nodes, element, NULL, &select);
-        else status = option_select_at(nodes, element, NULL, &select);
+        if (option) status = option_select(nodes, child, NULL, &select);
+        else status = option_select_at(nodes, child, NULL, &select);
         if (status == LXA_OK && select.handle != LXA_HANDLE_NONE
-            && select.handle != element.handle) {
+            && select.handle != child.handle) {
             bool affected = option;
             if (!affected) {
                 select_reset_scan_t scan = {.kind = SELECT_SCAN_EXCLUSION};
-                status = scan_select_options(nodes, select, element.handle,
+                status = scan_select_options(nodes, select, child.handle,
                                                NULL, &scan);
                 affected = scan.found_excluded;
             }
@@ -3586,15 +3595,16 @@ lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
         }
     }
     if (status == LXA_OK && (!option || moved.first_child != LXA_ID_NONE))
-        status = affected_selectedcontent_removal(nodes, element, &moved, &updates);
+        status = affected_selectedcontent_removal(nodes, child, &moved, &updates);
     if (status == LXA_OK && updates) {
-        status = detach_content_transaction(nodes, element);
+        status = detach_content_transaction(nodes, child);
         goto done;
     }
     if (status == LXA_OK && affected_select.handle != LXA_HANDLE_NONE) {
-        status = plan_select_reset(nodes, affected_select, element.handle, NULL, &plan);
+        status = plan_select_reset(nodes, affected_select, child.handle, NULL, &plan);
     }
     if (status != LXA_OK) goto done;
+commit:
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
     unlink_constructed(records, &moved);
     records[child_id].parent = LXA_ID_NONE;

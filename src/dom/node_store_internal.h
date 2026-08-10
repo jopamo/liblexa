@@ -189,13 +189,14 @@ lxa_status_t lxa_dom_nodes_pi_read(const lxa_dom_nodes_t *nodes,
  * document doctype/root ordering when the parent is a document. */
 lxa_status_t lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before);
-/* Unlink an attached parser-owned element transactionally. Run owned option
- * resets and selectedcontent removing updates in root/descendant order,
- * including bounded reentrant copies. Disabled or retained-select content
+/* Unlink an attached parser-owned child transactionally. Leaves skip element
+ * removal hooks. Element subtrees run owned option resets and selectedcontent
+ * removing updates in root/descendant order, including bounded reentrant
+ * copies. Disabled or retained-select content
  * descendants do nothing. Keep descendants/handles live in the store.
  * Failure preserves original records; unpublished drafts remain store-owned. */
-lxa_status_t lxa_dom_nodes_detach_constructed_element(lxa_dom_nodes_t *nodes,
-    lxa_dom_ref_t element);
+lxa_status_t lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t child);
 /* Move an attached parser-owned subtree to the end of an element or fragment,
  * or immediately before a child of that parent. Validate link symmetry,
  * cycles, subtree depth (including associated template fragments) and budget
