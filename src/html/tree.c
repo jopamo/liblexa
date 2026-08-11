@@ -6328,12 +6328,11 @@ reprocess_body_start:
                 }
                 return status;
             }
-            status = reserve_open_elements(tree, 1);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+            status = lxa_budget_check(tree->nodes->budget,
+                LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             status = close_paragraph(tree, NULL);
+            if (status == LXA_OK) status = reserve_open_elements(tree, 1);
             if (status != LXA_OK) return status;
             status = open_container(tree, token);
             if (status == LXA_OK) tree->form = current_element(tree);
