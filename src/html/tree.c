@@ -5902,14 +5902,26 @@ reprocess_template_token:
              * before popping. The body rule checks stack admission after
              * foreign entries are released. */
             size_t keep;
-            status = named(token->name, "head") || named(token->name, "body")
-                ? LXA_OK : lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
+            bool needs_node = !named(token->name, "head")
+                              && !named(token->name, "body");
             status = plan_foreign_breakout(tree, &tree->open_elements, 0,
                                            &keep);
             if (status != LXA_OK) return status;
             if (keep == 0) return LXA_ERROR_INTERNAL;
+            if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")) {
+                lxa_vector_t view = tree->open_elements;
+                size_t index;
+                view.bytes.length = keep * sizeof(lxa_dom_ref_t);
+                status = find_scoped_end_target(tree, &view, 0,
+                    token->name, SCOPE_BUTTON, &index);
+                if (status != LXA_OK) return status;
+                needs_node = index == keep;
+            }
+            if (needs_node) {
+                status = lxa_budget_check(tree->nodes->budget,
+                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+                if (status != LXA_OK) return status;
+            }
             while (lxa_vector_length(&tree->open_elements) > keep) {
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
