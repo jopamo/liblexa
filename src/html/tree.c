@@ -361,10 +361,17 @@ table_context(lxa_span_t name)
 }
 
 static bool
+head_void(lxa_span_t name)
+{
+    return named(name, "base") || named(name, "basefont")
+           || named(name, "bgsound") || named(name, "link")
+           || named(name, "meta");
+}
+
+static bool
 body_void(lxa_span_t name)
 {
     return named(name, "br") || named(name, "img")
-           || named(name, "basefont") || named(name, "bgsound")
            || named(name, "input") || named(name, "keygen")
            || named(name, "hr")
            || named(name, "wbr") || named(name, "area")
@@ -2311,7 +2318,8 @@ foster_element(lxa_html_tree_t *tree,
     if (formatting) status = prepare_formatting_start(tree, token, &drop);
     else if (!is_void && container_reconstructs(token->name))
         status = reconstruct_formatting(tree);
-    else if (is_void && !named(token->name, "hr")
+    else if (is_void && !head_void(token->name)
+             && !named(token->name, "hr")
              && !named(token->name, "param") && !named(token->name, "source")
              && !named(token->name, "track"))
         status = reconstruct_formatting(tree);
@@ -4996,9 +5004,7 @@ reprocess_template_token:
                         !token->self_closing, NULL, ns);
                 }
                 if (token->kind == LXA_HTML_START_TAG
-                    && (named(token->name, "base")
-                        || named(token->name, "link")
-                        || named(token->name, "meta"))) {
+                    && head_void(token->name)) {
                     if (named(top, "colgroup")) {
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
@@ -5363,9 +5369,7 @@ reprocess_template_token:
             return insert_data_text(tree, template_parent(tree),
                                     token->data, false, false);
         }
-        if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "base") || named(token->name, "link")
-                || named(token->name, "meta")))
+        if (token->kind == LXA_HTML_START_TAG && head_void(token->name))
             return append_void(tree, template_parent(tree), token);
         if (token->kind == LXA_HTML_START_TAG
             && (body_void(token->name) || named(token->name, "image"))) {
@@ -6140,9 +6144,7 @@ reprocess_body_start:
                 }
                 return status;
             }
-            if (named(token->name, "base")
-                || named(token->name, "link")
-                || named(token->name, "meta")) {
+            if (head_void(token->name)) {
                 if (named(top, "colgroup")) {
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -6375,10 +6377,7 @@ reprocess_body_start:
         if (named(token->name, "plaintext")) {
             return begin_root_plaintext(tree, tokenizer, token);
         }
-        if (named(token->name, "base") || named(token->name, "link")
-            || named(token->name, "meta")
-            || named(token->name, "basefont")
-            || named(token->name, "bgsound")) {
+        if (head_void(token->name)) {
             bool in_body = tree->mode == LXA_TREE_IN_BODY;
             status = in_body ? ensure_body(tree) : ensure_head(tree);
             if (status == LXA_OK)
