@@ -2,6 +2,7 @@
 #include <string.h>
 #include "liblexa/dom.h"
 #include "dom/node_store_internal.h"
+#include "dom/content_patch.h"
 
 static bool
 valid_kind(lxa_dom_kind_t kind)

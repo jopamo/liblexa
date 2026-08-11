@@ -2,13 +2,15 @@
 #define LIBLEXA_HTML_TREE_H
 
 #include "html/tokenizer.h"
+#include "dom/content_patch.h"
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
 
 /* Private complete-document tree-construction candidate over a borrowed store.
  * Root/template contexts share scope and active-formatting algorithms. Template
- * frames save fragment, open-element boundary and insertion mode; nodes and
- * attributes belong to the store. Token callbacks update text/CDATA feedback.
+ * frames save fragment, patch references, open-element boundary and insertion
+ * mode; nodes and attributes belong to the store. Token callbacks update
+ * text/CDATA feedback.
  * The first failure is latched. Successful EOF completes construction and
  * subsequent tokens are rejected. No fragment-context or script-execution API.
  */
@@ -31,6 +33,7 @@ typedef enum {
 
 typedef struct {
     lxa_dom_ref_t fragment;
+    lxa_dom_content_patch_t patch;
     size_t element_count;
     lxa_html_template_mode_t insertion_mode;
 } lxa_html_template_frame_t;
@@ -43,12 +46,13 @@ typedef struct {
 typedef struct {
     lxa_dom_nodes_t *nodes;
     lxa_dom_ref_t document, html, head, head_noscript, body, form;
-    lxa_dom_ref_t template_fragment; /* active in-head template content */
+    lxa_dom_ref_t template_fragment; /* active virtual-template content */
+    lxa_dom_content_patch_t template_patch;
     lxa_dom_ref_t text_element;
     lxa_vector_t formatting; /* active entries and scope markers */
     size_t formatting_marker; /* SIZE_MAX when no marker is active */
     lxa_vector_t open_elements; /* parser scratch; owns only references */
-    lxa_vector_t template_stack; /* enclosing fragment, boundary and mode */
+    lxa_vector_t template_stack; /* enclosing fragment, patch, boundary and mode */
     lxa_vector_t template_elements; /* open HTML elements in template content */
     lxa_buffer_t table_text; /* held until the next non-text token */
     lxa_html_root_mode_t mode;

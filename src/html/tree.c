@@ -24,6 +24,37 @@ name_equals_literal(lxa_span_t name, const char *text, size_t length)
  * time instead of rediscovering them for every token and open-stack probe. */
 #define named(name, text) name_equals_literal((name), (text), sizeof(text) - 1)
 
+/* Keep virtual template context for tree feedback; redirect only insertion. */
+static lxa_status_t
+resolve_template_location(lxa_html_tree_t *tree,
+                          lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
+{
+    lxa_dom_ref_t actual;
+    lxa_status_t status;
+    if (tree->template_patch.target.handle == LXA_HANDLE_NONE
+        || parent->handle != tree->template_fragment.handle)
+        return LXA_OK;
+    *parent = tree->template_patch.target;
+    *before = (lxa_dom_ref_t){0};
+    if (tree->template_patch.end.handle == LXA_HANDLE_NONE) return LXA_OK;
+    status = lxa_dom_nodes_parent(tree->nodes, tree->template_patch.end, &actual);
+    if (status == LXA_OK && actual.handle == parent->handle)
+        *before = tree->template_patch.end;
+    return status;
+}
+
+static lxa_status_t
+insert_constructed(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+                   lxa_dom_ref_t child, lxa_dom_ref_t before)
+{
+    lxa_status_t status = resolve_template_location(tree, &parent, &before);
+    if (status != LXA_OK) return status;
+    return before.handle == LXA_HANDLE_NONE
+        ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+        : lxa_dom_nodes_insert_constructed_before(tree->nodes, parent, child,
+                                                   before);
+}
+
 static const char *
 namespace_name(lxa_dom_namespace_t ns)
 {
@@ -512,8 +543,8 @@ ensure_element(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     if (slot->handle != LXA_HANDLE_NONE) return LXA_OK;
     status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, literal(name), &node);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes, parent,
-                                                          node);
+        status = insert_constructed(tree, parent,
+            node, (lxa_dom_ref_t){0});
     if (status == LXA_OK) *slot = node;
     return status;
 }
@@ -810,13 +841,8 @@ reconstruct_element_at(lxa_html_tree_t *tree, lxa_vector_t *elements,
 {
     lxa_dom_ref_t clone;
     lxa_status_t status = lxa_dom_nodes_clone_element(tree->nodes, old, &clone);
-    if (status == LXA_OK) {
-        if (before.handle == LXA_HANDLE_NONE)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             parent, clone);
-        else status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                               parent, clone, before);
-    }
+    if (status == LXA_OK)
+        status = insert_constructed(tree, parent, clone, before);
     if (status == LXA_OK) status = push_open_reference(tree, elements, clone);
     if (status == LXA_OK) *out = clone;
     return status;
@@ -1403,7 +1429,9 @@ insert_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     lxa_dom_record_t record;
     lxa_status_t status;
     if (bytes.length == 0) return LXA_OK;
-    status = lxa_dom_nodes_last_child(tree->nodes, parent, &previous);
+    status = resolve_template_location(tree, &parent, &before);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_last_child(tree->nodes, parent, &previous);
     if (status == LXA_OK && before.handle != LXA_HANDLE_NONE) {
         status = lxa_dom_nodes_parent(tree->nodes, before, &actual);
         if (status == LXA_OK && actual.handle != parent.handle)
@@ -1425,10 +1453,8 @@ insert_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     status = lxa_dom_nodes_append_character(
         tree->nodes, LXA_DOM_KIND_TEXT, bytes, &child);
     if (status != LXA_OK) return status;
-    return before.handle == LXA_HANDLE_NONE
-        ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
-        : lxa_dom_nodes_insert_constructed_before(tree->nodes, parent, child,
-                                                   before);
+    return insert_constructed(tree, parent,
+        child, before);
 }
 
 static lxa_status_t
@@ -1441,7 +1467,8 @@ append_character(lxa_html_tree_t *tree,
         return insert_text(tree, parent, (lxa_dom_ref_t){0}, bytes);
     status = lxa_dom_nodes_append_character(tree->nodes, kind, bytes, &child);
     return status == LXA_OK
-           ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+           ? insert_constructed(tree, parent,
+               child, (lxa_dom_ref_t){0})
            : status;
 }
 
@@ -1457,7 +1484,8 @@ append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     status = lxa_dom_nodes_append_pi(tree->nodes, token->name, token->data,
                                      &child);
     return status == LXA_OK
-           ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
+           ? insert_constructed(tree, parent,
+               child, (lxa_dom_ref_t){0})
            : status;
 }
 
@@ -1560,6 +1588,8 @@ place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
     if (status == LXA_OK)
         status = lxa_dom_nodes_parent(tree->nodes, node, &current);
     if (status != LXA_OK || current.handle != LXA_HANDLE_NONE) return status;
+    status = resolve_template_location(tree, &parent, &before);
+    if (status != LXA_OK) return status;
     status = lxa_dom_nodes_host_including_ancestor(tree->nodes, node, parent,
                                                    &ancestor);
     if (status != LXA_OK || ancestor) return status;
@@ -1686,8 +1716,8 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
             /* Construction attaches leaves; attach replacements before moving
              * subtrees so failures retain valid parent/sibling links. */
             if (status == LXA_OK)
-                status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                                 common, clone);
+                status = insert_constructed(tree, common,
+                    clone, (lxa_dom_ref_t){0});
             if (status != LXA_OK) return status;
             formatting_entries(tree)[entry].element = clone;
             ((lxa_dom_ref_t *) elements->bytes.data)[node] = clone;
@@ -1706,8 +1736,8 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
         if (status == LXA_OK)
             status = lxa_dom_nodes_clone_element(tree->nodes, formatting, &clone);
         if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             furthest, clone);
+            status = insert_constructed(tree, furthest,
+                clone, (lxa_dom_ref_t){0});
         if (status != LXA_OK) return status;
         for (;;) {
             lxa_dom_ref_t child;
@@ -2009,10 +2039,8 @@ open_container_at(lxa_html_tree_t *tree,
                                                       name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = before.handle == LXA_HANDLE_NONE
-            ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
-            : lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                parent, child, before);
+        status = insert_constructed(tree, parent,
+            child, before);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "selectedcontent")
@@ -2299,13 +2327,8 @@ foster_element(lxa_html_tree_t *tree,
     status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                                                 token->name, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
-    if (status == LXA_OK) {
-        if (table.handle != LXA_HANDLE_NONE)
-            status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                              parent, child, table);
-        else status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                              parent, child);
-    }
+    if (status == LXA_OK)
+        status = insert_constructed(tree, parent, child, table);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
         status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
@@ -2338,13 +2361,8 @@ foster_foreign(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_append_namespaced_element(tree->nodes,
                                                           name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
-    if (status == LXA_OK) {
-        if (table.handle == LXA_HANDLE_NONE)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             parent, child);
-        else status = lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                               parent, child, table);
-    }
+    if (status == LXA_OK)
+        status = insert_constructed(tree, parent, child, table);
     if (status == LXA_OK) status = push_element(tree, child);
     if (status == LXA_OK && token->self_closing) {
         status = pop_element(tree);
@@ -2635,11 +2653,8 @@ append_closed_element_at(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     if (status == LXA_OK)
         status = apply_attributes(tree, element, token);
     if (status == LXA_OK)
-        status = before.handle != LXA_HANDLE_NONE
-            ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                       parent, element, before)
-            : lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                       parent, element);
+        status = insert_constructed(tree, parent,
+            element, before);
     if (status == LXA_OK && out != NULL) *out = element;
     return status;
 }
@@ -2694,11 +2709,8 @@ begin_text_element_at(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = apply_attributes(tree, element, token);
     if (status == LXA_OK)
-        status = before.handle != LXA_HANDLE_NONE
-            ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                       parent, element, before)
-            : lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                       parent, element);
+        status = insert_constructed(tree, parent,
+            element, before);
     return status == LXA_OK
            ? enter_text_mode(tree, tokenizer, token, text_mode, element)
            : status;
@@ -2820,8 +2832,8 @@ begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
                                                     token->name, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                         tree->html, child);
+        status = insert_constructed(tree, tree->html,
+            child, (lxa_dom_ref_t){0});
     if (status != LXA_OK) return status;
     if (replace_body) {
         status = lxa_dom_nodes_parent(tree->nodes, tree->body, &parent);
@@ -2927,7 +2939,7 @@ template_pop_elements(lxa_html_tree_t *tree, size_t keep)
 }
 
 static lxa_status_t
-close_template(lxa_html_tree_t *tree)
+close_template(lxa_html_tree_t *tree, bool explicit_end)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
     lxa_html_template_frame_t frame = {0};
@@ -2938,17 +2950,57 @@ close_template(lxa_html_tree_t *tree)
                   tree->template_stack.bytes.data)[length - 1];
         boundary = frame.element_count;
     }
+    if (explicit_end && tree->template_patch.target.handle != LXA_HANDLE_NONE) {
+        size_t keep = lxa_vector_length(&tree->template_elements);
+        const lxa_dom_ref_t *open =
+            (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
+        while (keep > boundary) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
+            status = lxa_dom_nodes_element_namespace(tree->nodes,
+                open[keep - 1], &ns);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_name(tree->nodes,
+                    open[keep - 1], &name);
+            if (status != LXA_OK) return status;
+            if (ns != LXA_DOM_NS_HTML
+                || !(implied_end_tag(name) || named(name, "caption")
+                     || named(name, "colgroup") || named(name, "tbody")
+                     || named(name, "td") || named(name, "tfoot")
+                     || named(name, "th") || named(name, "thead")
+                     || named(name, "tr")))
+                break;
+            --keep;
+        }
+        status = template_pop_elements(tree, keep);
+        if (status != LXA_OK) return status;
+        lxa_dom_ref_t markers[] = {
+            tree->template_patch.start, tree->template_patch.end
+        };
+        for (size_t i = 0; i < sizeof(markers) / sizeof(markers[0]); ++i) {
+            lxa_dom_ref_t parent;
+            if (markers[i].handle == LXA_HANDLE_NONE) continue;
+            status = lxa_dom_nodes_parent(tree->nodes, markers[i], &parent);
+            if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
+                status = lxa_dom_nodes_detach_constructed_child(tree->nodes,
+                                                                 markers[i]);
+            if (status != LXA_OK) return status;
+        }
+        tree->template_patch = (lxa_dom_content_patch_t){0};
+    }
     status = template_pop_elements(tree, boundary);
     if (status != LXA_OK) return status;
     clear_formatting_to_marker(tree);
     lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
     if (length != 0) {
         tree->template_fragment = frame.fragment;
+        tree->template_patch = frame.patch;
         tree->template_insertion_mode = frame.insertion_mode;
         lxa_vector_erase(&tree->template_stack, length - 1, 1);
     }
     else {
         tree->template_fragment = (lxa_dom_ref_t){0};
+        tree->template_patch = (lxa_dom_content_patch_t){0};
         tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
         tree->mode = tree->template_return_mode;
     }
@@ -3065,11 +3117,8 @@ template_foster_element(lxa_html_tree_t *tree,
                 token->name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = before.handle != LXA_HANDLE_NONE
-            ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                         parent, child, before)
-            : lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                       parent, child);
+        status = insert_constructed(tree, parent,
+            child, before);
     if (status == LXA_OK && keep_open)
         status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
@@ -3213,9 +3262,10 @@ static lxa_status_t
 begin_template(lxa_html_tree_t *tree,
                const lxa_html_token_t *token)
 {
-    lxa_dom_ref_t child, fragment;
+    lxa_dom_ref_t child, fragment, parent, before = {0}, attr = {0};
+    lxa_dom_content_patch_t patch = {0};
     lxa_html_template_frame_t frame;
-    bool nested = tree->mode == LXA_TREE_TEMPLATE_TEXT;
+    bool nested = tree->mode == LXA_TREE_TEMPLATE_TEXT, shadow = false;
     size_t depth, slots;
     lxa_status_t status;
     status = lxa_size_add(lxa_vector_length(&tree->template_stack),
@@ -3256,16 +3306,44 @@ begin_template(lxa_html_tree_t *tree,
             LXA_DOM_KIND_DOCUMENT_FRAGMENT, &fragment);
     if (status == LXA_OK)
         status = lxa_dom_nodes_bind_template(tree->nodes, child, fragment);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-            nested ? template_parent(tree)
+    if (status != LXA_OK) return status;
+    parent = nested ? template_parent(tree)
                    : tree->mode == LXA_TREE_IN_HEAD
                      || tree->mode == LXA_TREE_AFTER_HEAD
-                     ? tree->head : current_element(tree), child);
+                     ? tree->head : current_element(tree);
+    status = resolve_template_location(tree, &parent, &before);
+    if (status == LXA_OK && token->attribute_count != 0)
+        status = lxa_dom_nodes_find_attribute(tree->nodes, child,
+            literal("shadowrootmode"), &attr);
+    if (status == LXA_OK && token->attribute_count != 0
+        && attr.handle != LXA_HANDLE_NONE) {
+        lxa_span_t name, value;
+        status = lxa_dom_nodes_attribute_read(tree->nodes, attr, &name, &value);
+        if (status == LXA_OK)
+            shadow = ascii_case_equals(value, "open", 4)
+                     || ascii_case_equals(value, "closed", 6);
+    }
+    if (status == LXA_OK && token->attribute_count != 0 && !shadow) {
+        status = lxa_dom_nodes_find_attribute(tree->nodes, child,
+                                              literal("for"), &attr);
+        if (status == LXA_OK && attr.handle != LXA_HANDLE_NONE) {
+            lxa_dom_ref_t scope = parent;
+            lxa_span_t name, value;
+            status = lxa_dom_nodes_attribute_read(tree->nodes, attr, &name, &value);
+            if (status == LXA_OK && scope.handle == tree->body.handle)
+                status = lxa_dom_nodes_parent(tree->nodes, scope, &scope);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_prepare_content_patch(tree->nodes,
+                    scope, value, &patch);
+        }
+    }
+    if (status == LXA_OK && patch.target.handle == LXA_HANDLE_NONE)
+        status = insert_constructed(tree, parent, child, before);
     if (status != LXA_OK) return status;
     if (!nested) tree->template_return_mode = tree->mode;
     if (nested) {
         frame.fragment = tree->template_fragment;
+        frame.patch = tree->template_patch;
         frame.element_count = lxa_vector_length(&tree->template_elements);
         frame.insertion_mode = tree->template_insertion_mode;
         status = lxa_vector_push(&tree->template_stack, &frame);
@@ -3285,6 +3363,7 @@ begin_template(lxa_html_tree_t *tree,
         return status;
     }
     tree->template_fragment = fragment;
+    tree->template_patch = patch;
     tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
     tree->mode = LXA_TREE_TEMPLATE_TEXT;
     tree->frameset_ok = false;
@@ -3303,8 +3382,8 @@ template_push_table_part(lxa_html_tree_t *tree,
             tree->nodes, token->name, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-            template_parent(tree), child);
+        status = insert_constructed(tree, template_parent(tree),
+            child, (lxa_dom_ref_t){0});
     if (status != LXA_OK) return status;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                                 1, &tree->nodes->limit_reason);
@@ -3391,8 +3470,8 @@ template_open_foreign(lxa_html_tree_t *tree,
         name, ns, &child);
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-            template_parent(tree), child);
+        status = insert_constructed(tree, template_parent(tree),
+            child, (lxa_dom_ref_t){0});
     if (status == LXA_OK)
         status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
@@ -4665,7 +4744,7 @@ reprocess_template_token:
                 status = lxa_budget_charge(tree->nodes->budget,
                     LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            status = close_template(tree);
+            status = close_template(tree, true);
             if (status != LXA_OK) return status;
             return LXA_OK;
         }
@@ -5239,12 +5318,8 @@ reprocess_template_token:
                     status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                         literal("p"), &paragraph);
                 if (status != LXA_OK) return status;
-                return before.handle == LXA_HANDLE_NONE
-                    ? lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                              parent, paragraph)
-                    : lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                               parent, paragraph,
-                                                               before);
+                return insert_constructed(tree, parent,
+                    paragraph, before);
             }
             return template_close_elements(tree, index);
         }
@@ -5554,11 +5629,8 @@ reprocess_template_token:
             if (!named(token->name, "table"))
                 status = template_insertion_location(tree, &parent, &before);
             if (status == LXA_OK)
-                status = before.handle != LXA_HANDLE_NONE
-                    ? lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                                                          parent, child, before)
-                    : lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                          parent, child);
+                status = insert_constructed(tree, parent,
+                    child, before);
             if (status == LXA_OK && named(token->name, "option"))
                 status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
             if (status != LXA_OK) return status;
@@ -5601,7 +5673,7 @@ reprocess_template_token:
                     LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             while (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
-                status = close_template(tree);
+                status = close_template(tree, false);
                 if (status != LXA_OK) return status;
             }
         }
@@ -5857,8 +5929,8 @@ reprocess_template_token:
         declaration.force_quirks = token->force_quirks;
         status = lxa_dom_nodes_append_doctype(tree->nodes, declaration, &child);
         if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                             tree->document, child);
+            status = insert_constructed(tree, tree->document,
+                child, (lxa_dom_ref_t){0});
         if (status == LXA_OK) {
             tree->document_mode = document_mode;
             tree->mode = LXA_TREE_BEFORE_HTML;
@@ -6054,11 +6126,8 @@ reprocess_body_start:
                 if (status == LXA_OK)
                     status = apply_attributes(tree, element, token);
                 if (status == LXA_OK)
-                    status = table.handle == LXA_HANDLE_NONE
-                        ? lxa_dom_nodes_append_constructed_child(
-                            tree->nodes, foster_parent, element)
-                        : lxa_dom_nodes_insert_constructed_before(
-                            tree->nodes, foster_parent, element, table);
+                    status = insert_constructed(tree, foster_parent,
+                        element, table);
                 if (status == LXA_OK)
                     status = enter_text_mode(tree, tokenizer, token,
                         text_mode, element);
@@ -6165,8 +6234,8 @@ reprocess_body_start:
             if (status == LXA_OK)
                 status = apply_attributes(tree, child, token);
             if (status == LXA_OK)
-                status = lxa_dom_nodes_append_constructed_child(tree->nodes,
-                                                                 tree->head, child);
+                status = insert_constructed(tree, tree->head,
+                    child, (lxa_dom_ref_t){0});
             if (status == LXA_OK) {
                 tree->head_noscript = child;
                 tree->mode = LXA_TREE_HEAD_NOSCRIPT;
@@ -6624,10 +6693,8 @@ reprocess_body_start:
             status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
                 literal("p"), &child);
         if (status == LXA_OK)
-            status = before.handle == LXA_HANDLE_NONE
-                ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
-                : lxa_dom_nodes_insert_constructed_before(tree->nodes,
-                    parent, child, before);
+            status = insert_constructed(tree, parent,
+                child, before);
         if (status == LXA_OK) {
             if (column_group) {
                 status = pop_element(tree);
