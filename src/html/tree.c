@@ -6486,7 +6486,8 @@ reprocess_body_start:
                 || named(token->name, "select")
                 || formatting_marker_tag(token->name)))
                 tree->frameset_ok = false;
-            if (!formatting && (!closes_paragraph || heading(token->name))) {
+            if (!formatting && !ruby_annotation(token->name)
+                && (!closes_paragraph || heading(token->name))) {
                 status = reserve_open_elements(tree, heading(token->name) ? 0 : 1);
                 if (status != LXA_OK) return status;
             }
@@ -6502,6 +6503,8 @@ reprocess_body_start:
                     status = pop_element(tree);
                     if (status != LXA_OK) return status;
                 }
+                status = reserve_open_elements(tree, 1);
+                if (status != LXA_OK) return status;
             }
             if (named(token->name, "li") || named(token->name, "dt")
                 || named(token->name, "dd")) {
