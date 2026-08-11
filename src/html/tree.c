@@ -2539,7 +2539,9 @@ open_table_part(lxa_html_tree_t *tree,
                     break;
             }
         }
-        status = reserve_open_elements(tree, close_existing ? 0 : 1);
+        bool reserve_after_close = close_existing
+            || tree->document_mode != LXA_HTML_QUIRKS;
+        status = reserve_open_elements(tree, reserve_after_close ? 0 : 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        1, &tree->nodes->limit_reason);
@@ -2550,6 +2552,8 @@ open_table_part(lxa_html_tree_t *tree,
         }
         status = tree->document_mode == LXA_HTML_QUIRKS ? LXA_OK
                  : close_paragraph(tree, NULL);
+        if (status == LXA_OK && reserve_after_close)
+            status = reserve_open_elements(tree, 1);
         if (status != LXA_OK) return status;
         return open_container(tree, token);
     }
