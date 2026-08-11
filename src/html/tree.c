@@ -2433,7 +2433,9 @@ close_caption_for_table_start(lxa_html_tree_t *tree,
     if (status != LXA_OK || i == lxa_vector_length(&tree->open_elements))
         return status;
     /* Reprocessing may allocate implicit tbody/tr nodes. */
-    status = reserve_open_elements(tree, needed);
+    size_t removed = lxa_vector_length(&tree->open_elements) - i;
+    size_t slots = named(incoming, "col") ? 1 : needed;
+    status = reserve_open_elements(tree, slots > removed ? slots - removed : 0);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget,
             LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
