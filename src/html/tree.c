@@ -6470,6 +6470,12 @@ reprocess_body_start:
             bool formatting = formatting_tag(token->name);
             size_t drop = SIZE_MAX;
             bool reconstruct = container_reconstructs(token->name);
+            bool closes_paragraph = named(token->name, "p")
+                || heading(token->name)
+                || (block_container(token->name)
+                    && !named(token->name, "button"))
+                || named(token->name, "li") || named(token->name, "dt")
+                || named(token->name, "dd");
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
@@ -6480,7 +6486,7 @@ reprocess_body_start:
                 || named(token->name, "select")
                 || formatting_marker_tag(token->name)))
                 tree->frameset_ok = false;
-            if (!formatting) {
+            if (!formatting && (!closes_paragraph || heading(token->name))) {
                 status = reserve_open_elements(tree, heading(token->name) ? 0 : 1);
                 if (status != LXA_OK) return status;
             }
@@ -6502,12 +6508,10 @@ reprocess_body_start:
                 status = close_list_item(tree, !named(token->name, "li"));
                 if (status != LXA_OK) return status;
             }
-            if (named(token->name, "p") || heading(token->name)
-                || (block_container(token->name)
-                    && !named(token->name, "button"))
-                || named(token->name, "li") || named(token->name, "dt")
-                || named(token->name, "dd")) {
+            if (closes_paragraph) {
                 status = close_paragraph(tree, NULL);
+                if (status == LXA_OK && !heading(token->name))
+                    status = reserve_open_elements(tree, 1);
                 if (status != LXA_OK) return status;
             }
             if (heading(token->name)) {
