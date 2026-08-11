@@ -5898,16 +5898,12 @@ reprocess_template_token:
                     && (foreign_html_start_breakout(token->name)
                         || breakout_font)))) {
             /* An HTML breakout closes foreign open elements and reprocesses
-             * the token in body mode. Preflight the scan and required
-             * node/stack capacity before popping; construction is unpublished
-             * until the entire parse succeeds. */
+             * the token in body mode. Preflight the scan and node admission
+             * before popping. The body rule checks stack admission after
+             * foreign entries are released. */
             size_t keep;
-            status = body_void(token->name) || named(token->name, "head")
-                     || named(token->name, "body")
-                     ? LXA_OK : reserve_open_elements(tree, 1);
-            if (status == LXA_OK && !named(token->name, "head")
-                && !named(token->name, "body"))
-                status = lxa_budget_check(tree->nodes->budget,
+            status = named(token->name, "head") || named(token->name, "body")
+                ? LXA_OK : lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
             status = plan_foreign_breakout(tree, &tree->open_elements, 0,
