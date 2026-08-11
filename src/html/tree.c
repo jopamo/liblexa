@@ -621,6 +621,10 @@ formatting_boundary(const lxa_html_tree_t *tree)
 static lxa_dom_ref_t
 formatting_parent(const lxa_html_tree_t *tree)
 {
+    /* The root stack omits html; closing the frameset can empty it. */
+    if (tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
+        && lxa_vector_length(&tree->open_elements) == 0)
+        return tree->html;
     return tree->mode == LXA_TREE_TEMPLATE_TEXT
         ? template_parent(tree) : current_element(tree);
 }
@@ -4160,7 +4164,8 @@ template_open_column(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes)
+append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes,
+                  bool reconstruct)
 {
     lxa_buffer_t spaces;
     size_t i = 0, start;
@@ -4182,9 +4187,15 @@ append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes)
                 (lxa_span_t){bytes.data + start, i - start});
         if (i < bytes.length) ++i;
     }
-    if (status == LXA_OK && spaces.length != 0)
-        status = append_character(tree, parent,
-            LXA_DOM_KIND_TEXT, (lxa_span_t){spaces.data, spaces.length});
+    if (status == LXA_OK && spaces.length != 0) {
+        if (reconstruct) {
+            status = reconstruct_formatting(tree);
+            if (status == LXA_OK) parent = formatting_parent(tree);
+        }
+        if (status == LXA_OK)
+            status = append_character(tree, parent,
+                LXA_DOM_KIND_TEXT, (lxa_span_t){spaces.data, spaces.length});
+    }
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -4825,7 +4836,7 @@ reprocess_template_token:
              * characters are ignored in column-group mode. */
             if (!group_open && token->kind == LXA_HTML_TEXT)
                 return append_space_text(tree, template_parent(tree),
-                                         token->data);
+                                         token->data, false);
             if (!group_open && ((token->kind == LXA_HTML_START_TAG
                  && !named(token->name, "col")
                  && !named(token->name, "template")
@@ -5692,7 +5703,9 @@ reprocess_template_token:
             return LXA_OK;
         }
         parent = tree->mode == LXA_TREE_IN_FRAMESET
-                 ? current_element(tree) : tree->html;
+                 ? current_element(tree)
+                 : tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
+                   ? formatting_parent(tree) : tree->html;
         if (token->kind == LXA_HTML_COMMENT
             || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
             return append_comment_or_pi(tree,
@@ -5703,7 +5716,8 @@ reprocess_template_token:
             && named(token->name, "html"))
             return apply_attributes(tree, tree->html, token);
         if (token->kind == LXA_HTML_TEXT)
-            return append_space_text(tree, parent, token->data);
+            return append_space_text(tree, parent, token->data,
+                tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET);
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "noframes")) {
             status = lxa_budget_check(tree->nodes->budget,
