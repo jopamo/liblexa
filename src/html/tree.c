@@ -6487,6 +6487,7 @@ reprocess_body_start:
                 || formatting_marker_tag(token->name)))
                 tree->frameset_ok = false;
             if (!formatting && !ruby_annotation(token->name)
+                && !named(token->name, "button")
                 && (!closes_paragraph || heading(token->name))) {
                 status = reserve_open_elements(tree, heading(token->name) ? 0 : 1);
                 if (status != LXA_OK) return status;
@@ -6524,6 +6525,7 @@ reprocess_body_start:
             }
             if (named(token->name, "button")) {
                 status = close_open_button(tree);
+                if (status == LXA_OK) status = reserve_open_elements(tree, 1);
                 if (status != LXA_OK) return status;
             }
             if (formatting) {
