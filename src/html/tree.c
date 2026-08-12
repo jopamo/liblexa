@@ -6220,7 +6220,7 @@ reprocess_body_start:
              * even though its special body insertion rules remain deferred. */
             if (named(token->name, "marquee")) container = true;
             if (container && named(top, "colgroup")) {
-                status = reserve_open_elements(tree, 1);
+                status = reserve_open_elements(tree, 0);
                 if (status == LXA_OK)
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
