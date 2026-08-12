@@ -2574,7 +2574,7 @@ open_table_part(lxa_html_tree_t *tree,
         size_t needed = named(token->name, "td")
                         || named(token->name, "th") ? 3
                         : named(token->name, "tr") ? 2 : 1;
-        status = reserve_open_elements(tree, needed);
+        status = reserve_open_elements(tree, needed - 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
                                        needed, &tree->nodes->limit_reason);
