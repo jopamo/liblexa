@@ -909,12 +909,27 @@ formatting_start(const lxa_html_tree_t *tree)
            ? 0 : tree->formatting_marker + 1;
 }
 
-static void
+static lxa_status_t
 remove_formatting(lxa_html_tree_t *tree, size_t index)
 {
+    lxa_status_t status;
+    if (index >= lxa_vector_length(&tree->formatting)
+        || (tree->formatting_marker != SIZE_MAX
+            && index <= tree->formatting_marker)
+        || tree->nodes->budget->used[LXA_BUDGET_ACTIVE_FORMATTING] == 0) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     /* Entries removed here follow the last marker, so marker indices stay put. */
-    lxa_vector_erase(&tree->formatting, index, 1);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1);
+    status = lxa_vector_erase(&tree->formatting, index, 1);
+    if (status == LXA_OK)
+        status = lxa_budget_release(tree->nodes->budget,
+                                   LXA_BUDGET_ACTIVE_FORMATTING, 1);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return LXA_OK;
 }
 
 static lxa_status_t
@@ -981,7 +996,12 @@ append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
         .element = ref, .previous_marker = tree->formatting_marker
     };
     size_t index = lxa_vector_length(&tree->formatting);
-    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+    lxa_status_t status;
+    if (entry.previous_marker != SIZE_MAX && entry.previous_marker >= index) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    status = lxa_budget_charge(tree->nodes->budget,
         LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
     if (status == LXA_OK) {
         status = lxa_vector_push(&tree->formatting, &entry);
@@ -1687,8 +1707,7 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
                                      formatting, &stack_index);
         if (status != LXA_OK) return status;
         if (stack_index == lxa_vector_length(elements)) {
-            remove_formatting(tree, formatting_index);
-            return LXA_OK;
+            return remove_formatting(tree, formatting_index);
         }
         status = find_scoped_reference(tree, elements, boundary,
                                          formatting, &scoped_index);
@@ -1712,8 +1731,7 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
         if (furthest_index == lxa_vector_length(elements)) {
             status = formatting_pop_elements(tree, stack_index);
             if (status != LXA_OK) return status;
-            remove_formatting(tree, formatting_index);
-            return LXA_OK;
+            return remove_formatting(tree, formatting_index);
         }
         if (stack_index == boundary && tree->mode != LXA_TREE_TEMPLATE_TEXT)
             return LXA_ERROR_INTERNAL;
@@ -1732,7 +1750,8 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
             status = find_formatting_reference(tree, ref, &entry);
             if (status != LXA_OK) return status;
             if (inner > 3 && entry != lxa_vector_length(&tree->formatting)) {
-                remove_formatting(tree, entry);
+                status = remove_formatting(tree, entry);
+                if (status != LXA_OK) return status;
                 if (entry < bookmark) --bookmark;
                 entry = lxa_vector_length(&tree->formatting);
             }
@@ -1787,7 +1806,8 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
         if (formatting_index == lxa_vector_length(&tree->formatting))
             return LXA_ERROR_INTERNAL;
         if (formatting_index < bookmark) --bookmark;
-        remove_formatting(tree, formatting_index);
+        status = remove_formatting(tree, formatting_index);
+        if (status != LXA_OK) return status;
         {
             lxa_html_formatting_entry_t entry = {.element = clone};
             status = lxa_budget_charge(tree->nodes->budget,
@@ -1828,8 +1848,10 @@ prepare_formatting_start(lxa_html_tree_t *tree,
             if (status == LXA_OK)
                 status = find_formatting_reference(tree, old, &index);
             if (status != LXA_OK) return status;
-            if (index != lxa_vector_length(&tree->formatting))
-                remove_formatting(tree, index);
+            if (index != lxa_vector_length(&tree->formatting)) {
+                status = remove_formatting(tree, index);
+                if (status != LXA_OK) return status;
+            }
             status = find_open_reference(tree, elements, boundary,
                                           old, &index);
             if (status != LXA_OK) return status;
@@ -2364,8 +2386,8 @@ foster_element(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
     if (status == LXA_OK && formatting) {
-        if (drop != SIZE_MAX) remove_formatting(tree, drop);
-        status = append_formatting(tree, child, false);
+        if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
+        if (status == LXA_OK) status = append_formatting(tree, child, false);
     }
     if (status == LXA_OK && marker)
         status = append_formatting(tree, child, true);
@@ -3167,8 +3189,8 @@ template_foster_element(lxa_html_tree_t *tree,
                                 LXA_BUDGET_OPEN_ELEMENTS, 1);
     }
     if (status == LXA_OK && formatting) {
-        if (drop != SIZE_MAX) remove_formatting(tree, drop);
-        status = append_formatting(tree, child, false);
+        if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
+        if (status == LXA_OK) status = append_formatting(tree, child, false);
     }
     if (status == LXA_OK && marker)
         status = append_formatting(tree, child, true);
@@ -5687,8 +5709,9 @@ reprocess_template_token:
                                         LXA_BUDGET_OPEN_ELEMENTS, 1);
             }
             if (status == LXA_OK && formatting) {
-                if (drop != SIZE_MAX) remove_formatting(tree, drop);
-                status = append_formatting(tree, child, false);
+                if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
+                if (status == LXA_OK)
+                    status = append_formatting(tree, child, false);
             }
             if (status == LXA_OK && marker)
                 status = append_formatting(tree, child, true);
@@ -6568,8 +6591,9 @@ reprocess_body_start:
                 status = open_container_at(tree, token, LXA_DOM_NS_HTML,
                                             parent, before);
             if (status == LXA_OK && formatting) {
-                if (drop != SIZE_MAX) remove_formatting(tree, drop);
-                status = append_formatting(tree, current_element(tree), false);
+                if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
+                if (status == LXA_OK)
+                    status = append_formatting(tree, current_element(tree), false);
             }
             if (status == LXA_OK
                 && (named(token->name, "pre")
