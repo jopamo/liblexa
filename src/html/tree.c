@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <string.h>
 #include "dom/node_store_internal.h"
 #include "html/foreign_names.h"
@@ -651,18 +652,36 @@ push_element(lxa_html_tree_t *tree, lxa_dom_ref_t element)
     return push_open_reference(tree, &tree->open_elements, element);
 }
 
-static void
+static lxa_status_t
 clear_formatting_to_marker(lxa_html_tree_t *tree)
 {
     const lxa_html_formatting_entry_t *entries =
         (const lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
     size_t marker = tree->formatting_marker;
+    size_t length = lxa_vector_length(&tree->formatting), previous;
     size_t start = marker == SIZE_MAX ? 0 : marker;
-    size_t count = lxa_vector_length(&tree->formatting) - start;
-    tree->formatting_marker = marker == SIZE_MAX
-                             ? SIZE_MAX : entries[marker].previous_marker;
-    lxa_vector_erase(&tree->formatting, start, count);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING, count);
+    lxa_status_t status;
+    if (marker != SIZE_MAX && marker >= length) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    previous = marker == SIZE_MAX ? SIZE_MAX : entries[marker].previous_marker;
+    size_t count = length - start;
+    if ((previous != SIZE_MAX && previous >= marker)
+        || count > tree->nodes->budget->used[LXA_BUDGET_ACTIVE_FORMATTING]) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    status = lxa_vector_erase(&tree->formatting, start, count);
+    if (status == LXA_OK)
+        status = lxa_budget_release(tree->nodes->budget,
+                                   LXA_BUDGET_ACTIVE_FORMATTING, count);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    tree->formatting_marker = previous;
+    return LXA_OK;
 }
 
 static lxa_status_t
@@ -732,7 +751,8 @@ pop_table_elements(lxa_html_tree_t *tree, size_t keep)
         if (status != LXA_OK) return status;
     }
     while (closures != 0) {
-        clear_formatting_to_marker(tree);
+        lxa_status_t status = clear_formatting_to_marker(tree);
+        if (status != LXA_OK) return status;
         --closures;
     }
     return LXA_OK;
@@ -1377,9 +1397,8 @@ end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
-    if (formatting_marker_tag(target))
-        clear_formatting_to_marker(tree);
-    return LXA_OK;
+    return formatting_marker_tag(target) ? clear_formatting_to_marker(tree)
+                                        : LXA_OK;
 }
 
 static lxa_status_t
@@ -3008,7 +3027,8 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
     }
     status = template_pop_elements(tree, boundary);
     if (status != LXA_OK) return status;
-    clear_formatting_to_marker(tree);
+    status = clear_formatting_to_marker(tree);
+    if (status != LXA_OK) return status;
     lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
     if (length != 0) {
         tree->template_fragment = frame.fragment;
@@ -3440,7 +3460,8 @@ template_pop_table_elements(lxa_html_tree_t *tree, size_t keep)
     status = template_pop_elements(tree, keep);
     if (status != LXA_OK) return status;
     while (markers != 0) {
-        clear_formatting_to_marker(tree);
+        status = clear_formatting_to_marker(tree);
+        if (status != LXA_OK) return status;
         --markers;
     }
     return LXA_OK;
@@ -4403,8 +4424,10 @@ template_end_formatting_boundary(lxa_html_tree_t *tree,
     }
     status = template_pop_elements(tree, index);
     if (status != LXA_OK) return status;
-    if (reprocess && formatting_marker_tag(token->name))
-        clear_formatting_to_marker(tree);
+    if (reprocess && formatting_marker_tag(token->name)) {
+        status = clear_formatting_to_marker(tree);
+        if (status != LXA_OK) return status;
+    }
     *handled = true;
     return LXA_OK;
 }
