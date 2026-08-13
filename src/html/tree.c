@@ -1866,9 +1866,8 @@ prepare_formatting_start(lxa_html_tree_t *tree,
                                           old, &index);
             if (status != LXA_OK) return status;
             if (index != lxa_vector_length(elements)) {
-                lxa_vector_erase(elements, index, 1);
-                lxa_budget_release(tree->nodes->budget,
-                                    LXA_BUDGET_OPEN_ELEMENTS, 1);
+                status = remove_open_element(tree, elements, index);
+                if (status != LXA_OK) return status;
             }
         }
     }
