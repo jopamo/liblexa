@@ -690,14 +690,24 @@ remove_open_element(lxa_html_tree_t *tree, lxa_vector_t *elements, size_t index)
     lxa_dom_record_t record;
     lxa_dom_ref_t ref;
     lxa_status_t status;
-    if (index >= lxa_vector_length(elements)) return LXA_ERROR_INTERNAL;
+    if (index >= lxa_vector_length(elements)
+        || tree->nodes->budget->used[LXA_BUDGET_OPEN_ELEMENTS] == 0) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     ref = ((const lxa_dom_ref_t *) elements->bytes.data)[index];
     status = lxa_dom_nodes_read(tree->nodes, ref, &record);
     if (status == LXA_OK && (record.flags & LXA_DOM_OPTION_SELECTED) != 0)
         status = lxa_dom_nodes_maybe_clone_selected_option(tree->nodes, ref);
     if (status != LXA_OK) return status;
-    lxa_vector_erase(elements, index, 1);
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    status = lxa_vector_erase(elements, index, 1);
+    if (status == LXA_OK)
+        status = lxa_budget_release(tree->nodes->budget,
+                                   LXA_BUDGET_OPEN_ELEMENTS, 1);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     return LXA_OK;
 }
 
