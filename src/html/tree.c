@@ -6883,6 +6883,11 @@ lxa_html_tree_on_token(void *context,
     lxa_html_tree_t *tree = context;
     if (tree == NULL || tree->nodes == NULL) return LXA_ERROR_ARGUMENT;
     if (tree->failure != LXA_OK) return tree->failure;
+    if ((unsigned) tree->mode > LXA_TREE_AFTER_AFTER_FRAMESET) {
+        assert(false);
+        tree->failure = LXA_ERROR_INTERNAL;
+        return tree->failure;
+    }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
     tree->failure = consume(tree, tokenizer, token);
     if (tree->failure == LXA_OK && tokenizer != NULL
