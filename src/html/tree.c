@@ -3052,6 +3052,16 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
                   tree->template_stack.bytes.data)[length - 1];
         boundary = frame.element_count;
     }
+    if ((length != 0
+         && (unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY)
+        || (length == 0
+            && ((unsigned) tree->template_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
+                || tree->template_return_mode == LXA_TREE_TEXT
+                || tree->template_return_mode == LXA_TREE_TEMPLATE_TEXT
+                || tree->template_return_mode == LXA_TREE_DONE))) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     /* Child pops must leave one credit for the active template itself. */
     if (boundary > elements
         || elements - boundary
