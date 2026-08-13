@@ -6761,9 +6761,7 @@ reprocess_body_start:
             if (status != LXA_OK) return status;
         }
         /* Ordinary descendants retain their open references and DOM parents. */
-        lxa_vector_erase(&tree->open_elements, index, 1);
-        lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
-        return LXA_OK;
+        return remove_open_element(tree, &tree->open_elements, index);
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
         && tree->mode == LXA_TREE_IN_BODY) {
