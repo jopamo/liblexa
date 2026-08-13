@@ -1830,11 +1830,27 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
                 return status;
             }
         }
-        lxa_vector_erase(elements, stack_index, 1);
+        if (stack_index >= lxa_vector_length(elements)
+            || furthest_index <= stack_index
+            || furthest_index >= lxa_vector_length(elements)
+            || tree->nodes->budget->used[LXA_BUDGET_OPEN_ELEMENTS] == 0) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
+        status = lxa_vector_erase(elements, stack_index, 1);
+        if (status != LXA_OK) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         /* Removing formatting shifts furthest up by one. Insert below it. */
         status = lxa_vector_insert(elements, furthest_index, &clone);
         if (status != LXA_OK) {
-            lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+            lxa_status_t released = lxa_budget_release(tree->nodes->budget,
+                LXA_BUDGET_OPEN_ELEMENTS, 1);
+            if (released != LXA_OK) {
+                assert(false);
+                return LXA_ERROR_INTERNAL;
+            }
             return status;
         }
     }
