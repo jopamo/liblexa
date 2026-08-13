@@ -3011,6 +3011,7 @@ static lxa_status_t
 close_template(lxa_html_tree_t *tree, bool explicit_end)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
+    size_t elements = lxa_vector_length(&tree->template_elements);
     lxa_html_template_frame_t frame = {0};
     size_t boundary = 0;
     lxa_status_t status;
@@ -3018,6 +3019,21 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         frame = ((const lxa_html_template_frame_t *)
                   tree->template_stack.bytes.data)[length - 1];
         boundary = frame.element_count;
+    }
+    /* Child pops must leave one credit for the active template itself. */
+    if (boundary > elements
+        || elements - boundary
+           >= tree->nodes->budget->used[LXA_BUDGET_OPEN_ELEMENTS]) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    if (explicit_end) {
+        size_t work;
+        status = lxa_size_add(elements - boundary, 1, &work);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(tree->nodes->budget,
+                LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
+        if (status != LXA_OK) return status;
     }
     if (explicit_end && tree->template_patch.target.handle != LXA_HANDLE_NONE) {
         size_t keep = lxa_vector_length(&tree->template_elements);
@@ -3061,12 +3077,17 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
     if (status != LXA_OK) return status;
     status = clear_formatting_to_marker(tree);
     if (status != LXA_OK) return status;
-    lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    status = lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
+    if (status == LXA_OK && length != 0)
+        status = lxa_vector_erase(&tree->template_stack, length - 1, 1);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     if (length != 0) {
         tree->template_fragment = frame.fragment;
         tree->template_patch = frame.patch;
         tree->template_insertion_mode = frame.insertion_mode;
-        lxa_vector_erase(&tree->template_stack, length - 1, 1);
     }
     else {
         tree->template_fragment = (lxa_dom_ref_t){0};
@@ -4816,17 +4837,7 @@ reprocess_template_token:
         }
         if (token->kind == LXA_HTML_END_TAG
             && named(token->name, "template")) {
-            size_t work;
-            size_t length = lxa_vector_length(&tree->template_elements);
-            status = lxa_size_add(
-                length - template_boundary(tree), 1, &work);
-            if (status == LXA_OK)
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = close_template(tree, true);
-            if (status != LXA_OK) return status;
-            return LXA_OK;
+            return close_template(tree, true);
         }
         {
             bool handled;
