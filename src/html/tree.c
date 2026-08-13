@@ -2781,6 +2781,23 @@ enter_text_mode(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+leave_text_mode(lxa_html_tree_t *tree)
+{
+    if ((unsigned) tree->text_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
+        || tree->text_return_mode == LXA_TREE_TEXT
+        || tree->text_return_mode == LXA_TREE_DONE
+        || tree->text_element.handle == LXA_HANDLE_NONE
+        || ((tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT)
+            != (tree->template_fragment.handle != LXA_HANDLE_NONE))) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    tree->mode = tree->text_return_mode;
+    tree->text_element = (lxa_dom_ref_t){0};
+    return LXA_OK;
+}
+
+static lxa_status_t
 begin_text_element_at(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent, lxa_dom_ref_t before,
     const lxa_html_token_t *token, lxa_html_text_mode_t text_mode)
@@ -4611,8 +4628,8 @@ consume(lxa_html_tree_t *tree,
         }
     }
     if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
-        tree->mode = tree->text_return_mode;
-        tree->text_element = (lxa_dom_ref_t){0};
+        status = leave_text_mode(tree);
+        if (status != LXA_OK) return status;
     }
     if (token->kind != LXA_HTML_TEXT) {
         status = tree->mode == LXA_TREE_TEMPLATE_TEXT
@@ -5863,9 +5880,7 @@ reprocess_template_token:
             || name.length != token->name.length
             || memcmp(name.data, token->name.data, name.length) != 0)
             return LXA_ERROR_INTERNAL;
-        tree->mode = tree->text_return_mode;
-        tree->text_element = (lxa_dom_ref_t){0};
-        return LXA_OK;
+        return leave_text_mode(tree);
     }
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         if (token->kind == LXA_HTML_END_TAG
