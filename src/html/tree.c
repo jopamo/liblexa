@@ -3052,13 +3052,8 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
                   tree->template_stack.bytes.data)[length - 1];
         boundary = frame.element_count;
     }
-    if ((length != 0
-         && (unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY)
-        || (length == 0
-            && ((unsigned) tree->template_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
-                || tree->template_return_mode == LXA_TREE_TEXT
-                || tree->template_return_mode == LXA_TREE_TEMPLATE_TEXT
-                || tree->template_return_mode == LXA_TREE_DONE))) {
+    if (length != 0
+        && (unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
@@ -6915,7 +6910,11 @@ lxa_html_tree_on_token(void *context,
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
     if (tree->template_fragment.handle != LXA_HANDLE_NONE
-        && (unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY) {
+        && ((unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY
+            || (unsigned) tree->template_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
+            || tree->template_return_mode == LXA_TREE_TEXT
+            || tree->template_return_mode == LXA_TREE_TEMPLATE_TEXT
+            || tree->template_return_mode == LXA_TREE_DONE)) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;
