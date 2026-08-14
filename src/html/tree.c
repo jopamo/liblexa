@@ -6914,6 +6914,12 @@ lxa_html_tree_on_token(void *context,
         return tree->failure;
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
+    if (tree->template_fragment.handle != LXA_HANDLE_NONE
+        && (unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY) {
+        assert(false);
+        tree->failure = LXA_ERROR_INTERNAL;
+        return tree->failure;
+    }
     tree->failure = consume(tree, tokenizer, token);
     if (tree->failure == LXA_OK && tokenizer != NULL
         && token != NULL && token->kind != LXA_HTML_EOF) {
