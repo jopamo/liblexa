@@ -6904,10 +6904,15 @@ lxa_html_tree_on_token(void *context,
               && tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT))
          != (tree->template_fragment.handle != LXA_HANDLE_NONE))
         || (tree->mode == LXA_TREE_TEXT
-            && ((unsigned) tree->text_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
-                || tree->text_return_mode == LXA_TREE_TEXT
-                || tree->text_return_mode == LXA_TREE_DONE
-                || tree->text_element.handle == LXA_HANDLE_NONE))) {
+            && (tree->text_element.handle == LXA_HANDLE_NONE
+                || (tree->text_return_mode != LXA_TREE_IN_HEAD
+                    && tree->text_return_mode != LXA_TREE_HEAD_NOSCRIPT
+                    && tree->text_return_mode != LXA_TREE_TEMPLATE_TEXT
+                    && tree->text_return_mode != LXA_TREE_AFTER_HEAD
+                    && tree->text_return_mode != LXA_TREE_IN_BODY
+                    && tree->text_return_mode != LXA_TREE_IN_FRAMESET
+                    && tree->text_return_mode != LXA_TREE_AFTER_FRAMESET
+                    && tree->text_return_mode != LXA_TREE_AFTER_AFTER_FRAMESET)))) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;
