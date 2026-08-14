@@ -2780,21 +2780,11 @@ enter_text_mode(lxa_html_tree_t *tree,
     return LXA_OK;
 }
 
-static lxa_status_t
+static void
 leave_text_mode(lxa_html_tree_t *tree)
 {
-    if ((unsigned) tree->text_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
-        || tree->text_return_mode == LXA_TREE_TEXT
-        || tree->text_return_mode == LXA_TREE_DONE
-        || tree->text_element.handle == LXA_HANDLE_NONE
-        || ((tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT)
-            != (tree->template_fragment.handle != LXA_HANDLE_NONE))) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
-    }
     tree->mode = tree->text_return_mode;
     tree->text_element = (lxa_dom_ref_t){0};
-    return LXA_OK;
 }
 
 static lxa_status_t
@@ -4633,8 +4623,7 @@ consume(lxa_html_tree_t *tree,
         }
     }
     if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
-        status = leave_text_mode(tree);
-        if (status != LXA_OK) return status;
+        leave_text_mode(tree);
     }
     if (token->kind != LXA_HTML_TEXT) {
         status = tree->mode == LXA_TREE_TEMPLATE_TEXT
@@ -5885,7 +5874,8 @@ reprocess_template_token:
             || name.length != token->name.length
             || memcmp(name.data, token->name.data, name.length) != 0)
             return LXA_ERROR_INTERNAL;
-        return leave_text_mode(tree);
+        leave_text_mode(tree);
+        return LXA_OK;
     }
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         if (token->kind == LXA_HTML_END_TAG
@@ -6909,6 +6899,19 @@ lxa_html_tree_on_token(void *context,
         return tree->failure;
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
+    if (((tree->mode == LXA_TREE_TEMPLATE_TEXT
+          || (tree->mode == LXA_TREE_TEXT
+              && tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT))
+         != (tree->template_fragment.handle != LXA_HANDLE_NONE))
+        || (tree->mode == LXA_TREE_TEXT
+            && ((unsigned) tree->text_return_mode > LXA_TREE_AFTER_AFTER_FRAMESET
+                || tree->text_return_mode == LXA_TREE_TEXT
+                || tree->text_return_mode == LXA_TREE_DONE
+                || tree->text_element.handle == LXA_HANDLE_NONE))) {
+        assert(false);
+        tree->failure = LXA_ERROR_INTERNAL;
+        return tree->failure;
+    }
     if (tree->template_fragment.handle != LXA_HANDLE_NONE
         && ((unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY
             || (tree->template_return_mode != LXA_TREE_IN_HEAD
