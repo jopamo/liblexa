@@ -2416,6 +2416,9 @@ foster_element(lxa_html_tree_t *tree,
     }
     if (status == LXA_OK && marker)
         status = append_formatting(tree, child, true);
+    if (status == LXA_OK
+        && (named(token->name, "pre") || named(token->name, "listing")))
+        tree->skip_pre_newline = true;
     return status;
 }
 
