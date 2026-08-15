@@ -3038,14 +3038,17 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
     size_t boundary = 0;
     lxa_status_t status;
     if (length != 0) {
+        lxa_dom_kind_t kind;
         frame = ((const lxa_html_template_frame_t *)
                   tree->template_stack.bytes.data)[length - 1];
+        if ((unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY
+            || frame.fragment.handle == tree->template_fragment.handle
+            || lxa_dom_nodes_kind(tree->nodes, frame.fragment, &kind) != LXA_OK
+            || kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         boundary = frame.element_count;
-    }
-    if (length != 0
-        && (unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
     }
     /* Child pops must leave one credit for the active template itself. */
     if (boundary > elements
