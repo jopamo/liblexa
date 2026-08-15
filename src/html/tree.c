@@ -3035,12 +3035,14 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
     size_t length = lxa_vector_length(&tree->template_stack);
     size_t elements = lxa_vector_length(&tree->template_elements);
     lxa_html_template_frame_t frame = {0};
-    size_t boundary = 0;
+    size_t boundary = 0, previous_boundary = 0;
     lxa_status_t status;
     if (length != 0) {
         lxa_dom_kind_t kind;
-        frame = ((const lxa_html_template_frame_t *)
-                  tree->template_stack.bytes.data)[length - 1];
+        const lxa_html_template_frame_t *frames =
+            (const lxa_html_template_frame_t *) tree->template_stack.bytes.data;
+        frame = frames[length - 1];
+        if (length > 1) previous_boundary = frames[length - 2].element_count;
         if ((unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY
             || frame.fragment.handle == tree->template_fragment.handle
             || lxa_dom_nodes_kind(tree->nodes, frame.fragment, &kind) != LXA_OK
@@ -3053,7 +3055,7 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         boundary = frame.element_count;
     }
     /* Child pops must leave one credit for the active template itself. */
-    if (boundary > elements
+    if (boundary < previous_boundary || boundary > elements
         || elements - boundary
            >= tree->nodes->budget->used[LXA_BUDGET_OPEN_ELEMENTS]) {
         assert(false);
