@@ -6333,9 +6333,6 @@ reprocess_body_start:
             }
             status = supported_container(tree, token->name, &container);
             if (status != LXA_OK) return status;
-            /* The table-mode "anything else" rule foster-parents marquee
-             * even though its special body insertion rules remain deferred. */
-            if (named(token->name, "marquee")) container = true;
             if (container && named(top, "colgroup")) {
                 status = reserve_open_elements(tree, 0);
                 if (status == LXA_OK)
