@@ -22,5 +22,9 @@ lxa_status_t lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes,
  * retains earlier successful removals. Markers are not removed here. */
 lxa_status_t lxa_dom_nodes_prepare_content_patch(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t scope, lxa_span_t name, lxa_dom_content_patch_t *out);
+/* Check tuple shape and store-owned node kinds without walking or mutating
+ * nodes. Detached markers remain valid. Invalid tuples return ARGUMENT. */
+lxa_status_t lxa_dom_nodes_validate_content_patch(const lxa_dom_nodes_t *nodes,
+    const lxa_dom_content_patch_t *patch);
 
 #endif

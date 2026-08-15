@@ -3777,6 +3777,28 @@ done:
     return status;
 }
 
+lxa_status_t
+lxa_dom_nodes_validate_content_patch(const lxa_dom_nodes_t *nodes,
+    const lxa_dom_content_patch_t *patch)
+{
+    lxa_dom_kind_t kind;
+    if (nodes == NULL || patch == NULL) return LXA_ERROR_ARGUMENT;
+    if (patch->target.handle == LXA_HANDLE_NONE)
+        return patch->start.handle == LXA_HANDLE_NONE
+               && patch->end.handle == LXA_HANDLE_NONE
+               ? LXA_OK : LXA_ERROR_ARGUMENT;
+    if (lxa_dom_nodes_kind(nodes, patch->target, &kind) != LXA_OK
+        || (kind != LXA_DOM_KIND_ELEMENT
+            && kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
+        || lxa_dom_nodes_kind(nodes, patch->start, &kind) != LXA_OK
+        || kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION)
+        return LXA_ERROR_ARGUMENT;
+    if (patch->end.handle == LXA_HANDLE_NONE) return LXA_OK;
+    return lxa_dom_nodes_kind(nodes, patch->end, &kind) == LXA_OK
+           && kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
+           ? LXA_OK : LXA_ERROR_ARGUMENT;
+}
+
 static lxa_status_t
 option_reparent_effect(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ref,
                        const select_view_t *move,

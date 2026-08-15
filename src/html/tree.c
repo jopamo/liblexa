@@ -3044,7 +3044,9 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         if ((unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY
             || frame.fragment.handle == tree->template_fragment.handle
             || lxa_dom_nodes_kind(tree->nodes, frame.fragment, &kind) != LXA_OK
-            || kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT) {
+            || kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
+            || lxa_dom_nodes_validate_content_patch(tree->nodes, &frame.patch)
+               != LXA_OK) {
             assert(false);
             return LXA_ERROR_INTERNAL;
         }
