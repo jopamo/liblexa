@@ -2407,6 +2407,8 @@ foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
         status = insert_constructed(tree, parent, child, table);
+    if (status == LXA_OK && named(token->name, "option"))
+        status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
         status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
@@ -3262,6 +3264,9 @@ template_foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = insert_constructed(tree, parent,
             child, before);
+    if (status == LXA_OK && ns == LXA_DOM_NS_HTML
+        && named(token->name, "option"))
+        status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && keep_open)
         status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
