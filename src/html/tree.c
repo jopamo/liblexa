@@ -3029,20 +3029,36 @@ template_pop_elements(lxa_html_tree_t *tree, size_t keep)
     return pop_elements(tree, &tree->template_elements, keep);
 }
 
+static bool
+template_boundary_valid(const lxa_html_tree_t *tree)
+{
+    size_t length = lxa_vector_length(&tree->template_stack);
+    const lxa_html_template_frame_t *frames =
+        (const lxa_html_template_frame_t *) tree->template_stack.bytes.data;
+    if (length == 0) return true;
+    return frames[length - 1].element_count
+               <= lxa_vector_length(&tree->template_elements)
+        && (length == 1 || frames[length - 1].element_count
+                          >= frames[length - 2].element_count);
+}
+
 static lxa_status_t
 close_template(lxa_html_tree_t *tree, bool explicit_end)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
     size_t elements = lxa_vector_length(&tree->template_elements);
     lxa_html_template_frame_t frame = {0};
-    size_t boundary = 0, previous_boundary = 0;
+    size_t boundary = 0;
     lxa_status_t status;
+    if (!template_boundary_valid(tree)) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     if (length != 0) {
         lxa_dom_kind_t kind;
         const lxa_html_template_frame_t *frames =
             (const lxa_html_template_frame_t *) tree->template_stack.bytes.data;
         frame = frames[length - 1];
-        if (length > 1) previous_boundary = frames[length - 2].element_count;
         if ((unsigned) frame.insertion_mode > LXA_TEMPLATE_BODY
             || frame.fragment.handle == tree->template_fragment.handle
             || lxa_dom_nodes_kind(tree->nodes, frame.fragment, &kind) != LXA_OK
@@ -3055,8 +3071,7 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         boundary = frame.element_count;
     }
     /* Child pops must leave one credit for the active template itself. */
-    if (boundary < previous_boundary || boundary > elements
-        || elements - boundary
+    if (elements - boundary
            >= tree->nodes->budget->used[LXA_BUDGET_OPEN_ELEMENTS]) {
         assert(false);
         return LXA_ERROR_INTERNAL;
@@ -6926,6 +6941,7 @@ lxa_html_tree_on_token(void *context,
     }
     if (tree->template_fragment.handle != LXA_HANDLE_NONE
         && ((unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY
+            || !template_boundary_valid(tree)
             || (tree->template_return_mode != LXA_TREE_IN_HEAD
                 && tree->template_return_mode != LXA_TREE_AFTER_HEAD
                 && tree->template_return_mode != LXA_TREE_IN_BODY))) {
