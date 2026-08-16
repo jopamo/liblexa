@@ -4265,6 +4265,30 @@ child_copy_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ancestor,
     return LXA_OK;
 }
 
+lxa_status_t
+lxa_dom_nodes_maybe_connect_selectedcontent(lxa_dom_nodes_t *nodes,
+                                            lxa_dom_ref_t element)
+{
+    lxa_dom_record_t record;
+    select_tag_t tag;
+    size_t depth;
+    bool connected;
+    lxa_status_t status;
+    if (nodes == NULL) return LXA_ERROR_ARGUMENT;
+    nodes->limit_reason = LXA_BUDGET_COUNT;
+    status = select_tag(nodes, element, &tag);
+    if (status != LXA_OK || tag != SELECT_SELECTEDCONTENT)
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    status = lxa_dom_nodes_read(nodes, element, &record);
+    if (status == LXA_OK
+        && (record.flags & ~LXA_DOM_SELECTEDCONTENT_DISABLED) != 0)
+        return LXA_ERROR_ARGUMENT;
+    if (status == LXA_OK)
+        status = child_copy_context(nodes, element, &depth, &connected);
+    return status == LXA_OK && connected
+        ? lxa_dom_nodes_connect_selectedcontent(nodes, element) : status;
+}
+
 static lxa_status_t
 prepare_child_replacement(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t target, lxa_dom_ref_t source, child_copy_t copy,

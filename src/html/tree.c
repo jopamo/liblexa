@@ -2099,6 +2099,15 @@ apply_attributes(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+connect_selectedcontent(lxa_html_tree_t *tree, lxa_dom_ref_t element)
+{
+    if (tree->mode != LXA_TREE_TEMPLATE_TEXT)
+        return lxa_dom_nodes_connect_selectedcontent(tree->nodes, element);
+    if (tree->template_patch.target.handle == LXA_HANDLE_NONE) return LXA_OK;
+    return lxa_dom_nodes_maybe_connect_selectedcontent(tree->nodes, element);
+}
+
+static lxa_status_t
 open_container_at(lxa_html_tree_t *tree,
                   const lxa_html_token_t *token, lxa_dom_namespace_t ns,
                   lxa_dom_ref_t parent, lxa_dom_ref_t before)
@@ -2120,9 +2129,8 @@ open_container_at(lxa_html_tree_t *tree,
             child, before);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
-    if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "selectedcontent")
-        && tree->mode != LXA_TREE_TEMPLATE_TEXT)
-        status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
+    if (status == LXA_OK && ns == LXA_DOM_NS_HTML && named(name, "selectedcontent"))
+        status = connect_selectedcontent(tree, child);
     if (status == LXA_OK) status = push_element(tree, child);
     if (status == LXA_OK && marker)
         status = append_formatting(tree, child, true);
@@ -2410,7 +2418,7 @@ foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
-        status = lxa_dom_nodes_connect_selectedcontent(tree->nodes, child);
+        status = connect_selectedcontent(tree, child);
     if (status == LXA_OK && !is_void) status = push_element(tree, child);
     if (status == LXA_OK && formatting) {
         if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
@@ -3267,6 +3275,9 @@ template_foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML
         && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
+    if (status == LXA_OK && ns == LXA_DOM_NS_HTML
+        && named(token->name, "selectedcontent"))
+        status = connect_selectedcontent(tree, child);
     if (status == LXA_OK && keep_open)
         status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
@@ -5776,6 +5787,8 @@ reprocess_template_token:
                     child, before);
             if (status == LXA_OK && named(token->name, "option"))
                 status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
+            if (status == LXA_OK && named(token->name, "selectedcontent"))
+                status = connect_selectedcontent(tree, child);
             if (status != LXA_OK) return status;
             status = lxa_budget_charge(tree->nodes->budget,
                 LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);

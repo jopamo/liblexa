@@ -28,6 +28,10 @@ enum { LXA_DOM_SELECTEDCONTENT_DISABLED = 1u << 2 };
  * Inert template contents do not run these steps. */
 lxa_status_t lxa_dom_nodes_connect_selectedcontent(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element);
+/* Run connection steps only when the element reaches a document through
+ * ordinary parents, not a template-content owner. */
+lxa_status_t lxa_dom_nodes_maybe_connect_selectedcontent(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element);
 /* Parser-pop effect. Non-HTML options and unselected/unowned options do nothing.
  * Clone into the first enabled selectedcontent, including in inert templates.
  * Run old-child removing effects, including bounded reentrant updates.
