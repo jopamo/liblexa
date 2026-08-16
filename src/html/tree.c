@@ -4646,6 +4646,8 @@ consume(lxa_html_tree_t *tree,
     if (token == NULL
         || (unsigned int) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
         || (token->name.data == NULL && token->name.length != 0)
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && token->name.length == 0)
         || (token->data.data == NULL && token->data.length != 0)
         || (token->attribute_count != 0 && token->attributes == NULL)
         || (token->kind != LXA_HTML_START_TAG

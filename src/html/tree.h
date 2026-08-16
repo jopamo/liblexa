@@ -69,6 +69,7 @@ lxa_status_t lxa_html_tree_init(
     lxa_html_tree_t *tree, lxa_dom_nodes_t *nodes);
 void lxa_html_tree_destroy(
     lxa_html_tree_t *tree);
+/* Active token consumption requires nonempty tag names. */
 lxa_status_t lxa_html_tree_on_token(void *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token);
 
