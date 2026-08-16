@@ -6945,6 +6945,7 @@ lxa_html_tree_on_token(void *context,
           || (tree->mode == LXA_TREE_TEXT
               && tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT))
          != (tree->template_fragment.handle != LXA_HANDLE_NONE))
+        || (unsigned) tree->document_mode > LXA_HTML_QUIRKS
         || (tree->mode == LXA_TREE_TEXT
             && (tree->text_element.handle == LXA_HANDLE_NONE
                 || (tree->text_return_mode != LXA_TREE_IN_HEAD
