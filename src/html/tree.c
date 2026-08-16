@@ -150,18 +150,18 @@ implied_end_tag(lxa_span_t name)
 }
 
 static lxa_status_t
-doctype_document_mode(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+doctype_document_mode(lxa_html_tree_t *tree, const lxa_dom_doctype_data_t *data,
                        lxa_html_document_mode_t *mode)
 {
     lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
         LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
     *mode = LXA_HTML_NO_QUIRKS;
-    if (token->force_quirks || !named(token->name, "html")) {
+    if (data->force_quirks || !named(data->name, "html")) {
         *mode = LXA_HTML_QUIRKS;
         return LXA_OK;
     }
-    if (!token->has_public_id && !token->has_system_id) return LXA_OK;
+    if (!data->has_public_id && !data->has_system_id) return LXA_OK;
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
         LIBLEXA_HTML_DOCTYPE_RULE_COUNT, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
@@ -171,28 +171,28 @@ doctype_document_mode(lxa_html_tree_t *tree, const lxa_html_token_t *token,
         bool exact = false;
         switch (rule->condition) {
         case LIBLEXA_DOCTYPE_SYSTEM_EXACT:
-            if (!token->has_system_id) continue;
-            value = token->system_id;
+            if (!data->has_system_id) continue;
+            value = data->system_id;
             exact = true;
             break;
         case LIBLEXA_DOCTYPE_PUBLIC_EXACT:
-            if (!token->has_public_id) continue;
-            value = token->public_id;
+            if (!data->has_public_id) continue;
+            value = data->public_id;
             exact = true;
             break;
         case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM:
-            if (token->has_system_id && token->system_id.length != 0) continue;
-            if (!token->has_public_id) continue;
-            value = token->public_id;
+            if (data->has_system_id && data->system_id.length != 0) continue;
+            if (!data->has_public_id) continue;
+            value = data->public_id;
             break;
         case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM:
-            if (!token->has_system_id || token->system_id.length == 0) continue;
-            if (!token->has_public_id) continue;
-            value = token->public_id;
+            if (!data->has_system_id || data->system_id.length == 0) continue;
+            if (!data->has_public_id) continue;
+            value = data->public_id;
             break;
         case LIBLEXA_DOCTYPE_PUBLIC_PREFIX:
-            if (!token->has_public_id) continue;
-            value = token->public_id;
+            if (!data->has_public_id) continue;
+            value = data->public_id;
             break;
         default:
             return LXA_ERROR_INTERNAL;
@@ -4654,6 +4654,16 @@ consume(lxa_html_tree_t *tree,
             && token->attribute_count != 0)) {
         return LXA_ERROR_ARGUMENT;
     }
+    if (token->kind == LXA_HTML_DOCTYPE) {
+        declaration = (lxa_dom_doctype_data_t){0};
+        declaration.name = token->name;
+        declaration.public_id = token->public_id;
+        declaration.system_id = token->system_id;
+        declaration.has_public_id = token->has_public_id;
+        declaration.has_system_id = token->has_system_id;
+        declaration.force_quirks = token->force_quirks;
+        if (!lxa_dom_doctype_shape_valid(&declaration)) return LXA_ERROR_ARGUMENT;
+    }
     if (tree->mode == LXA_TREE_INITIAL) {
         if (token->kind == LXA_HTML_COMMENT
             || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
@@ -6087,15 +6097,8 @@ reprocess_template_token:
     }
     if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
         lxa_html_document_mode_t document_mode;
-        status = doctype_document_mode(tree, token, &document_mode);
+        status = doctype_document_mode(tree, &declaration, &document_mode);
         if (status != LXA_OK) return status;
-        declaration = (lxa_dom_doctype_data_t){0};
-        declaration.name = token->name;
-        declaration.public_id = token->public_id;
-        declaration.system_id = token->system_id;
-        declaration.has_public_id = token->has_public_id;
-        declaration.has_system_id = token->has_system_id;
-        declaration.force_quirks = token->force_quirks;
         status = lxa_dom_nodes_append_doctype(tree->nodes, declaration, &child);
         if (status == LXA_OK)
             status = insert_constructed(tree, tree->document,

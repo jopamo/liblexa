@@ -1664,11 +1664,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
         return LXA_ERROR_ARGUMENT;
     }
     memset(out, 0, sizeof(*out));
-    if (nodes == NULL || (fields[0].data == NULL && fields[0].length != 0)
-        || (fields[1].data == NULL && fields[1].length != 0)
-        || (fields[2].data == NULL && fields[2].length != 0)
-        || (!data.has_public_id && fields[1].length != 0)
-        || (!data.has_system_id && fields[2].length != 0)) {
+    if (nodes == NULL || !lxa_dom_doctype_shape_valid(&data)) {
         return LXA_ERROR_ARGUMENT;
     }
     nodes->limit_reason = LXA_BUDGET_COUNT;
