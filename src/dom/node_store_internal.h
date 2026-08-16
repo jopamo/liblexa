@@ -23,6 +23,13 @@ enum {
 
 enum { LXA_DOM_SELECTEDCONTENT_DISABLED = 1u << 2 };
 
+static inline bool
+lxa_dom_attribute_shape_valid(lxa_span_t name, lxa_span_t value)
+{
+    return name.data != NULL && name.length != 0
+        && (value.data != NULL || value.length == 0);
+}
+
 /* Check borrowed DOCTYPE fields before classification or construction. */
 static inline bool
 lxa_dom_doctype_shape_valid(const lxa_dom_doctype_data_t *data)

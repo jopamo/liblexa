@@ -1325,8 +1325,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         return LXA_ERROR_ARGUMENT;
     }
     memset(out, 0, sizeof(*out));
-    if (nodes == NULL || name.data == NULL || name.length == 0
-        || (value.data == NULL && value.length != 0)) {
+    if (nodes == NULL || !lxa_dom_attribute_shape_valid(name, value)) {
         return LXA_ERROR_ARGUMENT;
     }
     if (ns > LXA_DOM_ATTR_NS_XMLNS

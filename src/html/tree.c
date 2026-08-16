@@ -393,9 +393,6 @@ hidden_input(lxa_html_tree_t *tree,
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
-        if ((key.data == NULL && key.length != 0)
-            || (value.data == NULL && value.length != 0))
-            return LXA_ERROR_ARGUMENT;
         if (!named(key, "type")) continue;
         *result = ascii_case_equals(value, hidden, sizeof(hidden) - 1);
         return LXA_OK;
@@ -414,8 +411,6 @@ font_breakout(lxa_html_tree_t *tree,
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
-        if (name.data == NULL && name.length != 0)
-            return LXA_ERROR_ARGUMENT;
         if (named(name, "color") || named(name, "face")
             || named(name, "size")) {
             *result = true;
@@ -2045,8 +2040,6 @@ apply_attributes(lxa_html_tree_t *tree,
     size_t i;
     lxa_dom_namespace_t ns;
     lxa_status_t status;
-    if (token->attribute_count != 0 && token->attributes == NULL)
-        return LXA_ERROR_ARGUMENT;
     if (token->attribute_count == 0) return LXA_OK;
     status = lxa_dom_nodes_element_namespace(tree->nodes, element, &ns);
     if (status != LXA_OK) return status;
@@ -2054,9 +2047,6 @@ apply_attributes(lxa_html_tree_t *tree,
         lxa_dom_ref_t existing, attribute;
         lxa_html_attribute_t entry = token->attributes[i];
         lxa_dom_attr_namespace_t attr_ns = LXA_DOM_ATTR_NS_NONE;
-        if ((entry.name.data == NULL && entry.name.length != 0)
-            || (entry.value.data == NULL && entry.value.length != 0))
-            return LXA_ERROR_ARGUMENT;
         if (ns != LXA_DOM_NS_HTML) {
             if (named(entry.name, "xml:lang") || named(entry.name, "xml:space"))
                 attr_ns = LXA_DOM_ATTR_NS_XML;
@@ -4663,6 +4653,11 @@ consume(lxa_html_tree_t *tree,
         declaration.has_system_id = token->has_system_id;
         declaration.force_quirks = token->force_quirks;
         if (!lxa_dom_doctype_shape_valid(&declaration)) return LXA_ERROR_ARGUMENT;
+    }
+    for (size_t i = 0; i < token->attribute_count; ++i) {
+        const lxa_html_attribute_t *attribute = &token->attributes[i];
+        if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
+            return LXA_ERROR_ARGUMENT;
     }
     if (tree->mode == LXA_TREE_INITIAL) {
         if (token->kind == LXA_HTML_COMMENT
