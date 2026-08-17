@@ -2489,7 +2489,8 @@ close_open_table_part(lxa_html_tree_t *tree,
             || (group == TABLE_ROW && table_section(name)))
             break;
     }
-    return LXA_ERROR_UNSUPPORTED;
+    assert(false);
+    return LXA_ERROR_INTERNAL;
 }
 
 static lxa_status_t
