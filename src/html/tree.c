@@ -2234,8 +2234,10 @@ consume_foreign(lxa_html_tree_t *tree,
         }
         return LXA_OK;
     }
-    if (token->kind != LXA_HTML_START_TAG)
-        return LXA_ERROR_UNSUPPORTED;
+    if (token->kind != LXA_HTML_START_TAG) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     status = reserve_open_elements(tree, 1);
     if (status == LXA_OK)
         status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -5825,8 +5827,10 @@ reprocess_template_token:
                                                  LXA_HTML_PLAINTEXT);
             return status;
         }
-        if (token->kind != LXA_HTML_EOF)
-            return LXA_ERROR_UNSUPPORTED; /* Element modes still needed. */
+        if (token->kind != LXA_HTML_EOF) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         if (token->kind == LXA_HTML_EOF) {
             size_t work;
             status = lxa_size_add(lxa_vector_length(&tree->template_stack),
@@ -6924,7 +6928,8 @@ reprocess_body_start:
         return insert_data_text(tree, current_element(tree), token->data,
                                 false, false);
     }
-    return LXA_ERROR_UNSUPPORTED;
+    assert(false);
+    return LXA_ERROR_INTERNAL;
 }
 
 lxa_status_t
