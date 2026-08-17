@@ -4640,6 +4640,7 @@ consume(lxa_html_tree_t *tree,
             && token->name.length == 0)
         || (token->data.data == NULL && token->data.length != 0)
         || (token->attribute_count != 0 && token->attributes == NULL)
+        || token->attribute_count > SIZE_MAX / sizeof(*token->attributes)
         || (token->kind != LXA_HTML_START_TAG
             && token->attribute_count != 0)) {
         return LXA_ERROR_ARGUMENT;
