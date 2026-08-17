@@ -2656,7 +2656,10 @@ open_table_part(lxa_html_tree_t *tree,
         top = literal("table");
     }
     if (named(token->name, "colgroup")) {
-        if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
+        if (!named(top, "table")) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -2664,8 +2667,10 @@ open_table_part(lxa_html_tree_t *tree,
         return status == LXA_OK ? open_container(tree, token) : status;
     }
     if (named(token->name, "col")) {
-        if (!named(top, "table") && !named(top, "colgroup"))
-            return LXA_ERROR_UNSUPPORTED;
+        if (!named(top, "table") && !named(top, "colgroup")) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         if (named(top, "table")) {
             status = reserve_open_elements(tree, 1);
             if (status == LXA_OK)
@@ -2680,7 +2685,10 @@ open_table_part(lxa_html_tree_t *tree,
         return append_void(tree, current_element(tree), token);
     }
     if (named(token->name, "caption")) {
-        if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
+        if (!named(top, "table")) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         status = reserve_open_elements(tree, 1);
         if (status == LXA_OK)
             status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
@@ -2702,8 +2710,10 @@ open_table_part(lxa_html_tree_t *tree,
     }
     if (!((named(top, "table") && (section || row || cell))
           || (table_section(top) && (row || cell))
-          || (named(top, "tr") && cell)))
-        return LXA_ERROR_UNSUPPORTED;
+          || (named(top, "tr") && cell))) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     if (named(top, "table")) {
         if (row) extra = 2;
         if (cell) extra = 3;
@@ -3704,8 +3714,10 @@ template_open_table_part(lxa_html_tree_t *tree,
     bool fostered_section = false;
     lxa_span_t top;
     lxa_status_t status;
-    if (!section && !row && !cell && !caption && !group)
-        return LXA_ERROR_UNSUPPORTED;
+    if (!section && !row && !cell && !caption && !group) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     while (i > template_boundary(tree)) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
@@ -3726,7 +3738,10 @@ template_open_table_part(lxa_html_tree_t *tree,
             break;
         }
         if (named(name, "caption")) {
-            if (caption_open) return LXA_ERROR_UNSUPPORTED;
+            if (caption_open) {
+                assert(false);
+                return LXA_ERROR_INTERNAL;
+            }
             caption_open = true;
             caption_index = i;
         }
@@ -4119,7 +4134,10 @@ template_open_table_part(lxa_html_tree_t *tree,
         else if (cell_index != SIZE_MAX) keep = table + 1;
         else if (group_open || table_section(top) || named(top, "tr"))
             keep = table + 1;
-        else if (!named(top, "table")) return LXA_ERROR_UNSUPPORTED;
+        else if (!named(top, "table")) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
     }
     else if (section)
         keep = table + 1;
@@ -4131,7 +4149,10 @@ template_open_table_part(lxa_html_tree_t *tree,
         else if (named(top, "tr")) keep = clear_ordinary
                                             ? context : length - 1;
         else if (cell_index != SIZE_MAX) keep = cell_index - 1;
-        else if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
+        else if (!table_section(top)) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
     }
     else {
         if (named(top, "table") || caption_open || group_open) {
@@ -4140,7 +4161,10 @@ template_open_table_part(lxa_html_tree_t *tree,
         }
         else if (table_section(top)) extra = 2;
         else if (cell_index != SIZE_MAX) keep = cell_index;
-        else if (!named(top, "tr")) return LXA_ERROR_UNSUPPORTED;
+        else if (!named(top, "tr")) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
     }
     if (keep <= table) return LXA_ERROR_INTERNAL;
 reserve_part:
