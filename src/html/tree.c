@@ -3730,8 +3730,10 @@ template_open_table_part(lxa_html_tree_t *tree,
             caption_open = true;
             caption_index = i;
         }
-        else if (caption_open)
-            return LXA_ERROR_UNSUPPORTED; /* Caption must be inside table. */
+        else if (caption_open) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         else if (named(name, "colgroup"))
             group_open = true;
         else if (named(name, "td") || named(name, "th"))
@@ -4095,8 +4097,10 @@ template_open_table_part(lxa_html_tree_t *tree,
     }
     clear_ordinary = ordinary_above && !caption_open
                      && cell_index == SIZE_MAX;
-    if (caption_open && caption_index != table + 1)
-        return LXA_ERROR_UNSUPPORTED;
+    if (caption_open && caption_index != table + 1) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     /* Table-part starts clear fostered open descendants back to the nearest
      * table context. Size preflight uses the resulting stack before popping. */
     status = lxa_dom_nodes_element_name(tree->nodes,
