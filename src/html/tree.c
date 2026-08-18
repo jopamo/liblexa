@@ -4961,16 +4961,6 @@ reprocess_template_token:
             adjusted.self_closing = false;
             token = &adjusted;
         }
-        {
-            size_t keep;
-            bool ignore;
-            status = plan_select_token(tree, &tree->template_elements,
-                template_boundary(tree), token, &keep, &ignore);
-            if (status != LXA_OK) return status;
-            status = template_pop_elements(tree, keep);
-            if (status != LXA_OK) return status;
-            if (ignore) return LXA_OK;
-        }
         if (token->kind == LXA_HTML_END_TAG
             && named(token->name, "template")) {
             return close_template(tree, true);
@@ -5056,6 +5046,16 @@ reprocess_template_token:
             bool handled;
             status = insert_hidden_table_input(tree, token, &handled);
             if (status != LXA_OK || handled) return status;
+        }
+        {
+            size_t keep;
+            bool ignore;
+            status = plan_select_token(tree, &tree->template_elements,
+                template_boundary(tree), token, &keep, &ignore);
+            if (status != LXA_OK) return status;
+            status = template_pop_elements(tree, keep);
+            if (status != LXA_OK) return status;
+            if (ignore) return LXA_OK;
         }
         if (token->kind == LXA_HTML_START_TAG && named(token->name, "form")) {
             size_t keep, boundary = template_boundary(tree);
@@ -6290,6 +6290,11 @@ reprocess_body_start:
     if (tree->mode == LXA_TREE_IN_BODY) {
         size_t keep;
         bool ignore;
+        {
+            bool handled;
+            status = insert_hidden_table_input(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
+        }
         status = plan_select_token(tree, &tree->open_elements, 0, token,
                                    &keep, &ignore);
         if (status != LXA_OK) return status;
@@ -6298,11 +6303,6 @@ reprocess_body_start:
             if (status != LXA_OK) return status;
         }
         if (ignore) return LXA_OK;
-        {
-            bool handled;
-            status = insert_hidden_table_input(tree, token, &handled);
-            if (status != LXA_OK || handled) return status;
-        }
     }
     if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
         && lxa_vector_length(&tree->open_elements) > 1) {
