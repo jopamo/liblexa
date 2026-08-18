@@ -5406,7 +5406,10 @@ reprocess_template_token:
                     status = supported_container(tree, token->name,
                                                   &ordinary);
                     if (status != LXA_OK) return status;
-                    if (!ordinary) return LXA_ERROR_UNSUPPORTED;
+                    if (!ordinary) {
+                        assert(false);
+                        return LXA_ERROR_INTERNAL;
+                    }
                     if (named(top, "colgroup")) {
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
@@ -6427,8 +6430,9 @@ reprocess_body_start:
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
             }
-            return container ? foster_element(tree, token, false)
-                             : LXA_ERROR_UNSUPPORTED;
+            if (container) return foster_element(tree, token, false);
+            assert(false);
+            return LXA_ERROR_INTERNAL;
         }
     }
     if (token->kind == LXA_HTML_START_TAG) {
@@ -6751,7 +6755,8 @@ reprocess_body_start:
                 tree->skip_pre_newline = true;
             return status;
         }
-        return LXA_ERROR_UNSUPPORTED;
+        assert(false);
+        return LXA_ERROR_INTERNAL;
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "head")
         && tree->mode == LXA_TREE_IN_HEAD) {
