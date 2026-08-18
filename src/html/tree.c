@@ -2579,7 +2579,9 @@ open_table_part(lxa_html_tree_t *tree,
                 if (status != LXA_OK) return status;
                 status = pop_table_elements(tree, i + 1);
                 if (status != LXA_OK) return status;
-                top = name;
+                status = lxa_dom_nodes_element_name(tree->nodes,
+                                                    current_element(tree), &top);
+                if (status != LXA_OK) return status;
             }
             break;
         }
