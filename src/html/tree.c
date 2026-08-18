@@ -3814,7 +3814,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree)], &root);
                 if (status != LXA_OK) return status;
-                if (!named(root, "tr")) return LXA_ERROR_UNSUPPORTED;
+                if (!named(root, "tr")) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 for (; j < length; ++j) {
                     lxa_span_t name;
                     lxa_dom_namespace_t ns;
@@ -3887,7 +3890,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[template_boundary(tree)], &top);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
+                if (!table_section(top)) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 if (row) replace_at = length - 1;
             }
             else if (length == template_boundary(tree) + 2
@@ -3901,7 +3907,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree)], &parent);
                 if (status != LXA_OK) return status;
-                if (!named(parent, "tr")) return LXA_ERROR_UNSUPPORTED;
+                if (!named(parent, "tr")) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 replace_at = template_boundary(tree) + (cell ? 1 : 0);
             }
             else if (length == template_boundary(tree) + 3
@@ -3918,8 +3927,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree)], &top);
                 if (status != LXA_OK) return status;
-                if (!named(parent, "tr") || !table_section(top))
-                    return LXA_ERROR_UNSUPPORTED;
+                if (!named(parent, "tr") || !table_section(top)) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 replace_at = length - (row ? 2 : 1);
             }
             else if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
@@ -3936,7 +3947,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     status = lxa_dom_nodes_element_name(tree->nodes,
                         open[template_boundary(tree) + 1], &row_name);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
+                if (!table_section(top)) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 j = template_boundary(tree) + 1;
                 if (named(row_name, "tr")) {
                     ++j;
@@ -4091,7 +4105,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                 status = lxa_dom_nodes_element_name(tree->nodes,
                                                     open[length - 2], &top);
                 if (status != LXA_OK) return status;
-                if (!table_section(top)) return LXA_ERROR_UNSUPPORTED;
+                if (!table_section(top)) {
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
+                }
                 replace_section = section || caption || group;
             }
         }
