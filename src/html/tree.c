@@ -6818,8 +6818,10 @@ reprocess_body_start:
             if (status != LXA_OK) return status;
         }
         else if (tree->mode != LXA_TREE_IN_BODY
-                 && tree->mode != LXA_TREE_AFTER_BODY)
-            return LXA_ERROR_UNSUPPORTED;
+                 && tree->mode != LXA_TREE_AFTER_BODY) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
         tree->mode = LXA_TREE_AFTER_HTML;
         return LXA_OK;
     }
