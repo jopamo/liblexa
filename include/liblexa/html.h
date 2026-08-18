@@ -37,8 +37,8 @@ typedef lxa_status_t (*lxa_html_input_error_callback_t)(void *context,
  * tokenization finishes. Scripting mode is disabled. A failed parse publishes
  * no document.
  *
- * status and parser_result == UNSUPPORTED identify candidate grammar gaps,
- * unrepresentable names or unsupported encodings;
+ * status and parser_result == UNSUPPORTED identify unrepresentable names,
+ * unknown explicit encodings or an encoding unsettled after one reparse;
  * BAD_ARGUMENT identifies invalid arguments.
  * INTERNAL identifies a violated implementation invariant.
  * status and parser_result distinguish LIMIT/NO_MEMORY/OVERFLOW/ENTROPY;
