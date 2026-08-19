@@ -5710,11 +5710,6 @@ reprocess_template_token:
                 status = supported_container(tree, token->name,
                                               &template_ordinary);
                 if (status != LXA_OK) return status;
-                /* Table and other special insertion modes still need their
-                 * recovery rules. Ordinary non-simple and unknown/custom
-                 * names use the in-body fallback here. */
-                if (simple_container(token->name))
-                    template_ordinary = false;
             }
         }
         if (template_ordinary) {
