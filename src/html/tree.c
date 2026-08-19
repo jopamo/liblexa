@@ -2754,6 +2754,13 @@ append_closed_element_at(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     if (status == LXA_OK)
         status = insert_constructed(tree, parent,
             element, before);
+    if (status == LXA_OK && tree->on_head_meta != NULL
+        && named(token->name, "meta")) {
+        lxa_dom_ref_t owner;
+        status = lxa_dom_nodes_parent(tree->nodes, element, &owner);
+        if (status == LXA_OK && owner.handle == tree->head.handle)
+            status = tree->on_head_meta(tree->head_meta_context, element);
+    }
     if (status == LXA_OK && out != NULL) *out = element;
     return status;
 }

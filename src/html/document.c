@@ -60,100 +60,90 @@ input_status(lxa_html_input_result_t result)
     }
 }
 
-/* Inspect only constructed head elements: markup inside comments or raw
- * script text cannot become a meta declaration. The borrowed attribute
- * value is resolved before any further store mutation. */
+typedef struct {
+    lxa_html_document_t *document;
+    const lxa_encoding_t *declared;
+    lxa_limit_reason_t reason;
+} head_meta_context_t;
+
+/* Resolve each constructed head declaration before later tree mutation. */
 static lxa_status_t
-head_meta_encoding(lxa_dom_nodes_t *nodes, lxa_budget_t *budget,
-                   lxa_dom_ref_t head, const lxa_encoding_t **out,
-                   lxa_limit_reason_t *reason)
+observe_head_meta(void *context, lxa_dom_ref_t child)
 {
-    lxa_dom_ref_t child, next, attribute;
-    lxa_dom_kind_t kind;
+    head_meta_context_t *meta = context;
+    lxa_dom_nodes_t *nodes = meta->document->nodes;
+    lxa_budget_t *budget = &meta->document->budget;
+    lxa_limit_reason_t *reason = &meta->reason;
+    const lxa_encoding_t **out = &meta->declared;
+    lxa_dom_ref_t attribute;
     lxa_span_t name, value;
-    size_t visited = 0;
     lxa_status_t status;
-    *out = NULL;
-    status = lxa_dom_nodes_first_child(nodes, head, &child);
-    while (status == LXA_OK && child.handle != LXA_HANDLE_NONE) {
-        if (++visited > lxa_dom_nodes_length(nodes)) return LXA_ERROR_INTERNAL;
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
+    if (*out != NULL) return LXA_OK;
+    status = lxa_dom_nodes_find_attribute(nodes, child,
+        (lxa_span_t){(const uint8_t *) "charset", 7}, &attribute);
+    if (status != LXA_OK) return status;
+    if (attribute.handle != LXA_HANDLE_NONE) {
+        lxa_html_input_result_t result;
+        status = lxa_dom_nodes_attribute_read(nodes, attribute,
+                                             &name, &value);
         if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_kind(nodes, child, &kind);
-        if (status == LXA_OK && kind == LXA_DOM_KIND_ELEMENT)
-            status = lxa_dom_nodes_element_name(nodes, child, &name);
+        result = lxa_html_input_resolve_label(value, out);
+        return input_status(result);
+    }
+    status = lxa_dom_nodes_find_attribute(nodes, child,
+        (lxa_span_t){(const uint8_t *) "http-equiv", 10}, &attribute);
+    if (status != LXA_OK) return status;
+    if (attribute.handle != LXA_HANDLE_NONE) {
+        size_t i;
+        bool content_type = true;
+        status = lxa_dom_nodes_attribute_read(nodes, attribute,
+                                             &name, &value);
         if (status != LXA_OK) return status;
-        if (kind == LXA_DOM_KIND_ELEMENT && name.length == 4
-            && memcmp(name.data, "meta", 4) == 0) {
-            status = lxa_dom_nodes_find_attribute(nodes, child,
-                (lxa_span_t){(const uint8_t *) "charset", 7}, &attribute);
+        if (value.length == 12) {
+            status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+                                       12, reason);
             if (status != LXA_OK) return status;
-            if (attribute.handle != LXA_HANDLE_NONE) {
-                lxa_html_input_result_t result;
-                status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                                       &name, &value);
-                if (status != LXA_OK) return status;
-                result = lxa_html_input_resolve_label(value, out);
-                return input_status(result);
-            }
-            status = lxa_dom_nodes_find_attribute(nodes, child,
-                (lxa_span_t){(const uint8_t *) "http-equiv", 10}, &attribute);
-            if (status != LXA_OK) return status;
-            if (attribute.handle != LXA_HANDLE_NONE) {
-                size_t i;
-                bool content_type = true;
-                status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                                       &name, &value);
-                if (status != LXA_OK) return status;
-                if (value.length == 12) {
-                    status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
-                                               12, reason);
-                    if (status != LXA_OK) return status;
-                    for (i = 0; i < 12; ++i) {
-                        uint8_t c = value.data[i];
-                        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-                        if (c != (uint8_t) "content-type"[i]) {
-                            content_type = false;
-                            break;
-                        }
-                    }
-                }
-                else content_type = false;
-                if (content_type) {
-                    bool found;
-                    lxa_span_t label;
-                    size_t work;
-                    status = lxa_dom_nodes_find_attribute(nodes, child,
-                        (lxa_span_t){(const uint8_t *) "content", 7},
-                        &attribute);
-                    if (status != LXA_OK) return status;
-                    if (attribute.handle != LXA_HANDLE_NONE) {
-                        status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                                               &name, &value);
-                        if (status != LXA_OK) return status;
-                        /* The shared scanner compares at most seven bytes
-                         * per position and walks the matching value once. */
-                        status = lxa_size_mul(value.length, 8, &work);
-                        if (status != LXA_OK) return status;
-                        status = lxa_budget_charge(budget,
-                            LXA_BUDGET_WORK, work, reason);
-                        if (status != LXA_OK) return status;
-                        status = lxa_html_input_content_charset(value, &found,
-                                                                  &label);
-                        if (status != LXA_OK) return status;
-                        if (found) {
-                            lxa_html_input_result_t result =
-                                lxa_html_input_resolve_label(label, out);
-                            return input_status(result);
-                        }
-                    }
+            for (i = 0; i < 12; ++i) {
+                uint8_t c = value.data[i];
+                if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+                if (c != (uint8_t) "content-type"[i]) {
+                    content_type = false;
+                    break;
                 }
             }
         }
-        status = lxa_dom_nodes_next_sibling(nodes, child, &next);
-        if (status == LXA_OK) child = next;
+        else content_type = false;
+        if (content_type) {
+            bool found;
+            lxa_span_t label;
+            size_t work;
+            status = lxa_dom_nodes_find_attribute(nodes, child,
+                (lxa_span_t){(const uint8_t *) "content", 7},
+                &attribute);
+            if (status != LXA_OK) return status;
+            if (attribute.handle != LXA_HANDLE_NONE) {
+                status = lxa_dom_nodes_attribute_read(nodes, attribute,
+                                                     &name, &value);
+                if (status != LXA_OK) return status;
+                /* The shared scanner compares at most seven bytes
+                 * per position and walks the matching value once. */
+                status = lxa_size_mul(value.length, 8, &work);
+                if (status != LXA_OK) return status;
+                status = lxa_budget_charge(budget,
+                    LXA_BUDGET_WORK, work, reason);
+                if (status != LXA_OK) return status;
+                status = lxa_html_input_content_charset(value, &found,
+                                                        &label);
+                if (status != LXA_OK) return status;
+                if (found) {
+                    lxa_html_input_result_t result =
+                        lxa_html_input_resolve_label(label, out);
+                    return input_status(result);
+                }
+            }
+        }
     }
-    return status;
+    return LXA_OK;
 }
 
 void
@@ -223,6 +213,9 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     }
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
+        head_meta_context_t meta = {
+            .document = document, .reason = LXA_BUDGET_COUNT
+        };
         status = lxa_buffer_init(&decoded, allocator);
         if (status != LXA_OK) break;
         status = lxa_buffer_bind_budget(&decoded, &document->budget);
@@ -256,6 +249,10 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             lxa_buffer_destroy(&decoded);
             break;
         }
+        if (prefix == 0) {
+            tree.on_head_meta = observe_head_meta;
+            tree.head_meta_context = &meta;
+        }
         status = lxa_html_tokenizer_create_with_budget(allocator,
             lxa_html_tree_on_token, NULL, &tree,
             &document->budget, &tokenizer);
@@ -266,7 +263,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                 result = lxa_html_tree_tokenizer_finish(tokenizer);
             status = parser_status(result, tokenizer);
             if (status == LXA_ERROR_LIMIT && reason != NULL)
-                *reason = result == LXA_HTML_LIMIT
+                *reason = meta.reason != LXA_BUDGET_COUNT ? meta.reason
+                        : result == LXA_HTML_LIMIT
                           ? lxa_html_tokenizer_limit_reason(tokenizer)
                           : lxa_dom_nodes_limit_reason(document->nodes);
             if (result == LXA_HTML_CALLBACK_FAILURE)
@@ -274,23 +272,15 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         else if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_MEMORY;
-        if (status == LXA_OK && prefix == 0) {
-            const lxa_encoding_t *declared;
-            status = head_meta_encoding(document->nodes, &document->budget,
-                                        tree.head, &declared, reason);
-            if (status == LXA_ERROR_LIMIT && reason != NULL
-                && *reason == LXA_BUDGET_COUNT)
-                *reason = lxa_dom_nodes_limit_reason(document->nodes);
-            if (status == LXA_OK && declared != NULL
-                && declared != encoding) {
-                if (attempt == 0) {
-                    encoding = declared;
-                    retry = true;
-                }
-                else {
-                    result = LXA_HTML_UNSUPPORTED;
-                    status = LXA_ERROR_UNSUPPORTED;
-                }
+        if (status == LXA_OK && meta.declared != NULL
+            && meta.declared != encoding) {
+            if (attempt == 0) {
+                encoding = meta.declared;
+                retry = true;
+            }
+            else {
+                result = LXA_HTML_UNSUPPORTED;
+                status = LXA_ERROR_UNSUPPORTED;
             }
         }
         if (status == LXA_OK && !retry && on_malformed != NULL) {
