@@ -4548,49 +4548,43 @@ template_end_formatting_boundary(lxa_html_tree_t *tree,
 {
     size_t index, length = lxa_vector_length(&tree->template_elements);
     bool table = named(token->name, "table");
-    bool part = table_part(token->name), reprocess;
+    bool part = table_part(token->name);
     lxa_status_t status;
     *handled = false;
     if (token->kind != LXA_HTML_END_TAG
         || (!part && !formatting_marker_tag(token->name)))
         return LXA_OK;
-    status = plan_foreign_end(tree, &tree->template_elements,
-        template_boundary(tree), token->name, &index, &reprocess);
+    status = find_scoped_end_target(tree, &tree->template_elements,
+        template_boundary(tree), token->name,
+        part ? SCOPE_TABLE : SCOPE_NORMAL, &index);
     if (status != LXA_OK) return status;
-    if (reprocess) {
-        status = find_scoped_end_target(tree, &tree->template_elements,
-            template_boundary(tree), token->name,
-            part ? SCOPE_TABLE : SCOPE_NORMAL,
-            &index);
-        if (status != LXA_OK) return status;
-        if (index == length) {
-            if (table) {
-                status = template_end_missing_table(tree);
-                if (status != LXA_OK) return status;
-            }
-            else if (!named(token->name, "col")
-                     && length > template_boundary(tree)) {
-                lxa_span_t name;
-                lxa_dom_namespace_t ns;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        template_parent(tree), &ns);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        template_parent(tree), &name);
-                if (status != LXA_OK) return status;
-                if (ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
-                    status = template_pop_table_elements(tree, length - 1);
-                    if (status != LXA_OK) return status;
-                }
-            }
-            *handled = true;
-            return LXA_OK;
+    if (index == length) {
+        if (table) {
+            status = template_end_missing_table(tree);
+            if (status != LXA_OK) return status;
         }
+        else if (!named(token->name, "col")
+                 && length > template_boundary(tree)) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
+            status = lxa_budget_charge(tree->nodes->budget,
+                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_namespace(tree->nodes,
+                    template_parent(tree), &ns);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_element_name(tree->nodes,
+                    template_parent(tree), &name);
+            if (status != LXA_OK) return status;
+            if (ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
+                status = template_pop_table_elements(tree, length - 1);
+                if (status != LXA_OK) return status;
+            }
+        }
+        *handled = true;
+        return LXA_OK;
     }
-    if (reprocess && part) {
+    if (part) {
         status = template_pop_table_elements(tree, index);
         if (status != LXA_OK) return status;
         *handled = true;
@@ -4598,10 +4592,8 @@ template_end_formatting_boundary(lxa_html_tree_t *tree,
     }
     status = template_pop_elements(tree, index);
     if (status != LXA_OK) return status;
-    if (reprocess && formatting_marker_tag(token->name)) {
-        status = clear_formatting_to_marker(tree);
-        if (status != LXA_OK) return status;
-    }
+    status = clear_formatting_to_marker(tree);
+    if (status != LXA_OK) return status;
     *handled = true;
     return LXA_OK;
 }
@@ -5516,15 +5508,6 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_END_TAG
             && template_scoped_end(token->name) && !named(token->name, "p")) {
             size_t index;
-            bool reprocess;
-            status = plan_foreign_end(tree, &tree->template_elements,
-                template_boundary(tree), token->name, &index, &reprocess);
-            if (status != LXA_OK) return status;
-            if (!reprocess) {
-                status = template_pop_elements(tree, index);
-                if (status != LXA_OK) return status;
-                return LXA_OK;
-            }
             status = find_scoped_end_target(tree, &tree->template_elements,
                 template_boundary(tree), token->name,
                 named(token->name, "li") ? SCOPE_LIST_ITEM : SCOPE_NORMAL,
@@ -5556,15 +5539,6 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_END_TAG
             && template_ordinary_end(token->name)) {
             size_t index;
-            bool reprocess;
-            status = plan_foreign_end(tree, &tree->template_elements,
-                template_boundary(tree), token->name, &index, &reprocess);
-            if (status != LXA_OK) return status;
-            if (!reprocess) {
-                status = template_pop_elements(tree, index);
-                if (status != LXA_OK) return status;
-                return LXA_OK;
-            }
             status = find_ordinary_end_target(tree, &tree->template_elements,
                 template_boundary(tree), token->name, &index);
             if (status != LXA_OK) return status;
