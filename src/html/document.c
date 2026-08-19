@@ -176,6 +176,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     lxa_status_t status;
     lxa_status_t callback_status = LXA_OK;
     unsigned int attempt;
+    bool utf16;
     if (out != NULL) *out = NULL;
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
     if (parser_result != NULL) *parser_result = result;
@@ -195,6 +196,11 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         status = input_status(selected);
         goto report;
     }
+    /* The encoding-change algorithm never replaces a UTF-16 decoder. */
+    utf16 = encoding == lxa_encoding_lookup(
+        (lxa_span_t){(const uint8_t *) "utf-16le", 8})
+        || encoding == lxa_encoding_lookup(
+            (lxa_span_t){(const uint8_t *) "utf-16be", 8});
     result = LXA_HTML_INTERNAL;
     status = lxa_alloc(allocator, sizeof(*document), (void **) &document);
     if (status != LXA_OK) goto report;
@@ -272,7 +278,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         else if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_MEMORY;
-        if (status == LXA_OK && meta.declared != NULL
+        if (status == LXA_OK && !utf16 && meta.declared != NULL
             && meta.declared != encoding) {
             if (attempt == 0) {
                 encoding = meta.declared;
