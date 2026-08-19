@@ -4533,7 +4533,6 @@ template_end_missing_table(lxa_html_tree_t *tree)
             keep = i;
             break;
         }
-        if (scope_boundary(name, ns, SCOPE_TABLE)) break;
     }
     if (keep == length) return LXA_OK;
     return template_pop_table_elements(tree, keep);
