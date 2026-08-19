@@ -2255,7 +2255,8 @@ static lxa_status_t
 append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             const lxa_html_token_t *token);
 
-/* Preflight the same select stack actions for document and template rules. */
+/* Preflight document/template select actions after foreign end dispatch.
+ * Matching foreign end tags have already popped and returned. */
 static lxa_status_t
 plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                   size_t boundary, const lxa_html_token_t *token,
@@ -2301,10 +2302,6 @@ plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
             return LXA_OK;
         }
         if (foreign_end && ns != LXA_DOM_NS_HTML) {
-            if (named(name, "select")) {
-                *ignore = false; /* Let foreign end-tag matching consume it. */
-                return LXA_OK;
-            }
             foreign_boundary |= scope_boundary(name, ns, SCOPE_NORMAL);
             continue;
         }
