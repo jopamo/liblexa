@@ -547,7 +547,8 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
         }
         if (end - i >= 4 && bytes.data[i + 1] == '!'
             && bytes.data[i + 2] == '-' && bytes.data[i + 3] == '-') {
-            for (i += 4; i + 2 < end; i++) {
+            /* The terminator can reuse the opening hyphens. */
+            for (i += 2; i + 2 < end; i++) {
                 if (bytes.data[i] == '-' && bytes.data[i + 1] == '-'
                     && bytes.data[i + 2] == '>') {
                     i += 2;
