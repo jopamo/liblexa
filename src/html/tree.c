@@ -7034,8 +7034,8 @@ lxa_html_tree_on_token(void *context,
                 ns != LXA_DOM_NS_HTML) != LXA_HTML_OK)
             tree->failure = LXA_ERROR_INTERNAL;
     }
-    /* All deliberate grammar boundaries return UNSUPPORTED. A rejected
-     * store reference or token from our tokenizer is a pipeline failure. */
+    /* A rejected store reference or token from our tokenizer is a pipeline
+     * failure, not an invalid caller argument. */
     if (tree->failure == LXA_ERROR_ARGUMENT)
         tree->failure = LXA_ERROR_INTERNAL;
     return tree->failure;

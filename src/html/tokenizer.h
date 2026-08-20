@@ -100,8 +100,7 @@ typedef enum {
  * unescaped/escaped/double-escaped script data, and PLAINTEXT are selected by
  * tree feedback; CDATA is selected only in foreign content. Invalid numeric
  * references recover as U+FFFD; control references use the spec's override
- * table. Input beyond configured token/name limits returns LIMIT. Remaining
- * candidate grammar gaps return UNSUPPORTED, never a recovered parse error.
+ * table. Input beyond configured token/name limits returns LIMIT.
  * Do not promote this candidate until the consumed grammar and tree are qualified.
  * This candidate charges accepted input, scanner work and all retained
  * tokenizer/codec objects and text/name capacity to the shared budget; it
