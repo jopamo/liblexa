@@ -2374,6 +2374,16 @@ table_in_scope(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 }
 
 static lxa_status_t
+observe_inserted_meta(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                      lxa_dom_ref_t element, lxa_dom_namespace_t ns)
+{
+    if (tree->on_meta == NULL || ns != LXA_DOM_NS_HTML
+        || !named(token->name, "meta"))
+        return LXA_OK;
+    return tree->on_meta(tree->meta_context, element);
+}
+
+static lxa_status_t
 foster_element(lxa_html_tree_t *tree,
                const lxa_html_token_t *token, bool is_void)
 {
@@ -2404,6 +2414,8 @@ foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK) status = apply_attributes(tree, child, token);
     if (status == LXA_OK)
         status = insert_constructed(tree, parent, child, table);
+    if (status == LXA_OK)
+        status = observe_inserted_meta(tree, token, child, LXA_DOM_NS_HTML);
     if (status == LXA_OK && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
@@ -2754,13 +2766,8 @@ append_closed_element_at(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     if (status == LXA_OK)
         status = insert_constructed(tree, parent,
             element, before);
-    if (status == LXA_OK && tree->on_head_meta != NULL
-        && named(token->name, "meta")) {
-        lxa_dom_ref_t owner;
-        status = lxa_dom_nodes_parent(tree->nodes, element, &owner);
-        if (status == LXA_OK && owner.handle == tree->head.handle)
-            status = tree->on_head_meta(tree->head_meta_context, element);
-    }
+    if (status == LXA_OK)
+        status = observe_inserted_meta(tree, token, element, LXA_DOM_NS_HTML);
     if (status == LXA_OK && out != NULL) *out = element;
     return status;
 }
@@ -3281,6 +3288,8 @@ template_foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = insert_constructed(tree, parent,
             child, before);
+    if (status == LXA_OK)
+        status = observe_inserted_meta(tree, token, child, ns);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML
         && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);

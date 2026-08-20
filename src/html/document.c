@@ -64,13 +64,13 @@ typedef struct {
     lxa_html_document_t *document;
     const lxa_encoding_t *declared;
     lxa_limit_reason_t reason;
-} head_meta_context_t;
+} meta_context_t;
 
-/* Resolve each constructed head declaration before later tree mutation. */
+/* Resolve parser-inserted meta declarations before later tree mutation. */
 static lxa_status_t
-observe_head_meta(void *context, lxa_dom_ref_t child)
+observe_meta(void *context, lxa_dom_ref_t child)
 {
-    head_meta_context_t *meta = context;
+    meta_context_t *meta = context;
     lxa_dom_nodes_t *nodes = meta->document->nodes;
     lxa_budget_t *budget = &meta->document->budget;
     lxa_limit_reason_t *reason = &meta->reason;
@@ -219,7 +219,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     }
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
-        head_meta_context_t meta = {
+        meta_context_t meta = {
             .document = document, .reason = LXA_BUDGET_COUNT
         };
         status = lxa_buffer_init(&decoded, allocator);
@@ -256,8 +256,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             break;
         }
         if (prefix == 0) {
-            tree.on_head_meta = observe_head_meta;
-            tree.head_meta_context = &meta;
+            tree.on_meta = observe_meta;
+            tree.meta_context = &meta;
         }
         status = lxa_html_tokenizer_create_with_budget(allocator,
             lxa_html_tree_on_token, NULL, &tree,
