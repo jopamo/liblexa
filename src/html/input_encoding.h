@@ -46,8 +46,8 @@ typedef enum {
     LXA_HTML_INPUT_CALLBACK_FAILURE
 } lxa_html_input_result_t;
 
-/* Resolve a tokenizer-confirmed meta label with the same HTML remapping as
- * prescan selection. The caller handles BOM precedence and chooses whether
+/* Resolve a tokenizer-confirmed meta label with the same remapping as the
+ * meta prescan. The caller handles BOM precedence and chooses whether
  * this declaration applies; an unknown explicit label fails. */
 lxa_html_input_result_t lxa_html_input_resolve_label(
     lxa_span_t label, const lxa_encoding_t **encoding);

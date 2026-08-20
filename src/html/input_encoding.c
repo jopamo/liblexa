@@ -367,8 +367,8 @@ lxa_html_input_decode(lxa_span_t bytes, const lxa_encoding_t *encoding,
                                          NULL, NULL);
 }
 
-lxa_html_input_result_t
-lxa_html_input_resolve_label(lxa_span_t label, const lxa_encoding_t **encoding)
+static lxa_html_input_result_t
+resolve_label(lxa_span_t label, const lxa_encoding_t **encoding)
 {
     const lxa_encoding_t *selected;
     if (encoding == NULL) {
@@ -391,15 +391,23 @@ lxa_html_input_resolve_label(lxa_span_t label, const lxa_encoding_t **encoding)
             (const uint8_t *) "utf-8", 5
         });
     }
-    else if (selected == lxa_encoding_lookup((lxa_span_t) {
-                 (const uint8_t *) "x-user-defined", 14
-             })) {
-        selected = lxa_encoding_lookup((lxa_span_t) {
+    *encoding = selected;
+    return LXA_HTML_INPUT_OK;
+}
+
+lxa_html_input_result_t
+lxa_html_input_resolve_label(lxa_span_t label, const lxa_encoding_t **encoding)
+{
+    lxa_html_input_result_t result = resolve_label(label, encoding);
+    if (result == LXA_HTML_INPUT_OK
+        && *encoding == lxa_encoding_lookup((lxa_span_t) {
+            (const uint8_t *) "x-user-defined", 14
+        })) {
+        *encoding = lxa_encoding_lookup((lxa_span_t) {
             (const uint8_t *) "windows-1252", 12
         });
     }
-    *encoding = selected;
-    return LXA_HTML_INPUT_OK;
+    return result;
 }
 
 static bool
@@ -800,7 +808,10 @@ lxa_html_input_select(lxa_span_t bytes, size_t max_input_bytes,
     if (lxa_html_input_meta_charset(bytes, &found, &label) != LXA_OK) {
         return LXA_HTML_INPUT_BAD_ARGUMENT;
     }
-    if (!found && lxa_html_input_xml_encoding(bytes, &found, &label) != LXA_OK) {
+    if (found) {
+        return lxa_html_input_resolve_label(label, encoding);
+    }
+    if (lxa_html_input_xml_encoding(bytes, &found, &label) != LXA_OK) {
         return LXA_HTML_INPUT_BAD_ARGUMENT;
     }
     if (!found) {
@@ -809,5 +820,5 @@ lxa_html_input_select(lxa_span_t bytes, size_t max_input_bytes,
         });
         return LXA_HTML_INPUT_OK;
     }
-    return lxa_html_input_resolve_label(label, encoding);
+    return resolve_label(label, encoding);
 }
