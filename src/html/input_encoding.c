@@ -745,13 +745,14 @@ lxa_html_input_xml_encoding(lxa_span_t bytes, bool *found, lxa_span_t *label)
         }
         quote = bytes.data[pos++];
         start = pos;
-        while (pos < end && bytes.data[pos] != quote) {
+        /* Only the keyword search is bounded by the first '>'. */
+        while (pos < bytes.length && bytes.data[pos] != quote) {
             if (bytes.data[pos] <= 0x20) {
                 return LXA_OK;
             }
             pos++;
         }
-        if (pos == end) {
+        if (pos == bytes.length) {
             return LXA_OK;
         }
         *label = (lxa_span_t) {bytes.data + start, pos - start};
