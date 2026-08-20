@@ -703,8 +703,7 @@ lxa_html_input_xml_encoding(lxa_span_t bytes, bool *found, lxa_span_t *label)
     }
     *found = false;
     *label = (lxa_span_t) {NULL, 0};
-    end = bytes.length < 1024 ? bytes.length : 1024;
-    if (end < sizeof(xml) - 1) {
+    if (bytes.length < sizeof(xml) - 1) {
         return LXA_OK;
     }
     for (i = 0; i < sizeof(xml) - 1; i++) {
@@ -712,15 +711,15 @@ lxa_html_input_xml_encoding(lxa_span_t bytes, bool *found, lxa_span_t *label)
             return LXA_OK;
         }
     }
-    for (end = sizeof(xml) - 1; end < bytes.length && end < 1024; end++) {
+    for (end = sizeof(xml) - 1; end < bytes.length; end++) {
         if (bytes.data[end] == '>') {
             break;
         }
     }
-    if (end == bytes.length || end == 1024) {
+    if (end == bytes.length) {
         return LXA_OK;
     }
-    for (i = 0; i + sizeof(keyword) - 1 <= end; i++) {
+    for (i = 0; i < end && end - i >= sizeof(keyword) - 1; i++) {
         size_t j;
         for (j = 0; j < sizeof(keyword) - 1; j++) {
             if (bytes.data[i + j] != (uint8_t) keyword[j]) {

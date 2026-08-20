@@ -31,7 +31,9 @@ lxa_status_t lxa_html_input_content_charset(lxa_span_t content,
 
 /* WHATWG HTML's case-sensitive <?xml ... encoding="..."> fallback is
  * considered only when the meta prescan found nothing. The borrowed label
- * is not validated as an available encoding here.
+ * is not validated as an available encoding here. Unlike the meta prescan,
+ * this allocation-free linear scan is bounded by the complete input length;
+ * the selector checks the raw-input limit before calling it.
  */
 lxa_status_t lxa_html_input_xml_encoding(lxa_span_t bytes,
                                          bool *found, lxa_span_t *label);
