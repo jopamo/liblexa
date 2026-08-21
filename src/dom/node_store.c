@@ -1321,6 +1321,9 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     size_t next, total, i, name_source, value_source;
     bool name_self, value_self;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -1347,7 +1350,6 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     if (status != LXA_OK) {
         return status;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
                                     name.length, &nodes->limit_reason);
     if (status != LXA_OK) {
@@ -1584,10 +1586,12 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
     size_t offset, total, self_offset;
     bool self;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL || (value.data == NULL && value.length != 0)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, attribute, &record);
     if (status != LXA_OK || record.kind != LXA_DOM_KIND_ATTRIBUTE
         || record.payload >= lxa_vector_length(&nodes->attributes)) {
@@ -2299,6 +2303,9 @@ lxa_dom_nodes_find_attribute(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     const lxa_dom_element_t *elements;
     lxa_id_t match, tail;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -2306,7 +2313,6 @@ lxa_dom_nodes_find_attribute(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     if (nodes == NULL || (name.data == NULL && name.length != 0)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, element, &host);
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
         || host.payload >= lxa_vector_length(&nodes->elements)) {
@@ -2332,6 +2338,9 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     const lxa_dom_attr_t *attrs;
     lxa_id_t id, owner;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -2341,7 +2350,6 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
         || host.payload >= lxa_vector_length(&nodes->elements)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     elements = (const lxa_dom_element_t *) nodes->elements.bytes.data;
     attrs = (const lxa_dom_attr_t *) nodes->attributes.bytes.data;
     owner = (lxa_id_t) element.handle;
