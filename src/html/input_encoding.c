@@ -528,10 +528,73 @@ lxa_html_input_bom(lxa_span_t bytes, const lxa_encoding_t **encoding,
     return LXA_OK;
 }
 
+static bool
+prescan_attribute(lxa_span_t bytes, size_t *position,
+                   lxa_span_t *name, lxa_span_t *value)
+{
+    size_t pos = *position, start;
+    bool complete = false;
+    *name = (lxa_span_t) {NULL, 0};
+    *value = (lxa_span_t) {NULL, 0};
+    while (pos < bytes.length
+           && (space(bytes.data[pos]) || bytes.data[pos] == '/')) {
+        pos++;
+    }
+    if (pos == bytes.length || bytes.data[pos] == '>') {
+        goto done;
+    }
+    start = pos++;
+    /* A leading '=' belongs to the attribute name. */
+    while (pos < bytes.length && !space(bytes.data[pos])
+           && bytes.data[pos] != '=' && bytes.data[pos] != '/'
+           && bytes.data[pos] != '>') {
+        pos++;
+    }
+    *name = (lxa_span_t) {bytes.data + start, pos - start};
+    while (pos < bytes.length && space(bytes.data[pos])) {
+        pos++;
+    }
+    if (pos == bytes.length || bytes.data[pos] != '=') {
+        complete = true;
+        goto done;
+    }
+    pos++;
+    while (pos < bytes.length && space(bytes.data[pos])) {
+        pos++;
+    }
+    if (pos == bytes.length) {
+        goto done;
+    }
+    if (bytes.data[pos] == '"' || bytes.data[pos] == '\'') {
+        uint8_t quote = bytes.data[pos++];
+        start = pos;
+        while (pos < bytes.length && bytes.data[pos] != quote) {
+            pos++;
+        }
+        if (pos == bytes.length) {
+            goto done;
+        }
+        *value = (lxa_span_t) {bytes.data + start, pos++ - start};
+    }
+    else {
+        start = pos;
+        while (pos < bytes.length && !space(bytes.data[pos])
+               && bytes.data[pos] != '>') {
+            pos++;
+        }
+        *value = (lxa_span_t) {bytes.data + start, pos - start};
+    }
+    complete = true;
+done:
+    *position = pos;
+    return complete;
+}
+
 lxa_status_t
 lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
 {
     size_t end, i;
+    lxa_span_t scan;
     if (found == NULL || label == NULL
         || (bytes.length != 0 && bytes.data == NULL)) {
         return LXA_ERROR_ARGUMENT;
@@ -539,9 +602,9 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
     *found = false;
     *label = (lxa_span_t) {NULL, 0};
     end = bytes.length < 1024 ? bytes.length : 1024;
+    scan = (lxa_span_t) {bytes.data, end};
     for (i = 0; i < end; i++) {
         size_t pos, name_start;
-        uint8_t quote = 0;
         if (bytes.data[i] != '<' || i + 1 == end) {
             continue;
         }
@@ -569,84 +632,29 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
             bool seen_content = false;
             bool content_found = false, charset_found = false;
             lxa_span_t content_label = {NULL, 0}, charset_label = {NULL, 0};
+            lxa_span_t name, value;
             pos += 4;
-            while (pos < end) {
-                size_t value_start = pos, value_length = 0;
-                while (pos < end
-                       && (space(bytes.data[pos]) || bytes.data[pos] == '/')) {
-                    pos++;
+            while (prescan_attribute(scan, &pos, &name, &value)) {
+                if (equals(name.data, name.length, "charset", 7)
+                    && !charset_found) {
+                    charset_found = true;
+                    charset_label = value;
                 }
-                if (pos == end || bytes.data[pos] == '>') {
-                    break;
+                else if (equals(name.data, name.length, "http-equiv", 10)) {
+                    if (!seen_pragma) {
+                        got_pragma = equals(value.data, value.length,
+                                            "content-type", 12);
+                        seen_pragma = true;
+                    }
                 }
-                name_start = pos;
-                /* A leading '=' belongs to the attribute name. */
-                pos++;
-                while (pos < end && !space(bytes.data[pos])
-                       && bytes.data[pos] != '=' && bytes.data[pos] != '/'
-                       && bytes.data[pos] != '>') {
-                    pos++;
-                }
-                {
-                    size_t name_length = pos - name_start;
-                    while (pos < end && space(bytes.data[pos])) {
-                        pos++;
+                else if (equals(name.data, name.length, "content", 7)
+                         && !seen_content) {
+                    lxa_status_t status = lxa_html_input_content_charset(
+                        value, &content_found, &content_label);
+                    if (status != LXA_OK) {
+                        return status;
                     }
-                    if (pos < end && bytes.data[pos] == '=') {
-                        pos++;
-                        while (pos < end && space(bytes.data[pos])) {
-                            pos++;
-                        }
-                        if (pos == end) {
-                            break;
-                        }
-                        if (bytes.data[pos] == '"' || bytes.data[pos] == '\'') {
-                            quote = bytes.data[pos++];
-                            value_start = pos;
-                            while (pos < end && bytes.data[pos] != quote) {
-                                pos++;
-                            }
-                            if (pos == end) {
-                                break;
-                            }
-                            value_length = pos++ - value_start;
-                        }
-                        else {
-                            value_start = pos;
-                            while (pos < end && !space(bytes.data[pos])
-                                   && bytes.data[pos] != '>') {
-                                pos++;
-                            }
-                            value_length = pos - value_start;
-                        }
-                    }
-                    if (equals(bytes.data + name_start, name_length,
-                               "charset", 7) && !charset_found) {
-                        charset_found = true;
-                        charset_label = (lxa_span_t) {
-                            bytes.data + value_start, value_length
-                        };
-                    }
-                    else if (equals(bytes.data + name_start, name_length,
-                                    "http-equiv", 10)) {
-                        if (!seen_pragma) {
-                            got_pragma = equals(bytes.data + value_start,
-                                                value_length,
-                                                "content-type", 12);
-                            seen_pragma = true;
-                        }
-                    }
-                    else if (equals(bytes.data + name_start, name_length,
-                                    "content", 7) && !seen_content) {
-                        lxa_span_t value = {bytes.data + value_start,
-                                            value_length};
-                        lxa_status_t status = lxa_html_input_content_charset(
-                            value, &content_found, &content_label);
-                        if (status != LXA_OK) {
-                            return status;
-                        }
-                        seen_content = true;
-                    }
+                    seen_content = true;
                 }
             }
             if (pos < end && bytes.data[pos] == '>'
@@ -674,19 +682,12 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
                 }
             }
             else {
-                for (; pos < end; pos++) {
-                    uint8_t c = bytes.data[pos];
-                    if (quote != 0) {
-                        if (c == quote) {
-                            quote = 0;
-                        }
-                    }
-                    else if (c == '"' || c == '\'') {
-                        quote = c;
-                    }
-                    else if (c == '>') {
-                        break;
-                    }
+                lxa_span_t name, value;
+                while (pos < end && !space(bytes.data[pos])
+                       && bytes.data[pos] != '>') {
+                    pos++;
+                }
+                while (prescan_attribute(scan, &pos, &name, &value)) {
                 }
             }
             i = pos;
