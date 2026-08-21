@@ -358,6 +358,9 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     lxa_handle_t packed;
     size_t next;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -365,7 +368,6 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     if (nodes == NULL || !valid_kind(kind)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_size_to_id(lxa_vector_length(&nodes->records), &id);
     if (status != LXA_OK) {
         return status;
@@ -580,6 +582,9 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     lxa_dom_character_t character;
     lxa_dom_record_t record;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -589,7 +594,6 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         || (text.data == NULL && text.length != 0)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     /* Narrow both indexes and count before reserving any resources. */
     status = lxa_size_to_id(lxa_vector_length(&nodes->records), &node_id);
     if (status == LXA_OK) {
@@ -752,9 +756,11 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     size_t length, total, original, offset, source, copied;
     bool self, extend;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL || (bytes.data == NULL && bytes.length != 0))
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, text, &record);
     if (status != LXA_OK) return status;
     if (record.kind != LXA_DOM_KIND_TEXT
@@ -829,6 +835,9 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     size_t total, next, i, self_offset = 0;
     bool self = false, found = false, appended_atom = false, inserted = false;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -843,7 +852,6 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     if (status != LXA_OK) {
         return status;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
                                     name.length, &nodes->limit_reason);
     if (status != LXA_OK) {
@@ -1663,6 +1671,9 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     lxa_id_t id, payload_id;
     lxa_handle_t handle;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -1670,7 +1681,6 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     if (nodes == NULL || !lxa_dom_doctype_shape_valid(&data)) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
         fields[0].length, &nodes->limit_reason);
     if (status == LXA_OK) {
@@ -1848,6 +1858,9 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
     lxa_id_t id, payload_id;
     lxa_handle_t handle;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     memset(out, 0, sizeof(*out));
     if (nodes == NULL || target.data == NULL || target.length == 0
@@ -1856,7 +1869,6 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
              || (target.data[0] >= 'A' && target.data[0] <= 'Z')
              || target.data[0] == '_'))
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
                                     target.length, &nodes->limit_reason);
     if (status == LXA_OK)
