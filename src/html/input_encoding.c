@@ -580,14 +580,12 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
                     break;
                 }
                 name_start = pos;
+                /* A leading '=' belongs to the attribute name. */
+                pos++;
                 while (pos < end && !space(bytes.data[pos])
                        && bytes.data[pos] != '=' && bytes.data[pos] != '/'
                        && bytes.data[pos] != '>') {
                     pos++;
-                }
-                if (name_start == pos) {
-                    pos++; /* malformed separator, still bounded */
-                    continue;
                 }
                 {
                     size_t name_length = pos - name_start;
