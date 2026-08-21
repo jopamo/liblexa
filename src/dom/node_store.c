@@ -465,6 +465,9 @@ read_relation(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     const lxa_dom_record_t *records;
     lxa_id_t id, source_id;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -473,7 +476,6 @@ read_relation(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     if (status != LXA_OK) {
         return status;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     switch (relation) {
         case LXA_REL_FIRST: id = record.first_child; break;
         case LXA_REL_NEXT: id = record.next; break;
@@ -1184,10 +1186,12 @@ lxa_dom_nodes_host_including_ancestor(lxa_dom_nodes_t *nodes,
 {
     lxa_dom_record_t record;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = false;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, ancestor, &record);
     if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, node, &record);
     if (status != LXA_OK) return status;
@@ -1251,13 +1255,15 @@ lxa_dom_nodes_template_contents(lxa_dom_nodes_t *nodes,
     const lxa_dom_template_t *entries;
     size_t i;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = (lxa_dom_ref_t){0};
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
     status = lxa_dom_nodes_read(nodes, element, &host);
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT)
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     entries = (const lxa_dom_template_t *) nodes->templates.bytes.data;
     for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
@@ -1280,6 +1286,9 @@ lxa_dom_nodes_template_owner(lxa_dom_nodes_t *nodes,
     const lxa_dom_template_t *entries;
     size_t i;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = (lxa_dom_ref_t){0};
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
@@ -1287,7 +1296,6 @@ lxa_dom_nodes_template_owner(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
         || record.parent != LXA_ID_NONE)
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     entries = (const lxa_dom_template_t *) nodes->templates.bytes.data;
     for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, 1,
@@ -2557,12 +2565,14 @@ lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
     lxa_dom_record_t record;
     size_t visits = 0, ascents = 0, length, nesting = 0;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (start != NULL) *start = (lxa_dom_ref_t){0};
     if (end != NULL) *end = (lxa_dom_ref_t){0};
     if (nodes == NULL || start == NULL || end == NULL || start == end
         || (name.data == NULL && name.length != 0))
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, scope, &record);
     if (status != LXA_OK || (record.kind != LXA_DOM_KIND_ELEMENT
                             && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT))
@@ -3160,6 +3170,9 @@ lxa_dom_nodes_clone_element(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     lxa_span_t name;
     lxa_id_t match, tail;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     memset(out, 0, sizeof(*out));
     status = lxa_dom_nodes_element_namespace(nodes, source, &ns);
@@ -3236,6 +3249,9 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     lxa_dom_record_t *records, *tail;
     lxa_id_t parent_id, child_id;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL || parent.handle == child.handle) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -3261,7 +3277,6 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     }
     /* Only fragment -> character is supported here: its child depth is one.
      * Do not hold a live-stack charge on a persistent tree link. */
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH, 1,
                               &nodes->limit_reason);
     if (status != LXA_OK) {
@@ -3362,11 +3377,13 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_id_t parent_id, child_id, target_id, cursor;
     size_t depth = 1, steps = 0, length;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL
         || parent.handle == child.handle) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, parent, &host);
     if (status == LXA_OK) {
         status = lxa_dom_nodes_read(nodes, child, &leaf);
@@ -3732,11 +3749,13 @@ lxa_dom_nodes_prepare_content_patch(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
     lxa_vector_t removed = {0};
     size_t visits = 0, length;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = patch;
     if (nodes == NULL || (name.data == NULL && name.length != 0))
         return LXA_ERROR_ARGUMENT;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     if (name.length == 0) {
         status = lxa_dom_nodes_read(nodes, scope, &record);
         if (status != LXA_OK || (record.kind != LXA_DOM_KIND_ELEMENT
@@ -3846,11 +3865,13 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     size_t new_depth;
     bool root_option, has_content = false, reset_options = false;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL
         || parent.handle == child.handle) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, parent, &host);
     if (status == LXA_OK)
         status = lxa_dom_nodes_read(nodes, child, &moved);
@@ -4926,6 +4947,9 @@ lxa_dom_nodes_maybe_clone_selected_option(lxa_dom_nodes_t *nodes,
     lxa_dom_record_t record;
     select_tag_t tag;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
     status = select_tag(nodes, element, &tag);
     if (status != LXA_OK || tag != SELECT_OPTION) return status;
@@ -5079,10 +5103,12 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     lxa_id_t root_id, current;
     size_t start, visits = 0, length, max_visits;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (nodes == NULL || output == NULL || output->length > max_output_bytes) {
         return LXA_ERROR_ARGUMENT;
     }
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_dom_nodes_read(nodes, root, &record);
     if (status != LXA_OK) {
         return status;

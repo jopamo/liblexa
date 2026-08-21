@@ -50,7 +50,8 @@ lxa_status_t lxa_dom_nodes_create_with_entropy(
     const lxa_allocator_t *allocator, lxa_budget_t *shared,
     lxa_entropy_callback_t entropy, void *entropy_context,
     lxa_budget_kind_t *reason, lxa_dom_nodes_t **out);
-/* Last failed resource check, COUNT for success, invalid input or OOM. */
+/* Reason from the most recent budgeted store operation; COUNT for success,
+ * invalid input or OOM. Const readers preserve it for failed-state inspection. */
 lxa_budget_kind_t lxa_dom_nodes_limit_reason(const lxa_dom_nodes_t *nodes);
 void lxa_dom_nodes_destroy(lxa_dom_nodes_t *nodes);
 /* Reset preflights atom-map clear and atom-release WORK before invalidating

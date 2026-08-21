@@ -152,14 +152,16 @@ lxa_dom_nodes_pi_attribute_matches(lxa_dom_nodes_t *nodes, lxa_dom_ref_t pi,
     size_t pos = 0, work;
     bool result = false;
     lxa_status_t status;
+    if (nodes != NULL) {
+        nodes->limit_reason = LXA_BUDGET_COUNT;
+    }
     if (matches == NULL) return LXA_ERROR_ARGUMENT;
     *matches = false;
-    if ((name.data == NULL && name.length != 0)
+    if (nodes == NULL || (name.data == NULL && name.length != 0)
         || (value.data == NULL && value.length != 0))
         return LXA_ERROR_ARGUMENT;
     status = lxa_dom_nodes_pi_read(nodes, pi, &target, &data);
     if (status != LXA_OK) return status;
-    nodes->limit_reason = LXA_BUDGET_COUNT;
     status = lxa_size_mul(data.length, 3, &work);
     if (status == LXA_OK)
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, work,
