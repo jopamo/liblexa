@@ -661,23 +661,32 @@ lxa_html_input_meta_charset(lxa_span_t bytes, bool *found, lxa_span_t *label)
             }
             continue;
         }
-        /* A quoted '>' in another tag is not a new declaration. */
+        /* Only ordinary tags have quoted attributes in the prescan. */
         if (bytes.data[pos] == '/' || bytes.data[pos] == '!'
             || bytes.data[pos] == '?'
             || (lower(bytes.data[pos]) >= 'a'
                 && lower(bytes.data[pos]) <= 'z')) {
-            for (; pos < end; pos++) {
-                uint8_t c = bytes.data[pos];
-                if (quote != 0) {
-                    if (c == quote) {
-                        quote = 0;
+            name_start = pos + (bytes.data[pos] == '/');
+            if (name_start == end || lower(bytes.data[name_start]) < 'a'
+                || lower(bytes.data[name_start]) > 'z') {
+                while (pos < end && bytes.data[pos] != '>') {
+                    pos++;
+                }
+            }
+            else {
+                for (; pos < end; pos++) {
+                    uint8_t c = bytes.data[pos];
+                    if (quote != 0) {
+                        if (c == quote) {
+                            quote = 0;
+                        }
                     }
-                }
-                else if (c == '"' || c == '\'') {
-                    quote = c;
-                }
-                else if (c == '>') {
-                    break;
+                    else if (c == '"' || c == '\'') {
+                        quote = c;
+                    }
+                    else if (c == '>') {
+                        break;
+                    }
                 }
             }
             i = pos;
