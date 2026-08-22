@@ -61,89 +61,20 @@ input_status(lxa_html_input_result_t result)
 }
 
 typedef struct {
-    lxa_html_document_t *document;
+    lxa_budget_t *budget;
     const lxa_encoding_t *declared;
     lxa_limit_reason_t reason;
 } meta_context_t;
 
 /* Resolve parser-inserted meta declarations before later tree mutation. */
 static lxa_status_t
-observe_meta(void *context, lxa_dom_ref_t child)
+observe_meta(void *context, const lxa_html_token_t *token)
 {
     meta_context_t *meta = context;
-    lxa_dom_nodes_t *nodes = meta->document->nodes;
-    lxa_budget_t *budget = &meta->document->budget;
-    lxa_limit_reason_t *reason = &meta->reason;
-    const lxa_encoding_t **out = &meta->declared;
-    lxa_dom_ref_t attribute;
-    lxa_span_t name, value;
-    lxa_status_t status;
-    if (*out != NULL) return LXA_OK;
-    status = lxa_dom_nodes_find_attribute(nodes, child,
-        (lxa_span_t){(const uint8_t *) "charset", 7}, &attribute);
-    if (status != LXA_OK) return status;
-    if (attribute.handle != LXA_HANDLE_NONE) {
-        lxa_html_input_result_t result;
-        status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                             &name, &value);
-        if (status != LXA_OK) return status;
-        result = lxa_html_input_resolve_label(value, out);
-        return input_status(result);
-    }
-    status = lxa_dom_nodes_find_attribute(nodes, child,
-        (lxa_span_t){(const uint8_t *) "http-equiv", 10}, &attribute);
-    if (status != LXA_OK) return status;
-    if (attribute.handle != LXA_HANDLE_NONE) {
-        size_t i;
-        bool content_type = true;
-        status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                             &name, &value);
-        if (status != LXA_OK) return status;
-        if (value.length == 12) {
-            status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
-                                       12, reason);
-            if (status != LXA_OK) return status;
-            for (i = 0; i < 12; ++i) {
-                uint8_t c = value.data[i];
-                if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-                if (c != (uint8_t) "content-type"[i]) {
-                    content_type = false;
-                    break;
-                }
-            }
-        }
-        else content_type = false;
-        if (content_type) {
-            bool found;
-            lxa_span_t label;
-            size_t work;
-            status = lxa_dom_nodes_find_attribute(nodes, child,
-                (lxa_span_t){(const uint8_t *) "content", 7},
-                &attribute);
-            if (status != LXA_OK) return status;
-            if (attribute.handle != LXA_HANDLE_NONE) {
-                status = lxa_dom_nodes_attribute_read(nodes, attribute,
-                                                     &name, &value);
-                if (status != LXA_OK) return status;
-                /* The shared scanner compares at most seven bytes
-                 * per position and walks the matching value once. */
-                status = lxa_size_mul(value.length, 8, &work);
-                if (status != LXA_OK) return status;
-                status = lxa_budget_charge(budget,
-                    LXA_BUDGET_WORK, work, reason);
-                if (status != LXA_OK) return status;
-                status = lxa_html_input_content_charset(value, &found,
-                                                        &label);
-                if (status != LXA_OK) return status;
-                if (found) {
-                    lxa_html_input_result_t result =
-                        lxa_html_input_resolve_label(label, out);
-                    return input_status(result);
-                }
-            }
-        }
-    }
-    return LXA_OK;
+    if (meta->declared != NULL) return LXA_OK;
+    return input_status(lxa_html_input_meta_encoding(
+        token->attributes, token->attribute_count, meta->budget,
+        &meta->declared, &meta->reason));
 }
 
 void
@@ -220,7 +151,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
         meta_context_t meta = {
-            .document = document, .reason = LXA_BUDGET_COUNT
+            .budget = &document->budget, .reason = LXA_BUDGET_COUNT
         };
         status = lxa_buffer_init(&decoded, allocator);
         if (status != LXA_OK) break;

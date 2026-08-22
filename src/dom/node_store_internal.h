@@ -3,6 +3,7 @@
 
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
+#include "dom/namespace.h"
 
 /* The engine record contains IDs only. Drafts have no published links or
  * payload; typed payload construction and tree publication are separate.
@@ -138,14 +139,6 @@ struct lxa_dom_nodes {
     size_t charged_attrs;
     lxa_budget_kind_t limit_reason;
 };
-
-/* The parser's element namespace is stored with the typed element payload,
- * not inferred from its spelling or ancestor links. */
-typedef enum {
-    LXA_DOM_NS_HTML = 1,
-    LXA_DOM_NS_MATHML = 2,
-    LXA_DOM_NS_SVG = 3
-} lxa_dom_namespace_t;
 
 typedef enum {
     LXA_DOM_ATTR_NS_NONE,

@@ -1,4 +1,4 @@
-#include "liblexa/encoding.h"
+#include "encoding/stream_internal.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -68,7 +68,7 @@ struct lxa_decoder {
     const lxa_encoding_t *encoding;
     bool closed, failed, replacement_done;
     bool have_byte, have_lead, have_replay;
-    uint8_t byte;
+    uint8_t byte; /* UTF-8 lead or unmatched UTF-16 byte. */
     uint8_t kr_lead;
     uint8_t jp_lead;
     bool jp_jis0212;
@@ -357,6 +357,27 @@ size_t
 lxa_decoder_error_count(const lxa_decoder_t *decoder)
 {
     return decoder == NULL ? 0 : decoder->errors;
+}
+
+size_t
+lxa_decoder_pending_bytes(const lxa_decoder_t *decoder)
+{
+    if (decoder == NULL) return 0;
+    if (decoder->encoding == utf8_encoding && decoder->remaining != 0) {
+        size_t width = decoder->byte < 0xe0 ? 2
+                     : decoder->byte < 0xf0 ? 3 : 4;
+        return width - decoder->remaining;
+    }
+    if (decoder->encoding == &utf16le_encoding
+        || decoder->encoding == &utf16be_encoding)
+        return (decoder->have_byte ? 1u : 0u)
+             + (decoder->have_lead ? 2u : 0u)
+             + (decoder->have_replay ? 2u : 0u);
+    if (decoder->encoding == &euc_kr_encoding)
+        return decoder->kr_lead != 0 ? 1 : 0;
+    if (decoder->encoding == &euc_jp_encoding)
+        return decoder->jp_lead == 0 ? 0 : decoder->jp_jis0212 ? 2 : 1;
+    return 0;
 }
 
 static void
@@ -717,18 +738,21 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
                 output[progress->produced++] = c;
             }
             else if (c >= 0xc2 && c <= 0xdf) {
+                decoder->byte = c;
                 decoder->scalar = c & 0x1f;
                 decoder->remaining = 1;
                 decoder->lower = 0x80;
                 decoder->upper = 0xbf;
             }
             else if (c >= 0xe0 && c <= 0xef) {
+                decoder->byte = c;
                 decoder->scalar = c & 0x0f;
                 decoder->remaining = 2;
                 decoder->lower = c == 0xe0 ? 0xa0 : 0x80;
                 decoder->upper = c == 0xed ? 0x9f : 0xbf;
             }
             else if (c >= 0xf0 && c <= 0xf4) {
+                decoder->byte = c;
                 decoder->scalar = c & 0x07;
                 decoder->remaining = 3;
                 decoder->lower = c == 0xf0 ? 0x90 : 0x80;

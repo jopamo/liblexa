@@ -3,6 +3,7 @@
 
 #include "liblexa/html.h"
 #include "liblexa/encoding.h"
+#include "html/tokenizer.h"
 
 /* Complete-buffer HTML input boundary, before any in-document declaration.
  * A NULL encoding and zero prefix mean no recognized BOM. The caller still
@@ -54,6 +55,17 @@ typedef enum {
 lxa_html_input_result_t lxa_html_input_resolve_label(
     lxa_span_t label, const lxa_encoding_t **encoding);
 
+/* Resolve an accepted HTML meta token's effective normalized attributes.
+ * The tree/control owner decides eligibility and BOM/first-declaration policy.
+ * charset takes precedence over pragma-qualified content, independent of
+ * attribute order. No declaration returns OK with NULL encoding; an empty or
+ * unknown explicit label fails. Views are borrowed only during the call.
+ * Charge scanning WORK to budget; publish encoding only on success.
+ */
+lxa_html_input_result_t lxa_html_input_meta_encoding(
+    const lxa_html_attribute_t *attributes, size_t count, lxa_budget_t *budget,
+    const lxa_encoding_t **encoding, lxa_limit_reason_t *reason);
+
 /* Select a decoder before publishing any tree state. The caller provides its
  * complete-input size limit. A BOM
  * overrides declarations; otherwise the first prescanned declaration wins,
@@ -79,6 +91,38 @@ lxa_html_input_result_t lxa_html_input_decode(
     lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
     lxa_budget_t *budget, lxa_buffer_t *output, size_t *malformed,
     lxa_limit_reason_t *reason);
+
+typedef struct {
+    size_t decoded_end, raw_end;
+    bool identity;
+} lxa_html_input_mapping_t;
+
+/* Opt-in raw-byte mapping for source-mode tokenization. mapping is an empty
+ * vector of lxa_html_input_mapping_t bound to the same budget as output.
+ * Publish both only on success. Offsets include a stripped BOM; malformed
+ * sequences map to the raw bytes consumed by their replacement scalar.
+ * Unchanged byte runs coalesce. No callbacks run; encoding is already selected.
+ */
+lxa_html_input_result_t lxa_html_input_decode_mapped(
+    lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
+    lxa_budget_t *budget, lxa_buffer_t *output, lxa_vector_t *mapping,
+    size_t *malformed, lxa_limit_reason_t *reason);
+
+/* Rebuild both results after an encoding change, before direct effects.
+ * INPUT must already equal bytes.length. Destroy both tentative results
+ * before retrying; WORK/MEMORY are charged anew without new input credit.
+ * Output and mapping have the same empty-state contract as decode_mapped.
+ */
+lxa_html_input_result_t lxa_html_input_decode_mapped_prepaid(
+    lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
+    lxa_budget_t *budget, lxa_buffer_t *output, lxa_vector_t *mapping,
+    size_t *malformed, lxa_limit_reason_t *reason);
+
+/* Query a decoded scalar boundary or an offset inside an unchanged byte run.
+ * Reject interior offsets in transcoded/replacement scalars. The mapping
+ * must be an unmodified successful result of decode_mapped. */
+lxa_status_t lxa_html_input_raw_offset(const lxa_vector_t *mapping,
+    size_t decoded_offset, size_t *raw_offset);
 
 /* Optional raw-byte malformed sequence positions. Only the malformed path
  * incurs a second, budgeted decoder pass. Callbacks receive offsets into the

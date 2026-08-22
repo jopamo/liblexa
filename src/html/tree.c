@@ -2,6 +2,7 @@
 #include <string.h>
 #include "dom/node_store_internal.h"
 #include "html/foreign_names.h"
+#include "html/foreign_context.h"
 #include "html-categories.h"
 #include "html-tags.h"
 #include "html/tree.h"
@@ -249,13 +250,6 @@ inline_container(lxa_span_t name)
            || named(name, "samp") || named(name, "kbd");
 }
 
-static bool
-mathml_text_integration(lxa_span_t name)
-{
-    return named(name, "mi") || named(name, "mo") || named(name, "mn")
-           || named(name, "ms") || named(name, "mtext");
-}
-
 static lxa_status_t
 annotation_html_integration(lxa_html_tree_t *tree,
                             lxa_dom_ref_t element, bool *html)
@@ -276,6 +270,19 @@ annotation_html_integration(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+element_foreign_context(lxa_html_tree_t *tree, lxa_dom_ref_t element,
+                        lxa_dom_namespace_t ns, lxa_span_t name,
+                        lxa_html_foreign_context_t *context)
+{
+    bool html = false;
+    lxa_status_t status = LXA_OK;
+    if (ns == LXA_DOM_NS_MATHML && named(name, "annotation-xml"))
+        status = annotation_html_integration(tree, element, &html);
+    if (status == LXA_OK) *context = lxa_html_foreign_context(ns, name, html);
+    return status;
+}
+
+static lxa_status_t
 foreign_breakout_boundary(lxa_html_tree_t *tree, lxa_dom_ref_t element,
                           bool *boundary)
 {
@@ -291,16 +298,12 @@ foreign_breakout_boundary(lxa_html_tree_t *tree, lxa_dom_ref_t element,
     }
     status = lxa_dom_nodes_element_name(tree->nodes, element, &name);
     if (status != LXA_OK) return status;
-    if (ns == LXA_DOM_NS_SVG)
-        *boundary = named(name, "foreignObject")
-                    || named(name, "title") || named(name, "desc");
-    else if (ns == LXA_DOM_NS_MATHML) {
-        *boundary = mathml_text_integration(name);
-        if (named(name, "annotation-xml"))
-            return annotation_html_integration(tree, element, boundary);
-    }
-    else return LXA_ERROR_INTERNAL;
-    return LXA_OK;
+    if (ns != LXA_DOM_NS_SVG && ns != LXA_DOM_NS_MATHML)
+        return LXA_ERROR_INTERNAL;
+    lxa_html_foreign_context_t context;
+    status = element_foreign_context(tree, element, ns, name, &context);
+    if (status == LXA_OK) *boundary = lxa_html_foreign_integration(context);
+    return status;
 }
 
 static bool
@@ -2375,12 +2378,12 @@ table_in_scope(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 
 static lxa_status_t
 observe_inserted_meta(lxa_html_tree_t *tree, const lxa_html_token_t *token,
-                      lxa_dom_ref_t element, lxa_dom_namespace_t ns)
+                      lxa_dom_namespace_t ns)
 {
     if (tree->on_meta == NULL || ns != LXA_DOM_NS_HTML
         || !named(token->name, "meta"))
         return LXA_OK;
-    return tree->on_meta(tree->meta_context, element);
+    return tree->on_meta(tree->meta_context, token);
 }
 
 static lxa_status_t
@@ -2415,7 +2418,7 @@ foster_element(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = insert_constructed(tree, parent, child, table);
     if (status == LXA_OK)
-        status = observe_inserted_meta(tree, token, child, LXA_DOM_NS_HTML);
+        status = observe_inserted_meta(tree, token, LXA_DOM_NS_HTML);
     if (status == LXA_OK && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
@@ -2767,7 +2770,7 @@ append_closed_element_at(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
         status = insert_constructed(tree, parent,
             element, before);
     if (status == LXA_OK)
-        status = observe_inserted_meta(tree, token, element, LXA_DOM_NS_HTML);
+        status = observe_inserted_meta(tree, token, LXA_DOM_NS_HTML);
     if (status == LXA_OK && out != NULL) *out = element;
     return status;
 }
@@ -2781,13 +2784,16 @@ append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 
 static lxa_status_t
 set_tokenizer_text_mode(
-    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token,
     lxa_html_text_mode_t text_mode)
 {
     lxa_html_result_t result;
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
     result = lxa_html_tokenizer_set_text_mode(tokenizer, text_mode,
         text_mode == LXA_HTML_PLAINTEXT ? literal("") : token->name);
+    if (result == LXA_HTML_LIMIT)
+        tree->nodes->limit_reason = lxa_html_tokenizer_limit_reason(tokenizer);
     if (result != LXA_HTML_OK)
         return result == LXA_HTML_LIMIT ? LXA_ERROR_LIMIT
                : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
@@ -2801,7 +2807,7 @@ enter_text_mode(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     lxa_html_text_mode_t text_mode, lxa_dom_ref_t element)
 {
-    lxa_status_t status = set_tokenizer_text_mode(tokenizer, token, text_mode);
+    lxa_status_t status = set_tokenizer_text_mode(tree, tokenizer, token, text_mode);
     if (status != LXA_OK) return status;
     tree->text_element = element;
     tree->text_return_mode = tree->mode;
@@ -2916,7 +2922,7 @@ begin_root_plaintext(lxa_html_tree_t *tree,
     status = open_container_at(tree, token, LXA_DOM_NS_HTML, parent, before);
     if (status != LXA_OK) return status;
     tree->mode = LXA_TREE_IN_BODY;
-    return set_tokenizer_text_mode(tokenizer, token, LXA_HTML_PLAINTEXT);
+    return set_tokenizer_text_mode(tree, tokenizer, token, LXA_HTML_PLAINTEXT);
 }
 
 static lxa_status_t
@@ -3289,7 +3295,7 @@ template_foster_element(lxa_html_tree_t *tree,
         status = insert_constructed(tree, parent,
             child, before);
     if (status == LXA_OK)
-        status = observe_inserted_meta(tree, token, child, ns);
+        status = observe_inserted_meta(tree, token, ns);
     if (status == LXA_OK && ns == LXA_DOM_NS_HTML
         && named(token->name, "option"))
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
@@ -4791,17 +4797,19 @@ reprocess_template_token:
             }
             if (ns == LXA_DOM_NS_SVG) {
                 lxa_span_t current;
+                lxa_html_foreign_context_t context;
                 bool font = false;
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[length - 1], &current);
+                if (status != LXA_OK) return status;
+                status = element_foreign_context(tree, open[length - 1],
+                                                 ns, current, &context);
                 if (status != LXA_OK) return status;
                 if (named(token->name, "font")) {
                     status = font_breakout(tree, token, &font);
                     if (status != LXA_OK) return status;
                 }
-                if (!named(current, "foreignObject")
-                    && !named(current, "title")
-                    && !named(current, "desc")
+                if (!lxa_html_foreign_integration(context)
                     && (foreign_html_start_breakout(token->name) || font)) {
                     size_t keep;
                     status = plan_foreign_breakout(tree,
@@ -4813,31 +4821,28 @@ reprocess_template_token:
                     goto reprocess_template_token;
                 }
                 /* Integration-point starts continue through the HTML consumers. */
-                if (!named(current, "foreignObject")
-                    && !named(current, "title") && !named(current, "desc")) {
+                if (!lxa_html_foreign_uses_html(context, token)) {
                     return template_open_foreign(tree, token, ns);
                 }
             }
             if (ns == LXA_DOM_NS_MATHML) {
                 lxa_span_t current;
+                lxa_html_foreign_context_t context;
                 bool integrated, font = false;
                 status = lxa_dom_nodes_element_name(tree->nodes,
                     open[length - 1], &current);
                 if (status != LXA_OK) return status;
-                if (named(current, "annotation-xml")
-                    && named(token->name, "svg"))
+                context = lxa_html_foreign_context(ns, current, false);
+                if (lxa_html_foreign_annotation_svg(context, token))
                     return template_open_foreign(tree, token, LXA_DOM_NS_SVG);
-                if (mathml_text_integration(current)
-                    && (named(token->name, "mglyph")
-                        || named(token->name, "malignmark")))
+                status = element_foreign_context(tree, open[length - 1],
+                                                 ns, current, &context);
+                if (status != LXA_OK) return status;
+                if (lxa_html_foreign_integration(context)
+                    && !lxa_html_foreign_uses_html(context, token))
                     return template_open_foreign(tree, token,
                                                  LXA_DOM_NS_MATHML);
-                integrated = mathml_text_integration(current);
-                if (named(current, "annotation-xml")) {
-                    status = annotation_html_integration(tree,
-                        open[length - 1], &integrated);
-                    if (status != LXA_OK) return status;
-                }
+                integrated = lxa_html_foreign_integration(context);
                 if (integrated && table_part(token->name)
                     && !named(token->name, "table")) {
                     size_t j = length;
@@ -5292,7 +5297,7 @@ reprocess_template_token:
                     status = template_foster_element(tree, token, plaintext,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK && plaintext)
-                        status = set_tokenizer_text_mode(tokenizer, token,
+                        status = set_tokenizer_text_mode(tree, tokenizer, token,
                                                          LXA_HTML_PLAINTEXT);
                     else if (status == LXA_OK)
                         status = enter_text_mode(tree, tokenizer, token,
@@ -5868,7 +5873,7 @@ reprocess_template_token:
                 && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
                 tree->template_insertion_mode = LXA_TEMPLATE_BODY;
             if (status == LXA_OK && named(token->name, "plaintext"))
-                status = set_tokenizer_text_mode(tokenizer, token,
+                status = set_tokenizer_text_mode(tree, tokenizer, token,
                                                  LXA_HTML_PLAINTEXT);
             return status;
         }
@@ -6056,31 +6061,16 @@ reprocess_template_token:
             && (token->kind == LXA_HTML_START_TAG
                 || token->kind == LXA_HTML_TEXT)) {
             lxa_span_t current_name;
+            lxa_html_foreign_context_t context;
             status = lxa_dom_nodes_element_name(tree->nodes,
                                                 current_element(tree),
                                                 &current_name);
             if (status != LXA_OK) return status;
-            if (ns == LXA_DOM_NS_MATHML) {
-                integration_owner = mathml_text_integration(current_name);
-                html_integration_child = integration_owner
-                    && (token->kind == LXA_HTML_TEXT
-                        || (!named(token->name, "mglyph")
-                            && !named(token->name, "malignmark")));
-                if (named(current_name, "annotation-xml")) {
-                    status = annotation_html_integration(tree,
-                        current_element(tree), &integration_owner);
-                    if (status != LXA_OK) return status;
-                    html_integration_child = integration_owner
-                        || (token->kind == LXA_HTML_START_TAG
-                            && named(token->name, "svg"));
-                }
-            }
-            else {
-                integration_owner = named(current_name, "title")
-                                    || named(current_name, "desc")
-                                    || named(current_name, "foreignObject");
-                html_integration_child = integration_owner;
-            }
+            status = element_foreign_context(tree, current_element(tree),
+                                             ns, current_name, &context);
+            if (status != LXA_OK) return status;
+            integration_owner = lxa_html_foreign_integration(context);
+            html_integration_child = lxa_html_foreign_uses_html(context, token);
         }
         if (ns != LXA_DOM_NS_HTML && !integration_owner
             && token->kind == LXA_HTML_START_TAG

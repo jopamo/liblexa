@@ -1,4 +1,6 @@
 #include "html/input_encoding.h"
+#include "encoding/stream_internal.h"
+#include <string.h>
 
 static lxa_html_input_result_t
 input_status(lxa_status_t status)
@@ -179,15 +181,44 @@ done:
 }
 
 static lxa_html_input_result_t
+map_scalar(lxa_vector_t *mapping, lxa_span_t bytes,
+           const lxa_buffer_t *output, size_t decoded_start, size_t raw_end,
+           lxa_limit_reason_t *reason)
+{
+    size_t count = lxa_vector_length(mapping);
+    lxa_html_input_mapping_t *points = (void *) mapping->bytes.data;
+    lxa_html_input_mapping_t point = {
+        .decoded_end = output->length, .raw_end = raw_end
+    };
+    lxa_html_input_mapping_t previous = points[count - 1];
+    size_t width = output->length - decoded_start;
+    lxa_status_t status;
+    if (raw_end < previous.raw_end || raw_end > bytes.length)
+        return LXA_HTML_INPUT_BAD_ARGUMENT;
+    point.identity = raw_end - previous.raw_end == width
+        && memcmp(bytes.data + previous.raw_end,
+                  output->data + decoded_start, width) == 0;
+    if (count > 1 && previous.identity && point.identity) {
+        points[count - 1] = point;
+        return LXA_HTML_INPUT_OK;
+    }
+    status = lxa_vector_push(mapping, &point);
+    if (status == LXA_ERROR_LIMIT && reason != NULL)
+        *reason = LXA_BUDGET_MEMORY;
+    return input_status(status);
+}
+
+static lxa_html_input_result_t
 decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
              size_t prefix_length, lxa_budget_t *budget,
-             lxa_buffer_t *output, size_t *malformed,
+             lxa_buffer_t *output, lxa_vector_t *mapping, size_t *malformed,
              lxa_limit_reason_t *reason,
              lxa_html_input_error_callback_t on_error,
              void *context, lxa_status_t *callback_status, bool prepaid)
 {
     lxa_decoder_t *decoder = NULL;
     lxa_buffer_t temporary;
+    lxa_vector_t temporary_mapping = {0};
     lxa_status_t status;
     lxa_html_input_result_t result;
     size_t offset;
@@ -212,6 +243,11 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         || output->capacity != 0 || output->data != NULL) {
         return LXA_HTML_INPUT_BAD_ARGUMENT;
     }
+    if (mapping != NULL
+        && (mapping->element_size != sizeof(lxa_html_input_mapping_t)
+            || mapping->bytes.budget != budget || mapping->bytes.length != 0
+            || mapping->bytes.capacity != 0 || mapping->bytes.data != NULL))
+        return LXA_HTML_INPUT_BAD_ARGUMENT;
     if (prepaid) {
         /* The retry must not mint fresh work credit or hide uncharged input. */
         if (budget->used[LXA_BUDGET_INPUT] != bytes.length) {
@@ -243,13 +279,30 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         result = input_status(status);
         goto done;
     }
+    if (mapping != NULL) {
+        lxa_html_input_mapping_t first = {.raw_end = prefix_length};
+        status = lxa_vector_init(&temporary_mapping, &mapping->bytes.allocator,
+                                  sizeof(first));
+        if (status == LXA_OK)
+            status = lxa_vector_bind_budget(&temporary_mapping, budget);
+        if (status == LXA_OK)
+            status = lxa_vector_push(&temporary_mapping, &first);
+        if (status != LXA_OK) {
+            if (status == LXA_ERROR_LIMIT && reason != NULL)
+                *reason = LXA_BUDGET_MEMORY;
+            result = input_status(status);
+            goto done;
+        }
+    }
     offset = prefix_length;
     do {
+        size_t decoded_start = temporary.length;
         lxa_span_t remaining = {
             bytes.data == NULL ? NULL : bytes.data + offset,
             bytes.length - offset
         };
-        decode_result = lxa_decoder_feed(decoder, remaining, scalars, 256,
+        decode_result = lxa_decoder_feed(decoder, remaining, scalars,
+                                          mapping == NULL ? 256 : 1,
                                           &progress);
         offset += progress.consumed;
         status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
@@ -263,6 +316,12 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         if (result != LXA_HTML_INPUT_OK) {
             goto done;
         }
+        if (mapping != NULL && progress.produced != 0) {
+            result = map_scalar(&temporary_mapping, bytes, &temporary,
+                decoded_start, offset - lxa_decoder_pending_bytes(decoder),
+                reason);
+            if (result != LXA_HTML_INPUT_OK) goto done;
+        }
         if (decode_result != LXA_ENCODING_OK
             && decode_result != LXA_ENCODING_OUTPUT_FULL) {
             result = LXA_HTML_INPUT_BAD_ARGUMENT;
@@ -270,11 +329,20 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         }
     } while (offset != bytes.length || decode_result == LXA_ENCODING_OUTPUT_FULL);
     do {
-        decode_result = lxa_decoder_finish(decoder, scalars, 256, &progress);
+        size_t decoded_start = temporary.length;
+        decode_result = lxa_decoder_finish(decoder, scalars,
+                                            mapping == NULL ? 256 : 1,
+                                            &progress);
         result = append_scalars(&temporary, scalars, progress.produced, budget,
                                 reason);
         if (result != LXA_HTML_INPUT_OK) {
             goto done;
+        }
+        if (mapping != NULL && progress.produced != 0) {
+            result = map_scalar(&temporary_mapping, bytes, &temporary,
+                decoded_start, offset - lxa_decoder_pending_bytes(decoder),
+                reason);
+            if (result != LXA_HTML_INPUT_OK) goto done;
         }
         if (decode_result != LXA_ENCODING_OK
             && decode_result != LXA_ENCODING_OUTPUT_FULL) {
@@ -295,10 +363,16 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
     *output = temporary;
     temporary.data = NULL;
     temporary.length = temporary.capacity = 0;
+    if (mapping != NULL) {
+        *mapping = temporary_mapping;
+        temporary_mapping.bytes.data = NULL;
+        temporary_mapping.bytes.length = temporary_mapping.bytes.capacity = 0;
+    }
     result = LXA_HTML_INPUT_OK;
 done:
     lxa_decoder_destroy(decoder);
     lxa_buffer_destroy(&temporary);
+    lxa_vector_destroy(&temporary_mapping);
     return result;
 }
 
@@ -310,7 +384,7 @@ lxa_html_input_decode_report(lxa_span_t bytes, const lxa_encoding_t *encoding,
                              lxa_html_input_error_callback_t on_error,
                              void *context, lxa_status_t *callback_status)
 {
-    return decode_input(bytes, encoding, prefix_length, budget, output,
+    return decode_input(bytes, encoding, prefix_length, budget, output, NULL,
                         malformed, reason, on_error, context, callback_status,
                         false);
 }
@@ -322,9 +396,76 @@ lxa_html_input_decode_prepaid_report(
     lxa_limit_reason_t *reason, lxa_html_input_error_callback_t on_error,
     void *context, lxa_status_t *callback_status)
 {
-    return decode_input(bytes, encoding, prefix_length, budget, output,
+    return decode_input(bytes, encoding, prefix_length, budget, output, NULL,
                         malformed, reason, on_error, context, callback_status,
                         true);
+}
+
+static lxa_html_input_result_t
+decode_mapped(
+    lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
+    lxa_budget_t *budget, lxa_buffer_t *output, lxa_vector_t *mapping,
+    size_t *malformed, lxa_limit_reason_t *reason, bool prepaid)
+{
+    if (mapping == NULL) {
+        if (malformed != NULL) *malformed = 0;
+        if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+        return LXA_HTML_INPUT_BAD_ARGUMENT;
+    }
+    return decode_input(bytes, encoding, prefix_length, budget, output, mapping,
+                        malformed, reason, NULL, NULL, NULL, prepaid);
+}
+
+lxa_html_input_result_t
+lxa_html_input_decode_mapped(
+    lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
+    lxa_budget_t *budget, lxa_buffer_t *output, lxa_vector_t *mapping,
+    size_t *malformed, lxa_limit_reason_t *reason)
+{
+    return decode_mapped(bytes, encoding, prefix_length, budget, output, mapping,
+                         malformed, reason, false);
+}
+
+lxa_html_input_result_t
+lxa_html_input_decode_mapped_prepaid(
+    lxa_span_t bytes, const lxa_encoding_t *encoding, size_t prefix_length,
+    lxa_budget_t *budget, lxa_buffer_t *output, lxa_vector_t *mapping,
+    size_t *malformed, lxa_limit_reason_t *reason)
+{
+    return decode_mapped(bytes, encoding, prefix_length, budget, output, mapping,
+                         malformed, reason, true);
+}
+
+lxa_status_t
+lxa_html_input_raw_offset(const lxa_vector_t *mapping,
+                         size_t decoded_offset, size_t *raw_offset)
+{
+    const lxa_html_input_mapping_t *points;
+    size_t begin = 0, end;
+    if (raw_offset == NULL) return LXA_ERROR_ARGUMENT;
+    *raw_offset = 0;
+    if (mapping == NULL
+        || mapping->element_size != sizeof(lxa_html_input_mapping_t)
+        || mapping->bytes.length == 0 || mapping->bytes.data == NULL
+        || mapping->bytes.length % mapping->element_size != 0)
+        return LXA_ERROR_ARGUMENT;
+    points = (const void *) mapping->bytes.data;
+    end = lxa_vector_length(mapping);
+    if (decoded_offset > points[end - 1].decoded_end)
+        return LXA_ERROR_ARGUMENT;
+    while (begin < end) {
+        size_t middle = begin + (end - begin) / 2;
+        if (points[middle].decoded_end < decoded_offset) begin = middle + 1;
+        else end = middle;
+    }
+    if (points[begin].decoded_end == decoded_offset) {
+        *raw_offset = points[begin].raw_end;
+        return LXA_OK;
+    }
+    if (!points[begin].identity || begin == 0) return LXA_ERROR_ARGUMENT;
+    *raw_offset = points[begin - 1].raw_end
+                + decoded_offset - points[begin - 1].decoded_end;
+    return LXA_OK;
 }
 
 lxa_html_input_result_t
@@ -492,6 +633,57 @@ lxa_html_input_content_charset(lxa_span_t content, bool *found,
         return LXA_OK;
     }
     return LXA_OK;
+}
+
+lxa_html_input_result_t
+lxa_html_input_meta_encoding(
+    const lxa_html_attribute_t *attributes, size_t count, lxa_budget_t *budget,
+    const lxa_encoding_t **encoding, lxa_limit_reason_t *reason)
+{
+    const lxa_html_attribute_t *content = NULL, *pragma = NULL;
+    lxa_status_t status;
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (encoding == NULL) return LXA_HTML_INPUT_BAD_ARGUMENT;
+    *encoding = NULL;
+    if (budget == NULL || (count != 0 && attributes == NULL)
+        || count > SIZE_MAX / sizeof(*attributes))
+        return LXA_HTML_INPUT_BAD_ARGUMENT;
+    for (size_t i = 0; i < count; ++i) {
+        lxa_span_t name = attributes[i].name, value = attributes[i].value;
+        size_t work = name.length == 7 ? 15 : name.length == 10 ? 11 : 1;
+        if (name.data == NULL || name.length == 0
+            || (value.data == NULL && value.length != 0))
+            return LXA_HTML_INPUT_BAD_ARGUMENT;
+        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, work, reason);
+        if (status != LXA_OK) return input_status(status);
+        if (equals(name.data, name.length, "charset", 7)) {
+            status = lxa_budget_charge(budget, LXA_BUDGET_WORK, value.length, reason);
+            if (status != LXA_OK) return input_status(status);
+            return lxa_html_input_resolve_label(value, encoding);
+        }
+        if (equals(name.data, name.length, "content", 7)) content = &attributes[i];
+        else if (equals(name.data, name.length, "http-equiv", 10))
+            pragma = &attributes[i];
+    }
+    if (content != NULL && pragma != NULL && pragma->value.length == 12) {
+        bool found;
+        lxa_span_t label;
+        size_t work;
+        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 12, reason);
+        if (status != LXA_OK) return input_status(status);
+        if (!equals(pragma->value.data, 12, "content-type", 12))
+            return LXA_HTML_INPUT_OK;
+        /* The content scanner compares at most seven bytes per position
+         * and walks the matching value once. */
+        status = lxa_size_mul(content->value.length, 8, &work);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(budget, LXA_BUDGET_WORK, work, reason);
+        if (status == LXA_OK)
+            status = lxa_html_input_content_charset(content->value, &found, &label);
+        if (status != LXA_OK) return input_status(status);
+        if (found) return lxa_html_input_resolve_label(label, encoding);
+    }
+    return LXA_HTML_INPUT_OK;
 }
 
 lxa_status_t
