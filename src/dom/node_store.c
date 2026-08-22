@@ -833,7 +833,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     lxa_dom_atom_t *atom = NULL;
     void *atom_value = NULL;
     lxa_handle_t packed;
-    lxa_id_t node_id, payload_id, atom_id;
+    lxa_id_t node_id, payload_id, atom_id = LXA_ID_NONE;
     size_t total, next, i, self_offset = 0;
     bool self = false, found = false, appended_atom = false, inserted = false;
     lxa_status_t status;
