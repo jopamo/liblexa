@@ -186,7 +186,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             lxa_buffer_destroy(&decoded);
             break;
         }
-        if (prefix == 0) {
+        /* A meta-triggered reparse starts with certain encoding confidence. */
+        if (attempt == 0 && prefix == 0) {
             tree.on_meta = observe_meta;
             tree.meta_context = &meta;
         }
@@ -211,14 +212,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             *reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK && !utf16 && meta.declared != NULL
             && meta.declared != encoding) {
-            if (attempt == 0) {
-                encoding = meta.declared;
-                retry = true;
-            }
-            else {
-                result = LXA_HTML_UNSUPPORTED;
-                status = LXA_ERROR_UNSUPPORTED;
-            }
+            encoding = meta.declared;
+            retry = true;
         }
         if (status == LXA_OK && !retry && on_malformed != NULL) {
             selected = lxa_html_input_report_malformed(input, encoding,
