@@ -650,7 +650,7 @@ LXA_HTML_STATE(AFTER_NAME, 22, TAG, NONE,
         i++;
     }
     else {
-        result = begin_attribute(tokenizer);
+        result = begin_attribute(tokenizer, tokenizer->offset + i);
         if (result != LXA_HTML_OK) {
             goto fail;
         }
@@ -759,6 +759,8 @@ LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG, NONE,
         i++;
     }
     else if (c == '=') {
+        if (tokenizer->source_ranges)
+            tokenizer->attribute_source.end = tokenizer->offset + i + 1;
         tokenizer->state = STATE_BEFORE_ATTRIBUTE_VALUE;
         i++;
     }
@@ -774,7 +776,7 @@ LXA_HTML_STATE(AFTER_ATTRIBUTE_NAME, 24, TAG, NONE,
         i++;
     }
     else {
-        result = begin_attribute(tokenizer);
+        result = begin_attribute(tokenizer, tokenizer->offset + i);
         if (result != LXA_HTML_OK) {
             goto fail;
         }
@@ -858,17 +860,23 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG, VALUE_UNQUOTED,
     if ((tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE && c == '"')
         || (tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE && c == '\''))
     {
+        if (tokenizer->source_ranges)
+            tokenizer->attribute_source.end = tokenizer->offset + i + 1;
         tokenizer->state = STATE_AFTER_ATTRIBUTE_VALUE;
         i++;
         break;
     }
     if (tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED) {
         if (lxa_html_byte_space(c)) {
+            if (tokenizer->source_ranges)
+                tokenizer->attribute_source.end = tokenizer->offset + i;
             tokenizer->state = STATE_AFTER_NAME;
             i++;
             break;
         }
         if (c == '>') {
+            if (tokenizer->source_ranges)
+                tokenizer->attribute_source.end = tokenizer->offset + i;
             result = emit_tag(tokenizer, false, tokenizer->offset + i);
             if (result != LXA_HTML_OK) {
                 goto fail;

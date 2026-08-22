@@ -132,6 +132,10 @@ lxa_html_tokenizer_create_with_budget(
                                  sizeof(lxa_html_attribute_t));
     }
     if (status == LXA_OK) {
+        status = lxa_vector_init(&tokenizer->attribute_sources, allocator,
+                                 sizeof(lxa_html_source_range_t));
+    }
+    if (status == LXA_OK) {
         status = lxa_buffer_bind_budget(&tokenizer->text, budget);
     }
     if (status == LXA_OK) {
@@ -157,6 +161,9 @@ lxa_html_tokenizer_create_with_budget(
     }
     if (status == LXA_OK) {
         status = lxa_vector_bind_budget(&tokenizer->attribute_views, budget);
+    }
+    if (status == LXA_OK) {
+        status = lxa_vector_bind_budget(&tokenizer->attribute_sources, budget);
     }
     if (status == LXA_OK) {
         lxa_span_t label = {(const uint8_t *) "utf-8", 5};
@@ -191,6 +198,7 @@ lxa_html_tokenizer_destroy(lxa_html_tokenizer_t *tokenizer)
     lxa_table_destroy(tokenizer->attribute_names);
     lxa_encoder_destroy(tokenizer->encoder);
     lxa_decoder_destroy(tokenizer->decoder);
+    lxa_vector_destroy(&tokenizer->attribute_sources);
     lxa_vector_destroy(&tokenizer->attribute_views);
     lxa_vector_destroy(&tokenizer->attribute_slots);
     lxa_buffer_destroy(&tokenizer->raw_candidate);
@@ -224,6 +232,8 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->public_id);
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
+        lxa_vector_clear(&tokenizer->attribute_sources);
+        tokenizer->attribute_source = (lxa_html_source_range_t) {0};
         tokenizer->attribute_state = ATTRIBUTE_NONE;
         tokenizer->source_attribute_count = 0;
         lxa_decoder_reset(tokenizer->decoder);
@@ -261,6 +271,17 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         tokenizer->control_reported = false;
         tokenizer->reference_return_state = STATE_DATA;
     }
+}
+
+lxa_html_result_t
+lxa_html_tokenizer_enable_source_ranges(lxa_html_tokenizer_t *tokenizer)
+{
+    if (tokenizer == NULL || tokenizer->feed_started || tokenizer->closed
+        || tokenizer->in_callback || tokenizer->stopped != LXA_HTML_OK) {
+        return LXA_HTML_BAD_ARGUMENT;
+    }
+    tokenizer->source_ranges = true;
+    return LXA_HTML_OK;
 }
 
 lxa_status_t

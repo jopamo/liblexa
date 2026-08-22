@@ -27,9 +27,10 @@ struct lxa_html_tokenizer {
     lxa_allocator_t allocator;
     lxa_buffer_t text, name, attribute_bytes, appropriate_end_tag, raw_candidate;
     lxa_buffer_t public_id, system_id;
-    lxa_vector_t attribute_slots, attribute_views;
+    lxa_vector_t attribute_slots, attribute_views, attribute_sources;
     lxa_table_t *attribute_names; /* Large tags only; owns normalized key copies. */
     attribute_slot_t attribute;
+    lxa_html_source_range_t attribute_source;
     attribute_state_t attribute_state;
     size_t source_attribute_count; /* Includes duplicates for the source limit. */
     lxa_budget_t owned_budget, *budget;
@@ -60,6 +61,7 @@ struct lxa_html_tokenizer {
     unsigned script_word_length;
     bool script_word_matches;
     bool feed_started, prepaid_input;
+    bool source_ranges;
     bool allow_cdata;
     bool end_tag, closed, in_callback, in_error, utf8_pending, previous_cr;
     bool reference_digits;

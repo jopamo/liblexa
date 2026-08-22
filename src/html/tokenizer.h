@@ -22,11 +22,16 @@ typedef struct {
 } lxa_html_attribute_t;
 
 typedef struct {
+    size_t start, end;           /* half-open range in concatenated feed bytes */
+} lxa_html_source_range_t;
+
+typedef struct {
     lxa_html_token_kind_t kind;
     lxa_span_t name;             /* tag or doctype name; PI target if applicable */
     lxa_span_t data;             /* text, comment, or PI data */
     const lxa_html_attribute_t *attributes; /* start tags only, source order */
     size_t attribute_count;
+    const lxa_html_source_range_t *attribute_sources; /* optional parallel views */
     lxa_span_t public_id;        /* doctype only */
     lxa_span_t system_id;        /* doctype only */
     bool has_public_id;          /* distinguishes absent from empty */
@@ -136,6 +141,15 @@ lxa_html_result_t lxa_html_tokenizer_feed(lxa_html_tokenizer_t *tokenizer,
 lxa_html_result_t lxa_html_tokenizer_feed_prepaid(
     lxa_html_tokenizer_t *tokenizer, lxa_span_t decoded_utf8);
 lxa_html_result_t lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer);
+/* Enable before nonempty input or finish; reset retains this configuration.
+ * Effective start-tag attributes then have callback-scoped source ranges,
+ * including name, equals/value syntax and quotes, excluding separator space.
+ * Duplicate attributes have no range. Offsets refer to bytes fed to this
+ * tokenizer, not original bytes before transcoding. No input chunks are
+ * retained. Disabled tokenizers allocate no range storage.
+ */
+lxa_html_result_t lxa_html_tokenizer_enable_source_ranges(
+    lxa_html_tokenizer_t *tokenizer);
 /* LXA_OK unless the last feed/finish failed in a callback. */
 lxa_status_t lxa_html_tokenizer_callback_status(
     const lxa_html_tokenizer_t *tokenizer);
