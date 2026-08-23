@@ -16,6 +16,13 @@ lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
 }
 
 static inline bool
+lxa_html_tree_heading(lxa_span_t name)
+{
+    return name.length == 2 && name.data != NULL && name.data[0] == 'h'
+        && name.data[1] >= '1' && name.data[1] <= '6';
+}
+
+static inline bool
 lxa_html_tree_ascii_case_equals(lxa_span_t value, const char *expected,
                                 size_t length)
 {
