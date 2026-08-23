@@ -31,18 +31,35 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
 }
 
 #define LXA_SCOPE_NAME lxa_html_control_scope_search
+#define LXA_ORDINARY_NAME lxa_html_control_ordinary_end_search
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->budget)
 #define LXA_SCOPE_REASON(view) ((view)->reason)
 #define LXA_SCOPE_READ lxa_html_control_scope_read
-#include "html/scope_find.inc"
+#include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET
 #undef LXA_SCOPE_LENGTH
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
+#undef LXA_ORDINARY_NAME
+
+static inline lxa_status_t
+lxa_html_control_scope_view_init(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_span_t target, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *index, lxa_html_control_scope_view_t *view)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (index != NULL) *index = 0;
+    if (index == NULL || budget == NULL || (length != 0 && entries == NULL)
+        || length > SIZE_MAX / sizeof(*entries) || boundary > length
+        || target.data == NULL || target.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    *view = (lxa_html_control_scope_view_t){entries, length, budget, reason};
+    return LXA_OK;
+}
 
 /* Find an HTML target; heading targets match any HTML h1-h6. Borrow entries
  * and their names only until return. No stack mutation or allocation; length
@@ -55,18 +72,29 @@ lxa_html_control_scope_find(const lxa_html_scope_entry_t *entries, size_t length
                             lxa_html_scope_kind_t scope, lxa_budget_t *budget,
                             lxa_limit_reason_t *reason, size_t *index)
 {
-    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
-    if (index != NULL) *index = 0;
-    if (index == NULL || budget == NULL || (length != 0 && entries == NULL)
-        || length > SIZE_MAX / sizeof(*entries) || boundary > length
-        || target.data == NULL || target.length == 0
-        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
+    lxa_html_control_scope_view_t view;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, target, budget, reason, index, &view);
+    if (status != LXA_OK) return status;
+    if (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
+        && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE)
         return LXA_ERROR_ARGUMENT;
-    const lxa_html_control_scope_view_t view = {
-        entries, length, budget, reason
-    };
     return lxa_html_control_scope_search(&view, boundary, target, scope, index);
+}
+
+/* Same borrowing and result contract as scope_find; match names exactly,
+ * including headings, and stop at a special element after checking it.
+ */
+static inline lxa_status_t
+lxa_html_control_ordinary_end_find(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_span_t target, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *index)
+{
+    lxa_html_control_scope_view_t view;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, target, budget, reason, index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_ordinary_end_search(&view, boundary, target, index);
 }
 
 #endif

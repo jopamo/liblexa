@@ -1064,39 +1064,8 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
     return LXA_OK;
 }
 
-/* Any other end tag searches to a matching HTML element or a special element. */
-static lxa_status_t
-find_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                         size_t boundary, lxa_span_t target, size_t *index)
-{
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t i = lxa_vector_length(elements);
-    *index = i;
-    while (i > boundary) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (ns == LXA_DOM_NS_HTML && name.length == target.length) {
-            size_t blocks = name.length / 8 + (name.length % 8 != 0);
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                blocks, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (memcmp(name.data, target.data, name.length) == 0) {
-                *index = i;
-                return LXA_OK;
-            }
-        }
-        if (lxa_html_tree_special_element(name, ns)) break;
-    }
-    return LXA_OK;
-}
+static lxa_status_t find_ordinary_end_target(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, lxa_span_t, size_t *);
 
 static lxa_status_t
 current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
@@ -1171,18 +1140,32 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
 }
 
 #define LXA_SCOPE_NAME tree_scope_search
+#define LXA_ORDINARY_NAME tree_ordinary_end_search
 #define LXA_SCOPE_VIEW lxa_html_tree_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->tree->nodes->budget)
 #define LXA_SCOPE_REASON(view) (&(view)->tree->nodes->limit_reason)
 #define LXA_SCOPE_READ tree_scope_read
-#include "html/scope_find.inc"
+#include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET
 #undef LXA_SCOPE_LENGTH
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
+#undef LXA_ORDINARY_NAME
+
+/* Any other end tag searches to a matching HTML element or a special element. */
+static lxa_status_t
+find_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                         size_t boundary, lxa_span_t target, size_t *index)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_ordinary_end_search(&view, boundary, target, index);
+}
 
 static lxa_status_t
 find_scoped_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
