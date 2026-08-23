@@ -2,6 +2,7 @@
 #define LIBLEXA_HTML_TREE_H
 
 #include "html/tokenizer.h"
+#include "html/tree_policy.h"
 #include "dom/content_patch.h"
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
@@ -26,10 +27,6 @@ typedef enum {
     LXA_TEMPLATE_INITIAL, LXA_TEMPLATE_TABLE, LXA_TEMPLATE_TABLE_BODY,
     LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;
-
-typedef enum {
-    LXA_HTML_NO_QUIRKS, LXA_HTML_LIMITED_QUIRKS, LXA_HTML_QUIRKS
-} lxa_html_document_mode_t;
 
 typedef struct {
     lxa_dom_ref_t fragment;

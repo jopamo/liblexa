@@ -121,19 +121,6 @@ scope_boundary(lxa_span_t name, lxa_dom_namespace_t ns, scope_kind_t scope)
 }
 
 static bool
-ascii_case_equals(lxa_span_t value, const char *expected, size_t length)
-{
-    size_t i;
-    if (value.length != length || value.data == NULL) return false;
-    for (i = 0; i < length; ++i) {
-        uint8_t c = value.data[i];
-        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-        if (c != (uint8_t) expected[i]) return false;
-    }
-    return true;
-}
-
-static bool
 heading(lxa_span_t name)
 {
     return name.length == 2 && name.data != NULL && name.data[0] == 'h'
@@ -148,70 +135,6 @@ implied_end_tag(lxa_span_t name)
         if (name_equals_literal(name, tag, strlen(tag))) return true;
     }
     return false;
-}
-
-static lxa_status_t
-doctype_document_mode(lxa_html_tree_t *tree, const lxa_dom_doctype_data_t *data,
-                       lxa_html_document_mode_t *mode)
-{
-    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    *mode = LXA_HTML_NO_QUIRKS;
-    if (data->force_quirks || !named(data->name, "html")) {
-        *mode = LXA_HTML_QUIRKS;
-        return LXA_OK;
-    }
-    if (!data->has_public_id && !data->has_system_id) return LXA_OK;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-        LIBLEXA_HTML_DOCTYPE_RULE_COUNT, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    for (size_t i = 0; i < LIBLEXA_HTML_DOCTYPE_RULE_COUNT; ++i) {
-        const liblexa_html_doctype_rule *rule = &liblexa_html_doctype_rules[i];
-        lxa_span_t value;
-        bool exact = false;
-        switch (rule->condition) {
-        case LIBLEXA_DOCTYPE_SYSTEM_EXACT:
-            if (!data->has_system_id) continue;
-            value = data->system_id;
-            exact = true;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_EXACT:
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            exact = true;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM:
-            if (data->has_system_id && data->system_id.length != 0) continue;
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM:
-            if (!data->has_system_id || data->system_id.length == 0) continue;
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX:
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        default:
-            return LXA_ERROR_INTERNAL;
-        }
-        if (value.length < rule->length
-            || (exact && value.length != rule->length))
-            continue;
-        value.length = rule->length;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-            value.length / 8 + (value.length % 8 != 0),
-            &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (ascii_case_equals(value, rule->identifier, rule->length)) {
-            *mode = rule->limited ? LXA_HTML_LIMITED_QUIRKS : LXA_HTML_QUIRKS;
-            return LXA_OK;
-        }
-    }
-    return LXA_OK;
 }
 
 static bool
@@ -263,8 +186,8 @@ annotation_html_integration(lxa_html_tree_t *tree,
     if (status != LXA_OK || attribute.handle == LXA_HANDLE_NONE) return status;
     status = lxa_dom_nodes_attribute_read(tree->nodes, attribute, &name, &value);
     if (status != LXA_OK) return status;
-    *html = ascii_case_equals(value, "text/html", sizeof("text/html") - 1)
-            || ascii_case_equals(value, "application/xhtml+xml",
+    *html = lxa_html_tree_ascii_case_equals(value, "text/html", sizeof("text/html") - 1)
+            || lxa_html_tree_ascii_case_equals(value, "application/xhtml+xml",
                                  sizeof("application/xhtml+xml") - 1);
     return LXA_OK;
 }
@@ -397,7 +320,7 @@ hidden_input(lxa_html_tree_t *tree,
             LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
         if (status != LXA_OK) return status;
         if (!named(key, "type")) continue;
-        *result = ascii_case_equals(value, hidden, sizeof(hidden) - 1);
+        *result = lxa_html_tree_ascii_case_equals(value, hidden, sizeof(hidden) - 1);
         return LXA_OK;
     }
     return LXA_OK;
@@ -3503,8 +3426,8 @@ begin_template(lxa_html_tree_t *tree,
         lxa_span_t name, value;
         status = lxa_dom_nodes_attribute_read(tree->nodes, attr, &name, &value);
         if (status == LXA_OK)
-            shadow = ascii_case_equals(value, "open", 4)
-                     || ascii_case_equals(value, "closed", 6);
+            shadow = lxa_html_tree_ascii_case_equals(value, "open", 4)
+                     || lxa_html_tree_ascii_case_equals(value, "closed", 6);
     }
     if (status == LXA_OK && token->attribute_count != 0 && !shadow) {
         status = lxa_dom_nodes_find_attribute(tree->nodes, child,
@@ -6132,7 +6055,8 @@ reprocess_template_token:
     }
     if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
         lxa_html_document_mode_t document_mode;
-        status = doctype_document_mode(tree, &declaration, &document_mode);
+        status = lxa_html_tree_doctype_mode(token, tree->nodes->budget,
+            &tree->nodes->limit_reason, &document_mode);
         if (status != LXA_OK) return status;
         status = lxa_dom_nodes_append_doctype(tree->nodes, declaration, &child);
         if (status == LXA_OK)
