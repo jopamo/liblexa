@@ -60,23 +60,6 @@ input_status(lxa_html_input_result_t result)
     }
 }
 
-typedef struct {
-    lxa_budget_t *budget;
-    const lxa_encoding_t *declared;
-    lxa_limit_reason_t reason;
-} meta_context_t;
-
-/* Resolve parser-inserted meta declarations before later tree mutation. */
-static lxa_status_t
-observe_meta(void *context, const lxa_html_token_t *token)
-{
-    meta_context_t *meta = context;
-    if (meta->declared != NULL) return LXA_OK;
-    return input_status(lxa_html_input_meta_encoding(
-        token->attributes, token->attribute_count, meta->budget,
-        &meta->declared, &meta->reason));
-}
-
 void
 lxa_html_document_destroy(lxa_html_document_t *document)
 {
@@ -150,7 +133,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     }
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
-        meta_context_t meta = {
+        lxa_html_input_meta_observer_t meta = {
             .budget = &document->budget, .reason = LXA_BUDGET_COUNT
         };
         status = lxa_buffer_init(&decoded, allocator);
@@ -188,7 +171,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         /* A meta-triggered reparse starts with certain encoding confidence. */
         if (attempt == 0 && prefix == 0) {
-            tree.on_meta = observe_meta;
+            tree.on_meta = lxa_html_input_observe_meta;
             tree.meta_context = &meta;
         }
         status = lxa_html_tokenizer_create_with_budget(allocator,

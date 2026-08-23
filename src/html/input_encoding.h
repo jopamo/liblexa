@@ -66,6 +66,19 @@ lxa_html_input_result_t lxa_html_input_meta_encoding(
     const lxa_html_attribute_t *attributes, size_t count, lxa_budget_t *budget,
     const lxa_encoding_t **encoding, lxa_limit_reason_t *reason);
 
+typedef struct {
+    lxa_budget_t *budget;
+    const lxa_encoding_t *declared;
+    lxa_limit_reason_t reason;
+} lxa_html_input_meta_observer_t;
+
+/* Observe accepted HTML meta tokens until the first resolved declaration.
+ * Initialize declared to NULL and reason to COUNT. The caller owns the budget,
+ * decides token eligibility and disables observation once decoding is certain.
+ */
+lxa_status_t lxa_html_input_observe_meta(
+    void *context, const lxa_html_token_t *token);
+
 /* Select a decoder before publishing any tree state. The caller provides its
  * complete-input size limit. A BOM
  * overrides declarations; otherwise the first prescanned declaration wins,

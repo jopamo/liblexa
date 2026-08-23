@@ -687,6 +687,24 @@ lxa_html_input_meta_encoding(
 }
 
 lxa_status_t
+lxa_html_input_observe_meta(void *context, const lxa_html_token_t *token)
+{
+    lxa_html_input_meta_observer_t *meta = context;
+    if (meta == NULL || meta->budget == NULL || token == NULL)
+        return LXA_ERROR_ARGUMENT;
+    if (meta->declared != NULL) return LXA_OK;
+    switch (lxa_html_input_meta_encoding(token->attributes,
+        token->attribute_count, meta->budget, &meta->declared, &meta->reason)) {
+    case LXA_HTML_INPUT_OK: return LXA_OK;
+    case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
+    case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
+    case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
+    case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
+    default: return LXA_ERROR_ARGUMENT;
+    }
+}
+
+lxa_status_t
 lxa_html_input_bom(lxa_span_t bytes, const lxa_encoding_t **encoding,
                    size_t *prefix_length)
 {
