@@ -1,11 +1,19 @@
 #ifndef LIBLEXA_HTML_TREE_POLICY_H
 #define LIBLEXA_HTML_TREE_POLICY_H
 
+#include <string.h>
 #include "html/tokenizer.h"
 
 typedef enum {
     LXA_HTML_NO_QUIRKS, LXA_HTML_LIMITED_QUIRKS, LXA_HTML_QUIRKS
 } lxa_html_document_mode_t;
+
+static inline bool
+lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
+{
+    return name.length == length && name.data != NULL
+        && memcmp(name.data, text, length) == 0;
+}
 
 static inline bool
 lxa_html_tree_ascii_case_equals(lxa_span_t value, const char *expected,

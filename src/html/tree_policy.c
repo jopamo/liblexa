@@ -19,8 +19,8 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
     lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
     if (status != LXA_OK) return status;
     *mode = LXA_HTML_NO_QUIRKS;
-    if (data->force_quirks || data->name.length != 4 || data->name.data == NULL
-        || memcmp(data->name.data, "html", 4) != 0) {
+    if (data->force_quirks
+        || !lxa_html_tree_name_equals(data->name, "html", sizeof("html") - 1)) {
         *mode = LXA_HTML_QUIRKS;
         return LXA_OK;
     }
