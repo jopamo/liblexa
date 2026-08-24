@@ -170,6 +170,25 @@ lxa_limit_reason_t lxa_html_tokenizer_limit_reason(
 lxa_html_result_t lxa_html_tokenizer_set_text_mode(
     lxa_html_tokenizer_t *tokenizer, lxa_html_text_mode_t mode,
     lxa_span_t appropriate_end_tag);
+/* Core-status handoff for tree/control feedback. Copy the tokenizer's LIMIT
+ * reason only on LIMIT; callers own mode selection and committed tree state.
+ */
+static inline lxa_status_t
+lxa_html_tokenizer_set_text_mode_status(lxa_html_tokenizer_t *tokenizer,
+    lxa_html_text_mode_t mode, lxa_span_t appropriate_end_tag,
+    lxa_limit_reason_t *reason)
+{
+    lxa_html_result_t result = lxa_html_tokenizer_set_text_mode(
+        tokenizer, mode, appropriate_end_tag);
+    if (result == LXA_HTML_LIMIT && reason != NULL)
+        *reason = lxa_html_tokenizer_limit_reason(tokenizer);
+    return result == LXA_HTML_OK ? LXA_OK
+         : result == LXA_HTML_LIMIT ? LXA_ERROR_LIMIT
+         : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
+         : result == LXA_HTML_OVERFLOW ? LXA_ERROR_OVERFLOW
+         : LXA_ERROR_ARGUMENT;
+}
+
 lxa_html_result_t lxa_html_tokenizer_allow_cdata(
     lxa_html_tokenizer_t *tokenizer, bool allow);
 

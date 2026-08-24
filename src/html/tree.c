@@ -2558,18 +2558,10 @@ set_tokenizer_text_mode(
     const lxa_html_token_t *token,
     lxa_html_text_mode_t text_mode)
 {
-    lxa_html_result_t result;
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-    result = lxa_html_tokenizer_set_text_mode(tokenizer, text_mode,
-        text_mode == LXA_HTML_PLAINTEXT ? literal("") : token->name);
-    if (result == LXA_HTML_LIMIT)
-        tree->nodes->limit_reason = lxa_html_tokenizer_limit_reason(tokenizer);
-    if (result != LXA_HTML_OK)
-        return result == LXA_HTML_LIMIT ? LXA_ERROR_LIMIT
-               : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
-               : result == LXA_HTML_OVERFLOW ? LXA_ERROR_OVERFLOW
-               : LXA_ERROR_ARGUMENT;
-    return LXA_OK;
+    return lxa_html_tokenizer_set_text_mode_status(tokenizer, text_mode,
+        text_mode == LXA_HTML_PLAINTEXT ? literal("") : token->name,
+        &tree->nodes->limit_reason);
 }
 
 static lxa_status_t
