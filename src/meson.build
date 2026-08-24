@@ -24,7 +24,7 @@ if candidate_html_enabled
   html_candidate_sources = files(
     'html/tokenizer.c', 'html/tokenizer_tree.c', 'html/input_encoding.c',
     'html/foreign_names.c',
-    'html/tree.c', 'html/tree_policy.c', 'html/document.c')
+    'html/tree.c', 'html/tree_policy.c', 'html/control_stack.c', 'html/document.c')
   html_candidate_sources += files('serialize/escape.c',
     'serialize/document.c')
   lxa_html_candidate = both_libraries('lexa-html-candidate',
