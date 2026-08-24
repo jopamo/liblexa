@@ -32,6 +32,9 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
 
 #define LXA_SCOPE_NAME lxa_html_control_scope_search
 #define LXA_ORDINARY_NAME lxa_html_control_ordinary_end_search
+#define LXA_COLUMN_GROUP_NAME lxa_html_control_column_group
+#define LXA_SCOPE_PLAN_NAME lxa_html_control_scope_plan_search
+#define LXA_ORDINARY_PLAN_NAME lxa_html_control_ordinary_plan_search
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->budget)
@@ -45,6 +48,9 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
 #undef LXA_ORDINARY_NAME
+#undef LXA_COLUMN_GROUP_NAME
+#undef LXA_SCOPE_PLAN_NAME
+#undef LXA_ORDINARY_PLAN_NAME
 
 static inline lxa_status_t
 lxa_html_control_scope_view_init(const lxa_html_scope_entry_t *entries,
@@ -95,6 +101,38 @@ lxa_html_control_ordinary_end_find(const lxa_html_scope_entry_t *entries,
         boundary, target, budget, reason, index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_ordinary_end_search(&view, boundary, target, index);
+}
+
+/* Plan against the post-colgroup view without changing entries. Publish only
+ * on success, including the final WORK charge for the planned colgroup close.
+ */
+static inline lxa_status_t
+lxa_html_control_scope_plan(const lxa_html_scope_entry_t *entries, size_t length,
+    size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_end_target_plan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, target, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    if (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
+        && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE)
+        return LXA_ERROR_ARGUMENT;
+    return lxa_html_control_scope_plan_search(&view, boundary, target, scope, out);
+}
+
+static inline lxa_status_t
+lxa_html_control_ordinary_end_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_span_t target, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, lxa_html_end_target_plan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, target, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_ordinary_plan_search(&view, boundary, target, out);
 }
 
 #endif

@@ -1067,45 +1067,10 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
 static lxa_status_t find_ordinary_end_target(lxa_html_tree_t *,
     const lxa_vector_t *, size_t, lxa_span_t, size_t *);
 
-static lxa_status_t
-current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                          size_t boundary, bool *column_group)
-{
-    size_t length = lxa_vector_length(elements);
-    lxa_status_t status;
-    *column_group = false;
-    if (length > boundary) {
-        const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-        lxa_dom_namespace_t ns;
-        lxa_span_t name;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[length - 1],
-                                                  &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
-                                                 &name);
-        if (status != LXA_OK) return status;
-        *column_group = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-plan_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                         size_t boundary, lxa_span_t target, size_t *index)
-{
-    lxa_vector_t view = *elements;
-    bool column_group;
-    lxa_status_t status = current_html_column_group(tree, elements, boundary,
-                                                    &column_group);
-    if (status != LXA_OK) return status;
-    /* Search the post-colgroup view before releasing live entries. */
-    if (column_group) view.bytes.length -= sizeof(lxa_dom_ref_t);
-    status = find_ordinary_end_target(tree, &view, boundary, target, index);
-    if (status == LXA_OK && column_group)
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-    return status;
-}
+static lxa_status_t current_html_column_group(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, bool *);
+static lxa_status_t plan_ordinary_end_target(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, lxa_span_t, size_t *);
 
 static lxa_status_t
 end_ordinary_element(lxa_html_tree_t *tree, lxa_span_t target)
@@ -1141,6 +1106,9 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
 
 #define LXA_SCOPE_NAME tree_scope_search
 #define LXA_ORDINARY_NAME tree_ordinary_end_search
+#define LXA_COLUMN_GROUP_NAME tree_current_column_group
+#define LXA_SCOPE_PLAN_NAME tree_scope_plan
+#define LXA_ORDINARY_PLAN_NAME tree_ordinary_end_plan
 #define LXA_SCOPE_VIEW lxa_html_tree_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->tree->nodes->budget)
@@ -1154,6 +1122,34 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
 #undef LXA_ORDINARY_NAME
+#undef LXA_COLUMN_GROUP_NAME
+#undef LXA_SCOPE_PLAN_NAME
+#undef LXA_ORDINARY_PLAN_NAME
+
+static lxa_status_t
+current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                          size_t boundary, bool *column_group)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_current_column_group(&view, boundary, column_group);
+}
+
+static lxa_status_t
+plan_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                         size_t boundary, lxa_span_t target, size_t *index)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    lxa_html_end_target_plan_t plan;
+    lxa_status_t status = tree_ordinary_end_plan(&view, boundary, target, &plan);
+    if (status == LXA_OK) *index = plan.index;
+    return status;
+}
 
 /* Any other end tag searches to a matching HTML element or a special element. */
 static lxa_status_t
@@ -1215,30 +1211,23 @@ static lxa_status_t
 end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
                    lxa_html_scope_kind_t scope)
 {
-    lxa_vector_t view = tree->open_elements;
-    bool column_group;
-    size_t index;
-    lxa_status_t status = current_html_column_group(tree, &view, 0,
-                                                    &column_group);
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+        lxa_vector_length(&tree->open_elements)
+    };
+    lxa_html_end_target_plan_t plan;
+    lxa_status_t status = tree_scope_plan(&view, 0, target, scope, &plan);
     if (status != LXA_OK) return status;
-    column_group = column_group && !named(target, "colgroup");
-    if (column_group) view.bytes.length -= sizeof(lxa_dom_ref_t);
-    status = find_scoped_end_target(tree, &view,
-        0, target, scope, &index);
-    if (status == LXA_OK && column_group)
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    if (index == lxa_vector_length(&view)) {
-        if (column_group) {
+    if (plan.index == plan.search_length) {
+        if (plan.search_length != view.length) {
             status = pop_element(tree);
             if (status != LXA_OK) return status;
         }
         return LXA_OK;
     }
     if (scope == LXA_HTML_SCOPE_TABLE)
-        return pop_table_elements(tree, index);
-    while (lxa_vector_length(&tree->open_elements) > index) {
+        return pop_table_elements(tree, plan.index);
+    while (lxa_vector_length(&tree->open_elements) > plan.index) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }

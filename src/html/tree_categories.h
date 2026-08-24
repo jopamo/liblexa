@@ -15,6 +15,11 @@ typedef enum {
     LXA_HTML_SCOPE_TABLE = 8
 } lxa_html_scope_kind_t;
 
+typedef struct {
+    size_t search_length;
+    size_t index; /* search_length when no target is found */
+} lxa_html_end_target_plan_t;
+
 static inline const char *
 lxa_html_tree_namespace_name(lxa_dom_namespace_t ns)
 {
