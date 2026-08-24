@@ -1,6 +1,7 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,PLAN_NAME},
- * LXA_ORDINARY_{NAME,PLAN_NAME} and LXA_COLUMN_GROUP_NAME belong to the includer.
+ * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,PLAN_NAME,IDENTITY},
+ * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
+ * LXA_COLUMN_GROUP_NAME belong to the includer.
  */
 static inline lxa_status_t
 LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
@@ -63,6 +64,53 @@ LXA_SCOPE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t targ
                                    1, LXA_SCOPE_REASON(view));
     if (status == LXA_OK) *out = plan;
     return status;
+}
+
+static inline lxa_status_t
+LXA_OPEN_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                        uint64_t target, size_t *index)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    *index = length;
+    for (size_t i = boundary; i < length; ++i) {
+        uint64_t identity;
+        lxa_status_t status = lxa_budget_charge(
+            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_IDENTITY(view, i, &identity);
+        if (status != LXA_OK) return status;
+        if (identity == target) {
+            *index = i;
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_SCOPED_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                          uint64_t target, size_t *index)
+{
+    size_t i = LXA_SCOPE_LENGTH(view);
+    *index = i;
+    while (i > boundary) {
+        uint64_t identity;
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(
+            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_IDENTITY(view, --i, &identity);
+        if (status != LXA_OK) return status;
+        if (identity == target) {
+            *index = i;
+            break;
+        }
+        status = LXA_SCOPE_READ(view, i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
+    }
+    return LXA_OK;
 }
 
 static inline lxa_status_t

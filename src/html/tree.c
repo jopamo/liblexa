@@ -602,24 +602,8 @@ pop_table_elements(lxa_html_tree_t *tree, size_t keep)
     return LXA_OK;
 }
 
-static lxa_status_t
-find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                     size_t boundary, lxa_dom_ref_t ref, size_t *index)
-{
-    size_t i;
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    *index = lxa_vector_length(elements);
-    for (i = boundary; i < lxa_vector_length(elements); ++i) {
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (open[i].handle == ref.handle) {
-            *index = i;
-            break;
-        }
-    }
-    return LXA_OK;
-}
+static lxa_status_t find_open_reference(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, lxa_dom_ref_t, size_t *);
 
 static lxa_status_t
 reference_is_open(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool *found)
@@ -634,32 +618,8 @@ reference_is_open(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool *found)
     return status;
 }
 
-static lxa_status_t
-find_scoped_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-                       size_t boundary, lxa_dom_ref_t ref, size_t *index)
-{
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t i = lxa_vector_length(elements);
-    *index = i;
-    while (i > boundary) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        if (open[i].handle == ref.handle) {
-            *index = i;
-            break;
-        }
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
-    }
-    return LXA_OK;
-}
+static lxa_status_t find_scoped_reference(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, lxa_dom_ref_t, size_t *);
 
 static lxa_status_t reserve_open_elements(lxa_html_tree_t *,
                                            size_t);
@@ -1104,11 +1064,22 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
     return status;
 }
 
+static inline lxa_status_t
+tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
+                     uint64_t *identity)
+{
+    *identity = view->entries[index].handle;
+    return LXA_OK;
+}
+
 #define LXA_SCOPE_NAME tree_scope_search
 #define LXA_ORDINARY_NAME tree_ordinary_end_search
 #define LXA_COLUMN_GROUP_NAME tree_current_column_group
 #define LXA_SCOPE_PLAN_NAME tree_scope_plan
 #define LXA_ORDINARY_PLAN_NAME tree_ordinary_end_plan
+#define LXA_OPEN_REFERENCE_NAME tree_open_reference_search
+#define LXA_SCOPED_REFERENCE_NAME tree_scoped_reference_search
+#define LXA_SCOPE_IDENTITY tree_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_tree_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->tree->nodes->budget)
@@ -1125,6 +1096,31 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_COLUMN_GROUP_NAME
 #undef LXA_SCOPE_PLAN_NAME
 #undef LXA_ORDINARY_PLAN_NAME
+#undef LXA_OPEN_REFERENCE_NAME
+#undef LXA_SCOPED_REFERENCE_NAME
+#undef LXA_SCOPE_IDENTITY
+
+static lxa_status_t
+find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                     size_t boundary, lxa_dom_ref_t ref, size_t *index)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_open_reference_search(&view, boundary, ref.handle, index);
+}
+
+static lxa_status_t
+find_scoped_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                       size_t boundary, lxa_dom_ref_t ref, size_t *index)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_scoped_reference_search(&view, boundary, ref.handle, index);
+}
 
 static lxa_status_t
 current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,

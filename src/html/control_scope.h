@@ -6,6 +6,7 @@
 typedef struct {
     lxa_span_t name;
     lxa_dom_namespace_t namespace_id;
+    uint64_t identity; /* nonzero for reference queries; ignored by name queries */
 } lxa_html_scope_entry_t;
 
 typedef struct {
@@ -30,11 +31,22 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
     return LXA_OK;
 }
 
+static inline lxa_status_t
+lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
+                                size_t index, uint64_t *identity)
+{
+    *identity = view->entries[index].identity;
+    return *identity == 0 ? LXA_ERROR_ARGUMENT : LXA_OK;
+}
+
 #define LXA_SCOPE_NAME lxa_html_control_scope_search
 #define LXA_ORDINARY_NAME lxa_html_control_ordinary_end_search
 #define LXA_COLUMN_GROUP_NAME lxa_html_control_column_group
 #define LXA_SCOPE_PLAN_NAME lxa_html_control_scope_plan_search
 #define LXA_ORDINARY_PLAN_NAME lxa_html_control_ordinary_plan_search
+#define LXA_OPEN_REFERENCE_NAME lxa_html_control_open_reference_search
+#define LXA_SCOPED_REFERENCE_NAME lxa_html_control_scoped_reference_search
+#define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
 #define LXA_SCOPE_BUDGET(view) ((view)->budget)
@@ -51,17 +63,19 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
 #undef LXA_COLUMN_GROUP_NAME
 #undef LXA_SCOPE_PLAN_NAME
 #undef LXA_ORDINARY_PLAN_NAME
+#undef LXA_OPEN_REFERENCE_NAME
+#undef LXA_SCOPED_REFERENCE_NAME
+#undef LXA_SCOPE_IDENTITY
 
 static inline lxa_status_t
 lxa_html_control_scope_view_init(const lxa_html_scope_entry_t *entries,
-    size_t length, size_t boundary, lxa_span_t target, lxa_budget_t *budget,
+    size_t length, size_t boundary, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, size_t *index, lxa_html_control_scope_view_t *view)
 {
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
     if (index != NULL) *index = 0;
     if (index == NULL || budget == NULL || (length != 0 && entries == NULL)
-        || length > SIZE_MAX / sizeof(*entries) || boundary > length
-        || target.data == NULL || target.length == 0)
+        || length > SIZE_MAX / sizeof(*entries) || boundary > length)
         return LXA_ERROR_ARGUMENT;
     *view = (lxa_html_control_scope_view_t){entries, length, budget, reason};
     return LXA_OK;
@@ -80,10 +94,11 @@ lxa_html_control_scope_find(const lxa_html_scope_entry_t *entries, size_t length
 {
     lxa_html_control_scope_view_t view;
     lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
-        boundary, target, budget, reason, index, &view);
+        boundary, budget, reason, index, &view);
     if (status != LXA_OK) return status;
-    if (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-        && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE)
+    if (target.data == NULL || target.length == 0
+        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
+            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
         return LXA_ERROR_ARGUMENT;
     return lxa_html_control_scope_search(&view, boundary, target, scope, index);
 }
@@ -98,8 +113,9 @@ lxa_html_control_ordinary_end_find(const lxa_html_scope_entry_t *entries,
 {
     lxa_html_control_scope_view_t view;
     lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
-        boundary, target, budget, reason, index, &view);
+        boundary, budget, reason, index, &view);
     if (status != LXA_OK) return status;
+    if (target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
     return lxa_html_control_ordinary_end_search(&view, boundary, target, index);
 }
 
@@ -114,10 +130,11 @@ lxa_html_control_scope_plan(const lxa_html_scope_entry_t *entries, size_t length
     lxa_html_control_scope_view_t view;
     size_t index;
     lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
-        boundary, target, budget, reason, out == NULL ? NULL : &index, &view);
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
-    if (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-        && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE)
+    if (target.data == NULL || target.length == 0
+        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
+            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
         return LXA_ERROR_ARGUMENT;
     return lxa_html_control_scope_plan_search(&view, boundary, target, scope, out);
 }
@@ -130,9 +147,40 @@ lxa_html_control_ordinary_end_plan(const lxa_html_scope_entry_t *entries,
     lxa_html_control_scope_view_t view;
     size_t index;
     lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
-        boundary, target, budget, reason, out == NULL ? NULL : &index, &view);
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
+    if (target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
     return lxa_html_control_ordinary_plan_search(&view, boundary, target, out);
+}
+
+/* Reference queries borrow caller-owned nonzero identities. Open lookup scans
+ * forward without reading names; scoped lookup scans backward and checks the
+ * identity before reading names or stopping at a normal-scope boundary.
+ */
+static inline lxa_status_t
+lxa_html_control_open_reference_find(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, uint64_t identity, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *index)
+{
+    lxa_html_control_scope_view_t view;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, index, &view);
+    if (status != LXA_OK) return status;
+    if (identity == 0) return LXA_ERROR_ARGUMENT;
+    return lxa_html_control_open_reference_search(&view, boundary, identity, index);
+}
+
+static inline lxa_status_t
+lxa_html_control_scoped_reference_find(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, uint64_t identity, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *index)
+{
+    lxa_html_control_scope_view_t view;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, index, &view);
+    if (status != LXA_OK) return status;
+    if (identity == 0) return LXA_ERROR_ARGUMENT;
+    return lxa_html_control_scoped_reference_search(&view, boundary, identity, index);
 }
 
 #endif
