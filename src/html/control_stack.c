@@ -275,18 +275,91 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_SCOPED_REFERENCE_NAME
 #undef LXA_SCOPE_IDENTITY
 
+static lxa_status_t
+prepare_query(lxa_html_control_stack_t *stack, size_t boundary,
+               control_stack_view_t *view)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&stack->elements);
+    if (boundary > length) return LXA_ERROR_ARGUMENT;
+    *view = (control_stack_view_t){stack, length};
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index)
 {
     if (index != NULL) *index = 0;
-    lxa_status_t status = begin(stack);
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
     if (status != LXA_OK) return status;
-    size_t length = lxa_vector_length(&stack->elements);
-    if (index == NULL || boundary > length || target.data == NULL || target.length == 0
-        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
+    if (index == NULL || target.data == NULL || target.length == 0
+        || !lxa_html_scope_kind_valid(scope))
         return LXA_ERROR_ARGUMENT;
-    const control_stack_view_t view = {stack, length};
     return control_stack_scope_search(&view, boundary, target, scope, index);
+}
+
+lxa_status_t
+lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, size_t *index)
+{
+    if (index != NULL) *index = 0;
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (index == NULL || target.data == NULL || target.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_ordinary_search(&view, boundary, target, index);
+}
+
+lxa_status_t
+lxa_html_control_stack_open_reference_find(lxa_html_control_stack_t *stack,
+    size_t boundary, uint64_t identity, size_t *index)
+{
+    if (index != NULL) *index = 0;
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (index == NULL || identity == 0) return LXA_ERROR_ARGUMENT;
+    return control_stack_open_reference(&view, boundary, identity, index);
+}
+
+lxa_status_t
+lxa_html_control_stack_scoped_reference_find(lxa_html_control_stack_t *stack,
+    size_t boundary, uint64_t identity, size_t *index)
+{
+    if (index != NULL) *index = 0;
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (index == NULL || identity == 0) return LXA_ERROR_ARGUMENT;
+    return control_stack_scoped_reference(&view, boundary, identity, index);
+}
+
+lxa_status_t
+lxa_html_control_stack_scope_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope,
+    lxa_html_end_target_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || target.data == NULL || target.length == 0
+        || !lxa_html_scope_kind_valid(scope))
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_scope_plan(&view, boundary, target, scope, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_ordinary_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, lxa_html_end_target_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || target.data == NULL || target.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_ordinary_plan(&view, boundary, target, out);
 }

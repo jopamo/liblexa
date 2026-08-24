@@ -48,5 +48,17 @@ lxa_status_t lxa_html_control_stack_get(lxa_html_control_stack_t *stack,
     lxa_html_foreign_context_t *context);
 lxa_status_t lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index);
+lxa_status_t lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, size_t *index);
+lxa_status_t lxa_html_control_stack_open_reference_find(lxa_html_control_stack_t *stack,
+    size_t boundary, uint64_t identity, size_t *index);
+lxa_status_t lxa_html_control_stack_scoped_reference_find(lxa_html_control_stack_t *stack,
+    size_t boundary, uint64_t identity, size_t *index);
+/* Failed planning leaves the result unchanged, as with borrowed-stack plans. */
+lxa_status_t lxa_html_control_stack_scope_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope,
+    lxa_html_end_target_plan_t *out);
+lxa_status_t lxa_html_control_stack_ordinary_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, lxa_html_end_target_plan_t *out);
 
 #endif

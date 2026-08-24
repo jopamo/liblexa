@@ -97,8 +97,7 @@ lxa_html_control_scope_find(const lxa_html_scope_entry_t *entries, size_t length
         boundary, budget, reason, index, &view);
     if (status != LXA_OK) return status;
     if (target.data == NULL || target.length == 0
-        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
+        || !lxa_html_scope_kind_valid(scope))
         return LXA_ERROR_ARGUMENT;
     return lxa_html_control_scope_search(&view, boundary, target, scope, index);
 }
@@ -133,8 +132,7 @@ lxa_html_control_scope_plan(const lxa_html_scope_entry_t *entries, size_t length
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     if (target.data == NULL || target.length == 0
-        || (scope != LXA_HTML_SCOPE_NORMAL && scope != LXA_HTML_SCOPE_LIST_ITEM
-            && scope != LXA_HTML_SCOPE_BUTTON && scope != LXA_HTML_SCOPE_TABLE))
+        || !lxa_html_scope_kind_valid(scope))
         return LXA_ERROR_ARGUMENT;
     return lxa_html_control_scope_plan_search(&view, boundary, target, scope, out);
 }

@@ -15,6 +15,13 @@ typedef enum {
     LXA_HTML_SCOPE_TABLE = 8
 } lxa_html_scope_kind_t;
 
+static inline bool
+lxa_html_scope_kind_valid(lxa_html_scope_kind_t scope)
+{
+    return scope == LXA_HTML_SCOPE_NORMAL || scope == LXA_HTML_SCOPE_LIST_ITEM
+        || scope == LXA_HTML_SCOPE_BUTTON || scope == LXA_HTML_SCOPE_TABLE;
+}
+
 typedef struct {
     size_t search_length;
     size_t index; /* search_length when no target is found */
