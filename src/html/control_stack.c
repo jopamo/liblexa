@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include "html/control_stack.h"
+#include "html/foreign_names.h"
 
 static lxa_status_t
 internal(lxa_status_t status)
@@ -148,6 +149,34 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
     *identity = element.identity;
     ++stack->next_identity;
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || token == NULL || token->kind != LXA_HTML_START_TAG
+        || token->name.data == NULL || token->name.length == 0
+        || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
+    lxa_span_t name = token->name;
+    bool annotation_html = false;
+    if (ns == LXA_DOM_NS_SVG) {
+        status = lxa_html_svg_tag_name(name, &name);
+    }
+    else if (ns == LXA_DOM_NS_MATHML
+             && lxa_html_tree_name_equals(name, "annotation-xml", 14)) {
+        status = lxa_html_foreign_annotation_attributes(token->attributes,
+            token->attribute_count, stack->budget, &stack->limit_reason,
+            &annotation_html);
+    }
+    return status == LXA_OK
+        ? lxa_html_control_stack_push(stack, name, ns, annotation_html, identity)
+        : status;
 }
 
 static lxa_status_t

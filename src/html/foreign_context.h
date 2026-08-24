@@ -3,7 +3,67 @@
 
 #include <string.h>
 #include "dom/namespace.h"
-#include "html/tokenizer.h"
+#include "html/tree_policy.h"
+
+/* NULL budget preserves canonical stored-attribute comparison accounting.
+ * Token consumers charge matching-length value comparisons explicitly.
+ */
+static inline lxa_status_t
+lxa_html_foreign_annotation_encoding(lxa_span_t value, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *html)
+{
+    static const struct {const char *name; size_t length;} encodings[] = {
+        {"text/html", sizeof("text/html") - 1},
+        {"application/xhtml+xml", sizeof("application/xhtml+xml") - 1}
+    };
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (html == NULL) return LXA_ERROR_ARGUMENT;
+    *html = false;
+    if (value.data == NULL && value.length != 0) return LXA_ERROR_ARGUMENT;
+    for (size_t i = 0; i < sizeof(encodings) / sizeof(encodings[0]); ++i) {
+        if (value.length != encodings[i].length) continue;
+        if (budget != NULL) {
+            lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+                value.length / 8 + (value.length % 8 != 0), reason);
+            if (status != LXA_OK) return status;
+        }
+        if (lxa_html_tree_ascii_case_equals(value, encodings[i].name,
+                                            encodings[i].length)) {
+            *html = true;
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+/* Effective attributes are normalized and duplicate-suppressed by the
+ * tokenizer. Borrow them only for this call; retain only eligibility.
+ */
+static inline lxa_status_t
+lxa_html_foreign_annotation_attributes(const lxa_html_attribute_t *attributes,
+    size_t count, lxa_budget_t *budget, lxa_limit_reason_t *reason, bool *html)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (html == NULL) return LXA_ERROR_ARGUMENT;
+    *html = false;
+    if (budget == NULL || (count != 0 && attributes == NULL)
+        || count > SIZE_MAX / sizeof(*attributes))
+        return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = lxa_budget_check_item(budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+                                               count, reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = 0; i < count; ++i) {
+        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
+        if (status != LXA_OK) return status;
+        if (attributes[i].name.data == NULL || attributes[i].name.length == 0
+            || (attributes[i].value.data == NULL && attributes[i].value.length != 0))
+            return LXA_ERROR_ARGUMENT;
+        if (lxa_html_tree_name_equals(attributes[i].name, "encoding", 8))
+            return lxa_html_foreign_annotation_encoding(attributes[i].value,
+                                                        budget, reason, html);
+    }
+    return LXA_OK;
+}
 
 /* Classify a foreign current element from its adjusted name and namespace.
  * annotation_html is the resolved encoding-attribute predicate. Callers own

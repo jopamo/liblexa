@@ -99,10 +99,7 @@ annotation_html_integration(lxa_html_tree_t *tree,
     if (status != LXA_OK || attribute.handle == LXA_HANDLE_NONE) return status;
     status = lxa_dom_nodes_attribute_read(tree->nodes, attribute, &name, &value);
     if (status != LXA_OK) return status;
-    *html = lxa_html_tree_ascii_case_equals(value, "text/html", sizeof("text/html") - 1)
-            || lxa_html_tree_ascii_case_equals(value, "application/xhtml+xml",
-                                 sizeof("application/xhtml+xml") - 1);
-    return LXA_OK;
+    return lxa_html_foreign_annotation_encoding(value, NULL, NULL, html);
 }
 
 static lxa_status_t
