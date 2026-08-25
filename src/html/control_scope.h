@@ -17,6 +17,16 @@ typedef struct {
 } lxa_html_control_scope_view_t;
 
 static inline lxa_status_t
+lxa_html_control_scope_namespace(const lxa_html_control_scope_view_t *view,
+                                 size_t index, lxa_dom_namespace_t *ns)
+{
+    *ns = view->entries[index].namespace_id;
+    if ((unsigned) *ns < LXA_DOM_NS_HTML || (unsigned) *ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
 lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
                             size_t index, lxa_span_t *name,
                             lxa_dom_namespace_t *ns)
@@ -48,6 +58,8 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_SCOPED_REFERENCE_NAME lxa_html_control_scoped_reference_search
 #define LXA_IMPLIED_PLAN_NAME lxa_html_control_implied_plan_search
 #define LXA_RUBY_PLAN_NAME lxa_html_control_ruby_plan_search
+#define LXA_SELECT_PLAN_NAME lxa_html_control_select_plan_search
+#define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -69,6 +81,8 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_SCOPED_REFERENCE_NAME
 #undef LXA_IMPLIED_PLAN_NAME
 #undef LXA_RUBY_PLAN_NAME
+#undef LXA_SELECT_PLAN_NAME
+#undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
 static inline lxa_status_t
@@ -214,6 +228,23 @@ lxa_html_control_ruby_start_plan(const lxa_html_scope_entry_t *entries,
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_ruby_plan_search(&view, boundary, except_rtc, out);
+}
+
+/* After foreign-end dispatch and earlier insertion-mode exceptions (such as
+ * hidden table inputs), plan select actions without retaining token fields.
+ */
+static inline lxa_status_t
+lxa_html_control_select_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_select_plan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    if (!lxa_html_select_arguments_valid(kind, name)) return LXA_ERROR_ARGUMENT;
+    return lxa_html_control_select_plan_search(&view, boundary, kind, name, out);
 }
 
 #endif

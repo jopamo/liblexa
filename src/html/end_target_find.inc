@@ -1,7 +1,7 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,PLAN_NAME,IDENTITY},
+ * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
- * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY}_PLAN_NAME belong to the includer.
+ * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT}_PLAN_NAME belong to the includer.
  */
 static inline lxa_status_t
 LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
@@ -201,5 +201,87 @@ LXA_RUBY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         if (status != LXA_OK) return status;
     }
     *out = keep;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                     lxa_html_token_kind_t kind, lxa_span_t token_name,
+                     lxa_html_select_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), select = length, i = length;
+    lxa_html_select_plan_t plan = {length, false};
+    bool option = lxa_html_tree_name_equals(token_name, "option", 6);
+    bool group = lxa_html_tree_name_equals(token_name, "optgroup", 8);
+    bool select_token = lxa_html_tree_name_equals(token_name, "select", 6);
+    bool input = lxa_html_tree_name_equals(token_name, "input", 5);
+    bool hr = lxa_html_tree_name_equals(token_name, "hr", 2);
+    bool foreign_end = kind == LXA_HTML_END_TAG, foreign_boundary = false;
+    lxa_status_t status;
+    if (kind == LXA_HTML_END_TAG) {
+        if (!select_token) goto publish;
+        plan.ignore = true;
+    }
+    else if (kind != LXA_HTML_START_TAG
+             || (!select_token && !input && !hr && !option && !group))
+        goto publish;
+    if (kind == LXA_HTML_START_TAG && length > boundary) {
+        lxa_dom_namespace_t ns;
+        status = LXA_SCOPE_NAMESPACE(view, length - 1, &ns);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) goto publish;
+    }
+    while (i > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (kind == LXA_HTML_END_TAG && i == length - 1
+            && ns == LXA_DOM_NS_HTML && lxa_html_tree_name_equals(name, "colgroup", 8)) {
+            plan.keep = i;
+            goto publish;
+        }
+        if (foreign_end && ns != LXA_DOM_NS_HTML) {
+            foreign_boundary |= lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL);
+            continue;
+        }
+        foreign_end = false;
+        if (foreign_boundary) goto publish;
+        if (ns == LXA_DOM_NS_HTML && lxa_html_tree_name_equals(name, "select", 6)) {
+            select = i;
+            break;
+        }
+        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
+    }
+    if (select != length && (select_token || input)) {
+        plan.keep = select;
+        plan.ignore = select_token;
+        goto publish;
+    }
+    if ((!option && !group && !hr) || (select == length && !option && !group))
+        goto publish;
+    if (select != length) {
+        static const uint8_t optgroup[] = "optgroup";
+        lxa_span_t except = option ? (lxa_span_t){optgroup, sizeof(optgroup) - 1}
+                                   : (lxa_span_t){NULL, 0};
+        status = LXA_IMPLIED_PLAN_NAME(view, boundary, except, &plan.keep);
+        if (status != LXA_OK) return status;
+    }
+    else if (length > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_READ(view, length - 1, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && lxa_html_tree_name_equals(name, "option", 6))
+            --plan.keep;
+    }
+publish:
+    *out = plan;
     return LXA_OK;
 }

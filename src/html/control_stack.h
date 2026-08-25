@@ -82,5 +82,11 @@ lxa_status_t lxa_html_control_stack_foreign_end_plan(lxa_html_control_stack_t *s
     size_t boundary, lxa_span_t name, lxa_html_foreign_end_plan_t *out);
 lxa_status_t lxa_html_control_stack_foreign_breakout_plan(lxa_html_control_stack_t *stack,
     size_t boundary, size_t *out);
+/* Same dispatch-order prerequisite and publication contract as borrowed
+ * select plans. This does not choose insertion modes or inspect attributes.
+ */
+lxa_status_t lxa_html_control_stack_select_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_html_select_plan_t *out);
 
 #endif

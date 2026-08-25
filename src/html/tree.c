@@ -1078,6 +1078,9 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_SCOPED_REFERENCE_NAME tree_scoped_reference_search
 #define LXA_IMPLIED_PLAN_NAME tree_implied_end_plan
 #define LXA_RUBY_PLAN_NAME tree_ruby_start_plan
+#define LXA_SELECT_PLAN_NAME tree_select_plan
+#define LXA_SCOPE_NAMESPACE(view, index, ns) \
+    lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
 #define LXA_SCOPE_IDENTITY tree_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_tree_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -1099,6 +1102,8 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SCOPED_REFERENCE_NAME
 #undef LXA_IMPLIED_PLAN_NAME
 #undef LXA_RUBY_PLAN_NAME
+#undef LXA_SELECT_PLAN_NAME
+#undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
 static inline lxa_status_t
@@ -2042,87 +2047,18 @@ plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                   size_t boundary, const lxa_html_token_t *token,
                   size_t *keep, bool *ignore)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t length = lxa_vector_length(elements), select = length, i = length;
-    bool option = named(token->name, "option");
-    bool group = named(token->name, "optgroup");
-    bool foreign_end = token->kind == LXA_HTML_END_TAG;
-    bool foreign_boundary = false;
-    lxa_status_t status;
-    *keep = length;
-    *ignore = false;
-    if (token->kind == LXA_HTML_END_TAG) {
-        if (!named(token->name, "select")) return LXA_OK;
-        *ignore = true;
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    lxa_html_select_plan_t plan;
+    lxa_status_t status = tree_select_plan(&view, boundary,
+        token->kind, token->name, &plan);
+    if (status == LXA_OK) {
+        *keep = plan.keep;
+        *ignore = plan.ignore;
     }
-    else if (token->kind != LXA_HTML_START_TAG
-             || (!named(token->name, "select")
-                 && !named(token->name, "input")
-                 && !named(token->name, "hr") && !option && !group))
-        return LXA_OK;
-    if (token->kind == LXA_HTML_START_TAG && length > boundary) {
-        lxa_dom_namespace_t ns;
-        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                                                  open[length - 1], &ns);
-        if (status != LXA_OK || ns != LXA_DOM_NS_HTML) return status;
-    }
-    while (i > boundary) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (token->kind == LXA_HTML_END_TAG && i == length - 1
-            && ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
-            *keep = i;
-            return LXA_OK;
-        }
-        if (foreign_end && ns != LXA_DOM_NS_HTML) {
-            foreign_boundary |= lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL);
-            continue;
-        }
-        foreign_end = false;
-        if (foreign_boundary) return LXA_OK;
-        if (ns == LXA_DOM_NS_HTML && named(name, "select")) {
-            select = i;
-            break;
-        }
-        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
-    }
-    if (select != length && (named(token->name, "select")
-                             || named(token->name, "input"))) {
-        *keep = select;
-        *ignore = named(token->name, "select");
-        return LXA_OK;
-    }
-    if (!option && !group && !named(token->name, "hr")) return LXA_OK;
-    if (select == length && !option && !group) return LXA_OK;
-    if (select != length) {
-        const lxa_html_tree_scope_view_t view = {tree, open, length};
-        return tree_implied_end_plan(&view, boundary,
-            option ? literal("optgroup") : literal(""), keep);
-    }
-    i = length;
-    while (i > boundary) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i - 1], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i - 1], &name);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) break;
-        if (named(name, "option")) --i;
-        break;
-    }
-    *keep = i;
-    return LXA_OK;
+    return status;
 }
 
 static lxa_status_t

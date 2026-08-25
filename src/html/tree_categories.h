@@ -27,6 +27,20 @@ typedef struct {
     size_t index; /* search_length when no target is found */
 } lxa_html_end_target_plan_t;
 
+typedef struct {
+    size_t keep;
+    bool ignore;
+} lxa_html_select_plan_t;
+
+static inline bool
+lxa_html_select_arguments_valid(lxa_html_token_kind_t kind, lxa_span_t name)
+{
+    return (unsigned) kind <= LXA_HTML_PROCESSING_INSTRUCTION
+        && (name.length == 0 || name.data != NULL)
+        && ((kind != LXA_HTML_START_TAG && kind != LXA_HTML_END_TAG)
+            || name.length != 0);
+}
+
 static inline const char *
 lxa_html_tree_namespace_name(lxa_dom_namespace_t ns)
 {

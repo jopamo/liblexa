@@ -276,6 +276,19 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
     return *identity == 0 ? internal(LXA_ERROR_INTERNAL) : LXA_OK;
 }
 
+static inline lxa_status_t
+control_stack_namespace(const control_stack_view_t *view, size_t index,
+                         lxa_dom_namespace_t *ns)
+{
+    const lxa_html_control_element_t *entries =
+        (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
+    if ((unsigned) entries[index].namespace_id < LXA_DOM_NS_HTML
+        || (unsigned) entries[index].namespace_id > LXA_DOM_NS_SVG)
+        return internal(LXA_ERROR_INTERNAL);
+    *ns = entries[index].namespace_id;
+    return LXA_OK;
+}
+
 #define LXA_SCOPE_NAME control_stack_scope_search
 #define LXA_ORDINARY_NAME control_stack_ordinary_search
 #define LXA_COLUMN_GROUP_NAME control_stack_column_group
@@ -285,6 +298,8 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #define LXA_SCOPED_REFERENCE_NAME control_stack_scoped_reference
 #define LXA_IMPLIED_PLAN_NAME control_stack_implied_plan
 #define LXA_RUBY_PLAN_NAME control_stack_ruby_plan
+#define LXA_SELECT_PLAN_NAME control_stack_select_plan
+#define LXA_SCOPE_NAMESPACE control_stack_namespace
 #define LXA_SCOPE_IDENTITY control_stack_identity
 #define LXA_SCOPE_VIEW control_stack_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -306,20 +321,9 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_SCOPED_REFERENCE_NAME
 #undef LXA_IMPLIED_PLAN_NAME
 #undef LXA_RUBY_PLAN_NAME
+#undef LXA_SELECT_PLAN_NAME
+#undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
-
-static inline lxa_status_t
-control_stack_namespace(const control_stack_view_t *view, size_t index,
-                         lxa_dom_namespace_t *ns)
-{
-    const lxa_html_control_element_t *entries =
-        (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
-    if ((unsigned) entries[index].namespace_id < LXA_DOM_NS_HTML
-        || (unsigned) entries[index].namespace_id > LXA_DOM_NS_SVG)
-        return internal(LXA_ERROR_INTERNAL);
-    *ns = entries[index].namespace_id;
-    return LXA_OK;
-}
 
 static inline lxa_status_t
 control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *name)
@@ -503,4 +507,17 @@ lxa_html_control_stack_foreign_breakout_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     return control_stack_foreign_breakout_plan(&view, boundary, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_select_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_html_select_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || !lxa_html_select_arguments_valid(kind, name))
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_select_plan(&view, boundary, kind, name, out);
 }
