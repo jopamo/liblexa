@@ -46,6 +46,8 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_ORDINARY_PLAN_NAME lxa_html_control_ordinary_plan_search
 #define LXA_OPEN_REFERENCE_NAME lxa_html_control_open_reference_search
 #define LXA_SCOPED_REFERENCE_NAME lxa_html_control_scoped_reference_search
+#define LXA_IMPLIED_PLAN_NAME lxa_html_control_implied_plan_search
+#define LXA_RUBY_PLAN_NAME lxa_html_control_ruby_plan_search
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -65,6 +67,8 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME
 #undef LXA_SCOPED_REFERENCE_NAME
+#undef LXA_IMPLIED_PLAN_NAME
+#undef LXA_RUBY_PLAN_NAME
 #undef LXA_SCOPE_IDENTITY
 
 static inline lxa_status_t
@@ -179,6 +183,37 @@ lxa_html_control_scoped_reference_find(const lxa_html_scope_entry_t *entries,
     if (status != LXA_OK) return status;
     if (identity == 0) return LXA_ERROR_ARGUMENT;
     return lxa_html_control_scoped_reference_search(&view, boundary, identity, index);
+}
+
+/* Plan implied-end trimming without mutation; an empty exception excludes no
+ * name. Ruby plans first find an HTML ruby in normal scope, preserving rtc
+ * when requested for rp/rt. Both publish a retained length only on success.
+ */
+static inline lxa_status_t
+lxa_html_control_implied_end_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_span_t except, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    if (except.length != 0 && except.data == NULL) return LXA_ERROR_ARGUMENT;
+    return lxa_html_control_implied_plan_search(&view, boundary, except, out);
+}
+
+static inline lxa_status_t
+lxa_html_control_ruby_start_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, bool except_rtc, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_ruby_plan_search(&view, boundary, except_rtc, out);
 }
 
 #endif

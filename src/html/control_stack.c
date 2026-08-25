@@ -283,6 +283,8 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #define LXA_ORDINARY_PLAN_NAME control_stack_ordinary_plan
 #define LXA_OPEN_REFERENCE_NAME control_stack_open_reference
 #define LXA_SCOPED_REFERENCE_NAME control_stack_scoped_reference
+#define LXA_IMPLIED_PLAN_NAME control_stack_implied_plan
+#define LXA_RUBY_PLAN_NAME control_stack_ruby_plan
 #define LXA_SCOPE_IDENTITY control_stack_identity
 #define LXA_SCOPE_VIEW control_stack_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -302,6 +304,8 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME
 #undef LXA_SCOPED_REFERENCE_NAME
+#undef LXA_IMPLIED_PLAN_NAME
+#undef LXA_RUBY_PLAN_NAME
 #undef LXA_SCOPE_IDENTITY
 
 static lxa_status_t
@@ -391,4 +395,27 @@ lxa_html_control_stack_ordinary_end_plan(lxa_html_control_stack_t *stack,
     if (out == NULL || target.data == NULL || target.length == 0)
         return LXA_ERROR_ARGUMENT;
     return control_stack_ordinary_plan(&view, boundary, target, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_implied_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t except, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || (except.length != 0 && except.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_implied_plan(&view, boundary, except, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, bool except_rtc, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_ruby_plan(&view, boundary, except_rtc, out);
 }

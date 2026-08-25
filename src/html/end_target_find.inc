@@ -1,7 +1,7 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
- * LXA_COLUMN_GROUP_NAME belong to the includer.
+ * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY}_PLAN_NAME belong to the includer.
  */
 static inline lxa_status_t
 LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
@@ -160,4 +160,46 @@ LXA_ORDINARY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
                                    1, LXA_SCOPE_REASON(view));
     if (status == LXA_OK) *out = plan;
     return status;
+}
+static inline lxa_status_t
+LXA_IMPLIED_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                      lxa_span_t except, size_t *out)
+{
+    size_t keep = LXA_SCOPE_LENGTH(view);
+    while (keep > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(
+            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_READ(view, keep - 1, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML || !lxa_html_tree_implied_end_tag(name)
+            || (except.length != 0
+                && lxa_html_tree_name_equals(name, (const char *) except.data,
+                                             except.length)))
+            break;
+        --keep;
+    }
+    *out = keep;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_RUBY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                   bool except_rtc, size_t *out)
+{
+    static const uint8_t ruby[] = "ruby", rtc[] = "rtc";
+    size_t index, keep = LXA_SCOPE_LENGTH(view);
+    lxa_status_t status = LXA_SCOPE_NAME(view, boundary,
+        (lxa_span_t){ruby, sizeof(ruby) - 1}, LXA_HTML_SCOPE_NORMAL, &index);
+    if (status != LXA_OK) return status;
+    if (index != keep) {
+        lxa_span_t except = except_rtc
+            ? (lxa_span_t){rtc, sizeof(rtc) - 1} : (lxa_span_t){NULL, 0};
+        status = LXA_IMPLIED_PLAN_NAME(view, index + 1, except, &keep);
+        if (status != LXA_OK) return status;
+    }
+    *out = keep;
+    return LXA_OK;
 }

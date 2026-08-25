@@ -1076,6 +1076,8 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_ORDINARY_PLAN_NAME tree_ordinary_end_plan
 #define LXA_OPEN_REFERENCE_NAME tree_open_reference_search
 #define LXA_SCOPED_REFERENCE_NAME tree_scoped_reference_search
+#define LXA_IMPLIED_PLAN_NAME tree_implied_end_plan
+#define LXA_RUBY_PLAN_NAME tree_ruby_start_plan
 #define LXA_SCOPE_IDENTITY tree_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_tree_scope_view_t
 #define LXA_SCOPE_LENGTH(view) ((view)->length)
@@ -1095,6 +1097,8 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME
 #undef LXA_SCOPED_REFERENCE_NAME
+#undef LXA_IMPLIED_PLAN_NAME
+#undef LXA_RUBY_PLAN_NAME
 #undef LXA_SCOPE_IDENTITY
 
 static lxa_status_t
@@ -1172,31 +1176,12 @@ static lxa_status_t
 plan_ruby_start(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                  size_t boundary, lxa_span_t target, size_t *keep)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t index;
-    bool except_rtc = named(target, "rp") || named(target, "rt");
-    lxa_status_t status = find_scoped_end_target(tree, elements, boundary,
-        (lxa_span_t){(const unsigned char *) "ruby", 4}, LXA_HTML_SCOPE_NORMAL, &index);
-    *keep = lxa_vector_length(elements);
-    if (status != LXA_OK || index == *keep) return status;
-    while (*keep > index + 1) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_namespace(tree->nodes,
-                open[*keep - 1], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                open[*keep - 1], &name);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML || !lxa_html_tree_implied_end_tag(name)
-            || (except_rtc && named(name, "rtc")))
-            break;
-        --*keep;
-    }
-    return LXA_OK;
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_ruby_start_plan(&view, boundary,
+        named(target, "rp") || named(target, "rt"), keep);
 }
 
 /* Close an HTML element through descendants up to the requested scope. */
@@ -2108,11 +2093,15 @@ plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
     }
     if (!option && !group && !named(token->name, "hr")) return LXA_OK;
     if (select == length && !option && !group) return LXA_OK;
+    if (select != length) {
+        const lxa_html_tree_scope_view_t view = {tree, open, length};
+        return tree_implied_end_plan(&view, boundary,
+            option ? literal("optgroup") : literal(""), keep);
+    }
     i = length;
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        bool implied = false;
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
                                    &tree->nodes->limit_reason);
         if (status == LXA_OK)
@@ -2121,14 +2110,8 @@ plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
             status = lxa_dom_nodes_element_name(tree->nodes, open[i - 1], &name);
         if (status != LXA_OK) return status;
         if (ns != LXA_DOM_NS_HTML) break;
-        if (select == length) {
-            if (named(name, "option")) --i;
-            break;
-        }
-        if (option && named(name, "optgroup")) break;
-        implied = lxa_html_tree_implied_end_tag(name);
-        if (!implied) break;
-        --i;
+        if (named(name, "option")) --i;
+        break;
     }
     *keep = i;
     return LXA_OK;
@@ -6612,21 +6595,9 @@ reprocess_body_start:
             tree->form = (lxa_dom_ref_t){0};
             return LXA_OK;
         }
-        while (keep > index + 1) {
-            lxa_span_t name;
-            lxa_dom_namespace_t ns;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_namespace(tree->nodes,
-                    open[keep - 1], &ns);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[keep - 1], &name);
-            if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML || !lxa_html_tree_implied_end_tag(name)) break;
-            --keep;
-        }
+        const lxa_html_tree_scope_view_t implied_view = {tree, open, keep};
+        status = tree_implied_end_plan(&implied_view, index + 1, literal(""), &keep);
+        if (status != LXA_OK) return status;
         tree->form = (lxa_dom_ref_t){0};
         while (lxa_vector_length(&tree->open_elements) > keep) {
             status = pop_element(tree);

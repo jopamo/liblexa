@@ -66,5 +66,12 @@ lxa_status_t lxa_html_control_stack_scope_plan(lxa_html_control_stack_t *stack,
     lxa_html_end_target_plan_t *out);
 lxa_status_t lxa_html_control_stack_ordinary_end_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_end_target_plan_t *out);
+/* Retained-length plans share the borrowed implied/ruby rules and publish
+ * only on success. Apply with pop_to after any other required preflight.
+ */
+lxa_status_t lxa_html_control_stack_implied_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t except, size_t *out);
+lxa_status_t lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, bool except_rtc, size_t *out);
 
 #endif
