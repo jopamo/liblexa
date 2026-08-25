@@ -59,6 +59,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_IMPLIED_PLAN_NAME lxa_html_control_implied_plan_search
 #define LXA_RUBY_PLAN_NAME lxa_html_control_ruby_plan_search
 #define LXA_SELECT_PLAN_NAME lxa_html_control_select_plan_search
+#define LXA_TABLE_CONTEXT_PLAN_NAME lxa_html_control_table_context_plan_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
@@ -82,6 +83,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_IMPLIED_PLAN_NAME
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SELECT_PLAN_NAME
+#undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -245,6 +247,22 @@ lxa_html_control_select_plan(const lxa_html_scope_entry_t *entries,
     if (status != LXA_OK) return status;
     if (!lxa_html_select_arguments_valid(kind, name)) return LXA_ERROR_ARGUMENT;
     return lxa_html_control_select_plan_search(&view, boundary, kind, name, out);
+}
+
+/* Preserve virtual table context unless an HTML table part or cell/caption
+ * overrides it. Preflight a current colgroup close before publishing.
+ */
+static inline lxa_status_t
+lxa_html_control_table_context_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, bool virtual_table, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, lxa_html_table_context_plan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_table_context_plan_search(&view, boundary, virtual_table, out);
 }
 
 #endif

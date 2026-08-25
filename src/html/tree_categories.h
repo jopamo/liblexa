@@ -32,6 +32,28 @@ typedef struct {
     bool ignore;
 } lxa_html_select_plan_t;
 
+typedef struct {
+    size_t keep;
+    bool in_table;
+} lxa_html_table_context_plan_t;
+
+static inline bool
+lxa_html_tree_table_section(lxa_span_t name)
+{
+    return lxa_html_tree_name_equals(name, "tbody", 5)
+        || lxa_html_tree_name_equals(name, "thead", 5)
+        || lxa_html_tree_name_equals(name, "tfoot", 5);
+}
+
+static inline bool
+lxa_html_tree_table_context(lxa_span_t name)
+{
+    return lxa_html_tree_name_equals(name, "table", 5)
+        || lxa_html_tree_name_equals(name, "colgroup", 8)
+        || lxa_html_tree_table_section(name)
+        || lxa_html_tree_name_equals(name, "tr", 2);
+}
+
 static inline bool
 lxa_html_select_arguments_valid(lxa_html_token_kind_t kind, lxa_span_t name)
 {

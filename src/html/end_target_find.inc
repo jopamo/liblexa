@@ -1,7 +1,8 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
- * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT}_PLAN_NAME belong to the includer.
+ * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT}_PLAN_NAME
+ * belong to the includer.
  */
 static inline lxa_status_t
 LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
@@ -282,6 +283,42 @@ LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             --plan.keep;
     }
 publish:
+    *out = plan;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_TABLE_CONTEXT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+                            bool virtual_table, lxa_html_table_context_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), i = length;
+    lxa_html_table_context_plan_t plan = {length, virtual_table};
+    while (i > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) continue;
+        if (lxa_html_tree_name_equals(name, "td", 2)
+            || lxa_html_tree_name_equals(name, "th", 2)
+            || lxa_html_tree_name_equals(name, "caption", 7)) {
+            plan.in_table = false;
+            break;
+        }
+        if (lxa_html_tree_table_context(name)) {
+            plan.in_table = true;
+            if (i == length - 1 && lxa_html_tree_name_equals(name, "colgroup", 8)) {
+                status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+                    LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+                if (status != LXA_OK) return status;
+                plan.keep = i;
+            }
+            break;
+        }
+    }
     *out = plan;
     return LXA_OK;
 }

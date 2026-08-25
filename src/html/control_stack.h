@@ -88,5 +88,7 @@ lxa_status_t lxa_html_control_stack_foreign_breakout_plan(lxa_html_control_stack
 lxa_status_t lxa_html_control_stack_select_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_token_kind_t kind, lxa_span_t name,
     lxa_html_select_plan_t *out);
+lxa_status_t lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, bool virtual_table, lxa_html_table_context_plan_t *out);
 
 #endif
