@@ -73,5 +73,14 @@ lxa_status_t lxa_html_control_stack_implied_end_plan(lxa_html_control_stack_t *s
     size_t boundary, lxa_span_t except, size_t *out);
 lxa_status_t lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool except_rtc, size_t *out);
+/* Foreign-end plans adjust the token's normalized name separately for each
+ * visited namespace. Reprocess at HTML or the virtual boundary without popping.
+ * Breakout retains the nearest HTML/integration entry. Both publish only on
+ * success; callers still decide dispatch and perform stack mutation.
+ */
+lxa_status_t lxa_html_control_stack_foreign_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t name, lxa_html_foreign_end_plan_t *out);
+lxa_status_t lxa_html_control_stack_foreign_breakout_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, size_t *out);
 
 #endif

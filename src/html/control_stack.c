@@ -308,6 +308,68 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SCOPE_IDENTITY
 
+static inline lxa_status_t
+control_stack_namespace(const control_stack_view_t *view, size_t index,
+                         lxa_dom_namespace_t *ns)
+{
+    const lxa_html_control_element_t *entries =
+        (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
+    if ((unsigned) entries[index].namespace_id < LXA_DOM_NS_HTML
+        || (unsigned) entries[index].namespace_id > LXA_DOM_NS_SVG)
+        return internal(LXA_ERROR_INTERNAL);
+    *ns = entries[index].namespace_id;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *name)
+{
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = read_element(view->stack, index, &entry, NULL);
+    if (status == LXA_OK) *name = entry.name;
+    return status;
+}
+
+static inline lxa_status_t
+control_stack_breakout_boundary(const control_stack_view_t *view, size_t index,
+                                bool *boundary)
+{
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = control_stack_namespace(view, index, &ns);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML) {
+        *boundary = true;
+        return LXA_OK;
+    }
+    lxa_html_scope_entry_t entry;
+    bool annotation_html;
+    status = read_element(view->stack, index, &entry, &annotation_html);
+    if (status == LXA_OK)
+        *boundary = lxa_html_foreign_integration(lxa_html_foreign_context(
+            ns, entry.name, annotation_html));
+    return status;
+}
+
+#define LXA_FOREIGN_VIEW control_stack_view_t
+#define LXA_FOREIGN_LENGTH(view) ((view)->length)
+#define LXA_FOREIGN_BUDGET(view) ((view)->stack->budget)
+#define LXA_FOREIGN_REASON(view) (&(view)->stack->limit_reason)
+#define LXA_FOREIGN_NAMESPACE control_stack_namespace
+#define LXA_FOREIGN_NAME control_stack_name
+#define LXA_FOREIGN_BREAKOUT_BOUNDARY control_stack_breakout_boundary
+#define LXA_FOREIGN_END_PLAN_NAME control_stack_foreign_end_plan
+#define LXA_FOREIGN_BREAKOUT_PLAN_NAME control_stack_foreign_breakout_plan
+#include "html/foreign_stack_plan.inc"
+#undef LXA_FOREIGN_VIEW
+#undef LXA_FOREIGN_LENGTH
+#undef LXA_FOREIGN_BUDGET
+#undef LXA_FOREIGN_REASON
+#undef LXA_FOREIGN_NAMESPACE
+#undef LXA_FOREIGN_NAME
+#undef LXA_FOREIGN_BREAKOUT_BOUNDARY
+#undef LXA_FOREIGN_END_PLAN_NAME
+#undef LXA_FOREIGN_BREAKOUT_PLAN_NAME
+
 static lxa_status_t
 prepare_query(lxa_html_control_stack_t *stack, size_t boundary,
                control_stack_view_t *view)
@@ -418,4 +480,27 @@ lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     return control_stack_ruby_plan(&view, boundary, except_rtc, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_foreign_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t name, lxa_html_foreign_end_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || name.data == NULL || name.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    return control_stack_foreign_end_plan(&view, boundary, name, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_foreign_breakout_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_foreign_breakout_plan(&view, boundary, out);
 }

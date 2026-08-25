@@ -1101,6 +1101,47 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SCOPE_IDENTITY
 
+static inline lxa_status_t
+tree_foreign_namespace(const lxa_html_tree_scope_view_t *view, size_t index,
+                        lxa_dom_namespace_t *ns)
+{
+    return lxa_dom_nodes_element_namespace(view->tree->nodes, view->entries[index], ns);
+}
+
+static inline lxa_status_t
+tree_foreign_name(const lxa_html_tree_scope_view_t *view, size_t index,
+                   lxa_span_t *name)
+{
+    return lxa_dom_nodes_element_name(view->tree->nodes, view->entries[index], name);
+}
+
+static inline lxa_status_t
+tree_foreign_breakout_boundary(const lxa_html_tree_scope_view_t *view,
+                               size_t index, bool *boundary)
+{
+    return foreign_breakout_boundary(view->tree, view->entries[index], boundary);
+}
+
+#define LXA_FOREIGN_VIEW lxa_html_tree_scope_view_t
+#define LXA_FOREIGN_LENGTH(view) ((view)->length)
+#define LXA_FOREIGN_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_FOREIGN_REASON(view) (&(view)->tree->nodes->limit_reason)
+#define LXA_FOREIGN_NAMESPACE tree_foreign_namespace
+#define LXA_FOREIGN_NAME tree_foreign_name
+#define LXA_FOREIGN_BREAKOUT_BOUNDARY tree_foreign_breakout_boundary
+#define LXA_FOREIGN_END_PLAN_NAME tree_foreign_end_plan
+#define LXA_FOREIGN_BREAKOUT_PLAN_NAME tree_foreign_breakout_plan
+#include "html/foreign_stack_plan.inc"
+#undef LXA_FOREIGN_VIEW
+#undef LXA_FOREIGN_LENGTH
+#undef LXA_FOREIGN_BUDGET
+#undef LXA_FOREIGN_REASON
+#undef LXA_FOREIGN_NAMESPACE
+#undef LXA_FOREIGN_NAME
+#undef LXA_FOREIGN_BREAKOUT_BOUNDARY
+#undef LXA_FOREIGN_END_PLAN_NAME
+#undef LXA_FOREIGN_BREAKOUT_PLAN_NAME
+
 static lxa_status_t
 find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                      size_t boundary, lxa_dom_ref_t ref, size_t *index)
@@ -1918,20 +1959,11 @@ static lxa_status_t
 plan_foreign_breakout(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                        size_t boundary, size_t *keep)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t i = lxa_vector_length(elements);
-    while (i > boundary) {
-        bool integrated;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = foreign_breakout_boundary(tree, open[i - 1], &integrated);
-        if (status != LXA_OK) return status;
-        if (integrated) break;
-        --i;
-    }
-    *keep = i;
-    return LXA_OK;
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_foreign_breakout_plan(&view, boundary, keep);
 }
 
 static lxa_status_t
@@ -1939,41 +1971,17 @@ plan_foreign_end(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                  size_t boundary, lxa_span_t name, size_t *keep,
                  bool *reprocess)
 {
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) elements->bytes.data;
-    size_t i = lxa_vector_length(elements);
-    *keep = i;
-    *reprocess = false;
-    while (i > boundary) {
-        lxa_dom_namespace_t ns;
-        lxa_span_t top, target = name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status != LXA_OK) return status;
-        if (ns == LXA_DOM_NS_HTML) {
-            *reprocess = true;
-            return LXA_OK;
-        }
-        status = lxa_dom_nodes_element_name(tree->nodes, open[i], &top);
-        if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
-            status = lxa_html_svg_tag_name(target, &target);
-        if (status != LXA_OK) return status;
-        if (top.length == target.length) {
-            size_t blocks = top.length / 8 + (top.length % 8 != 0);
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, blocks, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (memcmp(top.data, target.data, top.length) == 0) {
-                *keep = i;
-                return LXA_OK;
-            }
-        }
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    lxa_html_foreign_end_plan_t plan;
+    lxa_status_t status = tree_foreign_end_plan(&view, boundary, name, &plan);
+    if (status == LXA_OK) {
+        *keep = plan.keep;
+        *reprocess = plan.reprocess;
     }
-    /* html and the active template are virtual HTML stack boundaries. */
-    *reprocess = true;
-    return LXA_OK;
+    return status;
 }
 
 /* Foreign descendants retain their parent's namespace unless an integration

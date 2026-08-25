@@ -5,6 +5,11 @@
 #include "dom/namespace.h"
 #include "html/tree_policy.h"
 
+typedef struct {
+    size_t keep;
+    bool reprocess; /* HTML entry or virtual HTML boundary reached */
+} lxa_html_foreign_end_plan_t;
+
 /* NULL budget preserves canonical stored-attribute comparison accounting.
  * Token consumers charge matching-length value comparisons explicitly.
  */
