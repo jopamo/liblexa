@@ -4,6 +4,7 @@
 #include "html/foreign_names.h"
 #include "html/foreign_context.h"
 #include "html/tree_categories.h"
+#include "html/formatting_policy.h"
 #include "html-tags.h"
 #include "html/tree.h"
 #include "html/tokenizer_classes.h"
@@ -799,62 +800,57 @@ append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
     return status;
 }
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_dom_ref_t element;
+} tree_formatting_view_t;
+
+static inline lxa_status_t
+tree_formatting_name(const tree_formatting_view_t *view, lxa_span_t *name)
+{
+    return lxa_dom_nodes_element_name(view->tree->nodes, view->element, name);
+}
+
+static inline lxa_status_t
+tree_formatting_next(const tree_formatting_view_t *view, lxa_dom_ref_t cursor,
+                     lxa_dom_ref_t *out)
+{
+    return lxa_dom_nodes_attribute_next(view->tree->nodes, view->element, cursor, out);
+}
+
+static inline lxa_status_t
+tree_formatting_read(const tree_formatting_view_t *view, lxa_dom_ref_t cursor,
+                     lxa_span_t *name, lxa_span_t *value)
+{
+    return lxa_dom_nodes_attribute_read(view->tree->nodes, cursor, name, value);
+}
+
+#define LXA_FORMATTING_EQUAL_NAME tree_formatting_equal
+#define LXA_FORMATTING_VIEW tree_formatting_view_t
+#define LXA_FORMATTING_CURSOR lxa_dom_ref_t
+#define LXA_FORMATTING_DONE(cursor) ((cursor).handle == LXA_HANDLE_NONE)
+#define LXA_FORMATTING_NAME tree_formatting_name
+#define LXA_FORMATTING_NEXT tree_formatting_next
+#define LXA_FORMATTING_READ tree_formatting_read
+#define LXA_FORMATTING_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_FORMATTING_REASON(view) (&(view)->tree->nodes->limit_reason)
+#include "html/formatting_equal.inc"
+#undef LXA_FORMATTING_EQUAL_NAME
+#undef LXA_FORMATTING_VIEW
+#undef LXA_FORMATTING_CURSOR
+#undef LXA_FORMATTING_DONE
+#undef LXA_FORMATTING_NAME
+#undef LXA_FORMATTING_NEXT
+#undef LXA_FORMATTING_READ
+#undef LXA_FORMATTING_BUDGET
+#undef LXA_FORMATTING_REASON
+
 static lxa_status_t
 formatting_token_equal(lxa_html_tree_t *tree, lxa_dom_ref_t element,
                        const lxa_html_token_t *token, bool *equal)
 {
-    lxa_span_t name;
-    lxa_dom_ref_t attribute = {0};
-    size_t count = 0;
-    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, element,
-                                                     &name);
-    *equal = false;
-    if (status != LXA_OK) return status;
-    if (name.length != token->name.length
-        || memcmp(name.data, token->name.data, name.length) != 0)
-        return LXA_OK;
-    for (;;) {
-        lxa_span_t key, value;
-        bool matched = false;
-        status = lxa_dom_nodes_attribute_next(tree->nodes, element, attribute,
-                                               &attribute);
-        if (status != LXA_OK) return status;
-        if (attribute.handle == LXA_HANDLE_NONE) break;
-        if (count == token->attribute_count) return LXA_OK;
-        ++count;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                   &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_attribute_read(tree->nodes, attribute,
-                                                   &key, &value);
-        if (status != LXA_OK) return status;
-        for (size_t i = 0; i < token->attribute_count; ++i) {
-            const lxa_html_attribute_t *candidate = &token->attributes[i];
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (key.length != candidate->name.length) continue;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                key.length / 8 + (key.length % 8 != 0),
-                &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (memcmp(key.data, candidate->name.data, key.length) != 0)
-                continue;
-            if (value.length != candidate->value.length) return LXA_OK;
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                value.length / 8 + (value.length % 8 != 0),
-                &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            if (value.length != 0
-                && memcmp(value.data, candidate->value.data, value.length) != 0)
-                return LXA_OK;
-            matched = true;
-            break;
-        }
-        if (!matched) return LXA_OK;
-    }
-    *equal = count == token->attribute_count;
-    return LXA_OK;
+    const tree_formatting_view_t view = {tree, element};
+    return tree_formatting_equal(&view, token, equal);
 }
 
 static lxa_status_t
