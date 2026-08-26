@@ -56,4 +56,12 @@ lxa_status_t lxa_html_formatting_store_noah_plan(lxa_html_formatting_store_t *st
     const size_t *references, size_t length, size_t start,
     const lxa_html_token_t *token, size_t *drop);
 
+/* Find the newest exact normalized name after the same marker boundary.
+ * Length is the successful not-found result. One WORK unit per visit,
+ * no allocation or list mutation; publish only on success.
+ */
+lxa_status_t lxa_html_formatting_store_find(lxa_html_formatting_store_t *store,
+    const size_t *references, size_t length, size_t start, lxa_span_t target,
+    size_t *index);
+
 #endif

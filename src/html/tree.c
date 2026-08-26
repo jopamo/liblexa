@@ -720,28 +720,6 @@ remove_formatting(lxa_html_tree_t *tree, size_t index)
 }
 
 static lxa_status_t
-find_formatting(lxa_html_tree_t *tree, lxa_span_t target, size_t *index)
-{
-    size_t i = lxa_vector_length(&tree->formatting);
-    *index = i;
-    while (i > formatting_start(tree)) {
-        lxa_span_t name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                formatting_entries(tree)[--i].element, &name);
-        if (status != LXA_OK) return status;
-        if (name.length == target.length
-            && memcmp(name.data, target.data, name.length) == 0) {
-            *index = i;
-            break;
-        }
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
 find_formatting_reference(lxa_html_tree_t *tree, lxa_dom_ref_t ref,
                            size_t *index)
 {
@@ -851,6 +829,14 @@ typedef struct {
 } tree_formatting_list_view_t;
 
 static inline lxa_status_t
+tree_formatting_list_name(const tree_formatting_list_view_t *view, size_t index,
+                           lxa_span_t *name)
+{
+    return lxa_dom_nodes_element_name(view->tree->nodes,
+        formatting_entries(view->tree)[index].element, name);
+}
+
+static inline lxa_status_t
 tree_formatting_list_equal(const tree_formatting_list_view_t *view, size_t index,
                             const lxa_html_token_t *token, bool *equal)
 {
@@ -873,6 +859,27 @@ tree_formatting_list_equal(const tree_formatting_list_view_t *view, size_t index
 #undef LXA_NOAH_EQUAL
 #undef LXA_NOAH_BUDGET
 #undef LXA_NOAH_REASON
+
+#define LXA_FORMATTING_FIND_NAME tree_find_formatting
+#define LXA_FORMATTING_FIND_VIEW tree_formatting_list_view_t
+#define LXA_FORMATTING_FIND_LENGTH(view) ((view)->length)
+#define LXA_FORMATTING_FIND_READ tree_formatting_list_name
+#define LXA_FORMATTING_FIND_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_FORMATTING_FIND_REASON(view) (&(view)->tree->nodes->limit_reason)
+#include "html/formatting_find.inc"
+#undef LXA_FORMATTING_FIND_NAME
+#undef LXA_FORMATTING_FIND_VIEW
+#undef LXA_FORMATTING_FIND_LENGTH
+#undef LXA_FORMATTING_FIND_READ
+#undef LXA_FORMATTING_FIND_BUDGET
+#undef LXA_FORMATTING_FIND_REASON
+
+static lxa_status_t
+find_formatting(lxa_html_tree_t *tree, lxa_span_t target, size_t *index)
+{
+    const tree_formatting_list_view_t view = {tree, lxa_vector_length(&tree->formatting)};
+    return tree_find_formatting(&view, formatting_start(tree), target, index);
+}
 
 static lxa_status_t
 plan_formatting_add(lxa_html_tree_t *tree, const lxa_html_token_t *token,

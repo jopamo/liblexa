@@ -352,6 +352,30 @@ typedef struct {
     size_t length;
 } formatting_store_list_view_t;
 
+static lxa_status_t
+store_list_view_init(lxa_html_formatting_store_t *store, const size_t *references,
+    size_t length, size_t start, size_t *out, formatting_store_list_view_t *view)
+{
+    lxa_status_t status = begin(store);
+    if (status != LXA_OK) return status;
+    if (out == NULL || (length != 0 && references == NULL)
+        || length > SIZE_MAX / sizeof(*references) || start > length)
+        return LXA_ERROR_ARGUMENT;
+    *view = (formatting_store_list_view_t){store, references, length};
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+store_list_name(const formatting_store_list_view_t *view, size_t index, lxa_span_t *name)
+{
+    const lxa_html_formatting_snapshot_t *snapshot;
+    lxa_status_t status = snapshot_get(view->store, view->references[index], &snapshot);
+    if (status == LXA_OK)
+        *name = (lxa_span_t){view->store->bytes.data + snapshot->name_offset,
+                           snapshot->name_length};
+    return status;
+}
+
 static inline lxa_status_t
 store_list_equal(const formatting_store_list_view_t *view, size_t index,
                   const lxa_html_token_t *token, bool *out)
@@ -377,16 +401,38 @@ store_list_equal(const formatting_store_list_view_t *view, size_t index,
 #undef LXA_NOAH_BUDGET
 #undef LXA_NOAH_REASON
 
+#define LXA_FORMATTING_FIND_NAME store_find
+#define LXA_FORMATTING_FIND_VIEW formatting_store_list_view_t
+#define LXA_FORMATTING_FIND_LENGTH(view) ((view)->length)
+#define LXA_FORMATTING_FIND_READ store_list_name
+#define LXA_FORMATTING_FIND_BUDGET(view) ((view)->store->budget)
+#define LXA_FORMATTING_FIND_REASON(view) (&(view)->store->limit_reason)
+#include "html/formatting_find.inc"
+#undef LXA_FORMATTING_FIND_NAME
+#undef LXA_FORMATTING_FIND_VIEW
+#undef LXA_FORMATTING_FIND_LENGTH
+#undef LXA_FORMATTING_FIND_READ
+#undef LXA_FORMATTING_FIND_BUDGET
+#undef LXA_FORMATTING_FIND_REASON
+
 lxa_status_t
 lxa_html_formatting_store_noah_plan(lxa_html_formatting_store_t *store,
     const size_t *references, size_t length, size_t start,
     const lxa_html_token_t *token, size_t *drop)
 {
-    lxa_status_t status = begin(store);
+    formatting_store_list_view_t view;
+    lxa_status_t status = store_list_view_init(store, references, length, start, drop, &view);
+    return status == LXA_OK ? store_noah_plan(&view, start, token, drop) : status;
+}
+
+lxa_status_t
+lxa_html_formatting_store_find(lxa_html_formatting_store_t *store,
+    const size_t *references, size_t length, size_t start, lxa_span_t target,
+    size_t *index)
+{
+    formatting_store_list_view_t view;
+    lxa_status_t status = store_list_view_init(store, references, length, start, index, &view);
     if (status != LXA_OK) return status;
-    if (drop == NULL || (length != 0 && references == NULL)
-        || length > SIZE_MAX / sizeof(*references) || start > length)
-        return LXA_ERROR_ARGUMENT;
-    const formatting_store_list_view_t view = {store, references, length};
-    return store_noah_plan(&view, start, token, drop);
+    if (target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
+    return store_find(&view, start, target, index);
 }
