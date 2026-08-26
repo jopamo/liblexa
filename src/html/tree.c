@@ -5,6 +5,7 @@
 #include "html/foreign_context.h"
 #include "html/tree_categories.h"
 #include "html/formatting_policy.h"
+#include "html/formatting_marker.h"
 #include "html-tags.h"
 #include "html/tree.h"
 #include "html/tokenizer_classes.h"
@@ -476,28 +477,25 @@ clear_formatting_to_marker(lxa_html_tree_t *tree)
         (const lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
     size_t marker = tree->formatting_marker;
     size_t length = lxa_vector_length(&tree->formatting), previous;
-    size_t start = marker == SIZE_MAX ? 0 : marker;
     lxa_status_t status;
-    if (marker != SIZE_MAX && marker >= length) {
+    if (!lxa_html_formatting_marker_valid(length, marker)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
     previous = marker == SIZE_MAX ? SIZE_MAX : entries[marker].previous_marker;
-    size_t count = length - start;
-    if ((previous != SIZE_MAX && previous >= marker)
-        || count > tree->nodes->budget->used[LXA_BUDGET_ACTIVE_FORMATTING]) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
-    }
-    status = lxa_vector_erase(&tree->formatting, start, count);
+    lxa_html_formatting_clear_plan_t plan;
+    status = lxa_html_formatting_clear_plan(length, marker, previous,
+        tree->nodes->budget->used[LXA_BUDGET_ACTIVE_FORMATTING], &plan);
+    if (status != LXA_OK) return status;
+    status = lxa_vector_erase(&tree->formatting, plan.keep, plan.removed);
     if (status == LXA_OK)
         status = lxa_budget_release(tree->nodes->budget,
-                                   LXA_BUDGET_ACTIVE_FORMATTING, count);
+                                   LXA_BUDGET_ACTIVE_FORMATTING, plan.removed);
     if (status != LXA_OK) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    tree->formatting_marker = previous;
+    tree->formatting_marker = plan.previous;
     return LXA_OK;
 }
 
@@ -700,9 +698,8 @@ static lxa_status_t
 remove_formatting(lxa_html_tree_t *tree, size_t index)
 {
     lxa_status_t status;
-    if (index >= lxa_vector_length(&tree->formatting)
-        || (tree->formatting_marker != SIZE_MAX
-            && index <= tree->formatting_marker)
+    if (!lxa_html_formatting_entry_removable(lxa_vector_length(&tree->formatting),
+                                             tree->formatting_marker, index)
         || tree->nodes->budget->used[LXA_BUDGET_ACTIVE_FORMATTING] == 0) {
         assert(false);
         return LXA_ERROR_INTERNAL;
@@ -762,7 +759,7 @@ append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
     };
     size_t index = lxa_vector_length(&tree->formatting);
     lxa_status_t status;
-    if (entry.previous_marker != SIZE_MAX && entry.previous_marker >= index) {
+    if (!lxa_html_formatting_marker_valid(index, entry.previous_marker)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }

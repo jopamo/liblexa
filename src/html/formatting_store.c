@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <string.h>
 #include "html/formatting_store.h"
+#include "html/formatting_list.h"
+#include "html/formatting_marker.h"
 #include "html/tree_categories.h"
 
 static lxa_status_t
@@ -435,4 +437,243 @@ lxa_html_formatting_store_find(lxa_html_formatting_store_t *store,
     if (status != LXA_OK) return status;
     if (target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
     return store_find(&view, start, target, index);
+}
+
+lxa_status_t
+lxa_html_formatting_list_init(lxa_html_formatting_list_t *list,
+    lxa_html_formatting_store_t *store)
+{
+    if (list == NULL) return LXA_ERROR_ARGUMENT;
+    memset(list, 0, sizeof(*list));
+    list->marker = SIZE_MAX;
+    lxa_status_t status = begin(store);
+    if (status != LXA_OK) return status;
+    status = lxa_vector_init(&list->entries, &store->bytes.allocator,
+                             sizeof(lxa_html_formatting_item_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&list->entries, store->budget);
+    if (status != LXA_OK) {
+        lxa_html_formatting_list_destroy(list);
+        return status;
+    }
+    list->store = store;
+    return LXA_OK;
+}
+
+void
+lxa_html_formatting_list_destroy(lxa_html_formatting_list_t *list)
+{
+    if (list == NULL) return;
+    if (list->store != NULL)
+        (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                           lxa_vector_length(&list->entries)));
+    lxa_vector_destroy(&list->entries);
+    memset(list, 0, sizeof(*list));
+    list->marker = SIZE_MAX;
+}
+
+static const lxa_html_formatting_item_t *
+list_items(const lxa_html_formatting_list_t *list)
+{
+    return (const lxa_html_formatting_item_t *) list->entries.bytes.data;
+}
+
+static lxa_status_t
+list_begin(lxa_html_formatting_list_t *list)
+{
+    if (list == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = begin(list->store);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&list->entries);
+    if (!valid_vector(&list->entries, sizeof(lxa_html_formatting_item_t), list->store->budget)
+        || !lxa_html_formatting_marker_valid(length, list->marker)
+        || length > list->store->budget->used[LXA_BUDGET_ACTIVE_FORMATTING])
+        return internal(LXA_ERROR_INTERNAL);
+    if (list->marker != SIZE_MAX) {
+        const lxa_html_formatting_item_t *item = &list_items(list)[list->marker];
+        if (item->snapshot != 0 || item->identity == 0
+            || !lxa_html_formatting_marker_valid(list->marker, item->previous_marker)
+            || (item->previous_marker != SIZE_MAX
+                && list_items(list)[item->previous_marker].snapshot != 0))
+            return internal(LXA_ERROR_INTERNAL);
+    }
+    return LXA_OK;
+}
+
+static size_t
+list_start(const lxa_html_formatting_list_t *list)
+{
+    return list->marker == SIZE_MAX ? 0 : list->marker + 1;
+}
+
+static lxa_status_t
+list_append(lxa_html_formatting_list_t *list, size_t snapshot, uint64_t identity, bool marker)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (identity == 0) return LXA_ERROR_ARGUMENT;
+    if (!marker) {
+        const lxa_html_formatting_snapshot_t *stored;
+        status = snapshot_get(list->store, snapshot, &stored);
+        if (status != LXA_OK) return status;
+    }
+    size_t index = lxa_vector_length(&list->entries), required;
+    status = lxa_size_add(index, 1, &required);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK)
+        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                   &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    lxa_html_formatting_item_t item = {snapshot, identity, list->marker};
+    status = lxa_vector_push(&list->entries, &item);
+    if (status != LXA_OK) {
+        (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1));
+        return internal(status);
+    }
+    if (marker) list->marker = index;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_formatting_list_append(lxa_html_formatting_list_t *list,
+    size_t snapshot, uint64_t identity)
+{
+    return list_append(list, snapshot, identity, false);
+}
+
+lxa_status_t
+lxa_html_formatting_list_push_marker(lxa_html_formatting_list_t *list, uint64_t identity)
+{
+    return list_append(list, 0, identity, true);
+}
+
+lxa_status_t
+lxa_html_formatting_list_remove(lxa_html_formatting_list_t *list, size_t index)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&list->entries);
+    if (!lxa_html_formatting_entry_removable(length, list->marker, index))
+        return LXA_ERROR_ARGUMENT;
+    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, length - index,
+                               &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    status = lxa_vector_erase(&list->entries, index, 1);
+    if (status == LXA_OK)
+        status = lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1);
+    return internal(status);
+}
+
+lxa_status_t
+lxa_html_formatting_list_clear(lxa_html_formatting_list_t *list)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    size_t previous = list->marker == SIZE_MAX ? SIZE_MAX
+        : list_items(list)[list->marker].previous_marker;
+    lxa_html_formatting_clear_plan_t plan;
+    status = lxa_html_formatting_clear_plan(lxa_vector_length(&list->entries), list->marker,
+        previous, list->store->budget->used[LXA_BUDGET_ACTIVE_FORMATTING], &plan);
+    if (status != LXA_OK) return status;
+    status = lxa_vector_erase(&list->entries, plan.keep, plan.removed);
+    if (status == LXA_OK)
+        status = lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, plan.removed);
+    if (status != LXA_OK) return internal(status);
+    list->marker = plan.previous;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
+    size_t index, lxa_html_formatting_item_t *out)
+{
+    if (out != NULL) memset(out, 0, sizeof(*out));
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (out == NULL || index >= lxa_vector_length(&list->entries)) return LXA_ERROR_ARGUMENT;
+    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, 1,
+                               &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    const lxa_html_formatting_item_t *item = &list_items(list)[index];
+    if (item->identity == 0
+        || (item->snapshot == 0 && !lxa_html_formatting_marker_valid(index, item->previous_marker)))
+        return internal(LXA_ERROR_INTERNAL);
+    if (item->snapshot != 0) {
+        const lxa_html_formatting_snapshot_t *snapshot;
+        status = snapshot_get(list->store, item->snapshot, &snapshot);
+        if (status != LXA_OK) return internal(status);
+    }
+    *out = *item;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+list_name(const lxa_html_formatting_list_t *list, size_t index, lxa_span_t *name)
+{
+    const lxa_html_formatting_snapshot_t *snapshot;
+    lxa_status_t status = snapshot_get(list->store, list_items(list)[index].snapshot, &snapshot);
+    if (status != LXA_OK) return internal(status);
+    *name = (lxa_span_t){list->store->bytes.data + snapshot->name_offset, snapshot->name_length};
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+list_equal(const lxa_html_formatting_list_t *list, size_t index,
+             const lxa_html_token_t *token, bool *out)
+{
+    const lxa_html_formatting_snapshot_t *snapshot;
+    lxa_status_t status = snapshot_get(list->store, list_items(list)[index].snapshot, &snapshot);
+    if (status != LXA_OK) return internal(status);
+    const formatting_store_view_t view = {list->store, snapshot};
+    return store_view_equal(&view, token, out);
+}
+
+#define LXA_FORMATTING_FIND_NAME list_find
+#define LXA_FORMATTING_FIND_VIEW lxa_html_formatting_list_t
+#define LXA_FORMATTING_FIND_LENGTH(view) lxa_vector_length(&(view)->entries)
+#define LXA_FORMATTING_FIND_READ list_name
+#define LXA_FORMATTING_FIND_BUDGET(view) ((view)->store->budget)
+#define LXA_FORMATTING_FIND_REASON(view) (&(view)->store->limit_reason)
+#include "html/formatting_find.inc"
+#undef LXA_FORMATTING_FIND_NAME
+#undef LXA_FORMATTING_FIND_VIEW
+#undef LXA_FORMATTING_FIND_LENGTH
+#undef LXA_FORMATTING_FIND_READ
+#undef LXA_FORMATTING_FIND_BUDGET
+#undef LXA_FORMATTING_FIND_REASON
+
+#define LXA_NOAH_PLAN_NAME list_noah_plan
+#define LXA_NOAH_VIEW lxa_html_formatting_list_t
+#define LXA_NOAH_LENGTH(view) lxa_vector_length(&(view)->entries)
+#define LXA_NOAH_EQUAL list_equal
+#define LXA_NOAH_BUDGET(view) ((view)->store->budget)
+#define LXA_NOAH_REASON(view) (&(view)->store->limit_reason)
+#include "html/formatting_noah.inc"
+#undef LXA_NOAH_PLAN_NAME
+#undef LXA_NOAH_VIEW
+#undef LXA_NOAH_LENGTH
+#undef LXA_NOAH_EQUAL
+#undef LXA_NOAH_BUDGET
+#undef LXA_NOAH_REASON
+
+lxa_status_t
+lxa_html_formatting_list_find(lxa_html_formatting_list_t *list, lxa_span_t target, size_t *index)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (index == NULL || target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
+    return list_find(list, list_start(list), target, index);
+}
+
+lxa_status_t
+lxa_html_formatting_list_noah_plan(lxa_html_formatting_list_t *list,
+    const lxa_html_token_t *token, size_t *drop)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (drop == NULL) return LXA_ERROR_ARGUMENT;
+    return list_noah_plan(list, list_start(list), token, drop);
 }
