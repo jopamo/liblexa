@@ -45,6 +45,13 @@ lxa_status_t lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
     const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
 lxa_status_t lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack,
     size_t keep);
+/* Remove one entry without changing surviving identities or name offsets.
+ * Charge one WORK unit per removed/shifted metadata slot before mutation.
+ * Interior name bytes remain until suffix trimming or destruction; suffix
+ * removal truncates to the last retained name, or zero for an empty stack.
+ */
+lxa_status_t lxa_html_control_stack_remove(lxa_html_control_stack_t *stack,
+    size_t index);
 
 /* Returned names expire on mutation/destroy. Queries retain no views.
  * This owner stores no attributes, parent/child links or DOM records.

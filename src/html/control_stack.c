@@ -200,6 +200,51 @@ read_element(const lxa_html_control_stack_t *stack, size_t index,
     return LXA_OK;
 }
 
+static lxa_status_t
+retained_name_length(const lxa_html_control_stack_t *stack, size_t keep,
+                      size_t *length)
+{
+    if (keep == 0) {
+        *length = 0;
+        return LXA_OK;
+    }
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = read_element(stack, keep - 1, &entry, NULL);
+    if (status != LXA_OK) return status;
+    /* Push appends names in stack order; removal does not reorder them. */
+    const lxa_html_control_element_t *elements =
+        (const lxa_html_control_element_t *) stack->elements.bytes.data;
+    *length = elements[keep - 1].name_offset + elements[keep - 1].name_length;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_control_stack_remove(lxa_html_control_stack_t *stack, size_t index)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&stack->elements);
+    if (index >= length) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    status = read_element(stack, index, &entry, NULL);
+    if (status != LXA_OK) return status;
+    size_t name_length = stack->names.length;
+    if (index == length - 1) {
+        status = retained_name_length(stack, index, &name_length);
+        if (status != LXA_OK) return status;
+    }
+    if (stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS] == 0)
+        return internal(LXA_ERROR_INTERNAL);
+    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+                               length - index, &stack->limit_reason);
+    if (status != LXA_OK) return status;
+    if (internal(lxa_vector_erase(&stack->elements, index, 1)) != LXA_OK
+        || internal(lxa_buffer_truncate(&stack->names, name_length)) != LXA_OK
+        || internal(lxa_budget_release(stack->budget, LXA_BUDGET_OPEN_ELEMENTS, 1)) != LXA_OK)
+        return LXA_ERROR_INTERNAL;
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack, size_t keep)
 {
@@ -211,9 +256,9 @@ lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack, size_t keep)
     lxa_html_scope_entry_t entry;
     status = read_element(stack, keep, &entry, NULL);
     if (status != LXA_OK) return status;
-    const lxa_html_control_element_t *elements =
-        (const lxa_html_control_element_t *) stack->elements.bytes.data;
-    size_t name_length = elements[keep].name_offset;
+    size_t name_length;
+    status = retained_name_length(stack, keep, &name_length);
+    if (status != LXA_OK) return status;
     if (length - keep > stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS])
         return internal(LXA_ERROR_INTERNAL);
     status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
