@@ -845,31 +845,45 @@ tree_formatting_read(const tree_formatting_view_t *view, lxa_dom_ref_t cursor,
 #undef LXA_FORMATTING_BUDGET
 #undef LXA_FORMATTING_REASON
 
-static lxa_status_t
-formatting_token_equal(lxa_html_tree_t *tree, lxa_dom_ref_t element,
-                       const lxa_html_token_t *token, bool *equal)
+typedef struct {
+    lxa_html_tree_t *tree;
+    size_t length;
+} tree_formatting_list_view_t;
+
+static inline lxa_status_t
+tree_formatting_list_equal(const tree_formatting_list_view_t *view, size_t index,
+                            const lxa_html_token_t *token, bool *equal)
 {
-    const tree_formatting_view_t view = {tree, element};
-    return tree_formatting_equal(&view, token, equal);
+    const tree_formatting_view_t item = {
+        view->tree, formatting_entries(view->tree)[index].element
+    };
+    return tree_formatting_equal(&item, token, equal);
 }
+
+#define LXA_NOAH_PLAN_NAME tree_noah_plan
+#define LXA_NOAH_VIEW tree_formatting_list_view_t
+#define LXA_NOAH_LENGTH(view) ((view)->length)
+#define LXA_NOAH_EQUAL tree_formatting_list_equal
+#define LXA_NOAH_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_NOAH_REASON(view) (&(view)->tree->nodes->limit_reason)
+#include "html/formatting_noah.inc"
+#undef LXA_NOAH_PLAN_NAME
+#undef LXA_NOAH_VIEW
+#undef LXA_NOAH_LENGTH
+#undef LXA_NOAH_EQUAL
+#undef LXA_NOAH_BUDGET
+#undef LXA_NOAH_REASON
 
 static lxa_status_t
 plan_formatting_add(lxa_html_tree_t *tree, const lxa_html_token_t *token,
                      size_t *drop)
 {
-    size_t i = lxa_vector_length(&tree->formatting), matches = 0;
-    *drop = SIZE_MAX;
-    while (i > formatting_start(tree)) {
-        bool equal;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = formatting_token_equal(tree,
-                formatting_entries(tree)[--i].element, token, &equal);
-        if (status != LXA_OK) return status;
-        if (equal && ++matches >= 3) *drop = i;
-    }
-    return reserve_formatting(tree, *drop == SIZE_MAX ? 1 : 0);
+    const tree_formatting_list_view_t view = {tree, lxa_vector_length(&tree->formatting)};
+    size_t planned;
+    lxa_status_t status = tree_noah_plan(&view, formatting_start(tree), token, &planned);
+    if (status == LXA_OK) status = reserve_formatting(tree, planned == SIZE_MAX ? 1 : 0);
+    if (status == LXA_OK) *drop = planned;
+    return status;
 }
 
 static lxa_status_t

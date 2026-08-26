@@ -4,6 +4,15 @@
 #include <string.h>
 #include "html/tokenizer.h"
 
+static inline bool
+lxa_html_formatting_token_shape_valid(const lxa_html_token_t *token)
+{
+    return token != NULL && token->kind == LXA_HTML_START_TAG
+        && token->name.data != NULL && token->name.length != 0
+        && (token->attribute_count == 0 || token->attributes != NULL)
+        && token->attribute_count <= SIZE_MAX / sizeof(*token->attributes);
+}
+
 typedef struct {
     lxa_span_t name;
     const lxa_html_attribute_t *attributes;

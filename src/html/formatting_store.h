@@ -47,4 +47,13 @@ lxa_status_t lxa_html_formatting_store_attribute(lxa_html_formatting_store_t *st
 lxa_status_t lxa_html_formatting_store_equal(lxa_html_formatting_store_t *store,
     size_t reference, const lxa_html_token_t *token, bool *out);
 
+/* Borrow active snapshot references and scan only entries at/after start,
+ * the owner's boundary after its last marker. SIZE_MAX means no drop;
+ * otherwise return the oldest equal entry when at least three match.
+ * Publish only on success. No list mutation, reservation or live quota charge.
+ */
+lxa_status_t lxa_html_formatting_store_noah_plan(lxa_html_formatting_store_t *store,
+    const size_t *references, size_t length, size_t start,
+    const lxa_html_token_t *token, size_t *drop);
+
 #endif

@@ -122,10 +122,7 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (reference != NULL) *reference = 0;
     lxa_status_t status = begin(store);
     if (status != LXA_OK) return status;
-    if (reference == NULL || token == NULL || token->kind != LXA_HTML_START_TAG
-        || token->name.data == NULL || token->name.length == 0
-        || (token->attribute_count != 0 && token->attributes == NULL)
-        || token->attribute_count > SIZE_MAX / sizeof(*token->attributes)
+    if (reference == NULL || !lxa_html_formatting_token_shape_valid(token)
         || !lxa_html_tree_formatting_tag(token->name))
         return LXA_ERROR_ARGUMENT;
     lxa_span_t descriptors = {(const uint8_t *) token->attributes,
@@ -347,4 +344,49 @@ lxa_html_formatting_store_equal(lxa_html_formatting_store_t *store,
     if (status != LXA_OK) return status;
     const formatting_store_view_t view = {store, snapshot};
     return store_view_equal(&view, token, out);
+}
+
+typedef struct {
+    lxa_html_formatting_store_t *store;
+    const size_t *references;
+    size_t length;
+} formatting_store_list_view_t;
+
+static inline lxa_status_t
+store_list_equal(const formatting_store_list_view_t *view, size_t index,
+                  const lxa_html_token_t *token, bool *out)
+{
+    const lxa_html_formatting_snapshot_t *snapshot;
+    lxa_status_t status = snapshot_get(view->store, view->references[index], &snapshot);
+    if (status != LXA_OK) return status;
+    const formatting_store_view_t item = {view->store, snapshot};
+    return store_view_equal(&item, token, out);
+}
+
+#define LXA_NOAH_PLAN_NAME store_noah_plan
+#define LXA_NOAH_VIEW formatting_store_list_view_t
+#define LXA_NOAH_LENGTH(view) ((view)->length)
+#define LXA_NOAH_EQUAL store_list_equal
+#define LXA_NOAH_BUDGET(view) ((view)->store->budget)
+#define LXA_NOAH_REASON(view) (&(view)->store->limit_reason)
+#include "html/formatting_noah.inc"
+#undef LXA_NOAH_PLAN_NAME
+#undef LXA_NOAH_VIEW
+#undef LXA_NOAH_LENGTH
+#undef LXA_NOAH_EQUAL
+#undef LXA_NOAH_BUDGET
+#undef LXA_NOAH_REASON
+
+lxa_status_t
+lxa_html_formatting_store_noah_plan(lxa_html_formatting_store_t *store,
+    const size_t *references, size_t length, size_t start,
+    const lxa_html_token_t *token, size_t *drop)
+{
+    lxa_status_t status = begin(store);
+    if (status != LXA_OK) return status;
+    if (drop == NULL || (length != 0 && references == NULL)
+        || length > SIZE_MAX / sizeof(*references) || start > length)
+        return LXA_ERROR_ARGUMENT;
+    const formatting_store_list_view_t view = {store, references, length};
+    return store_noah_plan(&view, start, token, drop);
 }

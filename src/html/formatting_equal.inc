@@ -6,10 +6,7 @@ static inline lxa_status_t
 LXA_FORMATTING_EQUAL_NAME(const LXA_FORMATTING_VIEW *view,
                           const lxa_html_token_t *token, bool *out)
 {
-    if (token == NULL || token->kind != LXA_HTML_START_TAG
-        || token->name.data == NULL || token->name.length == 0
-        || (token->attribute_count != 0 && token->attributes == NULL)
-        || token->attribute_count > SIZE_MAX / sizeof(*token->attributes))
+    if (!lxa_html_formatting_token_shape_valid(token))
         return LXA_ERROR_ARGUMENT;
     lxa_span_t name;
     LXA_FORMATTING_CURSOR cursor = (LXA_FORMATTING_CURSOR){0};
