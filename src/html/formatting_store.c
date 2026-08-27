@@ -843,6 +843,32 @@ lxa_html_formatting_list_adopt_plan(lxa_html_formatting_list_t *list,
 }
 
 lxa_status_t
+lxa_html_formatting_list_replace_open(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t formatting_index, size_t open_index,
+    uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (identity == NULL
+        || !lxa_html_formatting_entry_removable(lxa_vector_length(&list->entries),
+                                                list->marker, formatting_index)
+        || open_index >= lxa_vector_length(&stack->elements))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_formatting_item_t item;
+    status = lxa_html_formatting_list_get(list, formatting_index, &item);
+    if (status != LXA_OK) return status;
+    uint64_t replacement;
+    status = lxa_html_control_stack_replace_identity(stack, open_index, item.identity, &replacement);
+    if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
+    if (status != LXA_OK) return status;
+    ((lxa_html_formatting_item_t *) list->entries.bytes.data)[formatting_index].identity = replacement;
+    *identity = replacement;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
 {

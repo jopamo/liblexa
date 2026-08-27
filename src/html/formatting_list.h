@@ -82,6 +82,16 @@ lxa_status_t lxa_html_formatting_list_adopt_plan(lxa_html_formatting_list_t *lis
     lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t subject,
     lxa_html_formatting_adopt_plan_t *out);
 
+/* Replace an open formatting identity for an adoption clone in the same stack
+ * domain. The selected entry must follow the last marker and match the open
+ * slot. Retain its snapshot and open metadata. Charge one WORK per owner read,
+ * then publish both identities without allocation or live-quota changes.
+ * Ordinary failure preserves both owners and key assignment; clear output.
+ */
+lxa_status_t lxa_html_formatting_list_replace_open(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t formatting_index, size_t open_index,
+    uint64_t *identity);
+
 /* Admit an already prepared HTML formatting start in the same stack domain:
  * enforce Noah removal,
  * capture its effective attributes, push an HTML open identity and append

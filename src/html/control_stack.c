@@ -219,6 +219,29 @@ retained_name_length(const lxa_html_control_stack_t *stack, size_t keep,
 }
 
 lxa_status_t
+lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
+    size_t index, uint64_t expected, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || expected == 0 || index >= lxa_vector_length(&stack->elements))
+        return LXA_ERROR_ARGUMENT;
+    if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
+    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
+    if (status != LXA_OK) return status;
+    lxa_html_scope_entry_t entry;
+    status = read_element(stack, index, &entry, NULL);
+    if (status != LXA_OK) return status;
+    if (entry.identity != expected) return LXA_ERROR_ARGUMENT;
+    lxa_html_control_element_t *elements =
+        (lxa_html_control_element_t *) stack->elements.bytes.data;
+    elements[index].identity = stack->next_identity;
+    *identity = stack->next_identity++;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_control_stack_remove(lxa_html_control_stack_t *stack, size_t index)
 {
     lxa_status_t status = begin(stack);

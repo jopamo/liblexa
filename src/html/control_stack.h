@@ -52,6 +52,12 @@ lxa_status_t lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack,
  */
 lxa_status_t lxa_html_control_stack_remove(lxa_html_control_stack_t *stack,
     size_t index);
+/* Replace an expected identity with a fresh key while retaining its metadata.
+ * Charge one WORK before reading the entry. Failure preserves the entry and
+ * key sequence; clear output on failure. No allocation or live-quota change.
+ */
+lxa_status_t lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
+    size_t index, uint64_t expected, uint64_t *identity);
 
 /* Returned names expire on mutation/destroy. Queries retain no views.
  * This owner stores no attributes, parent/child links or DOM records.
