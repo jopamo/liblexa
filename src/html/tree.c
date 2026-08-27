@@ -1088,6 +1088,20 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
     return LXA_OK;
 }
 
+#define LXA_SPECIAL_NAME tree_special_find
+#define LXA_SPECIAL_VIEW lxa_html_tree_scope_view_t
+#define LXA_SPECIAL_LENGTH(view) ((view)->length)
+#define LXA_SPECIAL_READ tree_scope_read
+#define LXA_SPECIAL_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_SPECIAL_REASON(view) (&(view)->tree->nodes->limit_reason)
+#include "html/special_find.inc"
+#undef LXA_SPECIAL_NAME
+#undef LXA_SPECIAL_VIEW
+#undef LXA_SPECIAL_LENGTH
+#undef LXA_SPECIAL_READ
+#undef LXA_SPECIAL_BUDGET
+#undef LXA_SPECIAL_REASON
+
 #define LXA_SCOPE_NAME tree_scope_search
 #define LXA_ORDINARY_NAME tree_ordinary_end_search
 #define LXA_COLUMN_GROUP_NAME tree_current_column_group
@@ -1511,6 +1525,40 @@ place_adoption_node(lxa_html_tree_t *tree, lxa_dom_ref_t node,
                                                     before);
 }
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_html_tree_scope_view_t open;
+    size_t boundary;
+} tree_adopt_view_t;
+
+static inline lxa_status_t
+tree_adopt_reference(const tree_adopt_view_t *view, size_t index, uint64_t *identity)
+{
+    return formatting_reference(view->tree, index, identity);
+}
+
+#define LXA_ADOPT_NAME tree_adopt_plan
+#define LXA_ADOPT_VIEW tree_adopt_view_t
+#define LXA_ADOPT_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->tree->formatting)
+#define LXA_ADOPT_OPEN_LENGTH(view) ((view)->open.length)
+#define LXA_ADOPT_FIND(view, subject, index) find_formatting((view)->tree, subject, index)
+#define LXA_ADOPT_REFERENCE tree_adopt_reference
+#define LXA_ADOPT_OPEN(view, identity, index) \
+    tree_open_reference_search(&(view)->open, (view)->boundary, identity, index)
+#define LXA_ADOPT_SCOPED(view, identity, index) \
+    tree_scoped_reference_search(&(view)->open, (view)->boundary, identity, index)
+#define LXA_ADOPT_SPECIAL(view, start, index) tree_special_find(&(view)->open, start, index)
+#include "html/formatting_adopt.inc"
+#undef LXA_ADOPT_NAME
+#undef LXA_ADOPT_VIEW
+#undef LXA_ADOPT_FORMATTING_LENGTH
+#undef LXA_ADOPT_OPEN_LENGTH
+#undef LXA_ADOPT_FIND
+#undef LXA_ADOPT_REFERENCE
+#undef LXA_ADOPT_OPEN
+#undef LXA_ADOPT_SCOPED
+#undef LXA_ADOPT_SPECIAL
+
 static lxa_status_t
 adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
 {
@@ -1541,42 +1589,33 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
         lxa_dom_ref_t formatting, furthest, common, last, clone;
         const lxa_dom_ref_t *open;
         size_t formatting_index, stack_index, furthest_index, bookmark, node;
-        size_t scoped_index;
-        status = find_formatting(tree, subject, &formatting_index);
+        const tree_adopt_view_t view = {tree, {
+            tree, (const lxa_dom_ref_t *) elements->bytes.data, lxa_vector_length(elements)
+        }, boundary};
+        lxa_html_formatting_adopt_plan_t plan;
+        status = tree_adopt_plan(&view, subject, &plan);
         if (status != LXA_OK) return status;
-        if (formatting_index == lxa_vector_length(&tree->formatting))
-            return formatting_end_ordinary(tree, subject);
+        switch (plan.action) {
+            case LXA_HTML_FORMATTING_ADOPT_ORDINARY:
+                return formatting_end_ordinary(tree, subject);
+            case LXA_HTML_FORMATTING_ADOPT_REMOVE_CLOSED:
+                return remove_formatting(tree, plan.formatting);
+            case LXA_HTML_FORMATTING_ADOPT_IGNORE:
+                return LXA_OK;
+            case LXA_HTML_FORMATTING_ADOPT_POP:
+                status = formatting_pop_elements(tree, plan.open);
+                return status == LXA_OK ? remove_formatting(tree, plan.formatting) : status;
+            case LXA_HTML_FORMATTING_ADOPT_REPAIR:
+                break;
+            default:
+                assert(false);
+                return LXA_ERROR_INTERNAL;
+        }
+        formatting_index = plan.formatting;
+        stack_index = plan.open;
+        furthest_index = plan.furthest;
         formatting = formatting_entries(tree)[formatting_index].element;
-        status = find_open_reference(tree, elements, boundary,
-                                     formatting, &stack_index);
-        if (status != LXA_OK) return status;
-        if (stack_index == lxa_vector_length(elements)) {
-            return remove_formatting(tree, formatting_index);
-        }
-        status = find_scoped_reference(tree, elements, boundary,
-                                         formatting, &scoped_index);
-        if (status != LXA_OK || scoped_index == lxa_vector_length(elements))
-            return status;
         open = (const lxa_dom_ref_t *) elements->bytes.data;
-        furthest_index = stack_index + 1;
-        while (furthest_index < lxa_vector_length(elements)) {
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                       1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_namespace(tree->nodes,
-                    open[furthest_index], &ns);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[furthest_index], &name);
-            if (status != LXA_OK) return status;
-            if (lxa_html_tree_special_element(name, ns)) break;
-            ++furthest_index;
-        }
-        if (furthest_index == lxa_vector_length(elements)) {
-            status = formatting_pop_elements(tree, stack_index);
-            if (status != LXA_OK) return status;
-            return remove_formatting(tree, formatting_index);
-        }
         if (stack_index == boundary && tree->mode != LXA_TREE_TEMPLATE_TEXT)
             return LXA_ERROR_INTERNAL;
         common = stack_index == boundary ? tree->template_fragment

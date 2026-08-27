@@ -4,6 +4,19 @@
 #include <string.h>
 #include "html/tokenizer.h"
 
+typedef enum {
+    LXA_HTML_FORMATTING_ADOPT_ORDINARY,
+    LXA_HTML_FORMATTING_ADOPT_REMOVE_CLOSED,
+    LXA_HTML_FORMATTING_ADOPT_IGNORE,
+    LXA_HTML_FORMATTING_ADOPT_POP,
+    LXA_HTML_FORMATTING_ADOPT_REPAIR
+} lxa_html_formatting_adopt_action_t;
+
+typedef struct {
+    lxa_html_formatting_adopt_action_t action;
+    size_t formatting, open, furthest;
+} lxa_html_formatting_adopt_plan_t;
+
 static inline bool
 lxa_html_formatting_token_shape_valid(const lxa_html_token_t *token)
 {

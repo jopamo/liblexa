@@ -72,6 +72,16 @@ lxa_status_t lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_
 lxa_status_t lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary);
 
+/* Select one canonical adoption outer round in the same identity domain.
+ * Exclude entries before the last marker and open identities before boundary.
+ * Publish indices/action only on success; no allocation or mutation.
+ * The engine owns the initial current-element shortcut, ordinary-end fallback,
+ * pop/removal, repair cloning/bookmarks and the bounded outer loop.
+ */
+lxa_status_t lxa_html_formatting_list_adopt_plan(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t subject,
+    lxa_html_formatting_adopt_plan_t *out);
+
 /* Admit an already prepared HTML formatting start in the same stack domain:
  * enforce Noah removal,
  * capture its effective attributes, push an HTML open identity and append

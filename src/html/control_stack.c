@@ -321,6 +321,20 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
     return *identity == 0 ? internal(LXA_ERROR_INTERNAL) : LXA_OK;
 }
 
+#define LXA_SPECIAL_NAME control_stack_special_find
+#define LXA_SPECIAL_VIEW control_stack_view_t
+#define LXA_SPECIAL_LENGTH(view) ((view)->length)
+#define LXA_SPECIAL_READ control_stack_read
+#define LXA_SPECIAL_BUDGET(view) ((view)->stack->budget)
+#define LXA_SPECIAL_REASON(view) (&(view)->stack->limit_reason)
+#include "html/special_find.inc"
+#undef LXA_SPECIAL_NAME
+#undef LXA_SPECIAL_VIEW
+#undef LXA_SPECIAL_LENGTH
+#undef LXA_SPECIAL_READ
+#undef LXA_SPECIAL_BUDGET
+#undef LXA_SPECIAL_REASON
+
 static inline lxa_status_t
 control_stack_namespace(const control_stack_view_t *view, size_t index,
                          lxa_dom_namespace_t *ns)
@@ -470,6 +484,17 @@ lxa_html_control_stack_open_reference_find(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (index == NULL || identity == 0) return LXA_ERROR_ARGUMENT;
     return control_stack_open_reference(&view, boundary, identity, index);
+}
+
+lxa_status_t
+lxa_html_control_stack_special_find(lxa_html_control_stack_t *stack,
+    size_t start, size_t *index)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, start, &view);
+    if (status != LXA_OK) return status;
+    if (index == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_special_find(&view, start, index);
 }
 
 lxa_status_t

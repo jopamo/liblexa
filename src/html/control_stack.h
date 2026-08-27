@@ -65,6 +65,11 @@ lxa_status_t lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *
     size_t boundary, lxa_span_t target, size_t *index);
 lxa_status_t lxa_html_control_stack_open_reference_find(lxa_html_control_stack_t *stack,
     size_t boundary, uint64_t identity, size_t *index);
+/* First special element at/after start, or stack length. Charge one WORK per
+ * visited name/namespace pair; publish only on success.
+ */
+lxa_status_t lxa_html_control_stack_special_find(lxa_html_control_stack_t *stack,
+    size_t start, size_t *index);
 lxa_status_t lxa_html_control_stack_scoped_reference_find(lxa_html_control_stack_t *stack,
     size_t boundary, uint64_t identity, size_t *index);
 /* Failed planning leaves the result unchanged, as with borrowed-stack plans. */

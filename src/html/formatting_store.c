@@ -715,23 +715,23 @@ typedef struct {
     lxa_html_formatting_list_t *list;
     lxa_html_control_stack_t *stack;
     size_t boundary;
-} formatting_reconstruct_view_t;
+} formatting_stack_view_t;
 
 static lxa_status_t
-reconstruct_view_init(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stack,
-    size_t boundary, formatting_reconstruct_view_t *view)
+stack_view_init(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stack,
+    size_t boundary, formatting_stack_view_t *view)
 {
     lxa_status_t status = list_begin(list);
     if (status != LXA_OK) return status;
     if (stack == NULL || stack->budget != list->store->budget
         || boundary > lxa_vector_length(&stack->elements))
         return LXA_ERROR_ARGUMENT;
-    *view = (formatting_reconstruct_view_t){list, stack, boundary};
+    *view = (formatting_stack_view_t){list, stack, boundary};
     return LXA_OK;
 }
 
 static inline lxa_status_t
-reconstruct_open(const formatting_reconstruct_view_t *view, size_t index, bool *open)
+reconstruct_open(const formatting_stack_view_t *view, size_t index, bool *open)
 {
     uint64_t identity = list_items(view->list)[index].identity;
     if (identity == 0) return internal(LXA_ERROR_INTERNAL);
@@ -744,7 +744,7 @@ reconstruct_open(const formatting_reconstruct_view_t *view, size_t index, bool *
 }
 
 #define LXA_RECONSTRUCT_PLAN_NAME list_reconstruct_plan
-#define LXA_RECONSTRUCT_VIEW formatting_reconstruct_view_t
+#define LXA_RECONSTRUCT_VIEW formatting_stack_view_t
 #define LXA_RECONSTRUCT_LENGTH(view) lxa_vector_length(&(view)->list->entries)
 #define LXA_RECONSTRUCT_OPEN reconstruct_open
 #include "html/formatting_reconstruct.inc"
@@ -757,8 +757,8 @@ lxa_status_t
 lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary, size_t *start)
 {
-    formatting_reconstruct_view_t view;
-    lxa_status_t status = reconstruct_view_init(list, stack, boundary, &view);
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
     if (status != LXA_OK) return status;
     if (start == NULL) return LXA_ERROR_ARGUMENT;
     return list_reconstruct_plan(&view, list_start(list), start);
@@ -768,8 +768,8 @@ lxa_status_t
 lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary)
 {
-    formatting_reconstruct_view_t view;
-    lxa_status_t status = reconstruct_view_init(list, stack, boundary, &view);
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
     if (status != LXA_OK) return status;
     size_t start;
     status = list_reconstruct_plan(&view, list_start(list), &start);
@@ -789,6 +789,57 @@ lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
         item->identity = identity;
     }
     return LXA_OK;
+}
+
+static inline lxa_status_t
+adopt_stack_status(const formatting_stack_view_t *view, lxa_status_t status)
+{
+    if (status == LXA_ERROR_LIMIT)
+        view->list->store->limit_reason = view->stack->limit_reason;
+    return status;
+}
+
+static inline lxa_status_t
+adopt_reference(const formatting_stack_view_t *view, size_t index, uint64_t *identity)
+{
+    return list_reference(view->list, index, identity);
+}
+
+#define LXA_ADOPT_NAME list_adopt_plan
+#define LXA_ADOPT_VIEW formatting_stack_view_t
+#define LXA_ADOPT_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->list->entries)
+#define LXA_ADOPT_OPEN_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_ADOPT_FIND(view, subject, index) \
+    list_find((view)->list, list_start((view)->list), subject, index)
+#define LXA_ADOPT_REFERENCE adopt_reference
+#define LXA_ADOPT_OPEN(view, identity, index) adopt_stack_status(view, \
+    lxa_html_control_stack_open_reference_find((view)->stack, (view)->boundary, identity, index))
+#define LXA_ADOPT_SCOPED(view, identity, index) adopt_stack_status(view, \
+    lxa_html_control_stack_scoped_reference_find((view)->stack, (view)->boundary, identity, index))
+#define LXA_ADOPT_SPECIAL(view, start, index) adopt_stack_status(view, \
+    lxa_html_control_stack_special_find((view)->stack, start, index))
+#include "html/formatting_adopt.inc"
+#undef LXA_ADOPT_NAME
+#undef LXA_ADOPT_VIEW
+#undef LXA_ADOPT_FORMATTING_LENGTH
+#undef LXA_ADOPT_OPEN_LENGTH
+#undef LXA_ADOPT_FIND
+#undef LXA_ADOPT_REFERENCE
+#undef LXA_ADOPT_OPEN
+#undef LXA_ADOPT_SCOPED
+#undef LXA_ADOPT_SPECIAL
+
+lxa_status_t
+lxa_html_formatting_list_adopt_plan(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t subject,
+    lxa_html_formatting_adopt_plan_t *out)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL || subject.data == NULL || subject.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    return list_adopt_plan(&view, subject, out);
 }
 
 lxa_status_t
