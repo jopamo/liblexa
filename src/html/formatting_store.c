@@ -757,3 +757,72 @@ lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
     }
     return LXA_OK;
 }
+
+lxa_status_t
+lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || stack == NULL || stack->budget != list->store->budget
+        || !lxa_html_formatting_token_shape_valid(token)
+        || !lxa_html_tree_formatting_tag(token->name))
+        return LXA_ERROR_ARGUMENT;
+    size_t drop, required, length = lxa_vector_length(&list->entries);
+    status = list_noah_plan(list, list_start(list), token, &drop);
+    if (status != LXA_OK) return status;
+    size_t additional = drop == SIZE_MAX ? 1 : 0;
+    status = lxa_size_add(length, additional, &required);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                  additional, &list->store->limit_reason);
+    if (status == LXA_OK && drop != SIZE_MAX)
+        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, length - drop,
+                                   &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    size_t old_snapshots = list->store->snapshots.bytes.length;
+    size_t old_attributes = list->store->attributes.bytes.length;
+    size_t old_bytes = list->store->bytes.length;
+    size_t snapshot;
+    status = lxa_html_formatting_store_capture(list->store, token, &snapshot);
+    if (status != LXA_OK) return status;
+    /* Copy token views before either membership or open storage can move. */
+    status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK)
+        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                   additional, &list->store->limit_reason);
+    bool charged = status == LXA_OK;
+    uint64_t opened;
+    if (status == LXA_OK) {
+        const lxa_html_formatting_snapshot_t *stored;
+        status = snapshot_get(list->store, snapshot, &stored);
+        if (status == LXA_OK) {
+            lxa_span_t name = {list->store->bytes.data + stored->name_offset, stored->name_length};
+            status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &opened);
+            if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
+        }
+        else status = internal(status);
+    }
+    if (status != LXA_OK) {
+        if (charged)
+            (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                               additional));
+        lxa_status_t restored = rollback(list->store, old_snapshots, old_attributes, old_bytes);
+        return restored == LXA_OK ? status : restored;
+    }
+    bool removed = false;
+    if (drop != SIZE_MAX) {
+        status = lxa_vector_erase(&list->entries, drop, 1);
+        removed = status == LXA_OK;
+    }
+    lxa_html_formatting_item_t item = {snapshot, opened, list->marker};
+    if (status == LXA_OK) status = lxa_vector_push(&list->entries, &item);
+    if (status != LXA_OK) {
+        (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                           additional + removed));
+        return internal(status);
+    }
+    *identity = opened;
+    return LXA_OK;
+}

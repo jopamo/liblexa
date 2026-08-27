@@ -50,8 +50,10 @@ lxa_status_t lxa_html_formatting_list_find(lxa_html_formatting_list_t *list,
 lxa_status_t lxa_html_formatting_list_noah_plan(lxa_html_formatting_list_t *list,
     const lxa_html_token_t *token, size_t *drop);
 
-/* Borrow an initialized open stack sharing the operation budget. Plan the
- * closed suffix after the last marker, using open identities at/after boundary.
+/* Borrow the initialized stack that assigned the list's identities, sharing
+ * the operation budget. Identities are not interchangeable across stacks or
+ * reinitializations. Plan the closed suffix after the last marker, using open
+ * identities at/after boundary.
  * List length means no reconstruction; publish only on success.
  */
 lxa_status_t lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_t *list,
@@ -64,5 +66,18 @@ lxa_status_t lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_
  */
 lxa_status_t lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary);
+
+/* Admit an already prepared HTML formatting start in the same stack domain:
+ * enforce Noah removal,
+ * capture its effective attributes, push an HTML open identity and append
+ * membership. The engine owns anchor/nobr preprocessing, reconstruction
+ * scheduling, insertion effects and virtual depth admission.
+ * Clear identity on failure. Ordinary failure preserves prior snapshots,
+ * membership and open identities, but reserves may retain capacity and
+ * cumulative WORK/STRINGS charges are not refunded. Source views must obey
+ * capture's non-alias contract; no token views survive this call.
+ */
+lxa_status_t lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity);
 
 #endif
