@@ -47,6 +47,11 @@ lxa_status_t lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
  */
 lxa_status_t lxa_html_formatting_list_find(lxa_html_formatting_list_t *list,
     lxa_span_t target, size_t *index);
+/* Find the newest identity after the last marker, or list length if absent.
+ * Charge one WORK unit before each identity read; do not read snapshots.
+ */
+lxa_status_t lxa_html_formatting_list_find_reference(lxa_html_formatting_list_t *list,
+    uint64_t identity, size_t *index);
 lxa_status_t lxa_html_formatting_list_noah_plan(lxa_html_formatting_list_t *list,
     const lxa_html_token_t *token, size_t *drop);
 

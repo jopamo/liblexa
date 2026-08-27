@@ -716,22 +716,33 @@ remove_formatting(lxa_html_tree_t *tree, size_t index)
     return LXA_OK;
 }
 
-static lxa_status_t
-find_formatting_reference(lxa_html_tree_t *tree, lxa_dom_ref_t ref,
-                           size_t *index)
+static inline lxa_status_t
+formatting_reference(const lxa_html_tree_t *tree, size_t index, uint64_t *identity)
 {
-    size_t i = lxa_vector_length(&tree->formatting);
-    *index = i;
-    while (i > formatting_start(tree)) {
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (formatting_entries(tree)[--i].element.handle == ref.handle) {
-            *index = i;
-            break;
-        }
-    }
+    const lxa_html_formatting_entry_t *entries =
+        (const lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
+    *identity = entries[index].element.handle;
     return LXA_OK;
+}
+
+#define LXA_FORMATTING_REFERENCE_NAME tree_find_formatting_reference
+#define LXA_FORMATTING_REFERENCE_VIEW lxa_html_tree_t
+#define LXA_FORMATTING_REFERENCE_LENGTH(view) lxa_vector_length(&(view)->formatting)
+#define LXA_FORMATTING_REFERENCE_READ formatting_reference
+#define LXA_FORMATTING_REFERENCE_BUDGET(view) ((view)->nodes->budget)
+#define LXA_FORMATTING_REFERENCE_REASON(view) (&(view)->nodes->limit_reason)
+#include "html/formatting_reference.inc"
+#undef LXA_FORMATTING_REFERENCE_NAME
+#undef LXA_FORMATTING_REFERENCE_VIEW
+#undef LXA_FORMATTING_REFERENCE_LENGTH
+#undef LXA_FORMATTING_REFERENCE_READ
+#undef LXA_FORMATTING_REFERENCE_BUDGET
+#undef LXA_FORMATTING_REFERENCE_REASON
+
+static lxa_status_t
+find_formatting_reference(lxa_html_tree_t *tree, lxa_dom_ref_t ref, size_t *index)
+{
+    return tree_find_formatting_reference(tree, formatting_start(tree), ref.handle, index);
 }
 
 static lxa_status_t

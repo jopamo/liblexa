@@ -631,6 +631,29 @@ list_equal(const lxa_html_formatting_list_t *list, size_t index,
     return store_view_equal(&view, token, out);
 }
 
+static inline lxa_status_t
+list_reference(const lxa_html_formatting_list_t *list, size_t index, uint64_t *identity)
+{
+    uint64_t current = list_items(list)[index].identity;
+    if (current == 0) return internal(LXA_ERROR_INTERNAL);
+    *identity = current;
+    return LXA_OK;
+}
+
+#define LXA_FORMATTING_REFERENCE_NAME list_find_reference
+#define LXA_FORMATTING_REFERENCE_VIEW lxa_html_formatting_list_t
+#define LXA_FORMATTING_REFERENCE_LENGTH(view) lxa_vector_length(&(view)->entries)
+#define LXA_FORMATTING_REFERENCE_READ list_reference
+#define LXA_FORMATTING_REFERENCE_BUDGET(view) ((view)->store->budget)
+#define LXA_FORMATTING_REFERENCE_REASON(view) (&(view)->store->limit_reason)
+#include "html/formatting_reference.inc"
+#undef LXA_FORMATTING_REFERENCE_NAME
+#undef LXA_FORMATTING_REFERENCE_VIEW
+#undef LXA_FORMATTING_REFERENCE_LENGTH
+#undef LXA_FORMATTING_REFERENCE_READ
+#undef LXA_FORMATTING_REFERENCE_BUDGET
+#undef LXA_FORMATTING_REFERENCE_REASON
+
 #define LXA_FORMATTING_FIND_NAME list_find
 #define LXA_FORMATTING_FIND_VIEW lxa_html_formatting_list_t
 #define LXA_FORMATTING_FIND_LENGTH(view) lxa_vector_length(&(view)->entries)
@@ -666,6 +689,16 @@ lxa_html_formatting_list_find(lxa_html_formatting_list_t *list, lxa_span_t targe
     if (status != LXA_OK) return status;
     if (index == NULL || target.data == NULL || target.length == 0) return LXA_ERROR_ARGUMENT;
     return list_find(list, list_start(list), target, index);
+}
+
+lxa_status_t
+lxa_html_formatting_list_find_reference(lxa_html_formatting_list_t *list,
+    uint64_t identity, size_t *index)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (index == NULL || identity == 0) return LXA_ERROR_ARGUMENT;
+    return list_find_reference(list, list_start(list), identity, index);
 }
 
 lxa_status_t
