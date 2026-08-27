@@ -2,6 +2,7 @@
 #define LIBLEXA_HTML_FORMATTING_LIST_H
 
 #include "html/formatting_store.h"
+#include "html/control_stack.h"
 
 typedef struct {
     size_t snapshot; /* zero only for a marker */
@@ -48,5 +49,20 @@ lxa_status_t lxa_html_formatting_list_find(lxa_html_formatting_list_t *list,
     lxa_span_t target, size_t *index);
 lxa_status_t lxa_html_formatting_list_noah_plan(lxa_html_formatting_list_t *list,
     const lxa_html_token_t *token, size_t *drop);
+
+/* Borrow an initialized open stack sharing the operation budget. Plan the
+ * closed suffix after the last marker, using open identities at/after boundary.
+ * List length means no reconstruction; publish only on success.
+ */
+lxa_status_t lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, size_t *start);
+/* Reopen the planned suffix as HTML metadata, reusing immutable snapshots.
+ * Update each identity only after its push succeeds. Failure retains any
+ * completed prefix and leaves remaining entries closed; a retry replans.
+ * No token callbacks, attribute copying or new live formatting charges.
+ * The engine still owns virtual-context depth admission and DOM effects.
+ */
+lxa_status_t lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary);
 
 #endif

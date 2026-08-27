@@ -826,6 +826,12 @@ typedef struct {
 } tree_formatting_list_view_t;
 
 static inline lxa_status_t
+tree_formatting_list_open(const tree_formatting_list_view_t *view, size_t index, bool *open)
+{
+    return reference_is_open(view->tree, formatting_entries(view->tree)[index].element, open);
+}
+
+static inline lxa_status_t
 tree_formatting_list_name(const tree_formatting_list_view_t *view, size_t index,
                            lxa_span_t *name)
 {
@@ -870,6 +876,16 @@ tree_formatting_list_equal(const tree_formatting_list_view_t *view, size_t index
 #undef LXA_FORMATTING_FIND_READ
 #undef LXA_FORMATTING_FIND_BUDGET
 #undef LXA_FORMATTING_FIND_REASON
+
+#define LXA_RECONSTRUCT_PLAN_NAME tree_reconstruct_plan
+#define LXA_RECONSTRUCT_VIEW tree_formatting_list_view_t
+#define LXA_RECONSTRUCT_LENGTH(view) ((view)->length)
+#define LXA_RECONSTRUCT_OPEN tree_formatting_list_open
+#include "html/formatting_reconstruct.inc"
+#undef LXA_RECONSTRUCT_PLAN_NAME
+#undef LXA_RECONSTRUCT_VIEW
+#undef LXA_RECONSTRUCT_LENGTH
+#undef LXA_RECONSTRUCT_OPEN
 
 static lxa_status_t
 find_formatting(lxa_html_tree_t *tree, lxa_span_t target, size_t *index)
@@ -927,17 +943,10 @@ reserve_formatting_elements(lxa_html_tree_t *tree, size_t count)
 static lxa_status_t
 reconstruct_formatting(lxa_html_tree_t *tree)
 {
-    size_t start = formatting_start(tree);
-    size_t i = lxa_vector_length(&tree->formatting), end = i;
-    lxa_status_t status;
-    while (i > start) {
-        bool open;
-        status = reference_is_open(tree, formatting_entries(tree)[i - 1].element,
-                                    &open);
-        if (status != LXA_OK) return status;
-        if (open) break;
-        --i;
-    }
+    const tree_formatting_list_view_t view = {tree, lxa_vector_length(&tree->formatting)};
+    size_t i, end = view.length;
+    lxa_status_t status = tree_reconstruct_plan(&view, formatting_start(tree), &i);
+    if (status != LXA_OK) return status;
     if (i == end) return LXA_OK;
     status = reserve_formatting_elements(tree, end - i);
     if (status == LXA_OK)

@@ -677,3 +677,83 @@ lxa_html_formatting_list_noah_plan(lxa_html_formatting_list_t *list,
     if (drop == NULL) return LXA_ERROR_ARGUMENT;
     return list_noah_plan(list, list_start(list), token, drop);
 }
+
+typedef struct {
+    lxa_html_formatting_list_t *list;
+    lxa_html_control_stack_t *stack;
+    size_t boundary;
+} formatting_reconstruct_view_t;
+
+static lxa_status_t
+reconstruct_view_init(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stack,
+    size_t boundary, formatting_reconstruct_view_t *view)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (stack == NULL || stack->budget != list->store->budget
+        || boundary > lxa_vector_length(&stack->elements))
+        return LXA_ERROR_ARGUMENT;
+    *view = (formatting_reconstruct_view_t){list, stack, boundary};
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+reconstruct_open(const formatting_reconstruct_view_t *view, size_t index, bool *open)
+{
+    uint64_t identity = list_items(view->list)[index].identity;
+    if (identity == 0) return internal(LXA_ERROR_INTERNAL);
+    size_t found;
+    lxa_status_t status = lxa_html_control_stack_open_reference_find(view->stack,
+        view->boundary, identity, &found);
+    if (status == LXA_ERROR_LIMIT) view->list->store->limit_reason = view->stack->limit_reason;
+    if (status == LXA_OK) *open = found != lxa_vector_length(&view->stack->elements);
+    return status;
+}
+
+#define LXA_RECONSTRUCT_PLAN_NAME list_reconstruct_plan
+#define LXA_RECONSTRUCT_VIEW formatting_reconstruct_view_t
+#define LXA_RECONSTRUCT_LENGTH(view) lxa_vector_length(&(view)->list->entries)
+#define LXA_RECONSTRUCT_OPEN reconstruct_open
+#include "html/formatting_reconstruct.inc"
+#undef LXA_RECONSTRUCT_PLAN_NAME
+#undef LXA_RECONSTRUCT_VIEW
+#undef LXA_RECONSTRUCT_LENGTH
+#undef LXA_RECONSTRUCT_OPEN
+
+lxa_status_t
+lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, size_t *start)
+{
+    formatting_reconstruct_view_t view;
+    lxa_status_t status = reconstruct_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (start == NULL) return LXA_ERROR_ARGUMENT;
+    return list_reconstruct_plan(&view, list_start(list), start);
+}
+
+lxa_status_t
+lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary)
+{
+    formatting_reconstruct_view_t view;
+    lxa_status_t status = reconstruct_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    size_t start;
+    status = list_reconstruct_plan(&view, list_start(list), &start);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&list->entries);
+    for (size_t i = start; i < length; ++i) {
+        lxa_html_formatting_item_t *item =
+            (lxa_html_formatting_item_t *) list->entries.bytes.data + i;
+        const lxa_html_formatting_snapshot_t *snapshot;
+        status = snapshot_get(list->store, item->snapshot, &snapshot);
+        if (status != LXA_OK) return internal(status);
+        lxa_span_t name = {list->store->bytes.data + snapshot->name_offset, snapshot->name_length};
+        uint64_t identity;
+        status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &identity);
+        if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
+        if (status != LXA_OK) return status;
+        item->identity = identity;
+    }
+    return LXA_OK;
+}
