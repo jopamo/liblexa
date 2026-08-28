@@ -43,4 +43,13 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
                            lxa_limit_reason_t *reason,
                            lxa_html_document_mode_t *mode);
 
+/* Template geometry includes html/head-or-body, two slots per active template
+ * (element and virtual content root), and retained content elements. For a body
+ * context, root_ancestors is the root open-stack length minus its body entry;
+ * head contexts use zero. Check the predicted depth without charging live quota.
+ */
+lxa_status_t
+lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
+    size_t templates, size_t elements, lxa_limit_reason_t *reason);
+
 #endif

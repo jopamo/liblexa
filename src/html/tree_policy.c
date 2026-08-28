@@ -3,6 +3,22 @@
 #include "html-categories.h"
 
 lxa_status_t
+lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
+    size_t templates, size_t elements, lxa_limit_reason_t *reason)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || templates == 0) return LXA_ERROR_ARGUMENT;
+    size_t depth;
+    lxa_status_t status = lxa_size_mul(templates, 2, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, 2, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, elements, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, root_ancestors, &depth);
+    if (status == LXA_OK)
+        status = lxa_budget_check(budget, LXA_BUDGET_TREE_DEPTH, depth, reason);
+    return status;
+}
+
+lxa_status_t
 lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
                            lxa_limit_reason_t *reason,
                            lxa_html_document_mode_t *mode)
