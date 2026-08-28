@@ -434,6 +434,26 @@ control_stack_namespace(const control_stack_view_t *view, size_t index,
     return LXA_OK;
 }
 
+#define LXA_CURRENT_NAMESPACE_NAME control_stack_current_namespace
+#define LXA_CURRENT_NAMESPACE_VIEW control_stack_view_t
+#define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
+#define LXA_CURRENT_NAMESPACE_READ control_stack_namespace
+#include "html/current_namespace.inc"
+#undef LXA_CURRENT_NAMESPACE_NAME
+#undef LXA_CURRENT_NAMESPACE_VIEW
+#undef LXA_CURRENT_NAMESPACE_LENGTH
+#undef LXA_CURRENT_NAMESPACE_READ
+
+lxa_status_t
+lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_dom_namespace_t *out)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    const control_stack_view_t view = {stack, lxa_vector_length(&stack->elements)};
+    return control_stack_current_namespace(&view, boundary, out);
+}
+
 #define LXA_SCOPE_NAME control_stack_scope_search
 #define LXA_ORDINARY_NAME control_stack_ordinary_search
 #define LXA_COLUMN_GROUP_NAME control_stack_column_group

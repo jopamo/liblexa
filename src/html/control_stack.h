@@ -73,6 +73,12 @@ lxa_status_t lxa_html_control_stack_move(lxa_html_control_stack_t *stack,
 lxa_status_t lxa_html_control_stack_get(lxa_html_control_stack_t *stack,
     size_t index, lxa_html_scope_entry_t *entry,
     lxa_html_foreign_context_t *context);
+/* Post-effect namespace feedback over the active slice. An exhausted slice
+ * is virtual HTML, not the entry below its boundary. No WORK or allocation;
+ * publish only on success. Integration eligibility does not change namespace.
+ */
+lxa_status_t lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_dom_namespace_t *out);
 lxa_status_t lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index);
 lxa_status_t lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,

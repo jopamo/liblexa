@@ -1155,6 +1155,17 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
+#define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
+#define LXA_CURRENT_NAMESPACE_VIEW lxa_html_tree_scope_view_t
+#define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
+#define LXA_CURRENT_NAMESPACE_READ(view, index, ns) \
+    lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
+#include "html/current_namespace.inc"
+#undef LXA_CURRENT_NAMESPACE_NAME
+#undef LXA_CURRENT_NAMESPACE_VIEW
+#undef LXA_CURRENT_NAMESPACE_LENGTH
+#undef LXA_CURRENT_NAMESPACE_READ
+
 static inline lxa_status_t
 tree_foreign_namespace(const lxa_html_tree_scope_view_t *view, size_t index,
                         lxa_dom_namespace_t *ns)
@@ -6686,18 +6697,16 @@ lxa_html_tree_on_token(void *context,
     tree->failure = consume(tree, tokenizer, token);
     if (tree->failure == LXA_OK && tokenizer != NULL
         && token != NULL && token->kind != LXA_HTML_EOF) {
-        lxa_dom_namespace_t ns = LXA_DOM_NS_HTML;
-        lxa_dom_ref_t current = {0};
-        if (tree->template_fragment.handle != LXA_HANDLE_NONE) {
-            if (lxa_vector_length(&tree->template_elements)
-                > template_boundary(tree))
-                current = template_parent(tree);
-        }
-        else if (lxa_vector_length(&tree->open_elements) != 0)
-            current = current_element(tree);
-        if (current.handle != LXA_HANDLE_NONE)
-            tree->failure = lxa_dom_nodes_element_namespace(
-                tree->nodes, current, &ns);
+        bool in_template = tree->template_fragment.handle != LXA_HANDLE_NONE;
+        const lxa_vector_t *elements = in_template
+            ? &tree->template_elements : &tree->open_elements;
+        const lxa_html_tree_scope_view_t view = {
+            tree, (const lxa_dom_ref_t *) elements->bytes.data,
+            lxa_vector_length(elements)
+        };
+        lxa_dom_namespace_t ns;
+        tree->failure = tree_current_namespace(&view,
+            in_template ? template_boundary(tree) : 0, &ns);
         if (tree->failure == LXA_OK
             && lxa_html_tokenizer_allow_cdata(tokenizer,
                 ns != LXA_DOM_NS_HTML) != LXA_HTML_OK)

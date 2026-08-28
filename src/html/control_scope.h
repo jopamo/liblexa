@@ -26,6 +26,31 @@ lxa_html_control_scope_namespace(const lxa_html_control_scope_view_t *view,
     return LXA_OK;
 }
 
+#define LXA_CURRENT_NAMESPACE_NAME lxa_html_control_current_namespace_read
+#define LXA_CURRENT_NAMESPACE_VIEW lxa_html_control_scope_view_t
+#define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
+#define LXA_CURRENT_NAMESPACE_READ lxa_html_control_scope_namespace
+#include "html/current_namespace.inc"
+#undef LXA_CURRENT_NAMESPACE_NAME
+#undef LXA_CURRENT_NAMESPACE_VIEW
+#undef LXA_CURRENT_NAMESPACE_LENGTH
+#undef LXA_CURRENT_NAMESPACE_READ
+
+/* Constant-time post-effect namespace feedback. An exhausted slice is virtual
+ * HTML; inspect only its current entry otherwise. Publish only on success.
+ * Borrow entries for this call; no names, allocation or WORK charges.
+ */
+static inline lxa_status_t
+lxa_html_control_current_namespace(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_dom_namespace_t *out)
+{
+    if (out == NULL || boundary > length || (length != 0 && entries == NULL)
+        || length > SIZE_MAX / sizeof(*entries))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_control_scope_view_t view = {entries, length, NULL, NULL};
+    return lxa_html_control_current_namespace_read(&view, boundary, out);
+}
+
 static inline lxa_status_t
 lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
                             size_t index, lxa_span_t *name,
