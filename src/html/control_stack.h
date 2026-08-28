@@ -58,6 +58,14 @@ lxa_status_t lxa_html_control_stack_remove(lxa_html_control_stack_t *stack,
  */
 lxa_status_t lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
     size_t index, uint64_t expected, uint64_t *identity);
+/* Move an existing entry to its final index, preserving identities and metadata.
+ * Rotate owned name bytes with the entries so suffix trimming remains valid.
+ * Precharge one WORK per inspected slot (the moved interval and its immediate
+ * neighbors), then ceil(rotated bytes / 8). No-op movement costs no WORK.
+ * Failure preserves entries, names and key assignment; no allocation.
+ */
+lxa_status_t lxa_html_control_stack_move(lxa_html_control_stack_t *stack,
+    size_t from, size_t to);
 
 /* Returned names expire on mutation/destroy. Queries retain no views.
  * This owner stores no attributes, parent/child links or DOM records.

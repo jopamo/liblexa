@@ -211,7 +211,7 @@ retained_name_length(const lxa_html_control_stack_t *stack, size_t keep,
     lxa_html_scope_entry_t entry;
     lxa_status_t status = read_element(stack, keep - 1, &entry, NULL);
     if (status != LXA_OK) return status;
-    /* Push appends names in stack order; removal does not reorder them. */
+    /* Push and move keep names in stack order; removal leaves only gaps. */
     const lxa_html_control_element_t *elements =
         (const lxa_html_control_element_t *) stack->elements.bytes.data;
     *length = elements[keep - 1].name_offset + elements[keep - 1].name_length;
@@ -238,6 +238,69 @@ lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
         (lxa_html_control_element_t *) stack->elements.bytes.data;
     elements[index].identity = stack->next_identity;
     *identity = stack->next_identity++;
+    return LXA_OK;
+}
+
+static void
+reverse_names(uint8_t *names, size_t start, size_t end)
+{
+    while (start < end) {
+        --end;
+        if (start == end) break;
+        uint8_t byte = names[start];
+        names[start++] = names[end];
+        names[end] = byte;
+    }
+}
+
+lxa_status_t
+lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t to)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&stack->elements);
+    if (from >= length || to >= length) return LXA_ERROR_ARGUMENT;
+    if (from == to) return LXA_OK;
+    size_t low = from < to ? from : to, high = from < to ? to : from;
+    size_t first = low == 0 ? 0 : low - 1;
+    size_t end = high + 1 < length ? high + 2 : length;
+    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, end - first,
+                               &stack->limit_reason);
+    if (status != LXA_OK) return status;
+    lxa_html_control_element_t *elements =
+        (lxa_html_control_element_t *) stack->elements.bytes.data;
+    size_t previous_end = 0;
+    for (size_t i = first; i < end; ++i) {
+        lxa_html_scope_entry_t entry;
+        status = read_element(stack, i, &entry, NULL);
+        if (status != LXA_OK) return status;
+        if (i != first && elements[i].name_offset < previous_end)
+            return internal(LXA_ERROR_INTERNAL);
+        previous_end = elements[i].name_offset + elements[i].name_length;
+    }
+    size_t start = elements[low].name_offset;
+    size_t finish = elements[high].name_offset + elements[high].name_length;
+    size_t bytes = finish - start;
+    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+                               bytes / 8 + (bytes % 8 != 0), &stack->limit_reason);
+    if (status != LXA_OK) return status;
+    lxa_html_control_element_t moved = elements[from];
+    size_t pivot = from < to ? moved.name_offset + moved.name_length : moved.name_offset;
+    reverse_names(stack->names.data, start, pivot);
+    reverse_names(stack->names.data, pivot, finish);
+    reverse_names(stack->names.data, start, finish);
+    /* Vector geometry bounds the shifted byte count before multiplication. */
+    if (from < to) {
+        memmove(elements + from, elements + from + 1, (to - from) * sizeof(*elements));
+        for (size_t i = from; i < to; ++i) elements[i].name_offset -= moved.name_length;
+        moved.name_offset = finish - moved.name_length;
+    }
+    else {
+        memmove(elements + to + 1, elements + to, (from - to) * sizeof(*elements));
+        for (size_t i = to + 1; i <= from; ++i) elements[i].name_offset += moved.name_length;
+        moved.name_offset = start;
+    }
+    elements[to] = moved;
     return LXA_OK;
 }
 
