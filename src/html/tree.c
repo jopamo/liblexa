@@ -1135,6 +1135,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_RUBY_PLAN_NAME tree_ruby_start_plan
 #define LXA_SELECT_PLAN_NAME tree_select_plan
 #define LXA_TABLE_CONTEXT_PLAN_NAME tree_table_context_plan
+#define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME tree_template_missing_table_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
 #define LXA_SCOPE_IDENTITY tree_scope_identity
@@ -1160,6 +1161,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SELECT_PLAN_NAME
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
+#undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -4262,33 +4264,15 @@ begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
 static lxa_status_t
 template_end_missing_table(lxa_html_tree_t *tree)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->template_elements);
-    size_t boundary = template_boundary(tree), keep = length;
-    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_WORK, length - boundary, &tree->nodes->limit_reason);
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data,
+        lxa_vector_length(&tree->template_elements)
+    };
+    size_t keep;
+    lxa_status_t status = tree_template_missing_table_plan(&view,
+        template_boundary(tree), &keep);
     if (status != LXA_OK) return status;
-    for (size_t i = length; i > boundary; ) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        --i;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) continue;
-        /* A missing table cannot close a cell. */
-        if (named(name, "td") || named(name, "th"))
-            break;
-        if (named(name, "tr")) keep = i;
-        else if (lxa_html_tree_table_section(name) || named(name, "caption")
-                 || named(name, "colgroup")) {
-            keep = i;
-            break;
-        }
-    }
-    if (keep == length) return LXA_OK;
+    if (keep == view.length) return LXA_OK;
     return template_pop_table_elements(tree, keep);
 }
 

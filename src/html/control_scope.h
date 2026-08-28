@@ -85,6 +85,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_RUBY_PLAN_NAME lxa_html_control_ruby_plan_search
 #define LXA_SELECT_PLAN_NAME lxa_html_control_select_plan_search
 #define LXA_TABLE_CONTEXT_PLAN_NAME lxa_html_control_table_context_plan_search
+#define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME lxa_html_control_template_missing_table_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
@@ -109,6 +110,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SELECT_PLAN_NAME
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
+#undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -288,6 +290,24 @@ lxa_html_control_table_context_plan(const lxa_html_scope_entry_t *entries,
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_table_context_plan_search(&view, boundary, virtual_table, out);
+}
+
+/* Plan recovery for a template table end without a scoped table. Precharge
+ * the entire active slice before reading it. Never close an HTML cell;
+ * trim an intervening row or nearest section/caption/colgroup. Publish only
+ * on success. The engine owns pops and formatting-marker cleanup.
+ */
+static inline lxa_status_t
+lxa_html_control_template_missing_table_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_template_missing_table_search(&view, boundary, out);
 }
 
 #endif

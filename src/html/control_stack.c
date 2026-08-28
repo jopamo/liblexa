@@ -465,6 +465,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #define LXA_RUBY_PLAN_NAME control_stack_ruby_plan
 #define LXA_SELECT_PLAN_NAME control_stack_select_plan
 #define LXA_TABLE_CONTEXT_PLAN_NAME control_stack_table_context_plan
+#define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME control_stack_template_missing_table_plan
 #define LXA_SCOPE_NAMESPACE control_stack_namespace
 #define LXA_SCOPE_IDENTITY control_stack_identity
 #define LXA_SCOPE_VIEW control_stack_view_t
@@ -489,6 +490,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #undef LXA_RUBY_PLAN_NAME
 #undef LXA_SELECT_PLAN_NAME
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
+#undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -709,4 +711,15 @@ lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     return control_stack_table_context_plan(&view, boundary, virtual_table, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_template_missing_table_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_template_missing_table_plan(&view, boundary, out);
 }

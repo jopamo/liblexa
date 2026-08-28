@@ -2,6 +2,7 @@
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT}_PLAN_NAME
+ * and LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -162,6 +163,35 @@ LXA_ORDINARY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     if (status == LXA_OK) *out = plan;
     return status;
 }
+static inline lxa_status_t
+LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view,
+    size_t boundary, size_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), keep = length;
+    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+        LXA_BUDGET_WORK, length - boundary, LXA_SCOPE_REASON(view));
+    if (status != LXA_OK) return status;
+    for (size_t i = length; i > boundary; ) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns != LXA_DOM_NS_HTML) continue;
+        if (lxa_html_tree_name_equals(name, "td", 2)
+            || lxa_html_tree_name_equals(name, "th", 2))
+            break;
+        if (lxa_html_tree_name_equals(name, "tr", 2)) keep = i;
+        else if (lxa_html_tree_table_section(name)
+                 || lxa_html_tree_name_equals(name, "caption", 7)
+                 || lxa_html_tree_name_equals(name, "colgroup", 8)) {
+            keep = i;
+            break;
+        }
+    }
+    *out = keep;
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 LXA_IMPLIED_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
                       lxa_span_t except, size_t *out)

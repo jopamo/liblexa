@@ -122,5 +122,10 @@ lxa_status_t lxa_html_control_stack_select_plan(lxa_html_control_stack_t *stack,
     lxa_html_select_plan_t *out);
 lxa_status_t lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool virtual_table, lxa_html_table_context_plan_t *out);
+/* Same precharge/publication contract as borrowed missing-table recovery.
+ * Leave HTML cells and entries before boundary open; the engine owns effects.
+ */
+lxa_status_t lxa_html_control_stack_template_missing_table_plan(
+    lxa_html_control_stack_t *stack, size_t boundary, size_t *out);
 
 #endif
