@@ -1041,22 +1041,13 @@ lxa_html_formatting_list_adopt(lxa_html_formatting_list_t *list,
     return list_adoption(&view, subject);
 }
 
-lxa_status_t
-lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
+static lxa_status_t
+list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stack,
+    const lxa_html_token_t *token, size_t drop, uint64_t *identity)
 {
-    if (identity != NULL) *identity = 0;
-    lxa_status_t status = list_begin(list);
-    if (status != LXA_OK) return status;
-    if (identity == NULL || stack == NULL || stack->budget != list->store->budget
-        || !lxa_html_formatting_token_shape_valid(token)
-        || !lxa_html_tree_formatting_tag(token->name))
-        return LXA_ERROR_ARGUMENT;
-    size_t drop, required, length = lxa_vector_length(&list->entries);
-    status = list_noah_plan(list, list_start(list), token, &drop);
-    if (status != LXA_OK) return status;
+    size_t required, length = lxa_vector_length(&list->entries);
     size_t additional = drop == SIZE_MAX ? 1 : 0;
-    status = lxa_size_add(length, additional, &required);
+    lxa_status_t status = lxa_size_add(length, additional, &required);
     if (status == LXA_OK)
         status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
                                   additional, &list->store->limit_reason);
@@ -1108,4 +1099,131 @@ lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
     }
     *identity = opened;
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || stack == NULL || stack->budget != list->store->budget
+        || !lxa_html_formatting_token_shape_valid(token)
+        || !lxa_html_tree_formatting_tag(token->name))
+        return LXA_ERROR_ARGUMENT;
+    size_t drop;
+    status = list_noah_plan(list, list_start(list), token, &drop);
+    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, identity) : status;
+}
+
+static lxa_status_t
+list_plan_add(const formatting_stack_view_t *view, const lxa_html_token_t *token, size_t *drop)
+{
+    lxa_html_formatting_list_t *list = view->list;
+    size_t planned, required;
+    lxa_status_t status = list_noah_plan(list, list_start(list), token, &planned);
+    size_t additional = status == LXA_OK && planned == SIZE_MAX ? 1 : 0;
+    if (status == LXA_OK)
+        status = lxa_size_add(lxa_vector_length(&list->entries), additional, &required);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                  additional, &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK) *drop = planned;
+    return status;
+}
+
+#define LXA_FORMATTING_START_NAME list_prepare_start
+#define LXA_FORMATTING_START_VIEW formatting_stack_view_t
+#define LXA_FORMATTING_START_REFERENCE uint64_t
+#define LXA_FORMATTING_START_FIND(view, name, index) \
+    list_find((view)->list, list_start((view)->list), name, index)
+#define LXA_FORMATTING_START_IDENTITY adopt_reference
+#define LXA_FORMATTING_START_ADOPT list_adoption
+#define LXA_FORMATTING_START_FIND_REFERENCE(view, identity, index) \
+    list_find_reference((view)->list, list_start((view)->list), identity, index)
+#define LXA_FORMATTING_START_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->list->entries)
+#define LXA_FORMATTING_START_REMOVE_FORMATTING(view, index) \
+    lxa_html_formatting_list_remove((view)->list, index)
+#define LXA_FORMATTING_START_OPEN(view, identity, index) adopt_stack_status(view, \
+    lxa_html_control_stack_open_reference_find((view)->stack, (view)->boundary, identity, index))
+#define LXA_FORMATTING_START_OPEN_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_FORMATTING_START_REMOVE_OPEN(view, index) adopt_stack_status(view, \
+    lxa_html_control_stack_remove((view)->stack, index))
+#define LXA_FORMATTING_START_RECONSTRUCT(view) \
+    lxa_html_formatting_list_reconstruct((view)->list, (view)->stack, (view)->boundary)
+#define LXA_FORMATTING_START_SCOPED(view, name, index) adopt_stack_status(view, \
+    lxa_html_control_stack_scope_find((view)->stack, (view)->boundary, name, LXA_HTML_SCOPE_NORMAL, index))
+#define LXA_FORMATTING_START_PLAN list_plan_add
+#include "html/formatting_start.inc"
+#undef LXA_FORMATTING_START_NAME
+#undef LXA_FORMATTING_START_VIEW
+#undef LXA_FORMATTING_START_REFERENCE
+#undef LXA_FORMATTING_START_FIND
+#undef LXA_FORMATTING_START_IDENTITY
+#undef LXA_FORMATTING_START_ADOPT
+#undef LXA_FORMATTING_START_FIND_REFERENCE
+#undef LXA_FORMATTING_START_FORMATTING_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_FORMATTING
+#undef LXA_FORMATTING_START_OPEN
+#undef LXA_FORMATTING_START_OPEN_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_OPEN
+#undef LXA_FORMATTING_START_RECONSTRUCT
+#undef LXA_FORMATTING_START_SCOPED
+#undef LXA_FORMATTING_START_PLAN
+
+static bool
+start_alias(lxa_span_t span, const formatting_stack_view_t *view)
+{
+    const lxa_buffer_t stack = {.data = (uint8_t *) view->stack, .capacity = sizeof(*view->stack)};
+    const lxa_buffer_t list = {.data = (uint8_t *) view->list, .capacity = sizeof(*view->list)};
+    const lxa_buffer_t store = {.data = (uint8_t *) view->list->store,
+                               .capacity = sizeof(*view->list->store)};
+    return overlaps_buffer(span, &stack) || overlaps_buffer(span, &list)
+        || overlaps_buffer(span, &store) || overlaps_store(span, view->list->store)
+        || overlaps_buffer(span, &view->stack->names)
+        || overlaps_buffer(span, &view->stack->elements.bytes)
+        || overlaps_buffer(span, &view->list->entries.bytes);
+}
+
+lxa_status_t
+lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary,
+    const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || !lxa_html_formatting_token_shape_valid(token)
+        || !lxa_html_tree_formatting_tag(token->name))
+        return LXA_ERROR_ARGUMENT;
+    lxa_span_t descriptors = {(const uint8_t *) token->attributes,
+                              token->attribute_count * sizeof(*token->attributes)};
+    if (start_alias((lxa_span_t){(const uint8_t *) token, sizeof(*token)}, &view)
+        || start_alias(token->name, &view) || start_alias(descriptors, &view))
+        return LXA_ERROR_ARGUMENT;
+    status = lxa_budget_check_item(list->store->budget, LXA_BUDGET_NAME_BYTES,
+                                   token->name.length, &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_item(list->store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+                                       token->attribute_count, &list->store->limit_reason);
+    const lxa_html_formatting_view_t attributes = {
+        token->name, token->attributes, token->attribute_count,
+        list->store->budget, &list->store->limit_reason
+    };
+    for (size_t i = 0; status == LXA_OK && i < token->attribute_count; ++i) {
+        lxa_span_t name, value;
+        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, 1,
+                                   &list->store->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_html_formatting_view_read(&attributes, i + 1, &name, &value);
+        if (status == LXA_OK && (start_alias(name, &view) || start_alias(value, &view)))
+            status = LXA_ERROR_ARGUMENT;
+    }
+    size_t drop;
+    if (status == LXA_OK) status = list_prepare_start(&view, token, &drop);
+    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, identity) : status;
 }

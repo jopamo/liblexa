@@ -1763,52 +1763,49 @@ adopt_formatting(lxa_html_tree_t *tree, lxa_span_t subject)
     return tree_adoption(&view, subject);
 }
 
+#define LXA_FORMATTING_START_NAME tree_prepare_formatting_start
+#define LXA_FORMATTING_START_VIEW tree_adoption_view_t
+#define LXA_FORMATTING_START_REFERENCE lxa_dom_ref_t
+#define LXA_FORMATTING_START_FIND(view, name, index) find_formatting((view)->tree, name, index)
+#define LXA_FORMATTING_START_IDENTITY tree_adoption_identity
+#define LXA_FORMATTING_START_ADOPT(view, name) adopt_formatting((view)->tree, name)
+#define LXA_FORMATTING_START_FIND_REFERENCE(view, identity, index) \
+    find_formatting_reference((view)->tree, identity, index)
+#define LXA_FORMATTING_START_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->tree->formatting)
+#define LXA_FORMATTING_START_REMOVE_FORMATTING(view, index) remove_formatting((view)->tree, index)
+#define LXA_FORMATTING_START_OPEN(view, identity, index) \
+    find_open_reference((view)->tree, (view)->elements, (view)->boundary, identity, index)
+#define LXA_FORMATTING_START_OPEN_LENGTH(view) lxa_vector_length((view)->elements)
+#define LXA_FORMATTING_START_REMOVE_OPEN(view, index) \
+    remove_open_element((view)->tree, (view)->elements, index)
+#define LXA_FORMATTING_START_RECONSTRUCT(view) reconstruct_formatting((view)->tree)
+#define LXA_FORMATTING_START_SCOPED(view, name, index) \
+    find_scoped_end_target((view)->tree, (view)->elements, (view)->boundary, \
+                          name, LXA_HTML_SCOPE_NORMAL, index)
+#define LXA_FORMATTING_START_PLAN(view, token, drop) plan_formatting_add((view)->tree, token, drop)
+#include "html/formatting_start.inc"
+#undef LXA_FORMATTING_START_NAME
+#undef LXA_FORMATTING_START_VIEW
+#undef LXA_FORMATTING_START_REFERENCE
+#undef LXA_FORMATTING_START_FIND
+#undef LXA_FORMATTING_START_IDENTITY
+#undef LXA_FORMATTING_START_ADOPT
+#undef LXA_FORMATTING_START_FIND_REFERENCE
+#undef LXA_FORMATTING_START_FORMATTING_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_FORMATTING
+#undef LXA_FORMATTING_START_OPEN
+#undef LXA_FORMATTING_START_OPEN_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_OPEN
+#undef LXA_FORMATTING_START_RECONSTRUCT
+#undef LXA_FORMATTING_START_SCOPED
+#undef LXA_FORMATTING_START_PLAN
+
 static lxa_status_t
 prepare_formatting_start(lxa_html_tree_t *tree,
                          const lxa_html_token_t *token, size_t *drop)
 {
-    lxa_status_t status;
-    lxa_vector_t *elements = formatting_elements(tree);
-    size_t boundary = formatting_boundary(tree);
-    if (named(token->name, "a")) {
-        size_t index;
-        status = find_formatting(tree, token->name, &index);
-        if (status != LXA_OK) return status;
-        if (index != lxa_vector_length(&tree->formatting)) {
-            lxa_dom_ref_t old = formatting_entries(tree)[index].element;
-            status = adopt_formatting(tree, token->name);
-            if (status == LXA_OK)
-                status = find_formatting_reference(tree, old, &index);
-            if (status != LXA_OK) return status;
-            if (index != lxa_vector_length(&tree->formatting)) {
-                status = remove_formatting(tree, index);
-                if (status != LXA_OK) return status;
-            }
-            status = find_open_reference(tree, elements, boundary,
-                                          old, &index);
-            if (status != LXA_OK) return status;
-            if (index != lxa_vector_length(elements)) {
-                status = remove_open_element(tree, elements, index);
-                if (status != LXA_OK) return status;
-            }
-        }
-    }
-    if (named(token->name, "nobr")) {
-        size_t index;
-        status = reconstruct_formatting(tree);
-        if (status == LXA_OK)
-            status = find_scoped_end_target(tree, elements, boundary,
-                token->name, LXA_HTML_SCOPE_NORMAL, &index);
-        if (status == LXA_OK
-            && index != lxa_vector_length(elements)) {
-            status = adopt_formatting(tree, token->name);
-            if (status == LXA_OK) status = reconstruct_formatting(tree);
-        }
-        return status == LXA_OK ? plan_formatting_add(tree, token, drop) : status;
-    }
-    status = plan_formatting_add(tree, token, drop);
-    if (status == LXA_OK) status = reconstruct_formatting(tree);
-    return status;
+    tree_adoption_view_t view = {tree, formatting_elements(tree), formatting_boundary(tree), {0}};
+    return tree_prepare_formatting_start(&view, token, drop);
 }
 
 static lxa_status_t

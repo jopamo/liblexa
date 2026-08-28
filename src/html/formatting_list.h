@@ -123,4 +123,16 @@ lxa_status_t lxa_html_formatting_list_adopt(lxa_html_formatting_list_t *list,
 lxa_status_t lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity);
 
+/* Preprocess an accepted effective HTML formatting start, then admit it.
+ * Share canonical anchor/nobr recovery, reconstruction and Noah ordering.
+ * Token storage, descriptors and name/value spans must not alias list, stack
+ * or store headers/storage; validate before effects, with one WORK per attribute.
+ * Clear identity on failure. Completed preprocessing effects remain; abort the
+ * operation rather than replaying. Admission rolls back only its new snapshot.
+ * The engine still owns dispatch, insertion effects and virtual depth admission.
+ */
+lxa_status_t lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary,
+    const lxa_html_token_t *token, uint64_t *identity);
+
 #endif
