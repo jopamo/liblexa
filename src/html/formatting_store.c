@@ -568,6 +568,36 @@ lxa_html_formatting_list_remove(lxa_html_formatting_list_t *list, size_t index)
 }
 
 lxa_status_t
+lxa_html_formatting_list_move(lxa_html_formatting_list_t *list, size_t from, size_t to)
+{
+    lxa_status_t status = list_begin(list);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&list->entries);
+    if (!lxa_html_formatting_entry_removable(length, list->marker, from)
+        || !lxa_html_formatting_entry_removable(length, list->marker, to))
+        return LXA_ERROR_ARGUMENT;
+    if (from == to) return LXA_OK;
+    size_t low = from < to ? from : to, high = from < to ? to : from;
+    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, high - low + 1,
+                               &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    lxa_html_formatting_item_t *items =
+        (lxa_html_formatting_item_t *) list->entries.bytes.data;
+    for (size_t i = low; i <= high; ++i)
+        if (items[i].identity == 0 || items[i].snapshot == 0
+            || items[i].snapshot > lxa_vector_length(&list->store->snapshots))
+            return internal(LXA_ERROR_INTERNAL);
+    lxa_html_formatting_item_t moved = items[from];
+    /* Checked vector geometry bounds the shifted byte count. */
+    if (from < to)
+        memmove(items + from, items + from + 1, (to - from) * sizeof(*items));
+    else
+        memmove(items + to + 1, items + to, (from - to) * sizeof(*items));
+    items[to] = moved;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_formatting_list_clear(lxa_html_formatting_list_t *list)
 {
     lxa_status_t status = list_begin(list);

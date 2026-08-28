@@ -38,6 +38,13 @@ lxa_status_t lxa_html_formatting_list_push_marker(lxa_html_formatting_list_t *li
  */
 lxa_status_t lxa_html_formatting_list_remove(lxa_html_formatting_list_t *list,
     size_t index);
+/* Move between final indices after the last marker. Precharge one WORK per
+ * moved/shifted slot before reading references; no-op movement costs no WORK.
+ * Preserve snapshots, identities and marker links; no allocation or live-quota
+ * change. Failure preserves membership.
+ */
+lxa_status_t lxa_html_formatting_list_move(lxa_html_formatting_list_t *list,
+    size_t from, size_t to);
 lxa_status_t lxa_html_formatting_list_clear(lxa_html_formatting_list_t *list);
 /* Copy one item for one WORK unit; clear output on failure. */
 lxa_status_t lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
