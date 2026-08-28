@@ -918,6 +918,14 @@ plan_formatting_add(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 }
 
 static lxa_status_t
+template_start_mode(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                     lxa_dom_namespace_t ns)
+{
+    return lxa_html_tree_template_start_mode(tree->template_insertion_mode,
+        token->name, ns, &tree->template_insertion_mode);
+}
+
+static lxa_status_t
 check_template_depth(lxa_html_tree_t *tree, size_t templates, size_t elements,
                       bool in_body)
 {
@@ -3423,9 +3431,7 @@ template_open_foreign(lxa_html_tree_t *tree,
         status = template_pop_elements(tree, count - 1);
         if (status != LXA_OK) return status;
     }
-    if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-        tree->template_insertion_mode = LXA_TEMPLATE_BODY;
-    return LXA_OK;
+    return template_start_mode(tree, token, ns);
 }
 
 static lxa_status_t
@@ -4248,9 +4254,8 @@ begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
     if (status == LXA_OK)
         status = begin_text_element_at(tree, tokenizer, parent, before, token,
                                          LXA_HTML_RAWTEXT);
-    if (status == LXA_OK
-        && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-        tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+    if (status == LXA_OK)
+        status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
     return status;
 }
 
@@ -4706,18 +4711,14 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
             }
-            if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
-            return LXA_OK; /* None can enter a template fragment. */
+            /* None can enter a template fragment. */
+            return template_start_mode(tree, token, LXA_DOM_NS_HTML);
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
             && token->kind == LXA_HTML_START_TAG
             && table_part(token->name) && !named(token->name, "table")) {
-            tree->template_insertion_mode = named(token->name, "col")
-                ? LXA_TEMPLATE_COLUMN_GROUP
-                : named(token->name, "tr") ? LXA_TEMPLATE_TABLE_BODY
-                : named(token->name, "td") || named(token->name, "th")
-                    ? LXA_TEMPLATE_ROW : LXA_TEMPLATE_TABLE;
+            status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
+            if (status != LXA_OK) return status;
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
             && token->kind == LXA_HTML_START_TAG
@@ -5324,9 +5325,8 @@ reprocess_template_token:
                     status = append_closed_element_at(tree, parent, before,
                                                        token, NULL);
             }
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+            if (status == LXA_OK)
+                status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             return status;
         }
         if (token->kind == LXA_HTML_START_TAG
@@ -5336,11 +5336,8 @@ reprocess_template_token:
                 token, named(token->name, "title") ? LXA_HTML_RCDATA
                        : named(token->name, "script") ? LXA_HTML_SCRIPT_DATA
                        : LXA_HTML_RAWTEXT);
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
-                && (named(token->name, "iframe")
-                    || named(token->name, "noembed")))
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+            if (status == LXA_OK)
+                status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             return status;
         }
         if (token->kind == LXA_HTML_START_TAG
@@ -5349,8 +5346,7 @@ reprocess_template_token:
                                         token, LXA_HTML_RCDATA);
             if (status == LXA_OK) {
                 tree->skip_pre_newline = true;
-                if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                    tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+                status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             }
             return status;
         }
@@ -5561,9 +5557,8 @@ reprocess_template_token:
                 && (named(token->name, "pre")
                     || named(token->name, "listing")))
                 tree->skip_pre_newline = true;
-            if (status == LXA_OK
-                && tree->template_insertion_mode == LXA_TEMPLATE_INITIAL)
-                tree->template_insertion_mode = LXA_TEMPLATE_BODY;
+            if (status == LXA_OK)
+                status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             if (status == LXA_OK && named(token->name, "plaintext"))
                 status = set_tokenizer_text_mode(tree, tokenizer, token,
                                                  LXA_HTML_PLAINTEXT);

@@ -3,10 +3,16 @@
 
 #include <string.h>
 #include "html/tokenizer.h"
+#include "dom/namespace.h"
 
 typedef enum {
     LXA_HTML_NO_QUIRKS, LXA_HTML_LIMITED_QUIRKS, LXA_HTML_QUIRKS
 } lxa_html_document_mode_t;
+
+typedef enum {
+    LXA_TEMPLATE_INITIAL, LXA_TEMPLATE_TABLE, LXA_TEMPLATE_TABLE_BODY,
+    LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
+} lxa_html_template_mode_t;
 
 static inline bool
 lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
@@ -51,5 +57,15 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
 lxa_status_t
 lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
     size_t templates, size_t elements, lxa_limit_reason_t *reason);
+
+/* Select the mode for an accepted start in an active template context.
+ * Head-rule starts retain INITIAL; table parts choose their virtual table
+ * mode; other starts leave INITIAL for BODY. Noninitial modes are unchanged.
+ * This does not dispatch, admit elements or apply tokenizer text feedback.
+ * The engine owns effect ordering and nested-template save/restore.
+ */
+lxa_status_t
+lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,
+    lxa_span_t name, lxa_dom_namespace_t ns, lxa_html_template_mode_t *out);
 
 #endif

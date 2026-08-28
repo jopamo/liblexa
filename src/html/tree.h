@@ -23,11 +23,6 @@ typedef enum {
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
-typedef enum {
-    LXA_TEMPLATE_INITIAL, LXA_TEMPLATE_TABLE, LXA_TEMPLATE_TABLE_BODY,
-    LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
-} lxa_html_template_mode_t;
-
 typedef struct {
     lxa_dom_ref_t fragment;
     lxa_dom_content_patch_t patch;

@@ -3,6 +3,40 @@
 #include "html-categories.h"
 
 lxa_status_t
+lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,
+    lxa_span_t name, lxa_dom_namespace_t ns, lxa_html_template_mode_t *out)
+{
+    if (out == NULL || (unsigned) current > LXA_TEMPLATE_BODY
+        || name.data == NULL || name.length == 0
+        || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_template_mode_t mode = current;
+    if (current == LXA_TEMPLATE_INITIAL) {
+        mode = LXA_TEMPLATE_BODY;
+        if (ns == LXA_DOM_NS_HTML) {
+#define LXA_TEMPLATE_NAMED(text) lxa_html_tree_name_equals(name, text, sizeof(text) - 1)
+            if (LXA_TEMPLATE_NAMED("caption") || LXA_TEMPLATE_NAMED("colgroup")
+                || LXA_TEMPLATE_NAMED("tbody") || LXA_TEMPLATE_NAMED("tfoot")
+                || LXA_TEMPLATE_NAMED("thead"))
+                mode = LXA_TEMPLATE_TABLE;
+            else if (LXA_TEMPLATE_NAMED("col")) mode = LXA_TEMPLATE_COLUMN_GROUP;
+            else if (LXA_TEMPLATE_NAMED("tr")) mode = LXA_TEMPLATE_TABLE_BODY;
+            else if (LXA_TEMPLATE_NAMED("td") || LXA_TEMPLATE_NAMED("th"))
+                mode = LXA_TEMPLATE_ROW;
+            else if (LXA_TEMPLATE_NAMED("base") || LXA_TEMPLATE_NAMED("basefont")
+                || LXA_TEMPLATE_NAMED("bgsound") || LXA_TEMPLATE_NAMED("link")
+                || LXA_TEMPLATE_NAMED("meta") || LXA_TEMPLATE_NAMED("noframes")
+                || LXA_TEMPLATE_NAMED("script") || LXA_TEMPLATE_NAMED("style")
+                || LXA_TEMPLATE_NAMED("template") || LXA_TEMPLATE_NAMED("title"))
+                mode = LXA_TEMPLATE_INITIAL;
+#undef LXA_TEMPLATE_NAMED
+        }
+    }
+    *out = mode;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
     size_t templates, size_t elements, lxa_limit_reason_t *reason)
 {
