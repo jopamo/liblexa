@@ -898,6 +898,149 @@ lxa_html_formatting_list_replace_open(lxa_html_formatting_list_t *list,
     return LXA_OK;
 }
 
+static lxa_status_t
+adoption_read(const formatting_stack_view_t *view, size_t index,
+    lxa_span_t *name, lxa_dom_namespace_t *ns, uint64_t *identity)
+{
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = adopt_stack_status(view,
+        lxa_html_control_stack_get(view->stack, index, &entry, NULL));
+    if (status == LXA_OK) {
+        *name = entry.name;
+        *ns = entry.namespace_id;
+        *identity = entry.identity;
+    }
+    return status;
+}
+
+static lxa_status_t
+adoption_open_identity(const formatting_stack_view_t *view, size_t index, uint64_t *identity)
+{
+    lxa_span_t name;
+    lxa_dom_namespace_t ns;
+    return adoption_read(view, index, &name, &ns, identity);
+}
+
+static lxa_status_t
+adoption_ordinary(const formatting_stack_view_t *view, lxa_span_t subject)
+{
+    size_t index;
+    lxa_status_t status = adopt_stack_status(view,
+        lxa_html_control_stack_ordinary_end_find(view->stack, view->boundary, subject, &index));
+    return status == LXA_OK ? adopt_stack_status(view,
+        lxa_html_control_stack_pop_to(view->stack, index)) : status;
+}
+
+static lxa_status_t
+adoption_begin(const formatting_stack_view_t *view, size_t index)
+{
+    /* The engine validates root/virtual-context geometry before dispatch. */
+    (void) view;
+    (void) index;
+    return LXA_OK;
+}
+
+static lxa_status_t
+adoption_inner(const formatting_stack_view_t *view, size_t entry, size_t node,
+    uint64_t last, uint64_t *identity)
+{
+    (void) last;
+    return lxa_html_formatting_list_replace_open(view->list, view->stack, entry, node, identity);
+}
+
+static lxa_status_t
+adoption_final(const formatting_stack_view_t *view, uint64_t last, uint64_t formatting,
+    uint64_t furthest, uint64_t *identity)
+{
+    /* Metadata has no parent/child effects; assign the final key at commit. */
+    (void) view;
+    (void) last;
+    (void) formatting;
+    (void) furthest;
+    *identity = 0;
+    return LXA_OK;
+}
+
+static lxa_status_t
+adoption_commit(const formatting_stack_view_t *view, uint64_t clone, size_t formatting_index,
+    size_t bookmark, size_t stack_index, size_t furthest_index)
+{
+    (void) clone;
+    uint64_t identity;
+    lxa_status_t status = lxa_html_formatting_list_replace_open(view->list, view->stack,
+        formatting_index, stack_index, &identity);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_move(view->list, formatting_index, bookmark);
+    if (status == LXA_OK) status = adopt_stack_status(view,
+        lxa_html_control_stack_move(view->stack, stack_index, furthest_index));
+    return status;
+}
+
+#define LXA_ADOPTION_NAME list_adoption
+#define LXA_ADOPTION_VIEW formatting_stack_view_t
+#define LXA_ADOPTION_REFERENCE uint64_t
+#define LXA_ADOPTION_SAME(a, b) ((a) == (b))
+#define LXA_ADOPTION_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_ADOPTION_BOUNDARY(view) ((view)->boundary)
+#define LXA_ADOPTION_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->list->entries)
+#define LXA_ADOPTION_READ adoption_read
+#define LXA_ADOPTION_OPEN_IDENTITY adoption_open_identity
+#define LXA_ADOPTION_IDENTITY adopt_reference
+#define LXA_ADOPTION_FIND(view, identity, index) \
+    list_find_reference((view)->list, list_start((view)->list), identity, index)
+#define LXA_ADOPTION_PLAN list_adopt_plan
+#define LXA_ADOPTION_ORDINARY adoption_ordinary
+#define LXA_ADOPTION_POP(view, keep) adopt_stack_status(view, lxa_html_control_stack_pop_to((view)->stack, keep))
+#define LXA_ADOPTION_REMOVE_FORMATTING(view, index) lxa_html_formatting_list_remove((view)->list, index)
+#define LXA_ADOPTION_REMOVE_OPEN(view, index) adopt_stack_status(view, lxa_html_control_stack_remove((view)->stack, index))
+#define LXA_ADOPTION_BEGIN adoption_begin
+#define LXA_ADOPTION_INNER adoption_inner
+#define LXA_ADOPTION_FINAL adoption_final
+#define LXA_ADOPTION_COMMIT adoption_commit
+#define LXA_ADOPTION_INTERNAL(view) internal(LXA_ERROR_INTERNAL)
+#include "html/formatting_adoption.inc"
+#undef LXA_ADOPTION_NAME
+#undef LXA_ADOPTION_VIEW
+#undef LXA_ADOPTION_REFERENCE
+#undef LXA_ADOPTION_SAME
+#undef LXA_ADOPTION_LENGTH
+#undef LXA_ADOPTION_BOUNDARY
+#undef LXA_ADOPTION_FORMATTING_LENGTH
+#undef LXA_ADOPTION_READ
+#undef LXA_ADOPTION_OPEN_IDENTITY
+#undef LXA_ADOPTION_IDENTITY
+#undef LXA_ADOPTION_FIND
+#undef LXA_ADOPTION_PLAN
+#undef LXA_ADOPTION_ORDINARY
+#undef LXA_ADOPTION_POP
+#undef LXA_ADOPTION_REMOVE_FORMATTING
+#undef LXA_ADOPTION_REMOVE_OPEN
+#undef LXA_ADOPTION_BEGIN
+#undef LXA_ADOPTION_INNER
+#undef LXA_ADOPTION_FINAL
+#undef LXA_ADOPTION_COMMIT
+#undef LXA_ADOPTION_INTERNAL
+
+lxa_status_t
+lxa_html_formatting_list_adopt(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t subject)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    const lxa_buffer_t stack_header = {.data = (uint8_t *) stack, .capacity = sizeof(*stack)};
+    const lxa_buffer_t list_header = {.data = (uint8_t *) list, .capacity = sizeof(*list)};
+    if (subject.data == NULL || subject.length == 0
+        || !lxa_html_tree_formatting_tag(subject)
+        || overlaps_buffer(subject, &stack_header)
+        || overlaps_buffer(subject, &list_header)
+        || overlaps_buffer(subject, &stack->names)
+        || overlaps_buffer(subject, &stack->elements.bytes)
+        || overlaps_buffer(subject, &list->entries.bytes))
+        return LXA_ERROR_ARGUMENT;
+    return list_adoption(&view, subject);
+}
+
 lxa_status_t
 lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
