@@ -127,5 +127,11 @@ lxa_status_t lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t 
  */
 lxa_status_t lxa_html_control_stack_template_missing_table_plan(
     lxa_html_control_stack_t *stack, size_t boundary, size_t *out);
+/* Same dispatch prerequisite, action and publication contract as borrowed
+ * template end plans; no mutation, allocation or formatting effects.
+ */
+lxa_status_t lxa_html_control_stack_template_end_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_html_template_end_plan_t *out);
 
 #endif

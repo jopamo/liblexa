@@ -2,7 +2,7 @@
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT}_PLAN_NAME
- * and LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
+ * and LXA_TEMPLATE_{MISSING_TABLE,END}_PLAN_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -189,6 +189,46 @@ LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view,
         }
     }
     *out = keep;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_TEMPLATE_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    lxa_html_token_kind_t kind, lxa_span_t target, lxa_html_template_end_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), index;
+    lxa_html_template_end_plan_t plan = {length, LXA_HTML_TEMPLATE_END_CONTINUE};
+    if (kind != LXA_HTML_END_TAG) goto publish;
+    bool part = lxa_html_tree_table_part(target);
+    if (!part && !lxa_html_tree_formatting_marker_tag(target)) goto publish;
+    lxa_status_t status = LXA_SCOPE_NAME(view, boundary, target,
+        part ? LXA_HTML_SCOPE_TABLE : LXA_HTML_SCOPE_NORMAL, &index);
+    if (status != LXA_OK) return status;
+    plan.action = LXA_HTML_TEMPLATE_END_IGNORE;
+    if (index != length) {
+        plan.keep = index;
+        plan.action = part ? LXA_HTML_TEMPLATE_END_POP_TABLE
+                           : LXA_HTML_TEMPLATE_END_POP_MARKER;
+    }
+    else if (lxa_html_tree_name_equals(target, "table", 5)) {
+        status = LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME(view, boundary, &plan.keep);
+        if (status != LXA_OK) return status;
+        if (plan.keep != length) plan.action = LXA_HTML_TEMPLATE_END_POP_TABLE;
+    }
+    else if (!lxa_html_tree_name_equals(target, "col", 3) && length > boundary) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK,
+                                   1, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, length - 1, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML && lxa_html_tree_name_equals(name, "colgroup", 8)) {
+            plan.keep = length - 1;
+            plan.action = LXA_HTML_TEMPLATE_END_POP_TABLE;
+        }
+    }
+publish:
+    *out = plan;
     return LXA_OK;
 }
 

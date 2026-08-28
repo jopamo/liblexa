@@ -37,12 +37,35 @@ typedef struct {
     bool in_table;
 } lxa_html_table_context_plan_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_END_CONTINUE, LXA_HTML_TEMPLATE_END_IGNORE,
+    LXA_HTML_TEMPLATE_END_POP_TABLE, LXA_HTML_TEMPLATE_END_POP_MARKER
+} lxa_html_template_end_action_t;
+
+typedef struct {
+    size_t keep;
+    lxa_html_template_end_action_t action;
+} lxa_html_template_end_plan_t;
+
 static inline bool
 lxa_html_tree_table_section(lxa_span_t name)
 {
     return lxa_html_tree_name_equals(name, "tbody", 5)
         || lxa_html_tree_name_equals(name, "thead", 5)
         || lxa_html_tree_name_equals(name, "tfoot", 5);
+}
+
+static inline bool
+lxa_html_tree_table_part(lxa_span_t name)
+{
+    return lxa_html_tree_name_equals(name, "table", 5)
+        || lxa_html_tree_name_equals(name, "caption", 7)
+        || lxa_html_tree_name_equals(name, "colgroup", 8)
+        || lxa_html_tree_name_equals(name, "col", 3)
+        || lxa_html_tree_table_section(name)
+        || lxa_html_tree_name_equals(name, "tr", 2)
+        || lxa_html_tree_name_equals(name, "td", 2)
+        || lxa_html_tree_name_equals(name, "th", 2);
 }
 
 static inline bool

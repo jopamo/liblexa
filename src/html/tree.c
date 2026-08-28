@@ -176,15 +176,6 @@ container_reconstructs(lxa_span_t name)
 }
 
 static bool
-table_part(lxa_span_t name)
-{
-    return named(name, "table") || named(name, "caption")
-           || named(name, "colgroup") || named(name, "col")
-           || lxa_html_tree_table_section(name)
-           || named(name, "tr") || named(name, "td") || named(name, "th");
-}
-
-static bool
 head_void(lxa_span_t name)
 {
     return named(name, "base") || named(name, "basefont")
@@ -1136,6 +1127,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_SELECT_PLAN_NAME tree_select_plan
 #define LXA_TABLE_CONTEXT_PLAN_NAME tree_table_context_plan
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME tree_template_missing_table_plan
+#define LXA_TEMPLATE_END_PLAN_NAME tree_template_end_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
 #define LXA_SCOPE_IDENTITY tree_scope_identity
@@ -1162,6 +1154,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SELECT_PLAN_NAME
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
+#undef LXA_TEMPLATE_END_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -4202,7 +4195,7 @@ template_scoped_end(lxa_span_t name)
 static bool
 template_ordinary_end(lxa_span_t name)
 {
-    if (block_container(name) || lxa_html_tree_heading(name) || table_part(name)
+    if (block_container(name) || lxa_html_tree_heading(name) || lxa_html_tree_table_part(name)
         || template_marker_container(name)
         || named(name, "p") || named(name, "li") || named(name, "dt")
         || named(name, "dd") || named(name, "select") || named(name, "form")
@@ -4262,71 +4255,32 @@ begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
 }
 
 static lxa_status_t
-template_end_missing_table(lxa_html_tree_t *tree)
+template_end_formatting_boundary(lxa_html_tree_t *tree,
+                                 const lxa_html_token_t *token, bool *handled)
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data,
         lxa_vector_length(&tree->template_elements)
     };
-    size_t keep;
-    lxa_status_t status = tree_template_missing_table_plan(&view,
-        template_boundary(tree), &keep);
-    if (status != LXA_OK) return status;
-    if (keep == view.length) return LXA_OK;
-    return template_pop_table_elements(tree, keep);
-}
-
-static lxa_status_t
-template_end_formatting_boundary(lxa_html_tree_t *tree,
-                                 const lxa_html_token_t *token, bool *handled)
-{
-    size_t index, length = lxa_vector_length(&tree->template_elements);
-    bool table = named(token->name, "table");
-    bool part = table_part(token->name);
-    lxa_status_t status;
+    lxa_html_template_end_plan_t plan;
     *handled = false;
-    if (token->kind != LXA_HTML_END_TAG
-        || (!part && !lxa_html_tree_formatting_marker_tag(token->name)))
-        return LXA_OK;
-    status = find_scoped_end_target(tree, &tree->template_elements,
-        template_boundary(tree), token->name,
-        part ? LXA_HTML_SCOPE_TABLE : LXA_HTML_SCOPE_NORMAL, &index);
+    lxa_status_t status = tree_template_end_plan(&view, template_boundary(tree),
+        token->kind, token->name, &plan);
     if (status != LXA_OK) return status;
-    if (index == length) {
-        if (table) {
-            status = template_end_missing_table(tree);
-            if (status != LXA_OK) return status;
-        }
-        else if (!named(token->name, "col")
-                 && length > template_boundary(tree)) {
-            lxa_span_t name;
-            lxa_dom_namespace_t ns;
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_namespace(tree->nodes,
-                    template_parent(tree), &ns);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    template_parent(tree), &name);
-            if (status != LXA_OK) return status;
-            if (ns == LXA_DOM_NS_HTML && named(name, "colgroup")) {
-                status = template_pop_table_elements(tree, length - 1);
-                if (status != LXA_OK) return status;
-            }
-        }
-        *handled = true;
-        return LXA_OK;
+    switch (plan.action) {
+        case LXA_HTML_TEMPLATE_END_CONTINUE: return LXA_OK;
+        case LXA_HTML_TEMPLATE_END_IGNORE: break;
+        case LXA_HTML_TEMPLATE_END_POP_TABLE:
+            status = template_pop_table_elements(tree, plan.keep);
+            break;
+        case LXA_HTML_TEMPLATE_END_POP_MARKER:
+            status = template_pop_elements(tree, plan.keep);
+            if (status == LXA_OK) status = clear_formatting_to_marker(tree);
+            break;
+        default:
+            assert(false);
+            return LXA_ERROR_INTERNAL;
     }
-    if (part) {
-        status = template_pop_table_elements(tree, index);
-        if (status != LXA_OK) return status;
-        *handled = true;
-        return LXA_OK;
-    }
-    status = template_pop_elements(tree, index);
-    if (status != LXA_OK) return status;
-    status = clear_formatting_to_marker(tree);
     if (status != LXA_OK) return status;
     *handled = true;
     return LXA_OK;
@@ -4537,7 +4491,7 @@ reprocess_template_token:
                     return template_open_foreign(tree, token,
                                                  LXA_DOM_NS_MATHML);
                 integrated = lxa_html_foreign_integration(context);
-                if (integrated && table_part(token->name)
+                if (integrated && lxa_html_tree_table_part(token->name)
                     && !named(token->name, "table")) {
                     size_t j = length;
                     while (j > template_boundary(tree)) {
@@ -4700,13 +4654,13 @@ reprocess_template_token:
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
             && token->kind == LXA_HTML_START_TAG
-            && table_part(token->name) && !named(token->name, "table")) {
+            && lxa_html_tree_table_part(token->name) && !named(token->name, "table")) {
             status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             if (status != LXA_OK) return status;
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
             && token->kind == LXA_HTML_START_TAG
-            && table_part(token->name) && !named(token->name, "table")) {
+            && lxa_html_tree_table_part(token->name) && !named(token->name, "table")) {
             bool table_found = false;
             status = table_in_scope(tree, &tree->template_elements,
                                      template_boundary(tree), &table_found);
@@ -5955,7 +5909,7 @@ reprocess_body_start:
         status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree),
                                              &top);
         if (status != LXA_OK) return status;
-        if (lxa_html_tree_table_context(top) && !table_part(token->name)
+        if (lxa_html_tree_table_context(top) && !lxa_html_tree_table_part(token->name)
             && !named(token->name, "html")
             && !named(token->name, "body")
             && !named(token->name, "form")) {
@@ -6293,7 +6247,7 @@ reprocess_body_start:
             }
             return append_void(tree, current_element(tree), token);
         }
-        if (table_part(token->name))
+        if (lxa_html_tree_table_part(token->name))
             return open_table_part(tree, token);
         if (named(token->name, "svg") || named(token->name, "math")) {
             lxa_dom_namespace_t ns = named(token->name, "svg")
@@ -6475,7 +6429,7 @@ reprocess_body_start:
         tree->mode = LXA_TREE_AFTER_HTML;
         return LXA_OK;
     }
-    if (token->kind == LXA_HTML_END_TAG && table_part(token->name)
+    if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_table_part(token->name)
         && tree->mode == LXA_TREE_IN_BODY)
         return named(token->name, "col") ? LXA_OK
                : end_scoped_element(tree, token->name, LXA_HTML_SCOPE_TABLE);
