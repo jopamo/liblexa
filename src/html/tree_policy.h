@@ -68,4 +68,17 @@ lxa_status_t
 lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_html_template_mode_t *out);
 
+typedef enum {
+    LXA_HTML_COLUMN_GROUP_CONTINUE, LXA_HTML_COLUMN_GROUP_IGNORE,
+    LXA_HTML_COLUMN_GROUP_SPACE_TEXT
+} lxa_html_column_group_action_t;
+
+/* Apply virtual column-group gating after earlier template dispatch.
+ * The engine supplies the current HTML-colgroup predicate and owns text effects.
+ */
+lxa_status_t
+lxa_html_tree_template_column_group(lxa_html_template_mode_t mode,
+    bool group_open, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_html_column_group_action_t *out);
+
 #endif

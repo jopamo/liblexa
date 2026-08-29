@@ -1,6 +1,29 @@
 #include <string.h>
 #include "html/tree_policy.h"
-#include "html-categories.h"
+#include "html/tree_categories.h"
+
+lxa_status_t
+lxa_html_tree_template_column_group(lxa_html_template_mode_t mode,
+    bool group_open, lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_html_column_group_action_t *out)
+{
+    if (out == NULL || (unsigned) mode > LXA_TEMPLATE_BODY
+        || !lxa_html_select_arguments_valid(kind, name))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_column_group_action_t action = LXA_HTML_COLUMN_GROUP_CONTINUE;
+    if (mode == LXA_TEMPLATE_COLUMN_GROUP && !group_open) {
+        if (kind == LXA_HTML_TEXT)
+            action = LXA_HTML_COLUMN_GROUP_SPACE_TEXT;
+        else if (kind == LXA_HTML_END_TAG
+            || (kind == LXA_HTML_START_TAG
+                && !lxa_html_tree_name_equals(name, "col", 3)
+                && !lxa_html_tree_name_equals(name, "template", 8)
+                && !lxa_html_tree_name_equals(name, "html", 4)))
+            action = LXA_HTML_COLUMN_GROUP_IGNORE;
+    }
+    *out = action;
+    return LXA_OK;
+}
 
 lxa_status_t
 lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,

@@ -4642,16 +4642,15 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
                 group_open = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
             }
-            /* Without an open colgroup, ordinary starts and nonspace
-             * characters are ignored in column-group mode. */
-            if (!group_open && token->kind == LXA_HTML_TEXT)
+            lxa_html_column_group_action_t action;
+            status = lxa_html_tree_template_column_group(
+                tree->template_insertion_mode, group_open,
+                token->kind, token->name, &action);
+            if (status != LXA_OK) return status;
+            if (action == LXA_HTML_COLUMN_GROUP_SPACE_TEXT)
                 return append_space_text(tree, template_parent(tree),
                                          token->data, false);
-            if (!group_open && ((token->kind == LXA_HTML_START_TAG
-                 && !named(token->name, "col")
-                 && !named(token->name, "template")
-                 && !named(token->name, "html"))
-                || token->kind == LXA_HTML_END_TAG))
+            if (action == LXA_HTML_COLUMN_GROUP_IGNORE)
                 return LXA_OK;
         }
         {
