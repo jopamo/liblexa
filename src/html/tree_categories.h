@@ -52,6 +52,18 @@ typedef struct {
     bool group_open, ordinary_above;
 } lxa_html_template_table_scan_t;
 
+typedef struct {
+    size_t keep, extra;
+    bool implied_section, implied_row;
+} lxa_html_table_start_plan_t;
+
+/* Plan a table-part start with an actual scoped table. top is the current name
+ * after clearing ordinary entries to context; callers own that lookup/effect.
+ */
+lxa_status_t
+lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
+    size_t length, lxa_span_t top, lxa_span_t target, lxa_html_table_start_plan_t *out);
+
 static inline bool
 lxa_html_tree_table_section(lxa_span_t name)
 {

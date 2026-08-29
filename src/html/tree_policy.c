@@ -3,6 +3,68 @@
 #include "html/tree_categories.h"
 
 lxa_status_t
+lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
+    size_t length, lxa_span_t top, lxa_span_t target, lxa_html_table_start_plan_t *out)
+{
+    if (scan == NULL || out == NULL || scan->table >= length
+        || scan->context < scan->table || scan->context >= length
+        || (scan->caption != SIZE_MAX
+            && (scan->caption <= scan->table || scan->caption >= length))
+        || (scan->cell != SIZE_MAX
+            && (scan->cell <= scan->table || scan->cell >= length))
+        || top.data == NULL || top.length == 0
+        || !lxa_html_tree_table_part(target)
+        || lxa_html_tree_name_equals(target, "table", 5))
+        return LXA_ERROR_ARGUMENT;
+    bool caption_open = scan->caption != SIZE_MAX;
+    if (caption_open && scan->caption != scan->table + 1)
+        return LXA_ERROR_INTERNAL;
+    bool clear_ordinary = scan->ordinary_above && !caption_open && scan->cell == SIZE_MAX;
+    bool row = lxa_html_tree_name_equals(target, "tr", 2);
+    bool cell = lxa_html_tree_name_equals(target, "td", 2)
+        || lxa_html_tree_name_equals(target, "th", 2);
+    bool top_table = lxa_html_tree_name_equals(top, "table", 5);
+    bool top_row = lxa_html_tree_name_equals(top, "tr", 2);
+    bool top_section = lxa_html_tree_table_section(top);
+    lxa_html_table_start_plan_t plan = {
+        clear_ordinary ? scan->context + 1 : length, 1,
+        (top_table || caption_open || scan->group_open) && (row || cell),
+        cell && (top_table || caption_open || scan->group_open || top_section)
+    };
+    if (lxa_html_tree_name_equals(target, "col", 3)
+        || lxa_html_tree_name_equals(target, "colgroup", 8)
+        || lxa_html_tree_table_section(target))
+        plan.keep = scan->table + 1;
+    else if (lxa_html_tree_name_equals(target, "caption", 7)) {
+        if (caption_open || scan->cell != SIZE_MAX || scan->group_open
+            || top_section || top_row)
+            plan.keep = scan->table + 1;
+        else if (!top_table) return LXA_ERROR_INTERNAL;
+    }
+    else if (row) {
+        if (top_table || caption_open || scan->group_open) {
+            plan.extra = 2;
+            if (caption_open || scan->group_open) plan.keep = scan->table + 1;
+        }
+        else if (top_row) plan.keep = clear_ordinary ? scan->context : length - 1;
+        else if (scan->cell != SIZE_MAX) plan.keep = scan->cell - 1;
+        else if (!top_section) return LXA_ERROR_INTERNAL;
+    }
+    else {
+        if (top_table || caption_open || scan->group_open) {
+            plan.extra = 3;
+            if (caption_open || scan->group_open) plan.keep = scan->table + 1;
+        }
+        else if (top_section) plan.extra = 2;
+        else if (scan->cell != SIZE_MAX) plan.keep = scan->cell;
+        else if (!top_row) return LXA_ERROR_INTERNAL;
+    }
+    if (plan.keep <= scan->table) return LXA_ERROR_INTERNAL;
+    *out = plan;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_template_column_group(lxa_html_template_mode_t mode,
     bool group_open, lxa_html_token_kind_t kind, lxa_span_t name,
     lxa_html_column_group_action_t *out)

@@ -3443,7 +3443,6 @@ template_open_table_part(lxa_html_tree_t *tree,
     bool column = named(token->name, "col");
     bool group = column || named(token->name, "colgroup");
     bool caption_open = false, ordinary_above = false, clear_ordinary;
-    bool group_open = false;
     bool implied_section = false, implied_row = false;
     bool replace_section = false, clear_fostered = false;
     bool fostered_section = false;
@@ -3465,7 +3464,6 @@ template_open_table_part(lxa_html_tree_t *tree,
     caption_index = scan.caption;
     cell_index = scan.cell;
     caption_open = caption_index != SIZE_MAX;
-    group_open = scan.group_open;
     ordinary_above = scan.ordinary_above;
     if (table == SIZE_MAX) {
         if (context == SIZE_MAX && cell_index == SIZE_MAX && !caption_open
@@ -3862,52 +3860,16 @@ template_open_table_part(lxa_html_tree_t *tree,
     status = lxa_dom_nodes_element_name(tree->nodes,
         open[clear_ordinary ? context : length - 1], &top);
     if (status != LXA_OK) return status;
-    implied_section = (named(top, "table") || caption_open || group_open)
-                      && (row || cell);
-    implied_row = cell && (named(top, "table") || caption_open || group_open
-                           || lxa_html_tree_table_section(top));
-    keep = clear_ordinary ? context + 1 : length;
-    if (group) {
-        keep = table + 1;
+    lxa_html_table_start_plan_t plan;
+    status = lxa_html_tree_table_start_plan(&scan, length, top, token->name, &plan);
+    if (status != LXA_OK) {
+        assert(status != LXA_ERROR_INTERNAL);
+        return status;
     }
-    else if (caption) {
-        if (caption_open) keep = table + 1;
-        else if (cell_index != SIZE_MAX) keep = table + 1;
-        else if (group_open || lxa_html_tree_table_section(top) || named(top, "tr"))
-            keep = table + 1;
-        else if (!named(top, "table")) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-    }
-    else if (section)
-        keep = table + 1;
-    else if (row) {
-        if (named(top, "table") || caption_open || group_open) {
-            extra = 2;
-            if (caption_open || group_open) keep = table + 1;
-        }
-        else if (named(top, "tr")) keep = clear_ordinary
-                                            ? context : length - 1;
-        else if (cell_index != SIZE_MAX) keep = cell_index - 1;
-        else if (!lxa_html_tree_table_section(top)) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-    }
-    else {
-        if (named(top, "table") || caption_open || group_open) {
-            extra = 3;
-            if (caption_open || group_open) keep = table + 1;
-        }
-        else if (lxa_html_tree_table_section(top)) extra = 2;
-        else if (cell_index != SIZE_MAX) keep = cell_index;
-        else if (!named(top, "tr")) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-    }
-    if (keep <= table) return LXA_ERROR_INTERNAL;
+    keep = plan.keep;
+    extra = plan.extra;
+    implied_section = plan.implied_section;
+    implied_row = plan.implied_row;
 reserve_part:
     status = lxa_size_add(keep, extra, &after);
     if (status == LXA_OK)
