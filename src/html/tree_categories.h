@@ -47,6 +47,11 @@ typedef struct {
     lxa_html_template_end_action_t action;
 } lxa_html_template_end_plan_t;
 
+typedef struct {
+    size_t table, context, caption, cell; /* SIZE_MAX when absent */
+    bool group_open, ordinary_above;
+} lxa_html_template_table_scan_t;
+
 static inline bool
 lxa_html_tree_table_section(lxa_span_t name)
 {

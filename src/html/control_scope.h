@@ -87,6 +87,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_TABLE_CONTEXT_PLAN_NAME lxa_html_control_table_context_plan_search
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME lxa_html_control_template_missing_table_search
 #define LXA_TEMPLATE_END_PLAN_NAME lxa_html_control_template_end_search
+#define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME lxa_html_control_template_table_search
 #define LXA_LIST_ITEM_PLAN_NAME lxa_html_control_list_item_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
@@ -114,6 +115,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
+#undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -312,6 +314,22 @@ lxa_html_control_template_missing_table_plan(const lxa_html_scope_entry_t *entri
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_template_missing_table_search(&view, boundary, out);
+}
+
+/* Scan the active template slice through its nearest HTML table. Charge one
+ * WORK per visited entry and publish classification only on success.
+ */
+static inline lxa_status_t
+lxa_html_control_template_table_scan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, lxa_html_template_table_scan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_template_table_search(&view, boundary, out);
 }
 
 /* After foreign-end dispatch, plan template table/marker end recovery.

@@ -1105,6 +1105,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_TABLE_CONTEXT_PLAN_NAME tree_table_context_plan
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME tree_template_missing_table_plan
 #define LXA_TEMPLATE_END_PLAN_NAME tree_template_end_plan
+#define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME tree_template_table_scan
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1133,6 +1134,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
+#undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -3430,7 +3432,7 @@ template_open_table_part(lxa_html_tree_t *tree,
         (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
     lxa_html_token_t implied = {0};
     size_t length = lxa_vector_length(&tree->template_elements);
-    size_t i = length, table = SIZE_MAX, context = SIZE_MAX;
+    size_t table = SIZE_MAX, context = SIZE_MAX;
     size_t caption_index = SIZE_MAX;
     size_t cell_index = SIZE_MAX;
     size_t keep, replace_at = SIZE_MAX, extra = 1, after;
@@ -3451,44 +3453,20 @@ template_open_table_part(lxa_html_tree_t *tree,
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    while (i > template_boundary(tree)) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                    &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[--i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML) {
-            ordinary_above = true;
-            continue;
-        }
-        if (context == SIZE_MAX && lxa_html_tree_table_context(name)) context = i;
-        if (named(name, "table")) {
-            table = i;
-            break;
-        }
-        if (named(name, "caption")) {
-            if (caption_open) {
-                assert(false);
-                return LXA_ERROR_INTERNAL;
-            }
-            caption_open = true;
-            caption_index = i;
-        }
-        else if (caption_open) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-        else if (named(name, "colgroup"))
-            group_open = true;
-        else if (named(name, "td") || named(name, "th"))
-            cell_index = i;
-        else if (!lxa_html_tree_table_section(name) && !named(name, "tr"))
-            ordinary_above = true;
+    const lxa_html_tree_scope_view_t view = {tree, open, length};
+    lxa_html_template_table_scan_t scan;
+    status = tree_template_table_scan(&view, template_boundary(tree), &scan);
+    if (status != LXA_OK) {
+        assert(status != LXA_ERROR_INTERNAL);
+        return status;
     }
+    table = scan.table;
+    context = scan.context;
+    caption_index = scan.caption;
+    cell_index = scan.cell;
+    caption_open = caption_index != SIZE_MAX;
+    group_open = scan.group_open;
+    ordinary_above = scan.ordinary_above;
     if (table == SIZE_MAX) {
         if (context == SIZE_MAX && cell_index == SIZE_MAX && !caption_open
             && (tree->template_insertion_mode == LXA_TEMPLATE_ROW
