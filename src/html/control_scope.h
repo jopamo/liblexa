@@ -87,6 +87,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_TABLE_CONTEXT_PLAN_NAME lxa_html_control_table_context_plan_search
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME lxa_html_control_template_missing_table_search
 #define LXA_TEMPLATE_END_PLAN_NAME lxa_html_control_template_end_search
+#define LXA_LIST_ITEM_PLAN_NAME lxa_html_control_list_item_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
 #define LXA_SCOPE_VIEW lxa_html_control_scope_view_t
@@ -113,6 +114,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
+#undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -329,6 +331,24 @@ lxa_html_control_template_end_plan(const lxa_html_scope_entry_t *entries,
     if (status != LXA_OK) return status;
     if (!lxa_html_select_arguments_valid(kind, name)) return LXA_ERROR_ARGUMENT;
     return lxa_html_control_template_end_search(&view, boundary, kind, name, out);
+}
+
+/* Find a preceding HTML li, or either dt/dd for a definition item. Stop at a
+ * special element other than HTML address/div/p. Charge one WORK per visited
+ * entry, exclude entries before boundary and publish only on success.
+ * Return length when absent; the engine owns pops and paragraph recovery.
+ */
+static inline lxa_status_t
+lxa_html_control_list_item_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, bool definition, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_list_item_search(&view, boundary, definition, out);
 }
 
 #endif

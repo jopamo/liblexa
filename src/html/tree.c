@@ -988,44 +988,21 @@ reconstruct_formatting(lxa_html_tree_t *tree)
     return status;
 }
 
+static lxa_status_t plan_list_item(lxa_html_tree_t *, const lxa_vector_t *,
+                                   size_t, bool, size_t *);
+
 /* A new item closes the preceding item in this list, including any
  * still-open descendants. An inner list stops the search at its own root. */
 static lxa_status_t
 close_list_item(lxa_html_tree_t *tree, bool definition)
 {
-    size_t i = lxa_vector_length(&tree->open_elements);
-    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                              tree->open_elements.bytes.data;
-    while (i > 1) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+    size_t length = lxa_vector_length(&tree->open_elements), index;
+    if (length <= 1) return LXA_OK;
+    lxa_status_t status = plan_list_item(tree, &tree->open_elements, 1, definition, &index);
+    if (status != LXA_OK) return status;
+    while (lxa_vector_length(&tree->open_elements) > index) {
+        status = pop_element(tree);
         if (status != LXA_OK) return status;
-        --i;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (ns == LXA_DOM_NS_HTML
-            && (named(name, "ul") || named(name, "ol") || named(name, "dl")
-                || named(name, "menu")))
-            break;
-        if (ns == LXA_DOM_NS_HTML
-            && ((!definition && named(name, "li"))
-                || (definition && (named(name, "dt")
-                                   || named(name, "dd"))))) {
-            while (lxa_vector_length(&tree->open_elements) > i) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            break;
-        }
-        if (lxa_html_tree_special_element(name, ns)
-            && !(ns == LXA_DOM_NS_HTML
-                 && (named(name, "address") || named(name, "div")
-                     || named(name, "p"))))
-            break;
     }
     return LXA_OK;
 }
@@ -1128,6 +1105,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_TABLE_CONTEXT_PLAN_NAME tree_table_context_plan
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME tree_template_missing_table_plan
 #define LXA_TEMPLATE_END_PLAN_NAME tree_template_end_plan
+#define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
 #define LXA_SCOPE_IDENTITY tree_scope_identity
@@ -1155,6 +1133,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_TABLE_CONTEXT_PLAN_NAME
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
+#undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
@@ -1267,6 +1246,17 @@ find_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
         lxa_vector_length(elements)
     };
     return tree_ordinary_end_search(&view, boundary, target, index);
+}
+
+static lxa_status_t
+plan_list_item(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+                size_t boundary, bool definition, size_t *index)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data,
+        lxa_vector_length(elements)
+    };
+    return tree_list_item_plan(&view, boundary, definition, index);
 }
 
 static lxa_status_t
@@ -3186,39 +3176,6 @@ template_html_text_element(lxa_span_t name)
 {
     return template_simple_text_element(name) || named(name, "xmp")
         || named(name, "plaintext");
-}
-
-static lxa_status_t
-template_open_list_item(lxa_html_tree_t *tree, bool definition, size_t *index)
-{
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t i = lxa_vector_length(&tree->template_elements);
-    *index = i;
-    while (i > template_boundary(tree)) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_element_name(tree->nodes, open[--i], &name);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status != LXA_OK) return status;
-        if (ns == LXA_DOM_NS_HTML
-            && ((!definition && named(name, "li"))
-                || (definition && (named(name, "dt") || named(name, "dd"))))) {
-            *index = i;
-            return LXA_OK;
-        }
-        /* A special block stops the search before the earlier item. */
-        if (lxa_html_tree_special_element(name, ns)
-            && !(ns == LXA_DOM_NS_HTML
-                 && (named(name, "address") || named(name, "div")
-                     || named(name, "p"))))
-            return LXA_OK;
-    }
-    return LXA_OK;
 }
 
 static lxa_status_t
@@ -5396,9 +5353,8 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
             }
             if (template_list_item(token->name)) {
-                status = template_open_list_item(tree,
-                                                 !named(token->name, "li"),
-                                                 &close_at);
+                status = plan_list_item(tree, &tree->template_elements,
+                    template_boundary(tree), !named(token->name, "li"), &close_at);
                 if (status != LXA_OK) return status;
                 if (close_at > template_boundary(tree)
                     && close_at < lxa_vector_length(&tree->template_elements)) {

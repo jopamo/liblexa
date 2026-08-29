@@ -1,7 +1,7 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
- * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT}_PLAN_NAME
+ * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END}_PLAN_NAME
  * belong to the includer.
  */
@@ -229,6 +229,43 @@ LXA_TEMPLATE_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     }
 publish:
     *out = plan;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_LIST_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    bool definition, size_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), index = length;
+    for (size_t i = length; i > boundary; ) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML
+            && (lxa_html_tree_name_equals(name, "ul", 2)
+                || lxa_html_tree_name_equals(name, "ol", 2)
+                || lxa_html_tree_name_equals(name, "dl", 2)
+                || lxa_html_tree_name_equals(name, "menu", 4)))
+            break;
+        if (ns == LXA_DOM_NS_HTML
+            && (definition ? lxa_html_tree_name_equals(name, "dt", 2)
+                             || lxa_html_tree_name_equals(name, "dd", 2)
+                           : lxa_html_tree_name_equals(name, "li", 2))) {
+            index = i;
+            break;
+        }
+        if (lxa_html_tree_special_element(name, ns)
+            && !(ns == LXA_DOM_NS_HTML
+                 && (lxa_html_tree_name_equals(name, "address", 7)
+                     || lxa_html_tree_name_equals(name, "div", 3)
+                     || lxa_html_tree_name_equals(name, "p", 1))))
+            break;
+    }
+    *out = index;
     return LXA_OK;
 }
 
