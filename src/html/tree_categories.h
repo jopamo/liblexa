@@ -64,6 +64,18 @@ lxa_status_t
 lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
     size_t length, lxa_span_t top, lxa_span_t target, lxa_html_table_start_plan_t *out);
 
+typedef struct {
+    size_t extra;
+    bool implied_section, implied_row, ignore;
+} lxa_html_virtual_table_start_plan_t;
+
+/* With no actual table/context/cell/caption, plan a table-part start at the
+ * active virtual boundary. Engines own clearing and admitting the suffix.
+ */
+lxa_status_t
+lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
+    lxa_span_t target, lxa_html_virtual_table_start_plan_t *out);
+
 static inline bool
 lxa_html_tree_table_section(lxa_span_t name)
 {

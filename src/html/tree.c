@@ -3467,15 +3467,18 @@ template_open_table_part(lxa_html_tree_t *tree,
     ordinary_above = scan.ordinary_above;
     if (table == SIZE_MAX) {
         if (context == SIZE_MAX && cell_index == SIZE_MAX && !caption_open
-            && (tree->template_insertion_mode == LXA_TEMPLATE_ROW
+            && (length == template_boundary(tree)
+                || tree->template_insertion_mode == LXA_TEMPLATE_ROW
                 || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY)) {
-            if (!cell && !(row && tree->template_insertion_mode
-                                 == LXA_TEMPLATE_TABLE_BODY))
-                return LXA_OK;
+            lxa_html_virtual_table_start_plan_t plan;
+            status = lxa_html_tree_virtual_table_start_plan(
+                tree->template_insertion_mode, token->name, &plan);
+            if (status != LXA_OK) return status;
+            if (plan.ignore) return LXA_OK;
             keep = template_boundary(tree);
-            implied_row = cell && tree->template_insertion_mode
-                                  == LXA_TEMPLATE_TABLE_BODY;
-            extra = implied_row ? 2 : 1;
+            implied_section = plan.implied_section;
+            implied_row = plan.implied_row;
+            extra = plan.extra;
             goto reserve_part;
         }
         if (length > template_boundary(tree)
@@ -3839,14 +3842,6 @@ template_open_table_part(lxa_html_tree_t *tree,
              : clear_fostered ? template_boundary(tree)
                                 + (cell || fostered_section ? 1 : 0)
                               : length;
-        if (length == template_boundary(tree)) {
-            implied_section = (row || cell) && tree->template_insertion_mode
-                                               == LXA_TEMPLATE_TABLE;
-            if (implied_section) {
-                implied_row = cell;
-                extra = cell ? 3 : 2;
-            }
-        }
         goto reserve_part;
     }
     clear_ordinary = ordinary_above && !caption_open

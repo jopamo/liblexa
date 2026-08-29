@@ -3,6 +3,32 @@
 #include "html/tree_categories.h"
 
 lxa_status_t
+lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
+    lxa_span_t target, lxa_html_virtual_table_start_plan_t *out)
+{
+    if (out == NULL || (unsigned) mode > LXA_TEMPLATE_BODY
+        || !lxa_html_tree_table_part(target)
+        || lxa_html_tree_name_equals(target, "table", 5))
+        return LXA_ERROR_ARGUMENT;
+    bool row = lxa_html_tree_name_equals(target, "tr", 2);
+    bool cell = lxa_html_tree_name_equals(target, "td", 2)
+        || lxa_html_tree_name_equals(target, "th", 2);
+    lxa_html_virtual_table_start_plan_t plan = {1, false, false, false};
+    if (mode == LXA_TEMPLATE_ROW || mode == LXA_TEMPLATE_TABLE_BODY) {
+        plan.ignore = !cell && !(row && mode == LXA_TEMPLATE_TABLE_BODY);
+        plan.implied_row = cell && mode == LXA_TEMPLATE_TABLE_BODY;
+        if (plan.implied_row) plan.extra = 2;
+    }
+    else if (mode == LXA_TEMPLATE_TABLE && (row || cell)) {
+        plan.implied_section = true;
+        plan.implied_row = cell;
+        plan.extra = cell ? 3 : 2;
+    }
+    *out = plan;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
     size_t length, lxa_span_t top, lxa_span_t target, lxa_html_table_start_plan_t *out)
 {
