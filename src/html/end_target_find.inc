@@ -2,9 +2,34 @@
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
- * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME
+ * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
+ * LXA_FOSTERED_SUFFIX_CHECK_NAME
  * belong to the includer.
  */
+static inline lxa_status_t
+LXA_FOSTERED_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t start,
+    bool first_cell)
+{
+    for (size_t i = start; i < LXA_SCOPE_LENGTH(view); ++i) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        bool clearable;
+        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (first_cell && i == start
+            && (lxa_html_tree_name_equals(name, "td", 2)
+                || lxa_html_tree_name_equals(name, "th", 2)))
+            continue;
+        status = lxa_html_tree_fostered_descendant(name, ns,
+            LXA_SCOPE_BUDGET(view), LXA_SCOPE_REASON(view), &clearable);
+        if (status != LXA_OK) return status;
+        if (!clearable) return LXA_ERROR_INTERNAL;
+    }
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     lxa_html_template_table_scan_t *out)

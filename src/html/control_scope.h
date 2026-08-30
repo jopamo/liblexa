@@ -88,6 +88,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME lxa_html_control_template_missing_table_search
 #define LXA_TEMPLATE_END_PLAN_NAME lxa_html_control_template_end_search
 #define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME lxa_html_control_template_table_search
+#define LXA_FOSTERED_SUFFIX_CHECK_NAME lxa_html_control_fostered_suffix_search
 #define LXA_LIST_ITEM_PLAN_NAME lxa_html_control_list_item_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
@@ -116,6 +117,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
+#undef LXA_FOSTERED_SUFFIX_CHECK_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -316,8 +318,25 @@ lxa_html_control_template_missing_table_plan(const lxa_html_scope_entry_t *entri
     return lxa_html_control_template_missing_table_search(&view, boundary, out);
 }
 
-/* Scan the active template slice through its nearest HTML table. Charge one
- * WORK per visited entry and publish classification only on success.
+/* Validate a clearable fostered suffix without applying pops. Charge two WORK
+ * per entry plus classification lookup. first_cell skips classification for
+ * initial td/th spelling in any namespace, matching virtual table-body recovery.
+ */
+static inline lxa_status_t
+lxa_html_control_fostered_suffix_check(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t start, bool first_cell, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        start, budget, reason, &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_fostered_suffix_search(&view, start, first_cell);
+}
+
+/* Scan through the nearest HTML table. Charge one WORK per visited entry and
+ * publish classification only on success, without applying recovery.
  */
 static inline lxa_status_t
 lxa_html_control_template_table_scan(const lxa_html_scope_entry_t *entries,

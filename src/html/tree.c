@@ -979,6 +979,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME tree_template_missing_table_plan
 #define LXA_TEMPLATE_END_PLAN_NAME tree_template_end_plan
 #define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME tree_template_table_scan
+#define LXA_FOSTERED_SUFFIX_CHECK_NAME tree_fostered_suffix_check
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1008,6 +1009,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
+#undef LXA_FOSTERED_SUFFIX_CHECK_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -3361,29 +3363,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     assert(false);
                     return LXA_ERROR_INTERNAL;
                 }
-                for (; j < length; ++j) {
-                    lxa_span_t name;
-                    lxa_dom_namespace_t ns;
-                    bool clearable;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                            open[j], &ns);
-                    if (status != LXA_OK) return status;
-                    if (j == template_boundary(tree) + 1
-                        && (named(name, "td") || named(name, "th")))
-                        continue;
-                    status = lxa_html_tree_fostered_descendant(name, ns,
-                        tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
-                    if (status != LXA_OK) return status;
-                    if (!clearable) {
-                        assert(false);
-                        return LXA_ERROR_INTERNAL;
-                    }
+                status = tree_fostered_suffix_check(&view, j, true);
+                if (status != LXA_OK) {
+                    assert(status != LXA_ERROR_INTERNAL);
+                    return status;
                 }
                 status = template_pop_table_elements(tree,
                                                       template_boundary(tree));
@@ -3514,26 +3497,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (named(cell_name, "td") || named(cell_name, "th"))
                         ++j;
                 }
-                for (; j < length; ++j) {
-                    lxa_span_t name;
-                    lxa_dom_namespace_t ns;
-                    bool clearable;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                            open[j], &ns);
-                    if (status == LXA_OK)
-                        status = lxa_html_tree_fostered_descendant(name, ns,
-                            tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
-                    if (status != LXA_OK) return status;
-                    if (!clearable) {
-                        assert(false);
-                        return LXA_ERROR_INTERNAL;
-                    }
+                status = tree_fostered_suffix_check(&view, j, false);
+                if (status != LXA_OK) {
+                    assert(status != LXA_ERROR_INTERNAL);
+                    return status;
                 }
                 replace_section = true;
             }
@@ -3599,26 +3566,10 @@ template_open_table_part(lxa_html_tree_t *tree,
                             || named(cell_name, "th"));
                     if (fostered_cell) j = template_boundary(tree) + 3;
                 }
-                for (; j < length; ++j) {
-                    lxa_span_t name;
-                    lxa_dom_namespace_t ns;
-                    bool clearable;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                                                             open[j], &name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                            open[j], &ns);
-                    if (status == LXA_OK)
-                        status = lxa_html_tree_fostered_descendant(name, ns,
-                            tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
-                    if (status != LXA_OK) return status;
-                    if (!clearable) {
-                        assert(false);
-                        return LXA_ERROR_INTERNAL;
-                    }
+                status = tree_fostered_suffix_check(&view, j, false);
+                if (status != LXA_OK) {
+                    assert(status != LXA_ERROR_INTERNAL);
+                    return status;
                 }
                 if (direct_cell)
                     replace_at = template_boundary(tree) + (cell ? 1 : 0);
