@@ -142,6 +142,9 @@ lxa_status_t lxa_html_control_stack_virtual_table_suffix_check(lxa_html_control_
 lxa_status_t lxa_html_control_stack_virtual_table_item_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_template_mode_t mode, lxa_span_t target,
     lxa_html_table_start_plan_t *out);
+lxa_status_t lxa_html_control_stack_template_table_start_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_template_mode_t mode, lxa_span_t target,
+    lxa_html_template_table_start_plan_t *out);
 /* Same match, stop, WORK and publication rules as borrowed list-item plans.
  * Return stack length when absent. No mutation or formatting/DOM effects.
  */

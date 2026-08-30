@@ -4,7 +4,7 @@
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
- * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
+ * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -179,6 +179,163 @@ LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             && !lxa_html_tree_name_equals(name, "tr", 2))
             plan.ordinary_above = true;
     }
+    *out = plan;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_TEMPLATE_TABLE_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    lxa_html_template_mode_t mode, lxa_span_t target, lxa_html_template_table_start_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    if (boundary > length || (unsigned) mode > LXA_TEMPLATE_BODY
+        || !lxa_html_tree_table_part(target)
+        || lxa_html_tree_name_equals(target, "table", 5))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_template_table_scan_t scan;
+    lxa_status_t status = LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME(view, boundary, &scan);
+    if (status != LXA_OK) return status;
+    lxa_html_template_table_start_plan_t plan = {
+        {length, 1, false, false}, LXA_HTML_TABLE_START_INSERT, 0, false
+    };
+    lxa_span_t top, root, parent;
+    lxa_dom_namespace_t ns;
+    bool caption_open = scan.caption != SIZE_MAX;
+    if (scan.table != SIZE_MAX) {
+        bool clear_ordinary = scan.ordinary_above && !caption_open && scan.cell == SIZE_MAX;
+        if (caption_open && scan.caption != scan.table + 1) return LXA_ERROR_INTERNAL;
+        status = LXA_SCOPE_READ(view, clear_ordinary ? scan.context : length - 1, &top, &ns);
+        if (status == LXA_OK)
+            status = lxa_html_tree_table_start_plan(&scan, length, top, target, &plan.insertion);
+        if (status != LXA_OK) return status;
+        goto publish;
+    }
+    size_t active = length - boundary;
+    bool section = lxa_html_tree_table_section(target);
+    bool row = lxa_html_tree_name_equals(target, "tr", 2);
+    bool cell = lxa_html_tree_name_equals(target, "td", 2)
+        || lxa_html_tree_name_equals(target, "th", 2);
+    bool caption = lxa_html_tree_name_equals(target, "caption", 7);
+    bool column = lxa_html_tree_name_equals(target, "col", 3);
+    bool group = column || lxa_html_tree_name_equals(target, "colgroup", 8);
+    if (scan.context == SIZE_MAX && scan.cell == SIZE_MAX && !caption_open
+        && (active == 0 || mode == LXA_TEMPLATE_ROW || mode == LXA_TEMPLATE_TABLE_BODY)) {
+        lxa_html_virtual_table_start_plan_t admission;
+        status = lxa_html_tree_virtual_table_start_plan(mode, target, &admission);
+        if (status != LXA_OK) return status;
+        plan.insertion = (lxa_html_table_start_plan_t){
+            boundary, admission.extra, admission.implied_section, admission.implied_row
+        };
+        if (admission.ignore) plan.action = LXA_HTML_TABLE_START_IGNORE;
+        goto publish;
+    }
+    if (active != 0 && mode == LXA_TEMPLATE_TABLE && (scan.ordinary_above || caption_open)) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status != LXA_OK) return status;
+        if (lxa_html_tree_name_equals(root, "caption", 7) || !lxa_html_tree_table_context(root)) {
+            plan.action = LXA_HTML_TABLE_START_POP_REPROCESS;
+            plan.insertion.keep = boundary;
+            plan.nodes_before_pop = cell ? 3 : row || column ? 2 : 1;
+            plan.table_pop = true;
+            goto publish;
+        }
+    }
+    if (scan.cell == boundary && mode == LXA_TEMPLATE_ROW) {
+        plan.insertion.keep = boundary;
+        if (!cell) {
+            plan.action = LXA_HTML_TABLE_START_POP_IGNORE;
+            plan.table_pop = true;
+        }
+        goto publish;
+    }
+    if (mode == LXA_TEMPLATE_TABLE_BODY && (section || caption || group) && active > 1) {
+        status = LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(view, boundary, false);
+        if (status != LXA_OK) return status;
+        plan.action = LXA_HTML_TABLE_START_POP_IGNORE;
+        plan.insertion.keep = boundary;
+        plan.table_pop = true;
+        goto publish;
+    }
+    if (active > 2 && !((cell || row)
+        && (mode == LXA_TEMPLATE_TABLE_BODY || mode == LXA_TEMPLATE_TABLE))
+        && !(mode == LXA_TEMPLATE_TABLE && (section || caption || group)))
+        return LXA_ERROR_INTERNAL;
+    if (active == 0) return LXA_ERROR_INTERNAL;
+    status = LXA_SCOPE_READ(view, length - 1, &top, &ns);
+    if (status != LXA_OK) return status;
+    if (active == 1 && mode == LXA_TEMPLATE_TABLE_BODY
+        && lxa_html_tree_name_equals(top, "tr", 2) && (section || caption || group)) {
+        plan.action = LXA_HTML_TABLE_START_POP_IGNORE;
+        plan.insertion.keep = boundary;
+        goto publish;
+    }
+    if (active == 1 && mode == LXA_TEMPLATE_TABLE
+        && lxa_html_tree_name_equals(top, "colgroup", 8)) {
+        plan.action = LXA_HTML_TABLE_START_POP_REPROCESS;
+        plan.insertion.keep = boundary;
+        goto publish;
+    }
+    if (active == 1 && mode == LXA_TEMPLATE_TABLE && lxa_html_tree_table_section(top)) {
+        if (cell) {
+            plan.insertion.implied_row = true;
+            plan.insertion.extra = 2;
+        }
+        if (section || caption || group) plan.insertion.keep = boundary;
+    }
+    else if (active == 2 && mode == LXA_TEMPLATE_TABLE
+        && lxa_html_tree_name_equals(top, "tr", 2) && (row || cell)) {
+        status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status != LXA_OK) return status;
+        if (!lxa_html_tree_table_section(root)) return LXA_ERROR_INTERNAL;
+        if (row) plan.insertion.keep = length - 1;
+    }
+    else if (active == 2 && mode == LXA_TEMPLATE_TABLE_BODY
+        && (lxa_html_tree_name_equals(top, "td", 2) || lxa_html_tree_name_equals(top, "th", 2))
+        && (row || cell)) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &parent, &ns);
+        if (status != LXA_OK) return status;
+        if (!lxa_html_tree_name_equals(parent, "tr", 2)) return LXA_ERROR_INTERNAL;
+        plan.insertion.keep = boundary + (cell ? 1 : 0);
+    }
+    else if (active == 3 && mode == LXA_TEMPLATE_TABLE
+        && (lxa_html_tree_name_equals(top, "td", 2) || lxa_html_tree_name_equals(top, "th", 2))
+        && (row || cell)) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, length - 2, &parent, &ns);
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status != LXA_OK) return status;
+        if (!lxa_html_tree_name_equals(parent, "tr", 2) || !lxa_html_tree_table_section(root))
+            return LXA_ERROR_INTERNAL;
+        plan.insertion.keep = length - (row ? 2 : 1);
+    }
+    else if (mode == LXA_TEMPLATE_TABLE && (section || caption || group) && active >= 2) {
+        status = LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(view, boundary, true);
+        if (status != LXA_OK) return status;
+        plan.insertion.keep = boundary;
+    }
+    else if (active >= 2 && (cell || row)
+        && (mode == LXA_TEMPLATE_TABLE_BODY || mode == LXA_TEMPLATE_TABLE)) {
+        status = LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(view, boundary, mode, target, &plan.insertion);
+        if (status != LXA_OK) return status;
+    }
+    else if (row && active == 1 && mode == LXA_TEMPLATE_TABLE_BODY
+        && lxa_html_tree_name_equals(top, "tr", 2))
+        plan.insertion.keep = boundary;
+    else if (!lxa_html_tree_name_equals(top, "tr", 2) || (active == 1 && !cell)
+        || (active == 2 && (mode != LXA_TEMPLATE_TABLE || (!cell && !section && !caption && !group))))
+        return LXA_ERROR_INTERNAL;
+    else if (active == 2) {
+        status = LXA_SCOPE_READ(view, length - 2, &root, &ns);
+        if (status != LXA_OK) return status;
+        if (!lxa_html_tree_table_section(root)) return LXA_ERROR_INTERNAL;
+        if (section || caption || group) plan.insertion.keep = boundary;
+    }
+publish:
     *out = plan;
     return LXA_OK;
 }
