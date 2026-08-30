@@ -6,7 +6,6 @@
 #include "html/tree_categories.h"
 #include "html/formatting_policy.h"
 #include "html/formatting_marker.h"
-#include "html-tags.h"
 #include "html/tree.h"
 #include "html/tokenizer_classes.h"
 
@@ -50,42 +49,6 @@ insert_constructed(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
         ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
         : lxa_dom_nodes_insert_constructed_before(tree->nodes, parent, child,
                                                    before);
-}
-
-static bool
-block_container(lxa_span_t name)
-{
-    return named(name, "div") || named(name, "section")
-           || named(name, "address") || named(name, "dialog")
-           || named(name, "dir") || named(name, "hgroup")
-           || named(name, "search") || named(name, "summary")
-           || named(name, "article") || named(name, "main")
-           || named(name, "center") || named(name, "menu")
-           || named(name, "aside")
-           || named(name, "header") || named(name, "footer")
-           || named(name, "nav") || named(name, "blockquote")
-           || named(name, "pre") || named(name, "listing")
-           || named(name, "figure") || named(name, "figcaption")
-           || named(name, "fieldset")
-           || named(name, "details") || named(name, "button")
-           || named(name, "ul") || named(name, "ol")
-           || named(name, "dl");
-}
-
-static bool
-inline_container(lxa_span_t name)
-{
-    return lxa_html_tree_formatting_tag(name) || named(name, "span")
-           || named(name, "ins") || named(name, "slot")
-           || named(name, "label")
-           || named(name, "abbr") || named(name, "cite")
-           || named(name, "data") || named(name, "dfn")
-           || named(name, "mark") || named(name, "q")
-           || named(name, "time")
-           || named(name, "acronym") || named(name, "var")
-           || named(name, "sub") || named(name, "sup")
-           || named(name, "del")
-           || named(name, "samp") || named(name, "kbd");
 }
 
 static lxa_status_t
@@ -142,37 +105,12 @@ foreign_breakout_boundary(lxa_html_tree_t *tree, lxa_dom_ref_t element,
 }
 
 static bool
-select_container(lxa_span_t name)
-{
-    return named(name, "select") || named(name, "option")
-        || named(name, "optgroup");
-}
-
-static bool
-simple_container(lxa_span_t name)
-{
-    return block_container(name) || inline_container(name)
-           || named(name, "p") || named(name, "li")
-           || named(name, "dt") || named(name, "dd")
-           || named(name, "noscript")
-           || select_container(name)
-           || lxa_html_tree_heading(name);
-}
-
-static bool
-ruby_annotation(lxa_span_t name)
-{
-    return named(name, "rb") || named(name, "rtc")
-        || named(name, "rt") || named(name, "rp");
-}
-
-static bool
 container_reconstructs(lxa_span_t name)
 {
-    return !ruby_annotation(name)
-        && (inline_container(name) || !simple_container(name)
+    return !lxa_html_tree_ruby_annotation(name)
+        && (lxa_html_tree_inline_container(name) || !lxa_html_tree_simple_container(name)
            || named(name, "noscript") || named(name, "button")
-           || select_container(name));
+           || lxa_html_tree_select_container(name));
 }
 
 static bool
@@ -256,71 +194,6 @@ foreign_html_start_breakout(lxa_span_t name)
         || named(name, "strike") || named(name, "tt")
         || named(name, "u") || named(name, "var")
         || named(name, "nobr") || named(name, "code");
-}
-
-static lxa_status_t
-in_tag_table(lxa_html_tree_t *tree, lxa_span_t name,
-             const liblexa_html_element *table, size_t count, bool *found)
-{
-    size_t lo = 0, hi = count;
-    while (lo < hi) {
-        size_t mid = lo + (hi - lo) / 2;
-        size_t shared = name.length < table[mid].length
-                        ? name.length : table[mid].length;
-        int order;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        order = memcmp(name.data, table[mid].name, shared);
-        if (order == 0)
-            order = (name.length > table[mid].length)
-                    - (name.length < table[mid].length);
-        if (order == 0) {
-            *found = true;
-            return LXA_OK;
-        }
-        if (order < 0) hi = mid;
-        else lo = mid + 1;
-    }
-    *found = false;
-    return LXA_OK;
-}
-
-static lxa_status_t
-supported_container(lxa_html_tree_t *tree,
-                    lxa_span_t name, bool *supported)
-{
-    bool known;
-    lxa_status_t status;
-    if (simple_container(name) || named(name, "selectedcontent")
-        || lxa_html_tree_formatting_marker_tag(name)
-        || ruby_annotation(name) || named(name, "ruby")
-        || named(name, "bdi") || named(name, "bdo")
-        || named(name, "datalist") || named(name, "output")
-        || named(name, "progress") || named(name, "meter")
-        || named(name, "picture")
-        || named(name, "video") || named(name, "audio")
-        || named(name, "map") || named(name, "canvas")
-        || named(name, "legend") || named(name, "isindex")
-        || named(name, "blink") || named(name, "menuitem")
-        || named(name, "multicol")
-        || named(name, "nextid") || named(name, "spacer")) {
-        *supported = true;
-        return LXA_OK;
-    }
-    /* <image> is a parser alias of <img>, not a generic unknown element. */
-    if (name.length == 0 || named(name, "image")) {
-        *supported = false;
-        return LXA_OK;
-    }
-    status = in_tag_table(tree, name, liblexa_html_elements,
-                          LIBLEXA_HTML_ELEMENT_COUNT, &known);
-    if (status != LXA_OK) return status;
-    if (!known)
-        status = in_tag_table(tree, name, liblexa_html_obsolete_elements,
-                              LIBLEXA_HTML_OBSOLETE_COUNT, &known);
-    if (status == LXA_OK) *supported = !known;
-    return status;
 }
 
 static bool
@@ -3159,12 +3032,6 @@ template_sectioning(lxa_span_t name)
 }
 
 static bool
-template_simple_inline(lxa_span_t name)
-{
-    return inline_container(name) && !lxa_html_tree_formatting_tag(name);
-}
-
-static bool
 template_simple_text_element(lxa_span_t name)
 {
     return named(name, "title") || named(name, "style")
@@ -3389,42 +3256,6 @@ template_open_foreign(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-template_fostered_descendant(lxa_html_tree_t *tree, lxa_span_t name,
-                             lxa_dom_namespace_t ns, bool *result)
-{
-    if (ns != LXA_DOM_NS_HTML) {
-        *result = true;
-        return LXA_OK;
-    }
-    *result = block_container(name) || lxa_html_tree_heading(name)
-        || named(name, "p") || named(name, "li")
-        || named(name, "form")
-        || named(name, "dt") || named(name, "dd")
-        || named(name, "ruby") || template_simple_inline(name)
-        || named(name, "rt") || named(name, "rp")
-        || named(name, "datalist") || named(name, "output")
-        || named(name, "progress") || named(name, "meter")
-        || named(name, "map") || named(name, "picture")
-        || named(name, "canvas") || named(name, "video")
-        || named(name, "audio") || named(name, "object")
-        || named(name, "legend")
-        || named(name, "marquee") || named(name, "applet")
-        || named(name, "noscript") || named(name, "select")
-        || named(name, "option")
-        || named(name, "optgroup")
-        || named(name, "ins") || named(name, "slot")
-        || named(name, "data") || named(name, "dfn")
-        || named(name, "mark") || named(name, "time")
-        || named(name, "del") || named(name, "samp")
-        || named(name, "kbd") || named(name, "sub")
-        || named(name, "sup") || named(name, "var")
-        || lxa_html_tree_formatting_tag(name);
-    if (!*result)
-        return supported_container(tree, name, result);
-    return LXA_OK;
-}
-
-static lxa_status_t
 template_open_table_part(lxa_html_tree_t *tree,
                          const lxa_html_token_t *token)
 {
@@ -3546,8 +3377,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                     if (j == template_boundary(tree) + 1
                         && (named(name, "td") || named(name, "th")))
                         continue;
-                    status = template_fostered_descendant(tree, name, ns,
-                                                          &clearable);
+                    status = lxa_html_tree_fostered_descendant(name, ns,
+                        tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable) {
                         assert(false);
@@ -3696,8 +3527,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(tree, name, ns,
-                                                              &clearable);
+                        status = lxa_html_tree_fostered_descendant(name, ns,
+                            tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable) {
                         assert(false);
@@ -3781,8 +3612,8 @@ template_open_table_part(lxa_html_tree_t *tree,
                         status = lxa_dom_nodes_element_namespace(tree->nodes,
                             open[j], &ns);
                     if (status == LXA_OK)
-                        status = template_fostered_descendant(tree, name, ns,
-                                                              &clearable);
+                        status = lxa_html_tree_fostered_descendant(name, ns,
+                            tree->nodes->budget, &tree->nodes->limit_reason, &clearable);
                     if (status != LXA_OK) return status;
                     if (!clearable) {
                         assert(false);
@@ -4060,7 +3891,7 @@ body_control_start(lxa_span_t name)
 static bool
 template_paragraph_container(lxa_span_t name)
 {
-    return (block_container(name) && !named(name, "button"))
+    return (lxa_html_tree_block_container(name) && !named(name, "button"))
         || named(name, "p") || lxa_html_tree_heading(name);
 }
 
@@ -4081,13 +3912,13 @@ static bool
 template_scoped_end(lxa_span_t name)
 {
     return named(name, "p") || template_list_item(name)
-        || named(name, "form") || block_container(name) || lxa_html_tree_heading(name);
+        || named(name, "form") || lxa_html_tree_block_container(name) || lxa_html_tree_heading(name);
 }
 
 static bool
 template_ordinary_end(lxa_span_t name)
 {
-    if (block_container(name) || lxa_html_tree_heading(name) || lxa_html_tree_table_part(name)
+    if (lxa_html_tree_block_container(name) || lxa_html_tree_heading(name) || lxa_html_tree_table_part(name)
         || template_marker_container(name)
         || named(name, "p") || named(name, "li") || named(name, "dt")
         || named(name, "dd") || named(name, "select") || named(name, "form")
@@ -4744,7 +4575,7 @@ reprocess_template_token:
                         || named(token->name, "ruby")
                         || named(token->name, "rt")
                         || named(token->name, "rp")
-                        || block_container(token->name))) {
+                        || lxa_html_tree_block_container(token->name))) {
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
                     goto reprocess_template_token;
@@ -4870,7 +4701,7 @@ reprocess_template_token:
                 }
                 if (token->kind == LXA_HTML_START_TAG
                     && (lxa_html_tree_formatting_tag(token->name)
-                        || inline_container(token->name)
+                        || lxa_html_tree_inline_container(token->name)
                         || named(token->name, "object")
                         || named(token->name, "marquee")
                         || named(token->name, "applet")
@@ -4949,8 +4780,8 @@ reprocess_template_token:
                     && !named(token->name, "style")
                     && !named(token->name, "script")) {
                     bool ordinary;
-                    status = supported_container(tree, token->name,
-                                                  &ordinary);
+                    status = lxa_html_tree_supported_container(token->name,
+                        tree->nodes->budget, &tree->nodes->limit_reason, &ordinary);
                     if (status != LXA_OK) return status;
                     if (!ordinary) {
                         assert(false);
@@ -5006,7 +4837,7 @@ reprocess_template_token:
                         || named(token->name, "rp")))
                     return LXA_OK; /* An annotation outside the table is out of scope. */
                 if (token->kind == LXA_HTML_END_TAG
-                    && block_container(token->name))
+                    && lxa_html_tree_block_container(token->name))
                     return LXA_OK; /* The table ends ordinary block scope. */
                 if (token->kind == LXA_HTML_END_TAG
                     && named(token->name, "frameset")) {
@@ -5202,7 +5033,7 @@ reprocess_template_token:
             template_ordinary =
                 named(token->name, "form")
                 || template_marker_container(token->name)
-                || inline_container(token->name)
+                || lxa_html_tree_inline_container(token->name)
                 || named(token->name, "plaintext")
                 || named(token->name, "p") || named(token->name, "div")
                 || named(token->name, "address")
@@ -5237,7 +5068,7 @@ reprocess_template_token:
                 || named(token->name, "rp")
                 || lxa_html_tree_heading(token->name)
                 || named(token->name, "table")
-                || select_container(token->name)
+                || lxa_html_tree_select_container(token->name)
                 || named(token->name, "span")
                 || named(token->name, "label")
                 || named(token->name, "button")
@@ -5257,8 +5088,8 @@ reprocess_template_token:
                 || named(token->name, "font")
                 || lxa_html_tree_formatting_tag(token->name);
             if (!template_ordinary) {
-                status = supported_container(tree, token->name,
-                                              &template_ordinary);
+                status = lxa_html_tree_supported_container(token->name,
+                    tree->nodes->budget, &tree->nodes->limit_reason, &template_ordinary);
                 if (status != LXA_OK) return status;
             }
         }
@@ -5281,7 +5112,7 @@ reprocess_template_token:
             if (status != LXA_OK) return status;
             open = (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
             close_at = lxa_vector_length(&tree->template_elements);
-            if (ruby_annotation(token->name)) {
+            if (lxa_html_tree_ruby_annotation(token->name)) {
                 status = plan_ruby_start(tree, &tree->template_elements,
                     template_boundary(tree), token->name, &close_at);
                 if (status != LXA_OK) return status;
@@ -5905,7 +5736,8 @@ reprocess_body_start:
                     named(token->name, "svg") ? LXA_DOM_NS_SVG
                                               : LXA_DOM_NS_MATHML);
             }
-            status = supported_container(tree, token->name, &container);
+            status = lxa_html_tree_supported_container(token->name,
+                tree->nodes->budget, &tree->nodes->limit_reason, &container);
             if (status != LXA_OK) return status;
             if (container && named(top, "colgroup")) {
                 status = reserve_open_elements(tree, 0);
@@ -6157,7 +5989,8 @@ reprocess_body_start:
             }
             return status;
         }
-        status = supported_container(tree, token->name, &container);
+        status = lxa_html_tree_supported_container(token->name,
+            tree->nodes->budget, &tree->nodes->limit_reason, &container);
         if (status != LXA_OK) return status;
         if (container) {
             lxa_dom_ref_t before;
@@ -6166,7 +5999,7 @@ reprocess_body_start:
             bool reconstruct = container_reconstructs(token->name);
             bool closes_paragraph = named(token->name, "p")
                 || lxa_html_tree_heading(token->name)
-                || (block_container(token->name)
+                || (lxa_html_tree_block_container(token->name)
                     && !named(token->name, "button"))
                 || named(token->name, "li") || named(token->name, "dt")
                 || named(token->name, "dd");
@@ -6180,13 +6013,13 @@ reprocess_body_start:
                 || named(token->name, "select")
                 || lxa_html_tree_formatting_marker_tag(token->name)))
                 tree->frameset_ok = false;
-            if (!formatting && !ruby_annotation(token->name)
+            if (!formatting && !lxa_html_tree_ruby_annotation(token->name)
                 && !named(token->name, "button")
                 && (!closes_paragraph || lxa_html_tree_heading(token->name))) {
                 status = reserve_open_elements(tree, lxa_html_tree_heading(token->name) ? 0 : 1);
                 if (status != LXA_OK) return status;
             }
-            if (ruby_annotation(token->name)) {
+            if (lxa_html_tree_ruby_annotation(token->name)) {
                 size_t keep;
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -6429,7 +6262,7 @@ reprocess_body_start:
         return end_scoped_element(tree, token->name, LXA_HTML_SCOPE_NORMAL);
     if (token->kind == LXA_HTML_END_TAG
         && tree->mode == LXA_TREE_IN_BODY
-        && (block_container(token->name) || lxa_html_tree_formatting_marker_tag(token->name)))
+        && (lxa_html_tree_block_container(token->name) || lxa_html_tree_formatting_marker_tag(token->name)))
         return end_scoped_element(tree, token->name, LXA_HTML_SCOPE_NORMAL);
     if (token->kind == LXA_HTML_END_TAG
         && tree->mode == LXA_TREE_IN_BODY

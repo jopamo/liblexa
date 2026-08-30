@@ -1,6 +1,7 @@
 #include <string.h>
 #include "html/tree_policy.h"
 #include "html/tree_categories.h"
+#include "html-tags.h"
 
 lxa_status_t
 lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
@@ -235,3 +236,118 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
     }
     return LXA_OK;
 }
+
+#define LXA_CONTAINER_NAMED(name, text) \
+    lxa_html_tree_name_equals((name), (text), sizeof(text) - 1)
+static lxa_status_t
+in_tag_table(lxa_span_t name, lxa_budget_t *budget, lxa_limit_reason_t *reason,
+             const liblexa_html_element *table, size_t count, bool *found)
+{
+    size_t lo = 0, hi = count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        size_t shared = name.length < table[mid].length
+                        ? name.length : table[mid].length;
+        int order;
+        lxa_status_t status = lxa_budget_charge(budget,
+            LXA_BUDGET_WORK, 1, reason);
+        if (status != LXA_OK) return status;
+        order = memcmp(name.data, table[mid].name, shared);
+        if (order == 0)
+            order = (name.length > table[mid].length)
+                    - (name.length < table[mid].length);
+        if (order == 0) {
+            *found = true;
+            return LXA_OK;
+        }
+        if (order < 0) hi = mid;
+        else lo = mid + 1;
+    }
+    *found = false;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_tree_supported_container(lxa_span_t name, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *supported)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || supported == NULL || (name.length != 0 && name.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    bool known;
+    lxa_status_t status;
+    if (lxa_html_tree_simple_container(name) || LXA_CONTAINER_NAMED(name, "selectedcontent")
+        || lxa_html_tree_formatting_marker_tag(name)
+        || lxa_html_tree_ruby_annotation(name) || LXA_CONTAINER_NAMED(name, "ruby")
+        || LXA_CONTAINER_NAMED(name, "bdi") || LXA_CONTAINER_NAMED(name, "bdo")
+        || LXA_CONTAINER_NAMED(name, "datalist") || LXA_CONTAINER_NAMED(name, "output")
+        || LXA_CONTAINER_NAMED(name, "progress") || LXA_CONTAINER_NAMED(name, "meter")
+        || LXA_CONTAINER_NAMED(name, "picture")
+        || LXA_CONTAINER_NAMED(name, "video") || LXA_CONTAINER_NAMED(name, "audio")
+        || LXA_CONTAINER_NAMED(name, "map") || LXA_CONTAINER_NAMED(name, "canvas")
+        || LXA_CONTAINER_NAMED(name, "legend") || LXA_CONTAINER_NAMED(name, "isindex")
+        || LXA_CONTAINER_NAMED(name, "blink") || LXA_CONTAINER_NAMED(name, "menuitem")
+        || LXA_CONTAINER_NAMED(name, "multicol")
+        || LXA_CONTAINER_NAMED(name, "nextid") || LXA_CONTAINER_NAMED(name, "spacer")) {
+        *supported = true;
+        return LXA_OK;
+    }
+    /* <image> is a parser alias of <img>, not a generic unknown element. */
+    if (name.length == 0 || LXA_CONTAINER_NAMED(name, "image")) {
+        *supported = false;
+        return LXA_OK;
+    }
+    status = in_tag_table(name, budget, reason, liblexa_html_elements,
+                          LIBLEXA_HTML_ELEMENT_COUNT, &known);
+    if (status != LXA_OK) return status;
+    if (!known)
+        status = in_tag_table(name, budget, reason, liblexa_html_obsolete_elements,
+                              LIBLEXA_HTML_OBSOLETE_COUNT, &known);
+    if (status == LXA_OK) *supported = !known;
+    return status;
+}
+
+lxa_status_t
+lxa_html_tree_fostered_descendant(lxa_span_t name, lxa_dom_namespace_t ns,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, bool *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || out == NULL || (name.length != 0 && name.data == NULL)
+        || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    if (ns != LXA_DOM_NS_HTML) {
+        *out = true;
+        return LXA_OK;
+    }
+    bool result = lxa_html_tree_block_container(name) || lxa_html_tree_heading(name)
+        || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "li")
+        || LXA_CONTAINER_NAMED(name, "form")
+        || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "ruby")
+        || (lxa_html_tree_inline_container(name) && !lxa_html_tree_formatting_tag(name))
+        || LXA_CONTAINER_NAMED(name, "rt") || LXA_CONTAINER_NAMED(name, "rp")
+        || LXA_CONTAINER_NAMED(name, "datalist") || LXA_CONTAINER_NAMED(name, "output")
+        || LXA_CONTAINER_NAMED(name, "progress") || LXA_CONTAINER_NAMED(name, "meter")
+        || LXA_CONTAINER_NAMED(name, "map") || LXA_CONTAINER_NAMED(name, "picture")
+        || LXA_CONTAINER_NAMED(name, "canvas") || LXA_CONTAINER_NAMED(name, "video")
+        || LXA_CONTAINER_NAMED(name, "audio") || LXA_CONTAINER_NAMED(name, "object")
+        || LXA_CONTAINER_NAMED(name, "legend")
+        || LXA_CONTAINER_NAMED(name, "marquee") || LXA_CONTAINER_NAMED(name, "applet")
+        || LXA_CONTAINER_NAMED(name, "noscript") || LXA_CONTAINER_NAMED(name, "select")
+        || LXA_CONTAINER_NAMED(name, "option")
+        || LXA_CONTAINER_NAMED(name, "optgroup")
+        || LXA_CONTAINER_NAMED(name, "ins") || LXA_CONTAINER_NAMED(name, "slot")
+        || LXA_CONTAINER_NAMED(name, "data") || LXA_CONTAINER_NAMED(name, "dfn")
+        || LXA_CONTAINER_NAMED(name, "mark") || LXA_CONTAINER_NAMED(name, "time")
+        || LXA_CONTAINER_NAMED(name, "del") || LXA_CONTAINER_NAMED(name, "samp")
+        || LXA_CONTAINER_NAMED(name, "kbd") || LXA_CONTAINER_NAMED(name, "sub")
+        || LXA_CONTAINER_NAMED(name, "sup") || LXA_CONTAINER_NAMED(name, "var")
+        || lxa_html_tree_formatting_tag(name);
+    lxa_status_t status = LXA_OK;
+    if (!result)
+        status = lxa_html_tree_supported_container(name, budget, reason, &result);
+    if (status == LXA_OK) *out = result;
+    return status;
+}
+
+#undef LXA_CONTAINER_NAMED

@@ -76,6 +76,14 @@ lxa_status_t
 lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
     lxa_span_t target, lxa_html_virtual_table_start_plan_t *out);
 
+lxa_status_t
+lxa_html_tree_supported_container(lxa_span_t name, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *out);
+
+lxa_status_t
+lxa_html_tree_fostered_descendant(lxa_span_t name, lxa_dom_namespace_t ns,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, bool *out);
+
 static inline bool
 lxa_html_tree_table_section(lxa_span_t name)
 {
@@ -183,5 +191,74 @@ lxa_html_tree_implied_end_tag(lxa_span_t name)
     }
     return false;
 }
+
+#define LXA_CONTAINER_NAMED(name, text) \
+    lxa_html_tree_name_equals((name), (text), sizeof(text) - 1)
+static inline bool
+lxa_html_tree_block_container(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "div") || LXA_CONTAINER_NAMED(name, "section")
+           || LXA_CONTAINER_NAMED(name, "address") || LXA_CONTAINER_NAMED(name, "dialog")
+           || LXA_CONTAINER_NAMED(name, "dir") || LXA_CONTAINER_NAMED(name, "hgroup")
+           || LXA_CONTAINER_NAMED(name, "search") || LXA_CONTAINER_NAMED(name, "summary")
+           || LXA_CONTAINER_NAMED(name, "article") || LXA_CONTAINER_NAMED(name, "main")
+           || LXA_CONTAINER_NAMED(name, "center") || LXA_CONTAINER_NAMED(name, "menu")
+           || LXA_CONTAINER_NAMED(name, "aside")
+           || LXA_CONTAINER_NAMED(name, "header") || LXA_CONTAINER_NAMED(name, "footer")
+           || LXA_CONTAINER_NAMED(name, "nav") || LXA_CONTAINER_NAMED(name, "blockquote")
+           || LXA_CONTAINER_NAMED(name, "pre") || LXA_CONTAINER_NAMED(name, "listing")
+           || LXA_CONTAINER_NAMED(name, "figure") || LXA_CONTAINER_NAMED(name, "figcaption")
+           || LXA_CONTAINER_NAMED(name, "fieldset")
+           || LXA_CONTAINER_NAMED(name, "details") || LXA_CONTAINER_NAMED(name, "button")
+           || LXA_CONTAINER_NAMED(name, "ul") || LXA_CONTAINER_NAMED(name, "ol")
+           || LXA_CONTAINER_NAMED(name, "dl");
+}
+
+
+static inline bool
+lxa_html_tree_inline_container(lxa_span_t name)
+{
+    return lxa_html_tree_formatting_tag(name) || LXA_CONTAINER_NAMED(name, "span")
+           || LXA_CONTAINER_NAMED(name, "ins") || LXA_CONTAINER_NAMED(name, "slot")
+           || LXA_CONTAINER_NAMED(name, "label")
+           || LXA_CONTAINER_NAMED(name, "abbr") || LXA_CONTAINER_NAMED(name, "cite")
+           || LXA_CONTAINER_NAMED(name, "data") || LXA_CONTAINER_NAMED(name, "dfn")
+           || LXA_CONTAINER_NAMED(name, "mark") || LXA_CONTAINER_NAMED(name, "q")
+           || LXA_CONTAINER_NAMED(name, "time")
+           || LXA_CONTAINER_NAMED(name, "acronym") || LXA_CONTAINER_NAMED(name, "var")
+           || LXA_CONTAINER_NAMED(name, "sub") || LXA_CONTAINER_NAMED(name, "sup")
+           || LXA_CONTAINER_NAMED(name, "del")
+           || LXA_CONTAINER_NAMED(name, "samp") || LXA_CONTAINER_NAMED(name, "kbd");
+}
+
+
+static inline bool
+lxa_html_tree_select_container(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "select") || LXA_CONTAINER_NAMED(name, "option")
+        || LXA_CONTAINER_NAMED(name, "optgroup");
+}
+
+
+static inline bool
+lxa_html_tree_simple_container(lxa_span_t name)
+{
+    return lxa_html_tree_block_container(name) || lxa_html_tree_inline_container(name)
+           || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "li")
+           || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
+           || LXA_CONTAINER_NAMED(name, "noscript")
+           || lxa_html_tree_select_container(name)
+           || lxa_html_tree_heading(name);
+}
+
+
+static inline bool
+lxa_html_tree_ruby_annotation(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "rb") || LXA_CONTAINER_NAMED(name, "rtc")
+        || LXA_CONTAINER_NAMED(name, "rt") || LXA_CONTAINER_NAMED(name, "rp");
+}
+
+#undef LXA_CONTAINER_NAMED
 
 #endif
