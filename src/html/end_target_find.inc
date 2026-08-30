@@ -3,7 +3,8 @@
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
- * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
+ * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
+ * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -65,6 +66,78 @@ LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         }
     }
     return LXA_FOSTERED_SUFFIX_CHECK_NAME(view, start, false);
+}
+
+static inline lxa_status_t
+LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    lxa_html_template_mode_t mode, lxa_span_t target, lxa_html_table_start_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    bool cell = lxa_html_tree_name_equals(target, "td", 2)
+        || lxa_html_tree_name_equals(target, "th", 2);
+    if (boundary > length || length - boundary < 2
+        || (mode != LXA_TEMPLATE_TABLE && mode != LXA_TEMPLATE_TABLE_BODY)
+        || (!cell && !lxa_html_tree_name_equals(target, "tr", 2)))
+        return LXA_ERROR_ARGUMENT;
+    size_t active = length - boundary, start = boundary + 1;
+    bool direct_cell = false, fostered_row = false, fostered_cell = false;
+    lxa_dom_namespace_t ns;
+    lxa_span_t root, row, item;
+    lxa_status_t status;
+    if (mode == LXA_TEMPLATE_TABLE_BODY && active >= 3) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &row, &ns);
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &item, &ns);
+        if (status != LXA_OK) return status;
+        direct_cell = lxa_html_tree_name_equals(row, "tr", 2)
+            && (lxa_html_tree_name_equals(item, "td", 2)
+                || lxa_html_tree_name_equals(item, "th", 2));
+        if (direct_cell) ++start;
+    }
+    if (mode == LXA_TEMPLATE_TABLE && active >= 3) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &row, &ns);
+        if (status != LXA_OK) return status;
+        fostered_row = lxa_html_tree_table_section(root)
+            && lxa_html_tree_name_equals(row, "tr", 2);
+        if (fostered_row) ++start;
+    }
+    if (mode == LXA_TEMPLATE_TABLE && active >= 4) {
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 3, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary + 1, &row, &ns);
+        if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary + 2, &item, &ns);
+        if (status != LXA_OK) return status;
+        fostered_cell = lxa_html_tree_table_section(root)
+            && lxa_html_tree_name_equals(row, "tr", 2)
+            && (lxa_html_tree_name_equals(item, "td", 2)
+                || lxa_html_tree_name_equals(item, "th", 2));
+        if (fostered_cell) start = boundary + 3;
+    }
+    status = LXA_FOSTERED_SUFFIX_CHECK_NAME(view, start, false);
+    if (status != LXA_OK) return status;
+    lxa_html_table_start_plan_t plan = {boundary, 1, false, false};
+    if (direct_cell) plan.keep += cell ? 1 : 0;
+    else if (fostered_cell || fostered_row) plan.keep += cell ? 2 : 1;
+    else {
+        status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+        if (status != LXA_OK) return status;
+        bool section = mode == LXA_TEMPLATE_TABLE && lxa_html_tree_table_section(root);
+        if (!section && !(mode == LXA_TEMPLATE_TABLE_BODY
+            && lxa_html_tree_name_equals(root, "tr", 2)))
+            return LXA_ERROR_INTERNAL;
+        plan.keep += cell || section ? 1 : 0;
+        if (section && cell) {
+            plan.implied_row = true;
+            plan.extra = 2;
+        }
+    }
+    *out = plan;
+    return LXA_OK;
 }
 
 static inline lxa_status_t

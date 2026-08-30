@@ -981,6 +981,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME tree_template_table_scan
 #define LXA_FOSTERED_SUFFIX_CHECK_NAME tree_fostered_suffix_check
 #define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME tree_virtual_table_suffix_check
+#define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME tree_virtual_table_item_plan
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1012,6 +1013,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
 #undef LXA_FOSTERED_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
+#undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -3280,7 +3282,6 @@ template_open_table_part(lxa_html_tree_t *tree,
     bool caption_open = false, ordinary_above = false, clear_ordinary;
     bool implied_section = false, implied_row = false;
     bool replace_section = false, clear_fostered = false;
-    bool fostered_section = false;
     lxa_span_t top;
     lxa_status_t status;
     if (!section && !row && !cell && !caption && !group) {
@@ -3472,90 +3473,18 @@ template_open_table_part(lxa_html_tree_t *tree,
                          == LXA_TEMPLATE_TABLE_BODY
                          || tree->template_insertion_mode
                             == LXA_TEMPLATE_TABLE)) {
-                size_t j = template_boundary(tree) + 1;
-                bool fostered_cell = false, fostered_row = false;
-                bool direct_cell = false;
-                if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-                    && length >= template_boundary(tree) + 3) {
-                    lxa_span_t row_name, cell_name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[template_boundary(tree)], &row_name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &cell_name);
-                    if (status != LXA_OK) return status;
-                    direct_cell = named(row_name, "tr")
-                        && (named(cell_name, "td") || named(cell_name, "th"));
-                    if (direct_cell) ++j;
-                }
-                if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                    && length >= template_boundary(tree) + 3) {
-                    lxa_span_t section_name, row_name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[template_boundary(tree)], &section_name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &row_name);
-                    if (status != LXA_OK) return status;
-                    fostered_row = lxa_html_tree_table_section(section_name)
-                        && named(row_name, "tr");
-                    if (fostered_row) ++j;
-                }
-                if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                    && length >= template_boundary(tree) + 4) {
-                    lxa_span_t section_name, row_name, cell_name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 3, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[template_boundary(tree)], &section_name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[template_boundary(tree) + 1], &row_name);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[template_boundary(tree) + 2], &cell_name);
-                    if (status != LXA_OK) return status;
-                    fostered_cell = lxa_html_tree_table_section(section_name)
-                        && named(row_name, "tr")
-                        && (named(cell_name, "td")
-                            || named(cell_name, "th"));
-                    if (fostered_cell) j = template_boundary(tree) + 3;
-                }
-                status = tree_fostered_suffix_check(&view, j, false);
+                lxa_html_table_start_plan_t plan;
+                status = tree_virtual_table_item_plan(&view,
+                    template_boundary(tree), tree->template_insertion_mode,
+                    token->name, &plan);
                 if (status != LXA_OK) {
                     assert(status != LXA_ERROR_INTERNAL);
                     return status;
                 }
-                if (direct_cell)
-                    replace_at = template_boundary(tree) + (cell ? 1 : 0);
-                else if (fostered_cell || fostered_row)
-                    replace_at = template_boundary(tree) + (cell ? 2 : 1);
-                else {
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[template_boundary(tree)], &top);
-                    if (status != LXA_OK) return status;
-                    fostered_section = tree->template_insertion_mode
-                                           == LXA_TEMPLATE_TABLE
-                                       && lxa_html_tree_table_section(top);
-                    if (!fostered_section
-                        && !(tree->template_insertion_mode
-                             == LXA_TEMPLATE_TABLE_BODY && named(top, "tr"))) {
-                        assert(false);
-                        return LXA_ERROR_INTERNAL;
-                    }
-                    if (fostered_section && cell) {
-                        implied_row = true;
-                        extra = 2;
-                    }
-                }
-                clear_fostered = true;
+                keep = plan.keep;
+                extra = plan.extra;
+                implied_row = plan.implied_row;
+                goto reserve_part;
             }
             else if (row && length == template_boundary(tree) + 1
                      && tree->template_insertion_mode
@@ -3583,9 +3512,7 @@ template_open_table_part(lxa_html_tree_t *tree,
         }
         keep = replace_section ? template_boundary(tree)
              : replace_at != SIZE_MAX ? replace_at
-             : clear_fostered ? template_boundary(tree)
-                                + (cell || fostered_section ? 1 : 0)
-                              : length;
+             : clear_fostered ? template_boundary(tree) : length;
         goto reserve_part;
     }
     clear_ordinary = ordinary_above && !caption_open
