@@ -980,6 +980,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_TEMPLATE_END_PLAN_NAME tree_template_end_plan
 #define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME tree_template_table_scan
 #define LXA_FOSTERED_SUFFIX_CHECK_NAME tree_fostered_suffix_check
+#define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME tree_virtual_table_suffix_check
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1010,6 +1011,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_TEMPLATE_END_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
 #undef LXA_FOSTERED_SUFFIX_CHECK_NAME
+#undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -3351,19 +3353,8 @@ template_open_table_part(lxa_html_tree_t *tree,
             if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
                 && (section || caption || group)
                 && length > template_boundary(tree) + 1) {
-                size_t j = template_boundary(tree) + 1;
-                lxa_span_t root;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[template_boundary(tree)], &root);
-                if (status != LXA_OK) return status;
-                if (!named(root, "tr")) {
-                    assert(false);
-                    return LXA_ERROR_INTERNAL;
-                }
-                status = tree_fostered_suffix_check(&view, j, true);
+                status = tree_virtual_table_suffix_check(&view,
+                    template_boundary(tree), false);
                 if (status != LXA_OK) {
                     assert(status != LXA_ERROR_INTERNAL);
                     return status;
@@ -3467,37 +3458,8 @@ template_open_table_part(lxa_html_tree_t *tree,
             else if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
                      && (section || caption || group)
                      && length >= template_boundary(tree) + 2) {
-                lxa_span_t row_name;
-                size_t j;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[template_boundary(tree)], &top);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[template_boundary(tree) + 1], &row_name);
-                if (status != LXA_OK) return status;
-                if (!lxa_html_tree_table_section(top)) {
-                    assert(false);
-                    return LXA_ERROR_INTERNAL;
-                }
-                j = template_boundary(tree) + 1;
-                if (named(row_name, "tr")) {
-                    ++j;
-                }
-                if (j == template_boundary(tree) + 2 && j < length) {
-                    lxa_span_t cell_name;
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_dom_nodes_element_name(tree->nodes,
-                            open[j], &cell_name);
-                    if (status != LXA_OK) return status;
-                    if (named(cell_name, "td") || named(cell_name, "th"))
-                        ++j;
-                }
-                status = tree_fostered_suffix_check(&view, j, false);
+                status = tree_virtual_table_suffix_check(&view,
+                    template_boundary(tree), true);
                 if (status != LXA_OK) {
                     assert(status != LXA_ERROR_INTERNAL);
                     return status;

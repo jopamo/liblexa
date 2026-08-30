@@ -3,7 +3,7 @@
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
- * LXA_FOSTERED_SUFFIX_CHECK_NAME
+ * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -28,6 +28,43 @@ LXA_FOSTERED_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t start,
         if (!clearable) return LXA_ERROR_INTERNAL;
     }
     return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    bool section_root)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    if (boundary > length || length - boundary < (section_root ? 2u : 1u))
+        return LXA_ERROR_ARGUMENT;
+    lxa_span_t root, row;
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+        LXA_BUDGET_WORK, section_root ? 2 : 1, LXA_SCOPE_REASON(view));
+    if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
+    if (status == LXA_OK && section_root)
+        status = LXA_SCOPE_READ(view, boundary + 1, &row, &ns);
+    if (status != LXA_OK) return status;
+    if (!section_root) {
+        if (!lxa_html_tree_name_equals(root, "tr", 2)) return LXA_ERROR_INTERNAL;
+        return LXA_FOSTERED_SUFFIX_CHECK_NAME(view, boundary + 1, true);
+    }
+    if (!lxa_html_tree_table_section(root)) return LXA_ERROR_INTERNAL;
+    size_t start = boundary + 1;
+    if (lxa_html_tree_name_equals(row, "tr", 2)) {
+        ++start;
+        if (start < length) {
+            lxa_span_t cell;
+            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &cell, &ns);
+            if (status != LXA_OK) return status;
+            if (lxa_html_tree_name_equals(cell, "td", 2)
+                || lxa_html_tree_name_equals(cell, "th", 2))
+                ++start;
+        }
+    }
+    return LXA_FOSTERED_SUFFIX_CHECK_NAME(view, start, false);
 }
 
 static inline lxa_status_t
