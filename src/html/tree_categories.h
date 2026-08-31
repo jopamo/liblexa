@@ -69,6 +69,18 @@ typedef struct {
     bool table_pop; /* POP_* cleanup; INSERT always uses table cleanup */
 } lxa_html_template_table_start_plan_t;
 
+typedef enum {
+    LXA_HTML_COLUMN_START_VIRTUAL, LXA_HTML_COLUMN_START_IGNORE,
+    LXA_HTML_COLUMN_START_POP_IGNORE, LXA_HTML_COLUMN_START_POP_REPROCESS,
+    LXA_HTML_COLUMN_START_TABLE_PART, LXA_HTML_COLUMN_START_APPEND,
+    LXA_HTML_COLUMN_START_IMPLY_GROUP
+} lxa_html_column_start_action_t;
+
+typedef struct {
+    lxa_html_column_start_action_t action;
+    size_t keep, nodes_before_pop;
+} lxa_html_column_start_plan_t;
+
 /* Plan a table-part start with an actual scoped table. top is the current name
  * after clearing ordinary entries to context; callers own that lookup/effect.
  */

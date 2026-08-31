@@ -93,6 +93,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME lxa_html_control_virtual_table_item_search
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME lxa_html_control_template_table_start_search
 #define LXA_TEMPLATE_CLOSE_PLAN_NAME lxa_html_control_template_close_search
+#define LXA_COLUMN_START_PLAN_NAME lxa_html_control_column_start_search
 #define LXA_LIST_ITEM_PLAN_NAME lxa_html_control_list_item_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
@@ -126,6 +127,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
 #undef LXA_TEMPLATE_CLOSE_PLAN_NAME
+#undef LXA_COLUMN_START_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -390,6 +392,22 @@ lxa_html_control_template_table_start_plan(const lxa_html_scope_entry_t *entries
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_template_table_start_search(&view, boundary, mode, target, out);
+}
+
+/* Plan an accepted template col start after earlier dispatch. Preserve the
+ * name-based table/formatting scan and its WORK charges; apply no effects.
+ */
+static inline lxa_status_t
+lxa_html_control_column_start_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_html_template_mode_t mode,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_column_start_plan_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_column_start_search(&view, boundary, mode, out);
 }
 
 /* Precharge active length + one WORK for explicit ends. For explicit patched

@@ -5,9 +5,67 @@
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
  * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
- * LXA_TEMPLATE_CLOSE_PLAN_NAME
+ * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME
  * belong to the includer.
  */
+static inline lxa_status_t
+LXA_COLUMN_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    if (boundary > length || (unsigned) mode > LXA_TEMPLATE_BODY)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_column_start_plan_t plan = {LXA_HTML_COLUMN_START_TABLE_PART, length, 0};
+    if (mode == LXA_TEMPLATE_COLUMN_GROUP) {
+        plan.action = LXA_HTML_COLUMN_START_VIRTUAL;
+        goto publish;
+    }
+    if (length == boundary) {
+        if (mode == LXA_TEMPLATE_ROW || mode == LXA_TEMPLATE_TABLE_BODY)
+            plan.action = LXA_HTML_COLUMN_START_IGNORE;
+        goto publish;
+    }
+    lxa_span_t top;
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = LXA_SCOPE_READ(view, length - 1, &top, &ns);
+    if (status != LXA_OK) return status;
+    if (length - boundary == 1 && mode == LXA_TEMPLATE_TABLE_BODY
+        && lxa_html_tree_name_equals(top, "tr", 2)) {
+        plan.action = LXA_HTML_COLUMN_START_POP_IGNORE;
+        plan.keep = boundary;
+        goto publish;
+    }
+    bool top_table = lxa_html_tree_name_equals(top, "table", 5);
+    bool top_group = lxa_html_tree_name_equals(top, "colgroup", 8);
+    if (mode == LXA_TEMPLATE_TABLE && !top_table && !top_group) {
+        size_t i = length;
+        bool table = false, formatting = false;
+        while (i > boundary) {
+            lxa_span_t name;
+            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            if (status == LXA_OK) status = LXA_SCOPE_READ(view, --i, &name, &ns);
+            if (status != LXA_OK) return status;
+            if (lxa_html_tree_name_equals(name, "table", 5)) {
+                table = true;
+                break;
+            }
+            if (lxa_html_tree_formatting_tag(name)) formatting = true;
+        }
+        if (!table && !formatting) {
+            plan.action = LXA_HTML_COLUMN_START_POP_REPROCESS;
+            plan.keep = boundary;
+            plan.nodes_before_pop = 2;
+            goto publish;
+        }
+    }
+    if (top_table) plan.action = LXA_HTML_COLUMN_START_IMPLY_GROUP;
+    else if (top_group) plan.action = LXA_HTML_COLUMN_START_APPEND;
+publish:
+    *out = plan;
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 LXA_TEMPLATE_CLOSE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     bool explicit_end, bool has_patch, size_t *out)

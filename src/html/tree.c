@@ -984,6 +984,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME tree_virtual_table_item_plan
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME tree_template_table_start_plan
 #define LXA_TEMPLATE_CLOSE_PLAN_NAME tree_template_close_plan
+#define LXA_COLUMN_START_PLAN_NAME tree_column_start_plan
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1018,6 +1019,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
 #undef LXA_TEMPLATE_CLOSE_PLAN_NAME
+#undef LXA_COLUMN_START_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -3331,74 +3333,42 @@ static lxa_status_t
 template_open_column(lxa_html_tree_t *tree,
                      const lxa_html_token_t *token)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
     lxa_html_token_t implied = {0};
-    lxa_span_t top;
-    size_t length = lxa_vector_length(&tree->template_elements);
-    const size_t boundary = template_boundary(tree);
-    size_t count, after;
-    bool add_group;
-    lxa_status_t status;
-    if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP) {
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
-            status = append_void(tree, template_parent(tree), token);
-        return status;
-    }
-    if (length == boundary) {
-        if (tree->template_insertion_mode == LXA_TEMPLATE_ROW
-            || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY)
-            return LXA_OK; /* No table can receive this column. */
-    }
-    else {
-        status = lxa_dom_nodes_element_name(tree->nodes, open[length - 1],
-                                            &top);
-        if (status != LXA_OK) return status;
-        if (length == boundary + 1
-            && tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-            && named(top, "tr")) {
-            status = template_pop_elements(tree, boundary);
+    size_t length = lxa_vector_length(&tree->template_elements), after;
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data, length
+    };
+    lxa_html_column_start_plan_t plan;
+    lxa_status_t status = tree_column_start_plan(&view, template_boundary(tree),
+        tree->template_insertion_mode, &plan);
+    if (status != LXA_OK) return status;
+    switch (plan.action) {
+        case LXA_HTML_COLUMN_START_VIRTUAL:
+            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                1, &tree->nodes->limit_reason);
+            if (status == LXA_OK)
+                status = append_void(tree, template_parent(tree), token);
+            return status;
+        case LXA_HTML_COLUMN_START_IGNORE: return LXA_OK;
+        case LXA_HTML_COLUMN_START_POP_IGNORE:
+            return template_pop_elements(tree, plan.keep);
+        case LXA_HTML_COLUMN_START_POP_REPROCESS:
+            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                plan.nodes_before_pop, &tree->nodes->limit_reason);
             if (status != LXA_OK) return status;
-            return LXA_OK;
-        }
-        if (tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-            && !named(top, "table") && !named(top, "colgroup")) {
-            size_t i = length;
-            bool table = false, formatting = false;
-            while (i > boundary) {
-                lxa_span_t name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[--i], &name);
-                if (status != LXA_OK) return status;
-                if (named(name, "table")) {
-                    table = true;
-                    break;
-                }
-                if (lxa_html_tree_formatting_tag(name)) formatting = true;
-            }
-            if (!table && !formatting) {
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 2, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = template_pop_table_elements(tree,
-                                                      boundary);
-                if (status != LXA_OK) return status;
-                return template_open_column(tree, token);
-            }
-        }
+            status = template_pop_table_elements(tree, plan.keep);
+            if (status != LXA_OK) return status;
+            return template_open_column(tree, token);
+        case LXA_HTML_COLUMN_START_TABLE_PART:
+            return template_open_table_part(tree, token);
+        case LXA_HTML_COLUMN_START_APPEND:
+        case LXA_HTML_COLUMN_START_IMPLY_GROUP: break;
+        default:
+            assert(false);
+            return LXA_ERROR_INTERNAL;
     }
-    if (length == boundary
-        || (!named(top, "table") && !named(top, "colgroup"))) {
-        /* The in-table col rule clears an open row/cell (or fostered
-         * descendant) before inserting its implicit column group. */
-        return template_open_table_part(tree, token);
-    }
-    add_group = named(top, "table");
+    bool add_group = plan.action == LXA_HTML_COLUMN_START_IMPLY_GROUP;
+    size_t count;
     count = add_group ? 2 : 1;
     status = lxa_size_add(length, count, &after);
     if (status == LXA_OK)
