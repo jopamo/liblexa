@@ -1,7 +1,63 @@
 #include <string.h>
 #include "html/tree_policy.h"
 #include "html/tree_categories.h"
+#include "html/formatting_policy.h"
 #include "html-tags.h"
+
+typedef enum {
+    LXA_START_ATTRIBUTE_HIDDEN_INPUT, LXA_START_ATTRIBUTE_FONT_BREAKOUT
+} start_attribute_query_t;
+
+static lxa_status_t
+start_attribute_query(const lxa_html_token_t *token, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, start_attribute_query_t query, bool *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    bool font = query == LXA_START_ATTRIBUTE_FONT_BREAKOUT;
+    if (budget == NULL || out == NULL || !lxa_html_formatting_token_shape_valid(token)
+        || !(font ? lxa_html_tree_name_equals(token->name, "font", 4)
+                  : lxa_html_tree_name_equals(token->name, "input", 5)))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_formatting_view_t view = {
+        token->name, token->attributes, token->attribute_count, budget, reason
+    };
+    bool result = false;
+    for (size_t i = 0; i < token->attribute_count; ++i) {
+        lxa_span_t name, value;
+        lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
+        if (status == LXA_OK)
+            status = lxa_html_formatting_view_read(&view, i + 1, &name, &value);
+        if (status != LXA_OK) return status;
+        if (font) {
+            if (lxa_html_tree_name_equals(name, "color", 5)
+                || lxa_html_tree_name_equals(name, "face", 4)
+                || lxa_html_tree_name_equals(name, "size", 4)) {
+                result = true;
+                break;
+            }
+        }
+        else if (lxa_html_tree_name_equals(name, "type", 4)) {
+            result = lxa_html_tree_ascii_case_equals(value, "hidden", 6);
+            break;
+        }
+    }
+    *out = result;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_tree_hidden_input(const lxa_html_token_t *token, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *out)
+{
+    return start_attribute_query(token, budget, reason, LXA_START_ATTRIBUTE_HIDDEN_INPUT, out);
+}
+
+lxa_status_t
+lxa_html_tree_font_breakout(const lxa_html_token_t *token, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *out)
+{
+    return start_attribute_query(token, budget, reason, LXA_START_ATTRIBUTE_FONT_BREAKOUT, out);
+}
 
 lxa_status_t
 lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,

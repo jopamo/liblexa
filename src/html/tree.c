@@ -132,46 +132,6 @@ body_void(lxa_span_t name)
            || named(name, "track") || named(name, "param");
 }
 
-static lxa_status_t
-hidden_input(lxa_html_tree_t *tree,
-             const lxa_html_token_t *token, bool *result)
-{
-    size_t i;
-    *result = false;
-    for (i = 0; i < token->attribute_count; ++i) {
-        lxa_span_t key = token->attributes[i].name;
-        lxa_span_t value = token->attributes[i].value;
-        static const char hidden[] = "hidden";
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (!named(key, "type")) continue;
-        *result = lxa_html_tree_ascii_case_equals(value, hidden, sizeof(hidden) - 1);
-        return LXA_OK;
-    }
-    return LXA_OK;
-}
-
-static lxa_status_t
-font_breakout(lxa_html_tree_t *tree,
-              const lxa_html_token_t *token, bool *result)
-{
-    size_t i;
-    *result = false;
-    for (i = 0; i < token->attribute_count; ++i) {
-        lxa_span_t name = token->attributes[i].name;
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (named(name, "color") || named(name, "face")
-            || named(name, "size")) {
-            *result = true;
-            return LXA_OK;
-        }
-    }
-    return LXA_OK;
-}
-
 static bool
 foreign_html_start_breakout(lxa_span_t name)
 {
@@ -3606,7 +3566,8 @@ insert_hidden_table_input(lxa_html_tree_t *tree,
     *handled = false;
     if (token->kind != LXA_HTML_START_TAG || !named(token->name, "input"))
         return LXA_OK;
-    status = hidden_input(tree, token, &hidden);
+    status = lxa_html_tree_hidden_input(token,
+        tree->nodes->budget, &tree->nodes->limit_reason, &hidden);
     if (status != LXA_OK || !hidden) return status;
     elements = formatting_elements(tree);
     boundary = formatting_boundary(tree);
@@ -3737,7 +3698,8 @@ reprocess_template_token:
                                                  ns, current, &context);
                 if (status != LXA_OK) return status;
                 if (named(token->name, "font")) {
-                    status = font_breakout(tree, token, &font);
+                    status = lxa_html_tree_font_breakout(token,
+                        tree->nodes->budget, &tree->nodes->limit_reason, &font);
                     if (status != LXA_OK) return status;
                 }
                 if (!lxa_html_foreign_integration(context)
@@ -3841,7 +3803,8 @@ reprocess_template_token:
                     }
                 }
                 if (!integrated && named(token->name, "font")) {
-                    status = font_breakout(tree, token, &font);
+                    status = lxa_html_tree_font_breakout(token,
+                        tree->nodes->budget, &tree->nodes->limit_reason, &font);
                     if (status != LXA_OK) return status;
                 }
                 if (!integrated
@@ -4981,7 +4944,8 @@ reprocess_template_token:
         if (ns != LXA_DOM_NS_HTML && !integration_owner
             && token->kind == LXA_HTML_START_TAG
             && named(token->name, "font")) {
-            status = font_breakout(tree, token, &breakout_font);
+            status = lxa_html_tree_font_breakout(token,
+                tree->nodes->budget, &tree->nodes->limit_reason, &breakout_font);
             if (status != LXA_OK) return status;
         }
         if (ns != LXA_DOM_NS_HTML
@@ -5503,7 +5467,8 @@ reprocess_body_start:
             if (tree->frameset_ok) {
                 if (named(token->name, "input")) {
                     bool hidden;
-                    status = hidden_input(tree, token, &hidden);
+                    status = lxa_html_tree_hidden_input(token,
+                        tree->nodes->budget, &tree->nodes->limit_reason, &hidden);
                     if (status != LXA_OK) return status;
                     if (!hidden) tree->frameset_ok = false;
                 }

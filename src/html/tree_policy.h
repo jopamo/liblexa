@@ -81,4 +81,14 @@ lxa_html_tree_template_column_group(lxa_html_template_mode_t mode,
     bool group_open, lxa_html_token_kind_t kind, lxa_span_t name,
     lxa_html_column_group_action_t *out);
 
+/* Query decoded, normalized start attributes in source order. Charge one WORK
+ * per visited attribute and publish only on success. Engines own dispatch.
+ */
+lxa_status_t
+lxa_html_tree_hidden_input(const lxa_html_token_t *token, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *out);
+lxa_status_t
+lxa_html_tree_font_breakout(const lxa_html_token_t *token, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, bool *out);
+
 #endif
