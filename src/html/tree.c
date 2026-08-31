@@ -5601,23 +5601,19 @@ reprocess_body_start:
     if (token->kind == LXA_HTML_END_TAG
         && (named(token->name, "body") || named(token->name, "html"))
         && tree->mode == LXA_TREE_IN_BODY) {
-        lxa_vector_t elements = tree->open_elements;
-        size_t index;
-        bool column_group;
-        status = current_html_column_group(tree, &elements, 0, &column_group);
+        const lxa_html_tree_scope_view_t view = {
+            tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+            lxa_vector_length(&tree->open_elements)
+        };
+        lxa_html_end_target_plan_t plan;
+        status = tree_scope_plan(&view, 0, literal("body"),
+            LXA_HTML_SCOPE_NORMAL, &plan);
         if (status != LXA_OK) return status;
-        if (column_group) elements.bytes.length -= sizeof(lxa_dom_ref_t);
-        status = find_scoped_end_target(tree, &elements, 0,
-            literal("body"), LXA_HTML_SCOPE_NORMAL, &index);
-        if (status == LXA_OK && column_group)
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
-                                        &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (column_group) {
+        if (plan.search_length != view.length) {
             status = pop_element(tree);
             if (status != LXA_OK) return status;
         }
-        if (index == lxa_vector_length(&elements)) return LXA_OK;
+        if (plan.index == plan.search_length) return LXA_OK;
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "body")
         && tree->mode == LXA_TREE_IN_BODY) {
