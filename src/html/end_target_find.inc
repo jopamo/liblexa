@@ -4,9 +4,43 @@
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
- * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME
+ * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
+ * LXA_TEMPLATE_CLOSE_PLAN_NAME
  * belong to the includer.
  */
+static inline lxa_status_t
+LXA_TEMPLATE_CLOSE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    bool explicit_end, bool has_patch, size_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), keep = length;
+    if (boundary > length) return LXA_ERROR_ARGUMENT;
+    if (explicit_end) {
+        size_t work;
+        lxa_status_t status = lxa_size_add(length - boundary, 1, &work);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+                LXA_BUDGET_WORK, work, LXA_SCOPE_REASON(view));
+        if (status != LXA_OK) return status;
+    }
+    if (explicit_end && has_patch) {
+        while (keep > boundary) {
+            lxa_span_t name;
+            lxa_dom_namespace_t ns;
+            lxa_status_t status = LXA_SCOPE_READ(view, keep - 1, &name, &ns);
+            if (status != LXA_OK) return status;
+            if (ns != LXA_DOM_NS_HTML
+                || !(lxa_html_tree_implied_end_tag(name)
+                    || (lxa_html_tree_table_part(name)
+                        && !lxa_html_tree_name_equals(name, "table", 5)
+                        && !lxa_html_tree_name_equals(name, "col", 3))))
+                break;
+            --keep;
+        }
+    }
+    *out = keep;
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 LXA_FOSTERED_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t start,
     bool first_cell)

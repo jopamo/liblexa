@@ -92,6 +92,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME lxa_html_control_virtual_table_suffix_search
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME lxa_html_control_virtual_table_item_search
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME lxa_html_control_template_table_start_search
+#define LXA_TEMPLATE_CLOSE_PLAN_NAME lxa_html_control_template_close_search
 #define LXA_LIST_ITEM_PLAN_NAME lxa_html_control_list_item_search
 #define LXA_SCOPE_NAMESPACE lxa_html_control_scope_namespace
 #define LXA_SCOPE_IDENTITY lxa_html_control_scope_identity
@@ -124,6 +125,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
+#undef LXA_TEMPLATE_CLOSE_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -388,6 +390,23 @@ lxa_html_control_template_table_start_plan(const lxa_html_scope_entry_t *entries
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_template_table_start_search(&view, boundary, mode, target, out);
+}
+
+/* Precharge active length + one WORK for explicit ends. For explicit patched
+ * closes, trim trailing HTML implied/table-part names before patch detachment.
+ * EOF does neither. Publish only on success; engines own all close effects.
+ */
+static inline lxa_status_t
+lxa_html_control_template_close_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, bool explicit_end, bool has_patch,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, size_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_template_close_search(&view, boundary, explicit_end, has_patch, out);
 }
 
 /* Scan through the nearest HTML table. Charge one WORK per visited entry and

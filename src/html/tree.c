@@ -983,6 +983,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME tree_virtual_table_suffix_check
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME tree_virtual_table_item_plan
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME tree_template_table_start_plan
+#define LXA_TEMPLATE_CLOSE_PLAN_NAME tree_template_close_plan
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
 #define LXA_SCOPE_NAMESPACE(view, index, ns) \
     lxa_dom_nodes_element_namespace((view)->tree->nodes, (view)->entries[index], ns)
@@ -1016,6 +1017,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
+#undef LXA_TEMPLATE_CLOSE_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -2777,36 +2779,14 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    if (explicit_end) {
-        size_t work;
-        status = lxa_size_add(elements - boundary, 1, &work);
-        if (status == LXA_OK)
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-    }
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data, elements
+    };
+    size_t keep;
+    status = tree_template_close_plan(&view, boundary, explicit_end,
+        tree->template_patch.target.handle != LXA_HANDLE_NONE, &keep);
+    if (status != LXA_OK) return status;
     if (explicit_end && tree->template_patch.target.handle != LXA_HANDLE_NONE) {
-        size_t keep = lxa_vector_length(&tree->template_elements);
-        const lxa_dom_ref_t *open =
-            (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-        while (keep > boundary) {
-            lxa_span_t name;
-            lxa_dom_namespace_t ns;
-            status = lxa_dom_nodes_element_namespace(tree->nodes,
-                open[keep - 1], &ns);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[keep - 1], &name);
-            if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML
-                || !(lxa_html_tree_implied_end_tag(name) || named(name, "caption")
-                     || named(name, "colgroup") || named(name, "tbody")
-                     || named(name, "td") || named(name, "tfoot")
-                     || named(name, "th") || named(name, "thead")
-                     || named(name, "tr")))
-                break;
-            --keep;
-        }
         status = template_pop_elements(tree, keep);
         if (status != LXA_OK) return status;
         lxa_dom_ref_t markers[] = {

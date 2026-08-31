@@ -472,6 +472,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME control_stack_virtual_table_suffix_check
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME control_stack_virtual_table_item_plan
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME control_stack_template_table_start_plan
+#define LXA_TEMPLATE_CLOSE_PLAN_NAME control_stack_template_close_plan
 #define LXA_LIST_ITEM_PLAN_NAME control_stack_list_item_plan
 #define LXA_SCOPE_NAMESPACE control_stack_namespace
 #define LXA_SCOPE_IDENTITY control_stack_identity
@@ -504,6 +505,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
+#undef LXA_TEMPLATE_CLOSE_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
@@ -749,6 +751,17 @@ lxa_html_control_stack_template_end_plan(lxa_html_control_stack_t *stack,
     if (out == NULL || !lxa_html_select_arguments_valid(kind, name))
         return LXA_ERROR_ARGUMENT;
     return control_stack_template_end_plan(&view, boundary, kind, name, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_template_close_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, bool explicit_end, bool has_patch, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_template_close_plan(&view, boundary, explicit_end, has_patch, out);
 }
 
 lxa_status_t
