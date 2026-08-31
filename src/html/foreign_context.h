@@ -89,6 +89,35 @@ lxa_html_foreign_named(lxa_span_t name, const char *text, size_t length)
         && memcmp(name.data, text, length) == 0;
 }
 
+/* Unconditional normalized-name eligibility. Callers retain integration-point
+ * dispatch and the separately budgeted font-attribute predicate.
+ */
+static inline bool
+lxa_html_foreign_html_start_breakout(lxa_span_t name)
+{
+#define LXA_FOREIGN_NAMED(text) lxa_html_foreign_named(name, text, sizeof(text) - 1)
+    return LXA_FOREIGN_NAMED("p") || LXA_FOREIGN_NAMED("div")
+        || LXA_FOREIGN_NAMED("head") || LXA_FOREIGN_NAMED("body") || LXA_FOREIGN_NAMED("span")
+        || LXA_FOREIGN_NAMED("br") || LXA_FOREIGN_NAMED("img")
+        || LXA_FOREIGN_NAMED("embed") || LXA_FOREIGN_NAMED("meta")
+        || LXA_FOREIGN_NAMED("hr") || LXA_FOREIGN_NAMED("ul")
+        || LXA_FOREIGN_NAMED("ol") || LXA_FOREIGN_NAMED("menu")
+        || LXA_FOREIGN_NAMED("li") || LXA_FOREIGN_NAMED("ruby")
+        || LXA_FOREIGN_NAMED("pre") || LXA_FOREIGN_NAMED("listing")
+        || LXA_FOREIGN_NAMED("blockquote") || LXA_FOREIGN_NAMED("center")
+        || LXA_FOREIGN_NAMED("dl") || LXA_FOREIGN_NAMED("dt")
+        || LXA_FOREIGN_NAMED("dd") || LXA_FOREIGN_NAMED("table")
+        || lxa_html_tree_heading(name) || LXA_FOREIGN_NAMED("b")
+        || LXA_FOREIGN_NAMED("em") || LXA_FOREIGN_NAMED("strong")
+        || LXA_FOREIGN_NAMED("i") || LXA_FOREIGN_NAMED("sub")
+        || LXA_FOREIGN_NAMED("sup") || LXA_FOREIGN_NAMED("big")
+        || LXA_FOREIGN_NAMED("small") || LXA_FOREIGN_NAMED("s")
+        || LXA_FOREIGN_NAMED("strike") || LXA_FOREIGN_NAMED("tt")
+        || LXA_FOREIGN_NAMED("u") || LXA_FOREIGN_NAMED("var")
+        || LXA_FOREIGN_NAMED("nobr") || LXA_FOREIGN_NAMED("code");
+#undef LXA_FOREIGN_NAMED
+}
+
 static inline lxa_html_foreign_context_t
 lxa_html_foreign_context(lxa_dom_namespace_t ns, lxa_span_t name,
                          bool annotation_html)

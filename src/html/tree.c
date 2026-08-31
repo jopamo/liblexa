@@ -133,30 +133,6 @@ body_void(lxa_span_t name)
 }
 
 static bool
-foreign_html_start_breakout(lxa_span_t name)
-{
-    return named(name, "p") || named(name, "div")
-        || named(name, "head") || named(name, "body") || named(name, "span")
-        || named(name, "br") || named(name, "img")
-        || named(name, "embed") || named(name, "meta")
-        || named(name, "hr") || named(name, "ul")
-        || named(name, "ol") || named(name, "menu")
-        || named(name, "li") || named(name, "ruby")
-        || named(name, "pre") || named(name, "listing")
-        || named(name, "blockquote") || named(name, "center")
-        || named(name, "dl") || named(name, "dt")
-        || named(name, "dd") || named(name, "table")
-        || lxa_html_tree_heading(name) || named(name, "b")
-        || named(name, "em") || named(name, "strong")
-        || named(name, "i") || named(name, "sub")
-        || named(name, "sup") || named(name, "big")
-        || named(name, "small") || named(name, "s")
-        || named(name, "strike") || named(name, "tt")
-        || named(name, "u") || named(name, "var")
-        || named(name, "nobr") || named(name, "code");
-}
-
-static bool
 space_only(lxa_span_t data)
 {
     for (size_t i = 0; i < data.length; ++i)
@@ -3703,7 +3679,7 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
                 if (!lxa_html_foreign_integration(context)
-                    && (foreign_html_start_breakout(token->name) || font)) {
+                    && (lxa_html_foreign_html_start_breakout(token->name) || font)) {
                     size_t keep;
                     status = plan_foreign_breakout(tree,
                         &tree->template_elements, template_boundary(tree),
@@ -3808,7 +3784,7 @@ reprocess_template_token:
                     if (status != LXA_OK) return status;
                 }
                 if (!integrated
-                    && (foreign_html_start_breakout(token->name) || font)) {
+                    && (lxa_html_foreign_html_start_breakout(token->name) || font)) {
                     size_t keep;
                     status = plan_foreign_breakout(tree,
                         &tree->template_elements, template_boundary(tree),
@@ -4953,7 +4929,7 @@ reprocess_template_token:
                  && (named(token->name, "br")
                      || named(token->name, "p")))
                 || (!integration_owner && token->kind == LXA_HTML_START_TAG
-                    && (foreign_html_start_breakout(token->name)
+                    && (lxa_html_foreign_html_start_breakout(token->name)
                         || breakout_font)))) {
             /* An HTML breakout closes foreign open elements and reprocesses
              * the token in body mode. Preflight the scan and node admission
