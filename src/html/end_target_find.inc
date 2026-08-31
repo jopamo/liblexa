@@ -5,7 +5,7 @@
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
  * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
- * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME
+ * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME, LXA_FORM_END_PLAN_NAME
  * belong to the includer.
  */
 static inline lxa_status_t
@@ -852,6 +852,32 @@ LXA_TABLE_CONTEXT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             }
             break;
         }
+    }
+    *out = plan;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_FORM_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, uint64_t identity,
+    lxa_html_form_end_plan_t *out)
+{
+    bool column_group;
+    lxa_status_t status = LXA_COLUMN_GROUP_NAME(view, 0, &column_group);
+    if (status != LXA_OK) return status;
+    LXA_SCOPE_VIEW search = *view;
+    if (column_group) --LXA_SCOPE_LENGTH(&search);
+    size_t length = LXA_SCOPE_LENGTH(&search), index = length;
+    if (identity != 0)
+        status = LXA_SCOPED_REFERENCE_NAME(&search, 0, identity, &index);
+    if (status == LXA_OK && column_group)
+        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+    if (status != LXA_OK) return status;
+    lxa_html_form_end_plan_t plan = {length, index, index != length};
+    if (plan.found) {
+        status = LXA_IMPLIED_PLAN_NAME(&search, index + 1,
+            (lxa_span_t){NULL, 0}, &plan.keep);
+        if (status != LXA_OK) return status;
     }
     *out = plan;
     return LXA_OK;

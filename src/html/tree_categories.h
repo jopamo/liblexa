@@ -37,6 +37,11 @@ typedef struct {
     bool in_table;
 } lxa_html_table_context_plan_t;
 
+typedef struct {
+    size_t keep, index;
+    bool found; /* clear the form owner before pops only when found */
+} lxa_html_form_end_plan_t;
+
 typedef enum {
     LXA_HTML_TEMPLATE_END_CONTINUE, LXA_HTML_TEMPLATE_END_IGNORE,
     LXA_HTML_TEMPLATE_END_POP_TABLE, LXA_HTML_TEMPLATE_END_POP_MARKER
