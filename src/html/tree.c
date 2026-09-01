@@ -104,34 +104,6 @@ foreign_breakout_boundary(lxa_html_tree_t *tree, lxa_dom_ref_t element,
     return status;
 }
 
-static bool
-space_only(lxa_span_t data)
-{
-    for (size_t i = 0; i < data.length; ++i)
-        if (!lxa_html_byte_tree_space(data.data[i])) return false;
-    return true;
-}
-
-static bool
-null_only(lxa_span_t data)
-{
-    for (size_t i = 0; i < data.length; ++i)
-        if (data.data[i] != 0) return false;
-    return true;
-}
-
-static bool
-null_or_space_only(lxa_span_t data)
-{
-    size_t i;
-    for (i = 0; i < data.length; ++i) {
-        uint8_t c = data.data[i];
-        if (!lxa_html_byte_tree_space(c) && c != 0)
-            return false;
-    }
-    return true;
-}
-
 static lxa_status_t
 ensure_element(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
                const char *name, lxa_dom_ref_t *slot)
@@ -1608,7 +1580,7 @@ flush_table_text(lxa_html_tree_t *tree)
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if (null_or_space_only(bytes)) {
+    if (lxa_html_tree_null_or_space_only(bytes)) {
         status = append_character(tree, current_element(tree),
                                   LXA_DOM_KIND_TEXT, bytes);
     }
@@ -1707,7 +1679,7 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             if (status != LXA_OK) return status;
             /* Pending nonspace closes colgroup at flush. Otherwise preserve
              * whitespace there and reprocess NUL after the pop. */
-            if (column_group && space_only((lxa_span_t) {
+            if (column_group && lxa_html_tree_space_only((lxa_span_t) {
                     tree->table_text.data, tree->table_text.length
                 })) {
                 status = tree->mode == LXA_TREE_TEMPLATE_TEXT
@@ -1880,7 +1852,7 @@ consume_foreign(lxa_html_tree_t *tree,
         return append_comment_or_pi(tree, current_element(tree), token);
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (token->kind == LXA_HTML_TEXT) {
-        if (tree->frameset_ok && !null_or_space_only(token->data))
+        if (tree->frameset_ok && !lxa_html_tree_null_or_space_only(token->data))
             tree->frameset_ok = false;
         return insert_data_text(tree, current_element(tree), token->data,
                                 true, false);
@@ -2865,7 +2837,7 @@ flush_template_table_text(lxa_html_tree_t *tree)
     status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
                                 bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
-    if (null_or_space_only(bytes)) {
+    if (lxa_html_tree_null_or_space_only(bytes)) {
         status = append_character(tree, template_parent(tree),
                                    LXA_DOM_KIND_TEXT, bytes);
     }
@@ -3518,7 +3490,7 @@ consume(lxa_html_tree_t *tree,
         if (token->kind == LXA_HTML_COMMENT
             || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
             return append_comment_or_pi(tree, tree->document, token);
-        if (token->kind == LXA_HTML_TEXT && space_only(token->data))
+        if (token->kind == LXA_HTML_TEXT && lxa_html_tree_space_only(token->data))
             return LXA_OK;
         if (token->kind != LXA_HTML_DOCTYPE) {
             tree->document_mode = LXA_HTML_QUIRKS;
@@ -3569,7 +3541,7 @@ reprocess_template_token:
                 if (!integrated)
                     return insert_data_text(tree, template_parent(tree),
                                             token->data, true, false);
-                if (null_only(token->data))
+                if (lxa_html_tree_null_only(token->data))
                     return LXA_OK;
                 status = reconstruct_formatting(tree);
                 return status == LXA_OK
@@ -4348,7 +4320,7 @@ reprocess_template_token:
             && named(token->name, "template"))
             return begin_template(tree, token);
         if (token->kind == LXA_HTML_TEXT) {
-            if (null_only(token->data))
+            if (lxa_html_tree_null_only(token->data))
                 return LXA_OK;
             if (tree->template_fragment.handle == LXA_HANDLE_NONE)
                 return LXA_ERROR_INTERNAL;
@@ -4891,15 +4863,16 @@ reprocess_template_token:
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (tree->mode == LXA_TREE_AFTER_BODY
         || tree->mode == LXA_TREE_AFTER_HTML) {
-        if (token->kind == LXA_HTML_TEXT && space_only(token->data)) {
+        lxa_html_after_body_action_t action;
+        status = lxa_html_tree_after_body_action(token, &action);
+        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_AFTER_BODY_SPACE_TEXT) {
             status = reconstruct_formatting(tree);
             if (status != LXA_OK) return status;
             return insert_data_text(tree, current_element(tree), token->data,
                                     false, false);
         }
-        /* An html start uses body rules without leaving the current mode. */
-        if (token->kind != LXA_HTML_START_TAG
-            || !named(token->name, "html"))
+        if (action == LXA_HTML_AFTER_BODY_REPROCESS)
             tree->mode = LXA_TREE_IN_BODY;
     }
     if (token->kind == LXA_HTML_END_TAG
@@ -5646,7 +5619,7 @@ reprocess_body_start:
         status = ensure_body(tree);
         if (status != LXA_OK) return status;
         tree->mode = LXA_TREE_IN_BODY;
-        if (tree->frameset_ok && !null_or_space_only(token->data))
+        if (tree->frameset_ok && !lxa_html_tree_null_or_space_only(token->data))
             tree->frameset_ok = false;
         if (lxa_vector_length(&tree->open_elements) > 1) {
             lxa_span_t top;
@@ -5657,7 +5630,7 @@ reprocess_body_start:
                 return insert_data_text(tree, current_element(tree),
                                         token->data, false, true);
         }
-        if (null_only(token->data))
+        if (lxa_html_tree_null_only(token->data))
             return LXA_OK;
         status = reconstruct_formatting(tree);
         if (status != LXA_OK) return status;

@@ -2,8 +2,30 @@
 #include "html/tree_policy.h"
 #include "html/tree_categories.h"
 #include "html/formatting_policy.h"
-#include "html/tokenizer_classes.h"
 #include "html-tags.h"
+
+lxa_status_t
+lxa_html_tree_after_body_action(const lxa_html_token_t *token,
+    lxa_html_after_body_action_t *out)
+{
+    if (token == NULL || out == NULL
+        || (unsigned) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
+        || token->kind == LXA_HTML_EOF || token->kind == LXA_HTML_COMMENT
+        || token->kind == LXA_HTML_PROCESSING_INSTRUCTION || token->kind == LXA_HTML_DOCTYPE
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && (token->name.data == NULL || token->name.length == 0))
+        || (token->kind == LXA_HTML_TEXT
+            && token->data.length != 0 && token->data.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_after_body_action_t action = LXA_HTML_AFTER_BODY_REPROCESS;
+    if (token->kind == LXA_HTML_TEXT && lxa_html_tree_space_only(token->data))
+        action = LXA_HTML_AFTER_BODY_SPACE_TEXT;
+    else if (token->kind == LXA_HTML_START_TAG
+        && lxa_html_tree_name_equals(token->name, "html", 4))
+        action = LXA_HTML_AFTER_BODY_HTML_START;
+    *out = action;
+    return LXA_OK;
+}
 
 lxa_status_t
 lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,

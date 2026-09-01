@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include "html/tokenizer.h"
+#include "html/tokenizer_classes.h"
 #include "dom/namespace.h"
 
 typedef enum {
@@ -21,6 +22,35 @@ typedef enum {
     LXA_TREE_TEXT, LXA_TREE_AFTER_BODY, LXA_TREE_AFTER_HTML, LXA_TREE_DONE,
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
+
+/* These predicates borrow an already validated text span. */
+static inline bool
+lxa_html_tree_space_only(lxa_span_t data)
+{
+    for (size_t i = 0; i < data.length; ++i)
+        if (!lxa_html_byte_tree_space(data.data[i])) return false;
+    return true;
+}
+
+static inline bool
+lxa_html_tree_null_only(lxa_span_t data)
+{
+    for (size_t i = 0; i < data.length; ++i)
+        if (data.data[i] != 0) return false;
+    return true;
+}
+
+static inline bool
+lxa_html_tree_null_or_space_only(lxa_span_t data)
+{
+    size_t i;
+    for (i = 0; i < data.length; ++i) {
+        uint8_t c = data.data[i];
+        if (!lxa_html_byte_tree_space(c) && c != 0)
+            return false;
+    }
+    return true;
+}
 
 static inline bool
 lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
@@ -142,5 +172,17 @@ typedef enum {
 lxa_status_t
 lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_prebody_end_action_t *out);
+
+typedef enum {
+    LXA_HTML_AFTER_BODY_SPACE_TEXT, LXA_HTML_AFTER_BODY_HTML_START,
+    LXA_HTML_AFTER_BODY_REPROCESS
+} lxa_html_after_body_action_t;
+
+/* Apply after-body/after-html dispatch after earlier EOF, foreign, comment and
+ * DOCTYPE rules. Engines retain reconstruction, text insertion and mode changes.
+ */
+lxa_status_t
+lxa_html_tree_after_body_action(const lxa_html_token_t *token,
+    lxa_html_after_body_action_t *out);
 
 #endif
