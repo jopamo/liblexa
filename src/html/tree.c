@@ -4904,27 +4904,27 @@ reprocess_template_token:
     }
     if (token->kind == LXA_HTML_END_TAG
         && (tree->mode == LXA_TREE_BEFORE_HTML
-            || tree->mode == LXA_TREE_BEFORE_HEAD)) {
-        if (!named(token->name, "head") && !named(token->name, "body")
-            && !named(token->name, "html") && !named(token->name, "br"))
-            return LXA_OK;
-        if (tree->mode == LXA_TREE_BEFORE_HTML) {
+            || tree->mode == LXA_TREE_BEFORE_HEAD
+            || tree->mode == LXA_TREE_AFTER_HEAD)) {
+        lxa_html_prebody_end_action_t action;
+        status = lxa_html_tree_prebody_end_action(tree->mode, token->name, &action);
+        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_PREBODY_END_IGNORE) return LXA_OK;
+        if (action == LXA_HTML_PREBODY_END_HTML_HEAD) {
             status = ensure_html(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_BEFORE_HEAD;
         }
-        status = ensure_head(tree);
-        if (status != LXA_OK) return status;
-        tree->mode = LXA_TREE_IN_HEAD;
-    }
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_AFTER_HEAD) {
-        if (!named(token->name, "body") && !named(token->name, "html")
-            && !named(token->name, "br"))
-            return LXA_OK;
-        status = ensure_body(tree);
-        if (status != LXA_OK) return status;
-        tree->mode = LXA_TREE_IN_BODY;
+        if (action == LXA_HTML_PREBODY_END_BODY) {
+            status = ensure_body(tree);
+            if (status != LXA_OK) return status;
+            tree->mode = LXA_TREE_IN_BODY;
+        }
+        else {
+            status = ensure_head(tree);
+            if (status != LXA_OK) return status;
+            tree->mode = LXA_TREE_IN_HEAD;
+        }
     }
     if (tree->mode == LXA_TREE_IN_BODY
         && token->kind == LXA_HTML_END_TAG

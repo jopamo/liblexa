@@ -6,6 +6,28 @@
 #include "html-tags.h"
 
 lxa_status_t
+lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,
+    lxa_span_t name, lxa_html_prebody_end_action_t *out)
+{
+    if (out == NULL || name.data == NULL || name.length == 0
+        || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
+            && mode != LXA_TREE_AFTER_HEAD))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_prebody_end_action_t action = LXA_HTML_PREBODY_END_IGNORE;
+    if (lxa_html_tree_name_equals(name, "body", 4)
+        || lxa_html_tree_name_equals(name, "html", 4)
+        || lxa_html_tree_name_equals(name, "br", 2)
+        || (mode != LXA_TREE_AFTER_HEAD
+            && lxa_html_tree_name_equals(name, "head", 4))) {
+        action = mode == LXA_TREE_BEFORE_HTML ? LXA_HTML_PREBODY_END_HTML_HEAD
+            : mode == LXA_TREE_BEFORE_HEAD ? LXA_HTML_PREBODY_END_HEAD
+            : LXA_HTML_PREBODY_END_BODY;
+    }
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
     lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out)
 {

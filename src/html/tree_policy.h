@@ -131,4 +131,16 @@ lxa_status_t
 lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
     lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out);
 
+typedef enum {
+    LXA_HTML_PREBODY_END_IGNORE, LXA_HTML_PREBODY_END_HTML_HEAD,
+    LXA_HTML_PREBODY_END_HEAD, LXA_HTML_PREBODY_END_BODY
+} lxa_html_prebody_end_action_t;
+
+/* Classify accepted end tags before html/head or after head. Engines construct
+ * missing elements and publish each intermediate mode only after admission.
+ */
+lxa_status_t
+lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,
+    lxa_span_t name, lxa_html_prebody_end_action_t *out);
+
 #endif
