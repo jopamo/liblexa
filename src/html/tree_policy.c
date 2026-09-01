@@ -6,6 +6,46 @@
 #include "html-tags.h"
 
 lxa_status_t
+lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
+    lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out)
+{
+    if (out == NULL
+        || (mode != LXA_TREE_IN_FRAMESET && mode != LXA_TREE_AFTER_FRAMESET
+            && mode != LXA_TREE_AFTER_AFTER_FRAMESET)
+        || (unsigned) kind > LXA_HTML_PROCESSING_INSTRUCTION
+        || ((kind == LXA_HTML_START_TAG || kind == LXA_HTML_END_TAG)
+            && (name.data == NULL || name.length == 0)))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_frameset_action_t action = LXA_HTML_FRAMESET_IGNORE;
+    if (kind == LXA_HTML_EOF) action = LXA_HTML_FRAMESET_EOF;
+    else if (kind == LXA_HTML_COMMENT || kind == LXA_HTML_PROCESSING_INSTRUCTION)
+        action = LXA_HTML_FRAMESET_COMMENT;
+    else if (kind == LXA_HTML_TEXT) action = LXA_HTML_FRAMESET_TEXT;
+    else if (kind == LXA_HTML_START_TAG) {
+        if (lxa_html_tree_name_equals(name, "html", 4))
+            action = LXA_HTML_FRAMESET_HTML_START;
+        else if (lxa_html_tree_name_equals(name, "noframes", 8))
+            action = LXA_HTML_FRAMESET_NOFRAMES_START;
+        else if (mode == LXA_TREE_IN_FRAMESET) {
+            if (lxa_html_tree_name_equals(name, "frameset", 8))
+                action = LXA_HTML_FRAMESET_START;
+            else if (lxa_html_tree_name_equals(name, "frame", 5))
+                action = LXA_HTML_FRAMESET_FRAME_START;
+        }
+    }
+    else if (kind == LXA_HTML_END_TAG) {
+        if (mode == LXA_TREE_IN_FRAMESET
+            && lxa_html_tree_name_equals(name, "frameset", 8))
+            action = LXA_HTML_FRAMESET_END;
+        else if (mode != LXA_TREE_IN_FRAMESET
+            && lxa_html_tree_name_equals(name, "html", 4))
+            action = LXA_HTML_FRAMESET_HTML_END;
+    }
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
     lxa_budget_t *budget, lxa_limit_reason_t *reason,
     lxa_html_head_noscript_plan_t *out)

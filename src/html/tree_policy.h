@@ -14,6 +14,14 @@ typedef enum {
     LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;
 
+typedef enum {
+    LXA_TREE_INITIAL, LXA_TREE_BEFORE_HTML, LXA_TREE_BEFORE_HEAD,
+    LXA_TREE_IN_HEAD, LXA_TREE_HEAD_NOSCRIPT, LXA_TREE_TEMPLATE_TEXT,
+    LXA_TREE_AFTER_HEAD, LXA_TREE_IN_BODY,
+    LXA_TREE_TEXT, LXA_TREE_AFTER_BODY, LXA_TREE_AFTER_HTML, LXA_TREE_DONE,
+    LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
+} lxa_html_root_mode_t;
+
 static inline bool
 lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
 {
@@ -108,5 +116,19 @@ lxa_status_t
 lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
     lxa_budget_t *budget, lxa_limit_reason_t *reason,
     lxa_html_head_noscript_plan_t *out);
+
+typedef enum {
+    LXA_HTML_FRAMESET_IGNORE, LXA_HTML_FRAMESET_EOF, LXA_HTML_FRAMESET_COMMENT,
+    LXA_HTML_FRAMESET_HTML_START, LXA_HTML_FRAMESET_TEXT,
+    LXA_HTML_FRAMESET_NOFRAMES_START, LXA_HTML_FRAMESET_HTML_END,
+    LXA_HTML_FRAMESET_START, LXA_HTML_FRAMESET_FRAME_START, LXA_HTML_FRAMESET_END
+} lxa_html_frameset_action_t;
+
+/* Classify frameset-family dispatch without quota charges or effects. Engines
+ * retain destination selection, text filtering, admission and mode publication.
+ */
+lxa_status_t
+lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
+    lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out);
 
 #endif

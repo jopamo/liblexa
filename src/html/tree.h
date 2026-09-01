@@ -15,14 +15,6 @@
  * The first failure is latched. Successful EOF completes construction and
  * subsequent tokens are rejected. No fragment-context or script-execution API.
  */
-typedef enum {
-    LXA_TREE_INITIAL, LXA_TREE_BEFORE_HTML, LXA_TREE_BEFORE_HEAD,
-    LXA_TREE_IN_HEAD, LXA_TREE_HEAD_NOSCRIPT, LXA_TREE_TEMPLATE_TEXT,
-    LXA_TREE_AFTER_HEAD, LXA_TREE_IN_BODY,
-    LXA_TREE_TEXT, LXA_TREE_AFTER_BODY, LXA_TREE_AFTER_HTML, LXA_TREE_DONE,
-    LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
-} lxa_html_root_mode_t;
-
 typedef struct {
     lxa_dom_ref_t fragment;
     lxa_dom_content_patch_t patch;

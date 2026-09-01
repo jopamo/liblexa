@@ -4733,7 +4733,11 @@ reprocess_template_token:
     if (tree->mode == LXA_TREE_IN_FRAMESET
         || tree->mode == LXA_TREE_AFTER_FRAMESET
         || tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET) {
-        if (token->kind == LXA_HTML_EOF) {
+        lxa_html_frameset_action_t action;
+        status = lxa_html_tree_frameset_action(tree->mode, token->kind,
+            token->name, &action);
+        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_FRAMESET_EOF) {
             status = pop_elements(tree, &tree->open_elements, 0);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_DONE;
@@ -4743,55 +4747,49 @@ reprocess_template_token:
                  ? current_element(tree)
                  : tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
                    ? formatting_parent(tree) : tree->html;
-        if (token->kind == LXA_HTML_COMMENT
-            || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
+        if (action == LXA_HTML_FRAMESET_COMMENT)
             return append_comment_or_pi(tree,
                 tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
                     ? tree->document : parent, token);
-        if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "html"))
+        if (action == LXA_HTML_FRAMESET_IGNORE) return LXA_OK;
+        if (action == LXA_HTML_FRAMESET_HTML_START)
             return apply_attributes(tree, tree->html, token);
-        if (token->kind == LXA_HTML_TEXT)
+        if (action == LXA_HTML_FRAMESET_TEXT)
             return append_space_text(tree, parent, token->data,
                 tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET);
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "noframes")) {
+        if (action == LXA_HTML_FRAMESET_NOFRAMES_START) {
             status = lxa_budget_check(tree->nodes->budget,
                 LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             return status == LXA_OK
                 ? begin_text_element(tree, tokenizer,
                     parent, token, LXA_HTML_RAWTEXT) : status;
         }
-        if (tree->mode != LXA_TREE_IN_FRAMESET) {
-            if (token->kind == LXA_HTML_END_TAG && named(token->name, "html"))
-                tree->mode = LXA_TREE_AFTER_AFTER_FRAMESET;
+        if (action == LXA_HTML_FRAMESET_HTML_END) {
+            tree->mode = LXA_TREE_AFTER_AFTER_FRAMESET;
             return LXA_OK;
         }
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "frameset")) {
+        if (action == LXA_HTML_FRAMESET_START) {
             status = reserve_open_elements(tree, 1);
             if (status == LXA_OK)
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             return status == LXA_OK ? open_container(tree, token) : status;
         }
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "frame")) {
+        if (action == LXA_HTML_FRAMESET_FRAME_START) {
             status = lxa_budget_check(tree->nodes->budget,
                 LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             return status == LXA_OK
                 ? append_void(tree, current_element(tree), token) : status;
         }
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "frameset")) {
+        if (action == LXA_HTML_FRAMESET_END) {
             status = pop_element(tree);
             if (status != LXA_OK) return status;
             if (lxa_vector_length(&tree->open_elements) == 0)
                 tree->mode = LXA_TREE_AFTER_FRAMESET;
             return LXA_OK;
         }
-        return LXA_OK;
+        assert(false);
+        return LXA_ERROR_INTERNAL;
     }
     if (token->kind == LXA_HTML_EOF) {
         status = ensure_body(tree);
