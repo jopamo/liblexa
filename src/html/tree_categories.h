@@ -288,6 +288,87 @@ lxa_html_tree_ruby_annotation(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "rt") || LXA_CONTAINER_NAMED(name, "rp");
 }
 
+static inline bool
+lxa_html_tree_container_reconstructs(lxa_span_t name)
+{
+    return !lxa_html_tree_ruby_annotation(name)
+        && (lxa_html_tree_inline_container(name) || !lxa_html_tree_simple_container(name)
+           || LXA_CONTAINER_NAMED(name, "noscript") || LXA_CONTAINER_NAMED(name, "button")
+           || lxa_html_tree_select_container(name));
+}
+
+static inline bool
+lxa_html_tree_head_void(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "base") || LXA_CONTAINER_NAMED(name, "basefont")
+           || LXA_CONTAINER_NAMED(name, "bgsound") || LXA_CONTAINER_NAMED(name, "link")
+           || LXA_CONTAINER_NAMED(name, "meta");
+}
+
+static inline bool
+lxa_html_tree_body_void(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "br") || LXA_CONTAINER_NAMED(name, "img")
+           || LXA_CONTAINER_NAMED(name, "input") || LXA_CONTAINER_NAMED(name, "keygen")
+           || LXA_CONTAINER_NAMED(name, "hr")
+           || LXA_CONTAINER_NAMED(name, "wbr") || LXA_CONTAINER_NAMED(name, "area")
+           || LXA_CONTAINER_NAMED(name, "embed") || LXA_CONTAINER_NAMED(name, "source")
+           || LXA_CONTAINER_NAMED(name, "track") || LXA_CONTAINER_NAMED(name, "param");
+}
+
+static inline bool
+lxa_html_tree_body_control_start(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "html") || LXA_CONTAINER_NAMED(name, "head")
+        || LXA_CONTAINER_NAMED(name, "body")
+        || LXA_CONTAINER_NAMED(name, "frameset") || LXA_CONTAINER_NAMED(name, "frame");
+}
+
+static inline bool
+lxa_html_tree_template_paragraph_container(lxa_span_t name)
+{
+    return (lxa_html_tree_block_container(name) && !LXA_CONTAINER_NAMED(name, "button"))
+        || LXA_CONTAINER_NAMED(name, "p") || lxa_html_tree_heading(name);
+}
+
+static inline bool
+lxa_html_tree_template_marker_container(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "object") || LXA_CONTAINER_NAMED(name, "marquee")
+        || LXA_CONTAINER_NAMED(name, "applet");
+}
+
+static inline bool
+lxa_html_tree_template_list_item(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "li") || LXA_CONTAINER_NAMED(name, "dt")
+        || LXA_CONTAINER_NAMED(name, "dd");
+}
+
+static inline bool
+lxa_html_tree_template_scoped_end(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "p") || lxa_html_tree_template_list_item(name)
+        || LXA_CONTAINER_NAMED(name, "form") || lxa_html_tree_block_container(name)
+        || lxa_html_tree_heading(name);
+}
+
+static inline bool
+lxa_html_tree_template_ordinary_end(lxa_span_t name)
+{
+    if (lxa_html_tree_block_container(name) || lxa_html_tree_heading(name)
+        || lxa_html_tree_table_part(name)
+        || lxa_html_tree_template_marker_container(name)
+        || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "li")
+        || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "select") || LXA_CONTAINER_NAMED(name, "form")
+        || LXA_CONTAINER_NAMED(name, "template") || LXA_CONTAINER_NAMED(name, "body")
+        || LXA_CONTAINER_NAMED(name, "html")
+        || LXA_CONTAINER_NAMED(name, "br"))
+        return false;
+    return !lxa_html_tree_formatting_tag(name);
+}
+
 #undef LXA_CONTAINER_NAMED
 
 #endif
