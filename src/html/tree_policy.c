@@ -2,7 +2,57 @@
 #include "html/tree_policy.h"
 #include "html/tree_categories.h"
 #include "html/formatting_policy.h"
+#include "html/tokenizer_classes.h"
 #include "html-tags.h"
+
+lxa_status_t
+lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_head_noscript_plan_t *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (token == NULL || budget == NULL || out == NULL
+        || (unsigned) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
+        || token->kind == LXA_HTML_EOF
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && (token->name.data == NULL || token->name.length == 0))
+        || (token->kind == LXA_HTML_TEXT
+            && token->data.length != 0 && token->data.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_head_noscript_plan_t plan = {LXA_HTML_HEAD_NOSCRIPT_REPROCESS, 0};
+    if (token->kind == LXA_HTML_END_TAG) {
+        if (lxa_html_tree_name_equals(token->name, "noscript", 8))
+            plan.action = LXA_HTML_HEAD_NOSCRIPT_CLOSE;
+        else if (!lxa_html_tree_name_equals(token->name, "br", 2))
+            plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
+    }
+    else if (token->kind == LXA_HTML_START_TAG) {
+        if (lxa_html_tree_name_equals(token->name, "head", 4)
+            || lxa_html_tree_name_equals(token->name, "noscript", 8))
+            plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
+        else if (lxa_html_tree_name_equals(token->name, "html", 4)
+            || lxa_html_tree_name_equals(token->name, "basefont", 8)
+            || lxa_html_tree_name_equals(token->name, "bgsound", 7)
+            || lxa_html_tree_name_equals(token->name, "link", 4)
+            || lxa_html_tree_name_equals(token->name, "meta", 4)
+            || lxa_html_tree_name_equals(token->name, "style", 5)
+            || lxa_html_tree_name_equals(token->name, "noframes", 8))
+            plan.action = LXA_HTML_HEAD_NOSCRIPT_CONTINUE;
+    }
+    else if (token->kind == LXA_HTML_TEXT) {
+        while (plan.space_prefix < token->data.length
+            && lxa_html_byte_tree_space(token->data.data[plan.space_prefix]))
+            ++plan.space_prefix;
+        lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+            plan.space_prefix + (plan.space_prefix < token->data.length), reason);
+        if (status != LXA_OK) return status;
+        if (plan.space_prefix != 0 && plan.space_prefix == token->data.length)
+            plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
+    }
+    else plan.action = LXA_HTML_HEAD_NOSCRIPT_CONTINUE;
+    *out = plan;
+    return LXA_OK;
+}
 
 typedef enum {
     LXA_START_ATTRIBUTE_HIDDEN_INPUT, LXA_START_ATTRIBUTE_FONT_BREAKOUT

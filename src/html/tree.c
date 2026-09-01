@@ -4816,57 +4816,26 @@ reprocess_template_token:
         return LXA_OK;
     }
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "noscript")) {
-            tree->head_noscript = (lxa_dom_ref_t){0};
-            tree->mode = LXA_TREE_IN_HEAD;
-            return LXA_OK;
-        }
-        if (token->kind == LXA_HTML_END_TAG && !named(token->name, "br"))
-            return LXA_OK;
-        if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "head")
-                || named(token->name, "noscript")))
-            return LXA_OK;
-        if (token->kind == LXA_HTML_TEXT) {
-            size_t prefix = 0;
-            while (prefix < token->data.length) {
-                uint8_t c = token->data.data[prefix];
-                if (c != ' ' && c != '\n' && c != '\r'
-                    && c != '\t' && c != '\f') break;
-                ++prefix;
-            }
-            status = lxa_budget_charge(tree->nodes->budget,
-                LXA_BUDGET_WORK,
-                prefix < token->data.length ? prefix + 1 : prefix,
-                &tree->nodes->limit_reason);
+        lxa_html_head_noscript_plan_t plan;
+        status = lxa_html_tree_head_noscript_plan(token, tree->nodes->budget,
+            &tree->nodes->limit_reason, &plan);
+        if (status != LXA_OK) return status;
+        if (plan.space_prefix != 0) {
+            status = append_character(tree, tree->head_noscript,
+                LXA_DOM_KIND_TEXT, (lxa_span_t){token->data.data, plan.space_prefix});
             if (status != LXA_OK) return status;
-            if (prefix != 0) {
-                lxa_span_t spaces = {token->data.data, prefix};
-                status = append_character(tree, tree->head_noscript,
-                                           LXA_DOM_KIND_TEXT, spaces);
-                if (status != LXA_OK) return status;
-                if (prefix == token->data.length) return LXA_OK;
-                adjusted = *token;
-                adjusted.data.data += prefix;
-                adjusted.data.length -= prefix;
-                token = &adjusted;
-            }
+            if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE) return LXA_OK;
+            adjusted = *token;
+            adjusted.data.data += plan.space_prefix;
+            adjusted.data.length -= plan.space_prefix;
+            token = &adjusted;
         }
-        if (token->kind != LXA_HTML_COMMENT
-            && token->kind != LXA_HTML_PROCESSING_INSTRUCTION
-            && token->kind != LXA_HTML_DOCTYPE
-            && !(token->kind == LXA_HTML_START_TAG
-                 && (named(token->name, "html")
-                     || named(token->name, "basefont")
-                     || named(token->name, "bgsound")
-                     || named(token->name, "link")
-                     || named(token->name, "meta")
-                     || named(token->name, "style")
-                     || named(token->name, "noframes")))) {
-            /* Anything else closes noscript and is reprocessed in head. */
+        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE) return LXA_OK;
+        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE
+            || plan.action == LXA_HTML_HEAD_NOSCRIPT_REPROCESS) {
             tree->head_noscript = (lxa_dom_ref_t){0};
             tree->mode = LXA_TREE_IN_HEAD;
+            if (plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE) return LXA_OK;
         }
     }
     if (token->kind == LXA_HTML_START_TAG

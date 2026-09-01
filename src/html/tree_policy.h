@@ -91,4 +91,22 @@ lxa_status_t
 lxa_html_tree_font_breakout(const lxa_html_token_t *token, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, bool *out);
 
+typedef enum {
+    LXA_HTML_HEAD_NOSCRIPT_CONTINUE, LXA_HTML_HEAD_NOSCRIPT_IGNORE,
+    LXA_HTML_HEAD_NOSCRIPT_CLOSE, LXA_HTML_HEAD_NOSCRIPT_REPROCESS
+} lxa_html_head_noscript_action_t;
+
+typedef struct {
+    lxa_html_head_noscript_action_t action;
+    size_t space_prefix;
+} lxa_html_head_noscript_plan_t;
+
+/* Plan accepted head-noscript tokens after EOF/text-mode dispatch. Charge the
+ * text prefix scan before effects; engines insert spaces and publish mode.
+ */
+lxa_status_t
+lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_head_noscript_plan_t *out);
+
 #endif
