@@ -54,6 +54,20 @@ lxa_html_tree_mode_has_template(lxa_html_root_mode_t mode,
         || (mode == LXA_TREE_TEXT && text_return == LXA_TREE_TEMPLATE_TEXT);
 }
 
+static inline bool
+lxa_html_tree_template_boundary_valid(size_t frames, size_t elements,
+    size_t boundary, size_t previous)
+{
+    return frames == 0 || (boundary <= elements && (frames == 1 || boundary >= previous));
+}
+
+/* Child pops must leave one OPEN_ELEMENTS credit for the active template. */
+static inline bool
+lxa_html_tree_template_credit_valid(size_t elements, size_t boundary, uint64_t credits)
+{
+    return boundary <= elements && elements - boundary < credits;
+}
+
 /* These predicates borrow an already validated text span. */
 static inline bool
 lxa_html_tree_space_only(lxa_span_t data)
