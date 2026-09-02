@@ -3457,35 +3457,8 @@ consume(lxa_html_tree_t *tree,
     lxa_status_t status;
     lxa_html_token_t adjusted;
     lxa_dom_ref_t parent, child;
-    lxa_dom_doctype_data_t declaration;
     bool template_ordinary;
-    if (token == NULL
-        || (unsigned int) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
-        || (token->name.data == NULL && token->name.length != 0)
-        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
-            && token->name.length == 0)
-        || (token->data.data == NULL && token->data.length != 0)
-        || (token->attribute_count != 0 && token->attributes == NULL)
-        || token->attribute_count > SIZE_MAX / sizeof(*token->attributes)
-        || (token->kind != LXA_HTML_START_TAG
-            && token->attribute_count != 0)) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    if (token->kind == LXA_HTML_DOCTYPE) {
-        declaration = (lxa_dom_doctype_data_t){0};
-        declaration.name = token->name;
-        declaration.public_id = token->public_id;
-        declaration.system_id = token->system_id;
-        declaration.has_public_id = token->has_public_id;
-        declaration.has_system_id = token->has_system_id;
-        declaration.force_quirks = token->force_quirks;
-        if (!lxa_dom_doctype_shape_valid(&declaration)) return LXA_ERROR_ARGUMENT;
-    }
-    for (size_t i = 0; i < token->attribute_count; ++i) {
-        const lxa_html_attribute_t *attribute = &token->attributes[i];
-        if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
-            return LXA_ERROR_ARGUMENT;
-    }
+    if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     if (tree->mode == LXA_TREE_INITIAL) {
         if (token->kind == LXA_HTML_COMMENT
             || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
@@ -4829,6 +4802,11 @@ reprocess_template_token:
         token = &adjusted;
     }
     if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
+        const lxa_dom_doctype_data_t declaration = {
+            .name = token->name, .public_id = token->public_id, .system_id = token->system_id,
+            .has_public_id = token->has_public_id, .has_system_id = token->has_system_id,
+            .force_quirks = token->force_quirks
+        };
         lxa_html_document_mode_t document_mode;
         status = lxa_html_tree_doctype_mode(token, tree->nodes->budget,
             &tree->nodes->limit_reason, &document_mode);

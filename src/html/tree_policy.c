@@ -4,6 +4,40 @@
 #include "html/formatting_policy.h"
 #include "html-tags.h"
 
+static bool
+doctype_token_shape_valid(const lxa_html_token_t *token)
+{
+    if (token == NULL || token->kind != LXA_HTML_DOCTYPE) return false;
+    const lxa_dom_doctype_data_t declaration = {
+        .name = token->name, .public_id = token->public_id, .system_id = token->system_id,
+        .has_public_id = token->has_public_id, .has_system_id = token->has_system_id,
+        .force_quirks = token->force_quirks
+    };
+    return lxa_dom_doctype_shape_valid(&declaration);
+}
+
+bool
+lxa_html_tree_token_shape_valid(const lxa_html_token_t *token)
+{
+    if (token == NULL
+        || (unsigned) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
+        || (token->name.data == NULL && token->name.length != 0)
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && token->name.length == 0)
+        || (token->data.data == NULL && token->data.length != 0)
+        || (token->attribute_count != 0 && token->attributes == NULL)
+        || token->attribute_count > SIZE_MAX / sizeof(*token->attributes)
+        || (token->kind != LXA_HTML_START_TAG && token->attribute_count != 0)
+        || (token->kind == LXA_HTML_DOCTYPE && !doctype_token_shape_valid(token)))
+        return false;
+    for (size_t i = 0; i < token->attribute_count; ++i) {
+        const lxa_html_attribute_t *attribute = &token->attributes[i];
+        if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
+            return false;
+    }
+    return true;
+}
+
 lxa_status_t
 lxa_html_tree_after_body_action(const lxa_html_token_t *token,
     lxa_html_after_body_action_t *out)
@@ -360,13 +394,7 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
                            lxa_html_document_mode_t *mode)
 {
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
-    if (data == NULL || budget == NULL || mode == NULL
-        || data->kind != LXA_HTML_DOCTYPE
-        || (data->name.data == NULL && data->name.length != 0)
-        || (data->public_id.data == NULL && data->public_id.length != 0)
-        || (data->system_id.data == NULL && data->system_id.length != 0)
-        || (!data->has_public_id && data->public_id.length != 0)
-        || (!data->has_system_id && data->system_id.length != 0))
+    if (budget == NULL || mode == NULL || !doctype_token_shape_valid(data))
         return LXA_ERROR_ARGUMENT;
     lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
     if (status != LXA_OK) return status;

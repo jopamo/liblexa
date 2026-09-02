@@ -87,6 +87,11 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
                            lxa_limit_reason_t *reason,
                            lxa_html_document_mode_t *mode);
 
+/* Validate the token envelope and every effective attribute before tree/control
+ * effects. Budgeted attribute queries retain their separate lazy read checks.
+ */
+bool lxa_html_tree_token_shape_valid(const lxa_html_token_t *token);
+
 /* Template geometry includes html/head-or-body, two slots per active template
  * (element and virtual content root), and retained content elements. For a body
  * context, root_ancestors is the root open-stack length minus its body entry;

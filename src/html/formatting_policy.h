@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include "html/tokenizer.h"
+#include "dom/shape.h"
 
 typedef enum {
     LXA_HTML_FORMATTING_ADOPT_ORDINARY,
@@ -54,8 +55,7 @@ lxa_html_formatting_view_read(const lxa_html_formatting_view_t *view,
                               size_t cursor, lxa_span_t *name, lxa_span_t *value)
 {
     const lxa_html_attribute_t *attribute = &view->attributes[cursor - 1];
-    if (attribute->name.data == NULL || attribute->name.length == 0
-        || (attribute->value.data == NULL && attribute->value.length != 0))
+    if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
         return LXA_ERROR_ARGUMENT;
     *name = attribute->name;
     *value = attribute->value;

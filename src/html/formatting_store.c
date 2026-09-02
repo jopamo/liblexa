@@ -154,8 +154,7 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
         const lxa_html_attribute_t *attribute = &token->attributes[i];
         status = lxa_budget_charge(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
         if (status != LXA_OK) return status;
-        if (attribute->name.data == NULL || attribute->name.length == 0
-            || (attribute->value.data == NULL && attribute->value.length != 0))
+        if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
             return LXA_ERROR_ARGUMENT;
         status = lxa_budget_check_item(store->budget, LXA_BUDGET_NAME_BYTES,
                                        attribute->name.length, &store->limit_reason);
