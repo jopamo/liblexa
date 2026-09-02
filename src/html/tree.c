@@ -5626,27 +5626,18 @@ lxa_html_tree_on_token(void *context,
     lxa_html_tree_t *tree = context;
     if (tree == NULL || tree->nodes == NULL) return LXA_ERROR_ARGUMENT;
     if (tree->failure != LXA_OK) return tree->failure;
-    if ((unsigned) tree->mode > LXA_TREE_AFTER_AFTER_FRAMESET) {
+    if (!lxa_html_tree_root_mode_valid(tree->mode)) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
-    if (((tree->mode == LXA_TREE_TEMPLATE_TEXT
-          || (tree->mode == LXA_TREE_TEXT
-              && tree->text_return_mode == LXA_TREE_TEMPLATE_TEXT))
+    if ((lxa_html_tree_mode_has_template(tree->mode, tree->text_return_mode)
          != (tree->template_fragment.handle != LXA_HANDLE_NONE))
         || (unsigned) tree->document_mode > LXA_HTML_QUIRKS
         || (tree->mode == LXA_TREE_TEXT
             && (tree->text_element.handle == LXA_HANDLE_NONE
-                || (tree->text_return_mode != LXA_TREE_IN_HEAD
-                    && tree->text_return_mode != LXA_TREE_HEAD_NOSCRIPT
-                    && tree->text_return_mode != LXA_TREE_TEMPLATE_TEXT
-                    && tree->text_return_mode != LXA_TREE_AFTER_HEAD
-                    && tree->text_return_mode != LXA_TREE_IN_BODY
-                    && tree->text_return_mode != LXA_TREE_IN_FRAMESET
-                    && tree->text_return_mode != LXA_TREE_AFTER_FRAMESET
-                    && tree->text_return_mode != LXA_TREE_AFTER_AFTER_FRAMESET)))) {
+                || !lxa_html_tree_text_return_mode_valid(tree->text_return_mode)))) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;
@@ -5654,9 +5645,7 @@ lxa_html_tree_on_token(void *context,
     if (tree->template_fragment.handle != LXA_HANDLE_NONE
         && ((unsigned) tree->template_insertion_mode > LXA_TEMPLATE_BODY
             || !template_boundary_valid(tree)
-            || (tree->template_return_mode != LXA_TREE_IN_HEAD
-                && tree->template_return_mode != LXA_TREE_AFTER_HEAD
-                && tree->template_return_mode != LXA_TREE_IN_BODY))) {
+            || !lxa_html_tree_template_return_mode_valid(tree->template_return_mode))) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;

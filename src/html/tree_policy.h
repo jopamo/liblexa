@@ -23,6 +23,37 @@ typedef enum {
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
+static inline bool
+lxa_html_tree_root_mode_valid(lxa_html_root_mode_t mode)
+{
+    return (unsigned) mode <= LXA_TREE_AFTER_AFTER_FRAMESET;
+}
+
+static inline bool
+lxa_html_tree_text_return_mode_valid(lxa_html_root_mode_t mode)
+{
+    return mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_HEAD_NOSCRIPT
+        || mode == LXA_TREE_TEMPLATE_TEXT || mode == LXA_TREE_AFTER_HEAD
+        || mode == LXA_TREE_IN_BODY || mode == LXA_TREE_IN_FRAMESET
+        || mode == LXA_TREE_AFTER_FRAMESET || mode == LXA_TREE_AFTER_AFTER_FRAMESET;
+}
+
+static inline bool
+lxa_html_tree_template_return_mode_valid(lxa_html_root_mode_t mode)
+{
+    return mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD
+        || mode == LXA_TREE_IN_BODY;
+}
+
+/* Check mode membership before using this predicate to validate an owner. */
+static inline bool
+lxa_html_tree_mode_has_template(lxa_html_root_mode_t mode,
+    lxa_html_root_mode_t text_return)
+{
+    return mode == LXA_TREE_TEMPLATE_TEXT
+        || (mode == LXA_TREE_TEXT && text_return == LXA_TREE_TEMPLATE_TEXT);
+}
+
 /* These predicates borrow an already validated text span. */
 static inline bool
 lxa_html_tree_space_only(lxa_span_t data)
