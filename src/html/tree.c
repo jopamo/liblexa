@@ -2331,10 +2331,15 @@ append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 static lxa_status_t
 set_tokenizer_text_mode(
     lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
-    const lxa_html_token_t *token,
-    lxa_html_text_mode_t text_mode)
+    const lxa_html_token_t *token)
 {
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_text_mode_t text_mode;
+    lxa_status_t status = lxa_html_tree_text_start_mode(token->name, &text_mode);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
     return lxa_html_tokenizer_set_text_mode_status(tokenizer, text_mode,
         text_mode == LXA_HTML_PLAINTEXT ? literal("") : token->name,
         &tree->nodes->limit_reason);
@@ -2343,9 +2348,9 @@ set_tokenizer_text_mode(
 static lxa_status_t
 enter_text_mode(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
-    lxa_html_text_mode_t text_mode, lxa_dom_ref_t element)
+    lxa_dom_ref_t element)
 {
-    lxa_status_t status = set_tokenizer_text_mode(tree, tokenizer, token, text_mode);
+    lxa_status_t status = set_tokenizer_text_mode(tree, tokenizer, token);
     if (status != LXA_OK) return status;
     tree->text_element = element;
     tree->text_return_mode = tree->mode;
@@ -2363,7 +2368,7 @@ leave_text_mode(lxa_html_tree_t *tree)
 static lxa_status_t
 begin_text_element_at(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent, lxa_dom_ref_t before,
-    const lxa_html_token_t *token, lxa_html_text_mode_t text_mode)
+    const lxa_html_token_t *token)
 {
     lxa_dom_ref_t element;
     lxa_status_t status;
@@ -2376,17 +2381,17 @@ begin_text_element_at(lxa_html_tree_t *tree,
         status = insert_constructed(tree, parent,
             element, before);
     return status == LXA_OK
-           ? enter_text_mode(tree, tokenizer, token, text_mode, element)
+           ? enter_text_mode(tree, tokenizer, token, element)
            : status;
 }
 
 static lxa_status_t
 begin_text_element(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent,
-    const lxa_html_token_t *token, lxa_html_text_mode_t text_mode)
+    const lxa_html_token_t *token)
 {
     return begin_text_element_at(tree, tokenizer, parent, (lxa_dom_ref_t){0},
-                                  token, text_mode);
+                                  token);
 }
 
 static lxa_status_t
@@ -2421,8 +2426,7 @@ begin_root_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
     if (status != LXA_OK) return status;
     tree->mode = LXA_TREE_IN_BODY;
     tree->frameset_ok = false;
-    return begin_text_element_at(tree, tokenizer, parent, before, token,
-                                   LXA_HTML_RAWTEXT);
+    return begin_text_element_at(tree, tokenizer, parent, before, token);
 }
 
 static lxa_status_t
@@ -2460,7 +2464,7 @@ begin_root_plaintext(lxa_html_tree_t *tree,
     status = open_container_at(tree, token, LXA_DOM_NS_HTML, parent, before);
     if (status != LXA_OK) return status;
     tree->mode = LXA_TREE_IN_BODY;
-    return set_tokenizer_text_mode(tree, tokenizer, token, LXA_HTML_PLAINTEXT);
+    return set_tokenizer_text_mode(tree, tokenizer, token);
 }
 
 static lxa_status_t
@@ -3351,8 +3355,7 @@ begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
     if (status == LXA_OK)
         status = template_insertion_location(tree, &parent, &before);
     if (status == LXA_OK)
-        status = begin_text_element_at(tree, tokenizer, parent, before, token,
-                                         LXA_HTML_RAWTEXT);
+        status = begin_text_element_at(tree, tokenizer, parent, before, token);
     if (status == LXA_OK)
         status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
     return status;
@@ -3975,8 +3978,7 @@ reprocess_template_token:
                     status = template_foster_element(tree, token, false,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token,
-                            LXA_HTML_RCDATA, child);
+                        status = enter_text_mode(tree, tokenizer, token, child);
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
@@ -3989,8 +3991,7 @@ reprocess_template_token:
                     status = template_foster_element(tree, token, false,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token,
-                                                 LXA_HTML_RAWTEXT, child);
+                        status = enter_text_mode(tree, tokenizer, token, child);
                     return status;
                 }
                 if (token->kind == LXA_HTML_START_TAG
@@ -4020,13 +4021,9 @@ reprocess_template_token:
                     status = template_foster_element(tree, token, plaintext,
                                                       &child, LXA_DOM_NS_HTML);
                     if (status == LXA_OK && plaintext)
-                        status = set_tokenizer_text_mode(tree, tokenizer, token,
-                                                         LXA_HTML_PLAINTEXT);
+                        status = set_tokenizer_text_mode(tree, tokenizer, token);
                     else if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token,
-                            textarea ? LXA_HTML_RCDATA
-                            : LXA_HTML_RAWTEXT,
-                            child);
+                        status = enter_text_mode(tree, tokenizer, token, child);
                     if (status == LXA_OK && textarea)
                         tree->skip_pre_newline = true;
                     return status;
@@ -4350,9 +4347,7 @@ reprocess_template_token:
             && template_simple_text_element(token->name)
             && !named(token->name, "textarea")) {
             status = begin_text_element(tree, tokenizer, template_parent(tree),
-                token, named(token->name, "title") ? LXA_HTML_RCDATA
-                       : named(token->name, "script") ? LXA_HTML_SCRIPT_DATA
-                       : LXA_HTML_RAWTEXT);
+                token);
             if (status == LXA_OK)
                 status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             return status;
@@ -4360,7 +4355,7 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "textarea")) {
             status = begin_text_element(tree, tokenizer, template_parent(tree),
-                                        token, LXA_HTML_RCDATA);
+                                        token);
             if (status == LXA_OK) {
                 tree->skip_pre_newline = true;
                 status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
@@ -4576,8 +4571,7 @@ reprocess_template_token:
             if (status == LXA_OK)
                 status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
             if (status == LXA_OK && named(token->name, "plaintext"))
-                status = set_tokenizer_text_mode(tree, tokenizer, token,
-                                                 LXA_HTML_PLAINTEXT);
+                status = set_tokenizer_text_mode(tree, tokenizer, token);
             return status;
         }
         if (token->kind != LXA_HTML_EOF) {
@@ -4632,7 +4626,7 @@ reprocess_template_token:
                 LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
             return status == LXA_OK
                 ? begin_text_element(tree, tokenizer,
-                    parent, token, LXA_HTML_RAWTEXT) : status;
+                    parent, token) : status;
         }
         if (action == LXA_HTML_FRAMESET_HTML_END) {
             tree->mode = LXA_TREE_AFTER_AFTER_FRAMESET;
@@ -4981,9 +4975,7 @@ reprocess_body_start:
                     if (status != LXA_OK) return status;
                 }
                 return begin_text_element(tree, tokenizer,
-                    current_element(tree), token,
-                    named(token->name, "style") ? LXA_HTML_RAWTEXT
-                                                : LXA_HTML_SCRIPT_DATA);
+                    current_element(tree), token);
             }
             if (named(token->name, "plaintext"))
                 return begin_root_plaintext(tree, tokenizer, token);
@@ -4997,9 +4989,6 @@ reprocess_body_start:
                 lxa_dom_ref_t table, foster_parent, element;
                 bool in_colgroup = named(top, "colgroup");
                 bool textarea = named(token->name, "textarea");
-                lxa_html_text_mode_t text_mode =
-                    (textarea || named(token->name, "title"))
-                      ? LXA_HTML_RCDATA : LXA_HTML_RAWTEXT;
                 if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -5014,8 +5003,7 @@ reprocess_body_start:
                     status = insert_constructed(tree, foster_parent,
                         element, table);
                 if (status == LXA_OK)
-                    status = enter_text_mode(tree, tokenizer, token,
-                        text_mode, element);
+                    status = enter_text_mode(tree, tokenizer, token, element);
                 if (status == LXA_OK) {
                     if (textarea) tree->skip_pre_newline = true;
                     if (in_colgroup) {
@@ -5210,9 +5198,7 @@ reprocess_body_start:
                 parent = tree->mode == LXA_TREE_HEAD_NOSCRIPT
                          ? tree->head_noscript : tree->head;
             }
-            return begin_text_element(tree, tokenizer, parent, token,
-                named(token->name, "title") ? LXA_HTML_RCDATA
-                                             : LXA_HTML_RAWTEXT);
+            return begin_text_element(tree, tokenizer, parent, token);
         }
         if (named(token->name, "script")) {
             if (tree->mode <= LXA_TREE_AFTER_HEAD) {
@@ -5228,8 +5214,7 @@ reprocess_body_start:
                 tree->mode = LXA_TREE_IN_BODY;
                 parent = current_element(tree);
             }
-            return begin_text_element(tree, tokenizer, parent, token,
-                                       LXA_HTML_SCRIPT_DATA);
+            return begin_text_element(tree, tokenizer, parent, token);
         }
         if (named(token->name, "textarea")) {
             status = ensure_body(tree);
@@ -5237,7 +5222,7 @@ reprocess_body_start:
             tree->mode = LXA_TREE_IN_BODY;
             tree->frameset_ok = false;
             status = begin_text_element(tree, tokenizer, current_element(tree),
-                                        token, LXA_HTML_RCDATA);
+                                        token);
             if (status == LXA_OK) tree->skip_pre_newline = true;
             return status;
         }
@@ -5248,7 +5233,7 @@ reprocess_body_start:
             tree->mode = LXA_TREE_IN_BODY;
             if (named(token->name, "iframe")) tree->frameset_ok = false;
             return begin_text_element(tree, tokenizer, current_element(tree),
-                                       token, LXA_HTML_RAWTEXT);
+                                       token);
         }
         if (named(token->name, "xmp")) {
             return begin_root_xmp(tree, tokenizer, token);

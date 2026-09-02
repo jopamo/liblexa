@@ -221,4 +221,10 @@ lxa_status_t
 lxa_html_tree_after_body_action(const lxa_html_token_t *token,
     lxa_html_after_body_action_t *out);
 
+/* Select feedback only after an HTML text-start rule accepts the token.
+ * This does not replace namespace, insertion-mode or recovery dispatch.
+ */
+lxa_status_t
+lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out);
+
 #endif

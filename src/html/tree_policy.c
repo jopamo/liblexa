@@ -4,6 +4,29 @@
 #include "html/formatting_policy.h"
 #include "html-tags.h"
 
+lxa_status_t
+lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out)
+{
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_text_mode_t mode;
+    if (lxa_html_tree_name_equals(name, "title", 5)
+        || lxa_html_tree_name_equals(name, "textarea", 8))
+        mode = LXA_HTML_RCDATA;
+    else if (lxa_html_tree_name_equals(name, "script", 6))
+        mode = LXA_HTML_SCRIPT_DATA;
+    else if (lxa_html_tree_name_equals(name, "plaintext", 9))
+        mode = LXA_HTML_PLAINTEXT;
+    else if (lxa_html_tree_name_equals(name, "style", 5)
+        || lxa_html_tree_name_equals(name, "xmp", 3)
+        || lxa_html_tree_name_equals(name, "iframe", 6)
+        || lxa_html_tree_name_equals(name, "noembed", 7)
+        || lxa_html_tree_name_equals(name, "noframes", 8))
+        mode = LXA_HTML_RAWTEXT;
+    else return LXA_ERROR_ARGUMENT;
+    *out = mode;
+    return LXA_OK;
+}
+
 static bool
 doctype_token_shape_valid(const lxa_html_token_t *token)
 {
