@@ -2333,15 +2333,7 @@ set_tokenizer_text_mode(
     lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token)
 {
-    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-    lxa_html_text_mode_t text_mode;
-    lxa_status_t status = lxa_html_tree_text_start_mode(token->name, &text_mode);
-    if (status != LXA_OK) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
-    }
-    return lxa_html_tokenizer_set_text_mode_status(tokenizer, text_mode,
-        text_mode == LXA_HTML_PLAINTEXT ? literal("") : token->name,
+    return lxa_html_tree_text_start_feedback(tokenizer, token->name,
         &tree->nodes->limit_reason);
 }
 

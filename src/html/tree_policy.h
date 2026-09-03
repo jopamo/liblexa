@@ -248,4 +248,12 @@ lxa_html_tree_after_body_action(const lxa_html_token_t *token,
 lxa_status_t
 lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out);
 
+/* Apply feedback for an already accepted HTML text-start rule. An unknown name
+ * is an internal dispatch mismatch. The tokenizer copies its end target;
+ * engines publish their text owner/return mode only after this succeeds.
+ */
+lxa_status_t
+lxa_html_tree_text_start_feedback(lxa_html_tokenizer_t *tokenizer,
+    lxa_span_t name, lxa_limit_reason_t *reason);
+
 #endif

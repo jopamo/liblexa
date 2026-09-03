@@ -1,8 +1,25 @@
+#include <assert.h>
 #include <string.h>
 #include "html/tree_policy.h"
 #include "html/tree_categories.h"
 #include "html/formatting_policy.h"
 #include "html-tags.h"
+
+lxa_status_t
+lxa_html_tree_text_start_feedback(lxa_html_tokenizer_t *tokenizer,
+    lxa_span_t name, lxa_limit_reason_t *reason)
+{
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_text_mode_t mode;
+    lxa_status_t status = lxa_html_tree_text_start_mode(name, &mode);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return lxa_html_tokenizer_set_text_mode_status(tokenizer, mode,
+        mode == LXA_HTML_PLAINTEXT ? (lxa_span_t){(const uint8_t *) "", 0} : name,
+        reason);
+}
 
 lxa_status_t
 lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out)
