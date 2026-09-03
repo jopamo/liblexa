@@ -32,6 +32,14 @@ lxa_status_t lxa_html_formatting_list_append(lxa_html_formatting_list_t *list,
     size_t snapshot, uint64_t identity);
 lxa_status_t lxa_html_formatting_list_push_marker(lxa_html_formatting_list_t *list,
     uint64_t identity);
+/* Admit an accepted HTML marker owner (including template) and its marker.
+ * Share the stack's operation budget; the name must not alias owner storage.
+ * Clear identity on failure. Ordinary failure preserves both memberships and
+ * identity assignment; capacity and cumulative WORK may remain. No snapshot
+ * capture or attribute processing. Engines own depth, context and DOM effects.
+ */
+lxa_status_t lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, lxa_span_t name, uint64_t *identity);
 /* Remove only after the last marker. Charge one WORK unit per removed/shifted
  * slot before mutation. Clear removes the last marker and its suffix (or all
  * entries when no marker exists), without scanning or copying retained slots.

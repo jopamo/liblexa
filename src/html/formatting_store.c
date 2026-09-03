@@ -1188,6 +1188,51 @@ start_alias(lxa_span_t span, const formatting_stack_view_t *view)
 }
 
 lxa_status_t
+lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, lxa_span_t name, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || name.data == NULL || name.length == 0
+        || start_alias(name, &view)
+        || (!lxa_html_tree_formatting_marker_tag(name)
+            && !lxa_html_tree_name_equals(name, "template", 8)))
+        return LXA_ERROR_ARGUMENT;
+    size_t index = lxa_vector_length(&list->entries), required;
+    status = lxa_size_add(index, 1, &required);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK)
+        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                   &list->store->limit_reason);
+    if (status != LXA_OK) return status;
+    uint64_t opened;
+    status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &opened);
+    if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
+    if (status != LXA_OK) {
+        (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1));
+        return status;
+    }
+    lxa_html_formatting_item_t item = {0, opened, list->marker};
+    status = lxa_vector_push(&list->entries, &item);
+    if (status != LXA_OK) {
+        (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1));
+        return internal(status);
+    }
+    list->marker = index;
+    *identity = opened;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary,
     const lxa_html_token_t *token, uint64_t *identity)
