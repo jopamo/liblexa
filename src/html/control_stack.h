@@ -156,6 +156,14 @@ lxa_status_t lxa_html_control_stack_column_start_plan(lxa_html_control_stack_t *
     size_t boundary, lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out);
 lxa_status_t lxa_html_control_stack_form_end_plan(lxa_html_control_stack_t *stack,
     uint64_t identity, lxa_html_form_end_plan_t *out);
+/* Execute an accepted root form end. Borrow a stable, separate owner field
+ * in this stack's identity domain; it must not alias stack headers/storage.
+ * Clear a found owner before pops/removal, an absent owner after successful
+ * optional pops. Failure retains completed effects; abort rather than replay.
+ * Ordinary descendants retain identities. No formatting or DOM effects.
+ */
+lxa_status_t lxa_html_control_stack_end_form(lxa_html_control_stack_t *stack,
+    uint64_t *owner);
 /* Same match, stop, WORK and publication rules as borrowed list-item plans.
  * Return stack length when absent. No mutation or formatting/DOM effects.
  */

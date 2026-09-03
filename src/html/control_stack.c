@@ -770,6 +770,30 @@ lxa_html_control_stack_form_end_plan(lxa_html_control_stack_t *stack,
     return control_stack_form_end_plan(&view, identity, out);
 }
 
+#define LXA_FORM_END_EXECUTE_NAME control_stack_end_form
+#define LXA_FORM_END_VIEW control_stack_view_t
+#define LXA_FORM_END_PLAN control_stack_form_end_plan
+#define LXA_FORM_END_CLEAR(view, owner) (*(owner) = 0)
+#define LXA_FORM_END_POP(view, keep) lxa_html_control_stack_pop_to((view)->stack, keep)
+#define LXA_FORM_END_REMOVE(view, index) lxa_html_control_stack_remove((view)->stack, index)
+#include "html/form_end.inc"
+#undef LXA_FORM_END_EXECUTE_NAME
+#undef LXA_FORM_END_VIEW
+#undef LXA_FORM_END_PLAN
+#undef LXA_FORM_END_CLEAR
+#undef LXA_FORM_END_POP
+#undef LXA_FORM_END_REMOVE
+
+lxa_status_t
+lxa_html_control_stack_end_form(lxa_html_control_stack_t *stack, uint64_t *owner)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (owner == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_end_form(&view, owner);
+}
+
 lxa_status_t
 lxa_html_control_stack_column_start_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out)

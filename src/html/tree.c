@@ -903,6 +903,22 @@ plan_table_markers(lxa_html_tree_t *tree, const lxa_vector_t *elements,
     return tree_table_markers_plan(&view, keep, out);
 }
 
+#define LXA_FORM_END_EXECUTE_NAME tree_end_form
+#define LXA_FORM_END_VIEW lxa_html_tree_scope_view_t
+#define LXA_FORM_END_PLAN tree_form_end_plan
+#define LXA_FORM_END_CLEAR(view, owner) ((view)->tree->form = (lxa_dom_ref_t){0})
+#define LXA_FORM_END_POP(view, keep) \
+    pop_elements((view)->tree, &(view)->tree->open_elements, keep)
+#define LXA_FORM_END_REMOVE(view, index) \
+    remove_open_element((view)->tree, &(view)->tree->open_elements, index)
+#include "html/form_end.inc"
+#undef LXA_FORM_END_EXECUTE_NAME
+#undef LXA_FORM_END_VIEW
+#undef LXA_FORM_END_PLAN
+#undef LXA_FORM_END_CLEAR
+#undef LXA_FORM_END_POP
+#undef LXA_FORM_END_REMOVE
+
 #define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
 #define LXA_CURRENT_NAMESPACE_VIEW lxa_html_tree_scope_view_t
 #define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
@@ -5436,20 +5452,8 @@ reprocess_body_start:
             tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
             lxa_vector_length(&tree->open_elements)
         };
-        lxa_html_form_end_plan_t plan;
-        status = tree_form_end_plan(&view, tree->form.handle, &plan);
-        if (status != LXA_OK) return status;
-        if (plan.found) tree->form = (lxa_dom_ref_t){0};
-        while (lxa_vector_length(&tree->open_elements) > plan.keep) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        if (!plan.found) {
-            tree->form = (lxa_dom_ref_t){0};
-            return LXA_OK;
-        }
         /* Ordinary descendants retain their open references and DOM parents. */
-        return remove_open_element(tree, &tree->open_elements, plan.index);
+        return tree_end_form(&view, &tree->form.handle);
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
         && tree->mode == LXA_TREE_IN_BODY) {
