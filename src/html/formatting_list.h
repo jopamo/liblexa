@@ -54,6 +54,14 @@ lxa_status_t lxa_html_formatting_list_remove(lxa_html_formatting_list_t *list,
 lxa_status_t lxa_html_formatting_list_move(lxa_html_formatting_list_t *list,
     size_t from, size_t to);
 lxa_status_t lxa_html_formatting_list_clear(lxa_html_formatting_list_t *list);
+/* Execute accepted table recovery over the shared-budget metadata stack.
+ * Template recovery always scans; root recovery scans only with a marker.
+ * Plan cell/caption closures, pop the suffix, then clear that many markers.
+ * Ordinary failure preserves both memberships but may charge scan WORK.
+ * Engines own boundary selection, context changes and insertion effects.
+ */
+lxa_status_t lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t keep, bool template_context);
 /* Copy one item for one WORK unit; clear output on failure. */
 lxa_status_t lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
     size_t index, lxa_html_formatting_item_t *out);

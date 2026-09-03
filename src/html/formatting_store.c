@@ -759,6 +759,27 @@ stack_view_init(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stac
     return LXA_OK;
 }
 
+lxa_status_t
+lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t keep, bool template_context)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, keep, &view);
+    if (status != LXA_OK) return status;
+    size_t markers = 0;
+    if (template_context || list->marker != SIZE_MAX)
+        status = lxa_html_control_stack_table_markers_plan(stack, keep, &markers);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(stack, keep);
+    if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
+    if (status != LXA_OK) return status;
+    while (markers != 0) {
+        status = lxa_html_formatting_list_clear(list);
+        if (status != LXA_OK) return status;
+        --markers;
+    }
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 reconstruct_open(const formatting_stack_view_t *view, size_t index, bool *open)
 {
