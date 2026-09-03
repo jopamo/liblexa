@@ -5,9 +5,33 @@
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
  * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
- * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME, LXA_FORM_END_PLAN_NAME
+ * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME, LXA_FORM_END_PLAN_NAME,
+ * LXA_TABLE_MARKERS_PLAN_NAME
  * belong to the includer.
  */
+static inline lxa_status_t
+LXA_TABLE_MARKERS_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t keep, size_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view), markers = 0;
+    if (keep > length) return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+        LXA_BUDGET_WORK, length - keep, LXA_SCOPE_REASON(view));
+    if (status != LXA_OK) return status;
+    for (size_t i = keep; i < length; ++i) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        status = LXA_SCOPE_READ(view, i, &name, &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML
+            && (lxa_html_tree_name_equals(name, "td", 2)
+                || lxa_html_tree_name_equals(name, "th", 2)
+                || lxa_html_tree_name_equals(name, "caption", 7)))
+            ++markers;
+    }
+    *out = markers;
+    return LXA_OK;
+}
+
 static inline lxa_status_t
 LXA_COLUMN_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out)

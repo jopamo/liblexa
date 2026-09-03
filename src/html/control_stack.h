@@ -147,6 +147,11 @@ lxa_status_t lxa_html_control_stack_template_table_start_plan(lxa_html_control_s
     lxa_html_template_table_start_plan_t *out);
 lxa_status_t lxa_html_control_stack_template_close_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool explicit_end, bool has_patch, size_t *out);
+/* Count popped HTML cell/caption markers. Precharge length - keep WORK,
+ * then scan the suffix. Publish only on success; engines own pops and clears.
+ */
+lxa_status_t lxa_html_control_stack_table_markers_plan(lxa_html_control_stack_t *stack,
+    size_t keep, size_t *out);
 lxa_status_t lxa_html_control_stack_column_start_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out);
 lxa_status_t lxa_html_control_stack_form_end_plan(lxa_html_control_stack_t *stack,

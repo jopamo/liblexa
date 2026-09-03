@@ -292,28 +292,16 @@ pop_element(lxa_html_tree_t *tree)
 }
 
 static lxa_status_t
+plan_table_markers(lxa_html_tree_t *, const lxa_vector_t *, size_t, size_t *);
+
+static lxa_status_t
 pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->open_elements), closures = 0;
+    size_t closures = 0;
     /* Table recovery closes cells/captions, not other popped marker owners. */
     if (tree->formatting_marker != SIZE_MAX) {
-        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-            LXA_BUDGET_WORK, length - keep, &tree->nodes->limit_reason);
+        lxa_status_t status = plan_table_markers(tree, &tree->open_elements, keep, &closures);
         if (status != LXA_OK) return status;
-        for (size_t i = keep; i < length; ++i) {
-            lxa_span_t name;
-            lxa_dom_namespace_t ns;
-            status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-            if (status != LXA_OK) return status;
-            if (ns == LXA_DOM_NS_HTML
-                && (named(name, "td") || named(name, "th")
-                    || named(name, "caption")))
-                ++closures;
-        }
     }
     while (lxa_vector_length(&tree->open_elements) > keep) {
         lxa_status_t status = pop_element(tree);
@@ -861,6 +849,7 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME tree_virtual_table_item_plan
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME tree_template_table_start_plan
 #define LXA_TEMPLATE_CLOSE_PLAN_NAME tree_template_close_plan
+#define LXA_TABLE_MARKERS_PLAN_NAME tree_table_markers_plan
 #define LXA_COLUMN_START_PLAN_NAME tree_column_start_plan
 #define LXA_FORM_END_PLAN_NAME tree_form_end_plan
 #define LXA_LIST_ITEM_PLAN_NAME tree_list_item_plan
@@ -897,11 +886,22 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
 #undef LXA_TEMPLATE_CLOSE_PLAN_NAME
+#undef LXA_TABLE_MARKERS_PLAN_NAME
 #undef LXA_COLUMN_START_PLAN_NAME
 #undef LXA_FORM_END_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
+
+static lxa_status_t
+plan_table_markers(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+    size_t keep, size_t *out)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) elements->bytes.data, lxa_vector_length(elements)
+    };
+    return tree_table_markers_plan(&view, keep, out);
+}
 
 #define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
 #define LXA_CURRENT_NAMESPACE_VIEW lxa_html_tree_scope_view_t
@@ -3008,23 +3008,9 @@ template_push_table_part(lxa_html_tree_t *tree,
 static lxa_status_t
 template_pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    const lxa_dom_ref_t *open =
-        (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->template_elements), markers = 0;
-    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_WORK, length - keep, &tree->nodes->limit_reason);
+    size_t markers;
+    lxa_status_t status = plan_table_markers(tree, &tree->template_elements, keep, &markers);
     if (status != LXA_OK) return status;
-    for (size_t i = keep; i < length; ++i) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        status = lxa_dom_nodes_element_namespace(tree->nodes, open[i], &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, open[i], &name);
-        if (status != LXA_OK) return status;
-        if (ns == LXA_DOM_NS_HTML
-            && (named(name, "td") || named(name, "th") || named(name, "caption")))
-            ++markers;
-    }
     status = template_pop_elements(tree, keep);
     if (status != LXA_OK) return status;
     while (markers != 0) {

@@ -473,6 +473,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME control_stack_virtual_table_item_plan
 #define LXA_TEMPLATE_TABLE_START_PLAN_NAME control_stack_template_table_start_plan
 #define LXA_TEMPLATE_CLOSE_PLAN_NAME control_stack_template_close_plan
+#define LXA_TABLE_MARKERS_PLAN_NAME control_stack_table_markers_plan
 #define LXA_COLUMN_START_PLAN_NAME control_stack_column_start_plan
 #define LXA_FORM_END_PLAN_NAME control_stack_form_end_plan
 #define LXA_LIST_ITEM_PLAN_NAME control_stack_list_item_plan
@@ -508,6 +509,7 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_START_PLAN_NAME
 #undef LXA_TEMPLATE_CLOSE_PLAN_NAME
+#undef LXA_TABLE_MARKERS_PLAN_NAME
 #undef LXA_COLUMN_START_PLAN_NAME
 #undef LXA_FORM_END_PLAN_NAME
 #undef LXA_LIST_ITEM_PLAN_NAME
@@ -777,6 +779,17 @@ lxa_html_control_stack_column_start_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     return control_stack_column_start_plan(&view, boundary, mode, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_table_markers_plan(lxa_html_control_stack_t *stack,
+    size_t keep, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, keep, &view);
+    if (status != LXA_OK) return status;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    return control_stack_table_markers_plan(&view, keep, out);
 }
 
 lxa_status_t
