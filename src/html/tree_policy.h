@@ -15,6 +15,13 @@ typedef enum {
     LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;
 
+static inline bool
+lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
+{
+    return mode == LXA_TEMPLATE_TABLE || mode == LXA_TEMPLATE_TABLE_BODY
+        || mode == LXA_TEMPLATE_ROW;
+}
+
 typedef enum {
     LXA_TREE_INITIAL, LXA_TREE_BEFORE_HTML, LXA_TREE_BEFORE_HEAD,
     LXA_TREE_IN_HEAD, LXA_TREE_HEAD_NOSCRIPT, LXA_TREE_TEMPLATE_TEXT,

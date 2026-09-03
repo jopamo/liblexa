@@ -2882,31 +2882,6 @@ flush_template_table_text(lxa_html_tree_t *tree)
     return status;
 }
 
-static bool
-template_sectioning(lxa_span_t name)
-{
-    return named(name, "section") || named(name, "article")
-        || named(name, "main") || named(name, "aside")
-        || named(name, "nav") || named(name, "header")
-        || named(name, "footer");
-}
-
-static bool
-template_simple_text_element(lxa_span_t name)
-{
-    return named(name, "title") || named(name, "style")
-        || named(name, "script") || named(name, "textarea")
-        || named(name, "iframe") || named(name, "noembed")
-        || named(name, "noframes");
-}
-
-static bool
-template_html_text_element(lxa_span_t name)
-{
-    return template_simple_text_element(name) || named(name, "xmp")
-        || named(name, "plaintext");
-}
-
 static lxa_status_t
 begin_template(lxa_html_tree_t *tree,
                const lxa_html_token_t *token)
@@ -3391,14 +3366,6 @@ template_end_formatting_boundary(lxa_html_tree_t *tree,
     return LXA_OK;
 }
 
-static bool
-template_table_context(const lxa_html_tree_t *tree)
-{
-    return tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-        || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-        || tree->template_insertion_mode == LXA_TEMPLATE_ROW;
-}
-
 static lxa_status_t
 plan_table_context(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                      size_t boundary, bool virtual_table,
@@ -3434,7 +3401,8 @@ insert_hidden_table_input(lxa_html_tree_t *tree,
     elements = formatting_elements(tree);
     boundary = formatting_boundary(tree);
     status = plan_table_context(tree, elements, boundary,
-        tree->mode == LXA_TREE_TEMPLATE_TEXT && template_table_context(tree),
+        tree->mode == LXA_TREE_TEMPLATE_TEXT
+            && lxa_html_tree_template_table_context(tree->template_insertion_mode),
         &keep, &in_table);
     if (status != LXA_OK || !in_table) return status;
     if (keep == boundary) {
@@ -3795,7 +3763,8 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_START_TAG && named(token->name, "form")) {
             size_t keep, boundary = template_boundary(tree);
             bool in_table;
-            bool virtual_table = template_table_context(tree);
+            bool virtual_table = lxa_html_tree_template_table_context(
+                tree->template_insertion_mode);
             status = plan_table_context(tree, &tree->template_elements,
                 boundary, virtual_table, &keep, &in_table);
             if (status != LXA_OK) return status;
@@ -3855,7 +3824,8 @@ reprocess_template_token:
             size_t keep, index, boundary = template_boundary(tree);
             size_t length = lxa_vector_length(&tree->template_elements);
             bool in_table;
-            bool virtual_table = template_table_context(tree);
+            bool virtual_table = lxa_html_tree_template_table_context(
+                tree->template_insertion_mode);
             status = plan_table_context(tree, &tree->template_elements,
                 boundary, virtual_table, &keep, &in_table);
             if (status == LXA_OK && in_table)
@@ -3905,7 +3875,7 @@ reprocess_template_token:
                 && !named(token->name, "th")
                 && !named(token->name, "html")
                 && !named(token->name, "template")) {
-                if (template_html_text_element(token->name)
+                if (lxa_html_tree_template_html_text_element(token->name)
                     && tokenizer == NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -4294,7 +4264,7 @@ reprocess_template_token:
                 return LXA_ERROR_INTERNAL;
             if (lxa_vector_length(&tree->template_elements)
                 == template_boundary(tree)
-                && template_table_context(tree))
+                && lxa_html_tree_template_table_context(tree->template_insertion_mode))
                 return insert_data_text(tree, tree->template_fragment,
                                          token->data, false, true);
             status = reconstruct_formatting(tree);
@@ -4342,7 +4312,7 @@ reprocess_template_token:
             return status;
         }
         if (token->kind == LXA_HTML_START_TAG
-            && template_simple_text_element(token->name)
+            && lxa_html_tree_template_simple_text_element(token->name)
             && !named(token->name, "textarea")) {
             status = begin_text_element(tree, tokenizer, template_parent(tree),
                 token);
@@ -4391,7 +4361,7 @@ reprocess_template_token:
                 || named(token->name, "details")
                 || named(token->name, "summary")
                 || named(token->name, "fieldset")
-                || template_sectioning(token->name)
+                || lxa_html_tree_template_sectioning(token->name)
                 || named(token->name, "pre")
                 || named(token->name, "listing")
                 || named(token->name, "blockquote")

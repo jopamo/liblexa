@@ -369,6 +369,32 @@ lxa_html_tree_template_ordinary_end(lxa_span_t name)
     return !lxa_html_tree_formatting_tag(name);
 }
 
+static inline bool
+lxa_html_tree_template_sectioning(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "section") || LXA_CONTAINER_NAMED(name, "article")
+        || LXA_CONTAINER_NAMED(name, "main") || LXA_CONTAINER_NAMED(name, "aside")
+        || LXA_CONTAINER_NAMED(name, "nav") || LXA_CONTAINER_NAMED(name, "header")
+        || LXA_CONTAINER_NAMED(name, "footer");
+}
+
+static inline bool
+lxa_html_tree_template_simple_text_element(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "title") || LXA_CONTAINER_NAMED(name, "style")
+        || LXA_CONTAINER_NAMED(name, "script") || LXA_CONTAINER_NAMED(name, "textarea")
+        || LXA_CONTAINER_NAMED(name, "iframe") || LXA_CONTAINER_NAMED(name, "noembed")
+        || LXA_CONTAINER_NAMED(name, "noframes");
+}
+
+static inline bool
+lxa_html_tree_template_html_text_element(lxa_span_t name)
+{
+    return lxa_html_tree_template_simple_text_element(name)
+        || LXA_CONTAINER_NAMED(name, "xmp")
+        || LXA_CONTAINER_NAMED(name, "plaintext");
+}
+
 #undef LXA_CONTAINER_NAMED
 
 #endif
