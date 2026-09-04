@@ -266,6 +266,39 @@ lxa_status_t
 lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
     lxa_span_t target, lxa_html_text_action_t *out);
 
+typedef struct {
+    lxa_html_text_start_plan_t plan; /* DATA means inactive */
+    lxa_html_root_mode_t return_mode;
+} lxa_html_text_context_t;
+
+static inline bool
+lxa_html_text_context_valid(const lxa_html_text_context_t *context)
+{
+    return context != NULL
+        && (context->plan.mode == LXA_HTML_RCDATA || context->plan.mode == LXA_HTML_RAWTEXT
+            || context->plan.mode == LXA_HTML_SCRIPT_DATA)
+        && context->plan.end_tag.data != NULL && context->plan.end_tag.length != 0
+        && context->plan.end_tag.length <= 8
+        && lxa_html_tree_text_return_mode_valid(context->return_mode);
+}
+
+/* Zero-initialized, single-thread-confined context owns only static target
+ * storage and the return mode. Commit after successful tokenizer feedback;
+ * failure preserves it. Plaintext does not enter a returning text context.
+ * Engines publish their text owner and TEXT mode after success.
+ */
+lxa_status_t
+lxa_html_text_context_enter(lxa_html_text_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, lxa_span_t name,
+    lxa_html_root_mode_t return_mode, lxa_limit_reason_t *reason);
+/* Restore the mode and clear the active context without allocation or WORK.
+ * The stable output field must be separate from the context. Engines own
+ * accepted end/EOF dispatch and clearing any text insertion owner.
+ */
+lxa_status_t
+lxa_html_text_context_leave(lxa_html_text_context_t *context,
+    lxa_html_root_mode_t *mode);
+
 /* Apply feedback for an already accepted HTML text-start rule. An unknown name
  * is an internal dispatch mismatch. The tokenizer copies its end target;
  * engines publish their text owner/return mode only after this succeeds.

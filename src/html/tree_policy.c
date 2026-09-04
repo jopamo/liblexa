@@ -5,6 +5,46 @@
 #include "html/formatting_policy.h"
 #include "html-tags.h"
 
+_Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
+
+lxa_status_t
+lxa_html_text_context_enter(lxa_html_text_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, lxa_span_t name,
+    lxa_html_root_mode_t return_mode, lxa_limit_reason_t *reason)
+{
+    if (context == NULL || tokenizer == NULL || context->plan.mode != LXA_HTML_DATA
+        || context->plan.end_tag.data != NULL || context->plan.end_tag.length != 0
+        || !lxa_html_tree_text_return_mode_valid(return_mode))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_text_start_plan_t plan;
+    lxa_status_t status = lxa_html_tree_text_start_plan(name, &plan);
+    if (status != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    if (plan.mode == LXA_HTML_PLAINTEXT) return LXA_ERROR_ARGUMENT;
+    status = lxa_html_tokenizer_set_text_mode_status(tokenizer, plan.mode, plan.end_tag, reason);
+    if (status != LXA_OK) return status;
+    context->plan = plan;
+    context->return_mode = return_mode;
+    return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_text_context_leave(lxa_html_text_context_t *context,
+    lxa_html_root_mode_t *mode)
+{
+    if (context == NULL || mode == NULL || context->plan.mode == LXA_HTML_DATA)
+        return LXA_ERROR_ARGUMENT;
+    if (!lxa_html_text_context_valid(context)) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    *mode = context->return_mode;
+    memset(context, 0, sizeof(*context));
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
     lxa_span_t target, lxa_html_text_action_t *out)

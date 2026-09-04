@@ -2372,19 +2372,21 @@ enter_text_mode(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     lxa_dom_ref_t element)
 {
-    lxa_status_t status = set_tokenizer_text_mode(tree, tokenizer, token);
+    lxa_status_t status = lxa_html_text_context_enter(&tree->text_context,
+        tokenizer, token->name, tree->mode, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
     tree->text_element = element;
-    tree->text_return_mode = tree->mode;
     tree->mode = LXA_TREE_TEXT;
     return LXA_OK;
 }
 
-static void
+static lxa_status_t
 leave_text_mode(lxa_html_tree_t *tree)
 {
-    tree->mode = tree->text_return_mode;
+    lxa_status_t status = lxa_html_text_context_leave(&tree->text_context, &tree->mode);
+    if (status != LXA_OK) return status;
     tree->text_element = (lxa_dom_ref_t){0};
+    return LXA_OK;
 }
 
 static lxa_status_t
@@ -3438,7 +3440,8 @@ consume(lxa_html_tree_t *tree,
         }
     }
     if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
-        leave_text_mode(tree);
+        status = leave_text_mode(tree);
+        if (status != LXA_OK) return status;
     }
     if (token->kind != LXA_HTML_TEXT) {
         status = tree->mode == LXA_TREE_TEMPLATE_TEXT
@@ -4640,8 +4643,7 @@ reprocess_template_token:
             return append_character(tree, tree->text_element,
                                     LXA_DOM_KIND_TEXT, token->data);
         }
-        leave_text_mode(tree);
-        return LXA_OK;
+        return leave_text_mode(tree);
     }
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         lxa_html_head_noscript_plan_t plan;
@@ -5558,12 +5560,14 @@ lxa_html_tree_on_token(void *context,
         return tree->failure;
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
-    if ((lxa_html_tree_mode_has_template(tree->mode, tree->text_return_mode)
+    if ((lxa_html_tree_mode_has_template(tree->mode, tree->text_context.return_mode)
          != (tree->template_fragment.handle != LXA_HANDLE_NONE))
         || (unsigned) tree->document_mode > LXA_HTML_QUIRKS
+        || ((tree->mode == LXA_TREE_TEXT)
+            != (tree->text_context.plan.mode != LXA_HTML_DATA))
         || (tree->mode == LXA_TREE_TEXT
             && (tree->text_element.handle == LXA_HANDLE_NONE
-                || !lxa_html_tree_text_return_mode_valid(tree->text_return_mode)))) {
+                || !lxa_html_text_context_valid(&tree->text_context)))) {
         assert(false);
         tree->failure = LXA_ERROR_INTERNAL;
         return tree->failure;

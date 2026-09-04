@@ -42,7 +42,7 @@ typedef struct {
     lxa_status_t (*on_meta)(void *context, const lxa_html_token_t *token);
     void *meta_context; /* observer context outlives tree use */
     lxa_html_root_mode_t mode;
-    lxa_html_root_mode_t text_return_mode;
+    lxa_html_text_context_t text_context;
     lxa_html_root_mode_t template_return_mode;
     lxa_html_template_mode_t template_insertion_mode;
     lxa_html_document_mode_t document_mode;
