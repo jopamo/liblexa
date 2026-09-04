@@ -8,6 +8,23 @@
 _Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
 
 lxa_status_t
+lxa_html_tree_leading_newline(bool *pending, lxa_html_token_kind_t kind,
+    lxa_span_t data, lxa_span_t *out)
+{
+    if (pending == NULL || out == NULL
+        || (kind == LXA_HTML_TEXT && data.length != 0 && data.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    bool skip = *pending;
+    *pending = false;
+    if (kind == LXA_HTML_TEXT && skip && data.length != 0 && data.data[0] == '\n') {
+        ++data.data;
+        --data.length;
+    }
+    *out = data;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_text_context_enter(lxa_html_text_context_t *context,
     lxa_html_tokenizer_t *tokenizer, lxa_span_t name,
     lxa_html_root_mode_t return_mode, lxa_limit_reason_t *reason)

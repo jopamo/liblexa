@@ -258,6 +258,14 @@ typedef enum {
     LXA_HTML_TEXT_APPEND, LXA_HTML_TEXT_RETURN
 } lxa_html_text_action_t;
 
+/* Consume the accepted pre/listing/textarea newline latch after intake and
+ * table-text flushing. Non-text tokens do not inspect data. Return a borrowed
+ * text view; invalid arguments preserve the latch and output.
+ */
+lxa_status_t
+lxa_html_tree_leading_newline(bool *pending, lxa_html_token_kind_t kind,
+    lxa_span_t data, lxa_span_t *out);
+
 /* Dispatch accepted text-mode tokens. Resolve target only for an end tag;
  * text/EOF do not inspect name views. A mismatched end is a pipeline failure.
  * Publish only on success; engines own text effects and return-mode timing.

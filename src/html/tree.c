@@ -3449,12 +3449,11 @@ consume(lxa_html_tree_t *tree,
         if (status != LXA_OK) return status;
     }
     if (tree->skip_pre_newline) {
-        tree->skip_pre_newline = false;
-        if (token->kind == LXA_HTML_TEXT && token->data.length != 0
-            && token->data.data[0] == '\n') {
-            adjusted = *token;
-            ++adjusted.data.data;
-            --adjusted.data.length;
+        adjusted = *token;
+        status = lxa_html_tree_leading_newline(&tree->skip_pre_newline,
+            token->kind, token->data, &adjusted.data);
+        if (status != LXA_OK) return status;
+        if (token->kind == LXA_HTML_TEXT && adjusted.data.length != token->data.length) {
             if (adjusted.data.length == 0) return LXA_OK;
             token = &adjusted;
         }
