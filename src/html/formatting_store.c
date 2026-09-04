@@ -759,6 +759,25 @@ stack_view_init(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stac
     return LXA_OK;
 }
 
+static inline lxa_status_t
+adopt_stack_status(const formatting_stack_view_t *, lxa_status_t);
+
+#define LXA_TABLE_POP_NAME list_table_recovery
+#define LXA_TABLE_POP_VIEW formatting_stack_view_t
+#define LXA_TABLE_POP_HAS_MARKER(view) ((view)->list->marker != SIZE_MAX)
+#define LXA_TABLE_POP_PLAN(view, keep, out) adopt_stack_status(view, \
+    lxa_html_control_stack_table_markers_plan((view)->stack, keep, out))
+#define LXA_TABLE_POP_ELEMENTS(view, keep, template_context) adopt_stack_status(view, \
+    lxa_html_control_stack_pop_to((view)->stack, keep))
+#define LXA_TABLE_POP_CLEAR(view) lxa_html_formatting_list_clear((view)->list)
+#include "html/table_pop.inc"
+#undef LXA_TABLE_POP_NAME
+#undef LXA_TABLE_POP_VIEW
+#undef LXA_TABLE_POP_HAS_MARKER
+#undef LXA_TABLE_POP_PLAN
+#undef LXA_TABLE_POP_ELEMENTS
+#undef LXA_TABLE_POP_CLEAR
+
 lxa_status_t
 lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t keep, bool template_context)
@@ -766,18 +785,7 @@ lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
     formatting_stack_view_t view;
     lxa_status_t status = stack_view_init(list, stack, keep, &view);
     if (status != LXA_OK) return status;
-    size_t markers = 0;
-    if (template_context || list->marker != SIZE_MAX)
-        status = lxa_html_control_stack_table_markers_plan(stack, keep, &markers);
-    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(stack, keep);
-    if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
-    if (status != LXA_OK) return status;
-    while (markers != 0) {
-        status = lxa_html_formatting_list_clear(list);
-        if (status != LXA_OK) return status;
-        --markers;
-    }
-    return LXA_OK;
+    return list_table_recovery(&view, keep, template_context);
 }
 
 static inline lxa_status_t

@@ -292,27 +292,12 @@ pop_element(lxa_html_tree_t *tree)
 }
 
 static lxa_status_t
-plan_table_markers(lxa_html_tree_t *, const lxa_vector_t *, size_t, size_t *);
+tree_pop_table(lxa_html_tree_t *, size_t, bool);
 
 static lxa_status_t
 pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    size_t closures = 0;
-    /* Table recovery closes cells/captions, not other popped marker owners. */
-    if (tree->formatting_marker != SIZE_MAX) {
-        lxa_status_t status = plan_table_markers(tree, &tree->open_elements, keep, &closures);
-        if (status != LXA_OK) return status;
-    }
-    while (lxa_vector_length(&tree->open_elements) > keep) {
-        lxa_status_t status = pop_element(tree);
-        if (status != LXA_OK) return status;
-    }
-    while (closures != 0) {
-        lxa_status_t status = clear_formatting_to_marker(tree);
-        if (status != LXA_OK) return status;
-        --closures;
-    }
-    return LXA_OK;
+    return tree_pop_table(tree, keep, false);
 }
 
 static lxa_status_t find_open_reference(lxa_html_tree_t *,
@@ -893,14 +878,30 @@ tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SCOPE_NAMESPACE
 #undef LXA_SCOPE_IDENTITY
 
+#define LXA_TABLE_POP_NAME tree_table_recovery
+#define LXA_TABLE_POP_VIEW lxa_html_tree_scope_view_t
+#define LXA_TABLE_POP_HAS_MARKER(view) ((view)->tree->formatting_marker != SIZE_MAX)
+#define LXA_TABLE_POP_PLAN tree_table_markers_plan
+#define LXA_TABLE_POP_ELEMENTS(view, keep, template_context) \
+    pop_elements((view)->tree, template_context ? &(view)->tree->template_elements \
+                                              : &(view)->tree->open_elements, keep)
+#define LXA_TABLE_POP_CLEAR(view) clear_formatting_to_marker((view)->tree)
+#include "html/table_pop.inc"
+#undef LXA_TABLE_POP_NAME
+#undef LXA_TABLE_POP_VIEW
+#undef LXA_TABLE_POP_HAS_MARKER
+#undef LXA_TABLE_POP_PLAN
+#undef LXA_TABLE_POP_ELEMENTS
+#undef LXA_TABLE_POP_CLEAR
+
 static lxa_status_t
-plan_table_markers(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-    size_t keep, size_t *out)
+tree_pop_table(lxa_html_tree_t *tree, size_t keep, bool template_context)
 {
+    const lxa_vector_t *elements = template_context ? &tree->template_elements : &tree->open_elements;
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_dom_ref_t *) elements->bytes.data, lxa_vector_length(elements)
     };
-    return tree_table_markers_plan(&view, keep, out);
+    return tree_table_recovery(&view, keep, template_context);
 }
 
 #define LXA_FORM_END_EXECUTE_NAME tree_end_form
@@ -3024,17 +3025,7 @@ template_push_table_part(lxa_html_tree_t *tree,
 static lxa_status_t
 template_pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
-    size_t markers;
-    lxa_status_t status = plan_table_markers(tree, &tree->template_elements, keep, &markers);
-    if (status != LXA_OK) return status;
-    status = template_pop_elements(tree, keep);
-    if (status != LXA_OK) return status;
-    while (markers != 0) {
-        status = clear_formatting_to_marker(tree);
-        if (status != LXA_OK) return status;
-        --markers;
-    }
-    return LXA_OK;
+    return tree_pop_table(tree, keep, true);
 }
 
 static lxa_status_t
