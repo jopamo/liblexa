@@ -254,6 +254,18 @@ typedef struct {
 lxa_status_t
 lxa_html_tree_text_start_plan(lxa_span_t name, lxa_html_text_start_plan_t *out);
 
+typedef enum {
+    LXA_HTML_TEXT_APPEND, LXA_HTML_TEXT_RETURN
+} lxa_html_text_action_t;
+
+/* Dispatch accepted text-mode tokens. Resolve target only for an end tag;
+ * text/EOF do not inspect name views. A mismatched end is a pipeline failure.
+ * Publish only on success; engines own text effects and return-mode timing.
+ */
+lxa_status_t
+lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_span_t target, lxa_html_text_action_t *out);
+
 /* Apply feedback for an already accepted HTML text-start rule. An unknown name
  * is an internal dispatch mismatch. The tokenizer copies its end target;
  * engines publish their text owner/return mode only after this succeeds.

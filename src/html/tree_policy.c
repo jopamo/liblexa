@@ -6,6 +6,26 @@
 #include "html-tags.h"
 
 lxa_status_t
+lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
+    lxa_span_t target, lxa_html_text_action_t *out)
+{
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_text_action_t action;
+    if (kind == LXA_HTML_TEXT) action = LXA_HTML_TEXT_APPEND;
+    else if (kind == LXA_HTML_EOF) action = LXA_HTML_TEXT_RETURN;
+    else if (kind == LXA_HTML_END_TAG) {
+        if (name.data == NULL || name.length == 0 || target.data == NULL || target.length == 0)
+            return LXA_ERROR_ARGUMENT;
+        if (!lxa_html_tree_name_equals(name, (const char *) target.data, target.length))
+            return LXA_ERROR_INTERNAL;
+        action = LXA_HTML_TEXT_RETURN;
+    }
+    else return LXA_ERROR_ARGUMENT;
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_namespace_feedback(lxa_html_tokenizer_t *tokenizer,
     lxa_dom_namespace_t ns)
 {

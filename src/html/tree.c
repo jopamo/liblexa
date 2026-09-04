@@ -4629,17 +4629,17 @@ reprocess_template_token:
         return status;
     }
     if (tree->mode == LXA_TREE_TEXT) {
-        lxa_span_t name;
-        if (token->kind == LXA_HTML_TEXT) {
+        lxa_span_t name = {0};
+        lxa_html_text_action_t action;
+        if (token->kind == LXA_HTML_END_TAG
+            && lxa_dom_nodes_element_name(tree->nodes, tree->text_element, &name) != LXA_OK)
+            return LXA_ERROR_INTERNAL;
+        status = lxa_html_tree_text_action(token->kind, token->name, name, &action);
+        if (status != LXA_OK) return LXA_ERROR_INTERNAL;
+        if (action == LXA_HTML_TEXT_APPEND) {
             return append_character(tree, tree->text_element,
                                     LXA_DOM_KIND_TEXT, token->data);
         }
-        if (token->kind != LXA_HTML_END_TAG
-            || lxa_dom_nodes_element_name(tree->nodes, tree->text_element,
-                                           &name) != LXA_OK
-            || name.length != token->name.length
-            || memcmp(name.data, token->name.data, name.length) != 0)
-            return LXA_ERROR_INTERNAL;
         leave_text_mode(tree);
         return LXA_OK;
     }
