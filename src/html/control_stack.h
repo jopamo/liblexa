@@ -164,6 +164,13 @@ lxa_status_t lxa_html_control_stack_form_end_plan(lxa_html_control_stack_t *stac
  */
 lxa_status_t lxa_html_control_stack_end_form(lxa_html_control_stack_t *stack,
     uint64_t *owner);
+/* Execute an accepted body/html end in IN_BODY. The stable mode field must
+ * not alias stack headers/storage. Pop the excluded column group before
+ * ignoring an absent body or publishing AFTER_BODY/AFTER_HTML. Retain ordinary
+ * descendants. Failed planning/pops leave the mode unchanged.
+ */
+lxa_status_t lxa_html_control_stack_end_body(lxa_html_control_stack_t *stack,
+    bool html_end, lxa_html_root_mode_t *mode);
 /* Same match, stop, WORK and publication rules as borrowed list-item plans.
  * Return stack length when absent. No mutation or formatting/DOM effects.
  */

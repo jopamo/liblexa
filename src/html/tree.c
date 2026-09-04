@@ -920,6 +920,19 @@ tree_pop_table(lxa_html_tree_t *tree, size_t keep, bool template_context)
 #undef LXA_FORM_END_POP
 #undef LXA_FORM_END_REMOVE
 
+#define LXA_BODY_END_NAME tree_end_body
+#define LXA_BODY_END_VIEW lxa_html_tree_scope_view_t
+#define LXA_BODY_END_PLAN(view, out) \
+    tree_scope_plan(view, 0, literal("body"), LXA_HTML_SCOPE_NORMAL, out)
+#define LXA_BODY_END_LENGTH(view) ((view)->length)
+#define LXA_BODY_END_POP(view, keep) pop_elements((view)->tree, &(view)->tree->open_elements, keep)
+#include "html/body_end.inc"
+#undef LXA_BODY_END_NAME
+#undef LXA_BODY_END_VIEW
+#undef LXA_BODY_END_PLAN
+#undef LXA_BODY_END_LENGTH
+#undef LXA_BODY_END_POP
+
 #define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
 #define LXA_CURRENT_NAMESPACE_VIEW lxa_html_tree_scope_view_t
 #define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
@@ -5386,22 +5399,9 @@ reprocess_body_start:
             tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
             lxa_vector_length(&tree->open_elements)
         };
-        lxa_html_end_target_plan_t plan;
-        status = tree_scope_plan(&view, 0, literal("body"),
-            LXA_HTML_SCOPE_NORMAL, &plan);
-        if (status != LXA_OK) return status;
-        if (plan.search_length != view.length) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        if (plan.index == plan.search_length) return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "body")
-        && tree->mode == LXA_TREE_IN_BODY) {
         /* The open stack retains ordinary descendants until EOF; </body>
          * changes insertion mode without detaching or popping them. */
-        tree->mode = LXA_TREE_AFTER_BODY;
-        return LXA_OK;
+        return tree_end_body(&view, named(token->name, "html"), &tree->mode);
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "html")) {
         if (tree->mode == LXA_TREE_AFTER_HEAD

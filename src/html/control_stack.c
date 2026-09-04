@@ -794,6 +794,30 @@ lxa_html_control_stack_end_form(lxa_html_control_stack_t *stack, uint64_t *owner
     return control_stack_end_form(&view, owner);
 }
 
+#define LXA_BODY_END_NAME control_stack_end_body
+#define LXA_BODY_END_VIEW control_stack_view_t
+#define LXA_BODY_END_PLAN(view, out) control_stack_scope_plan(view, 0, \
+    ((lxa_span_t){(const uint8_t *) "body", 4}), LXA_HTML_SCOPE_NORMAL, out)
+#define LXA_BODY_END_LENGTH(view) ((view)->length)
+#define LXA_BODY_END_POP(view, keep) lxa_html_control_stack_pop_to((view)->stack, keep)
+#include "html/body_end.inc"
+#undef LXA_BODY_END_NAME
+#undef LXA_BODY_END_VIEW
+#undef LXA_BODY_END_PLAN
+#undef LXA_BODY_END_LENGTH
+#undef LXA_BODY_END_POP
+
+lxa_status_t
+lxa_html_control_stack_end_body(lxa_html_control_stack_t *stack,
+    bool html_end, lxa_html_root_mode_t *mode)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || *mode != LXA_TREE_IN_BODY) return LXA_ERROR_ARGUMENT;
+    return control_stack_end_body(&view, html_end, mode);
+}
+
 lxa_status_t
 lxa_html_control_stack_column_start_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_template_mode_t mode, lxa_html_column_start_plan_t *out)
