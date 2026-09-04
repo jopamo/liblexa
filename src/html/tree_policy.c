@@ -20,38 +20,39 @@ lxa_html_tree_text_start_feedback(lxa_html_tokenizer_t *tokenizer,
     lxa_span_t name, lxa_limit_reason_t *reason)
 {
     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-    lxa_html_text_mode_t mode;
-    lxa_status_t status = lxa_html_tree_text_start_mode(name, &mode);
+    lxa_html_text_start_plan_t plan;
+    lxa_status_t status = lxa_html_tree_text_start_plan(name, &plan);
     if (status != LXA_OK) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    return lxa_html_tokenizer_set_text_mode_status(tokenizer, mode,
-        mode == LXA_HTML_PLAINTEXT ? (lxa_span_t){(const uint8_t *) "", 0} : name,
-        reason);
+    return lxa_html_tokenizer_set_text_mode_status(tokenizer, plan.mode, plan.end_tag, reason);
 }
 
 lxa_status_t
-lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out)
+lxa_html_tree_text_start_plan(lxa_span_t name, lxa_html_text_start_plan_t *out)
 {
     if (out == NULL) return LXA_ERROR_ARGUMENT;
-    lxa_html_text_mode_t mode;
-    if (lxa_html_tree_name_equals(name, "title", 5)
-        || lxa_html_tree_name_equals(name, "textarea", 8))
-        mode = LXA_HTML_RCDATA;
-    else if (lxa_html_tree_name_equals(name, "script", 6))
-        mode = LXA_HTML_SCRIPT_DATA;
-    else if (lxa_html_tree_name_equals(name, "plaintext", 9))
-        mode = LXA_HTML_PLAINTEXT;
-    else if (lxa_html_tree_name_equals(name, "style", 5)
-        || lxa_html_tree_name_equals(name, "xmp", 3)
-        || lxa_html_tree_name_equals(name, "iframe", 6)
-        || lxa_html_tree_name_equals(name, "noembed", 7)
-        || lxa_html_tree_name_equals(name, "noframes", 8))
-        mode = LXA_HTML_RAWTEXT;
-    else return LXA_ERROR_ARGUMENT;
-    *out = mode;
-    return LXA_OK;
+#define LXA_TEXT_START(text, selected) \
+    if (lxa_html_tree_name_equals(name, text, sizeof(text) - 1)) { \
+        *out = (lxa_html_text_start_plan_t){selected, \
+            {(const uint8_t *) text, sizeof(text) - 1}}; \
+        return LXA_OK; \
+    }
+    LXA_TEXT_START("title", LXA_HTML_RCDATA)
+    LXA_TEXT_START("textarea", LXA_HTML_RCDATA)
+    LXA_TEXT_START("script", LXA_HTML_SCRIPT_DATA)
+    if (lxa_html_tree_name_equals(name, "plaintext", 9)) {
+        *out = (lxa_html_text_start_plan_t){LXA_HTML_PLAINTEXT, {NULL, 0}};
+        return LXA_OK;
+    }
+    LXA_TEXT_START("style", LXA_HTML_RAWTEXT)
+    LXA_TEXT_START("xmp", LXA_HTML_RAWTEXT)
+    LXA_TEXT_START("iframe", LXA_HTML_RAWTEXT)
+    LXA_TEXT_START("noembed", LXA_HTML_RAWTEXT)
+    LXA_TEXT_START("noframes", LXA_HTML_RAWTEXT)
+#undef LXA_TEXT_START
+    return LXA_ERROR_ARGUMENT;
 }
 
 static bool

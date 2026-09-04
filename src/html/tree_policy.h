@@ -242,11 +242,17 @@ lxa_status_t
 lxa_html_tree_after_body_action(const lxa_html_token_t *token,
     lxa_html_after_body_action_t *out);
 
+typedef struct {
+    lxa_html_text_mode_t mode;
+    lxa_span_t end_tag; /* immutable static storage; empty for plaintext */
+} lxa_html_text_start_plan_t;
+
 /* Select feedback only after an HTML text-start rule accepts the token.
- * This does not replace namespace, insertion-mode or recovery dispatch.
+ * Publish mode and a static end target only on success, retaining no token
+ * views. This does not replace namespace, insertion-mode or recovery dispatch.
  */
 lxa_status_t
-lxa_html_tree_text_start_mode(lxa_span_t name, lxa_html_text_mode_t *out);
+lxa_html_tree_text_start_plan(lxa_span_t name, lxa_html_text_start_plan_t *out);
 
 /* Apply feedback for an already accepted HTML text-start rule. An unknown name
  * is an internal dispatch mismatch. The tokenizer copies its end target;
