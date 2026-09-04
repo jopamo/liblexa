@@ -256,4 +256,12 @@ lxa_status_t
 lxa_html_tree_text_start_feedback(lxa_html_tokenizer_t *tokenizer,
     lxa_span_t name, lxa_limit_reason_t *reason);
 
+/* Publish adjusted-current namespace feedback after successful token effects.
+ * Integration eligibility does not change namespace. No WORK or allocation.
+ * A rejected tokenizer setter is a pipeline-state failure.
+ */
+lxa_status_t
+lxa_html_tree_namespace_feedback(lxa_html_tokenizer_t *tokenizer,
+    lxa_dom_namespace_t ns);
+
 #endif

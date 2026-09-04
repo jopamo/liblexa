@@ -5589,10 +5589,8 @@ lxa_html_tree_on_token(void *context,
         lxa_dom_namespace_t ns;
         tree->failure = tree_current_namespace(&view,
             in_template ? template_boundary(tree) : 0, &ns);
-        if (tree->failure == LXA_OK
-            && lxa_html_tokenizer_allow_cdata(tokenizer,
-                ns != LXA_DOM_NS_HTML) != LXA_HTML_OK)
-            tree->failure = LXA_ERROR_INTERNAL;
+        if (tree->failure == LXA_OK)
+            tree->failure = lxa_html_tree_namespace_feedback(tokenizer, ns);
     }
     /* A rejected store reference or token from our tokenizer is a pipeline
      * failure, not an invalid caller argument. */

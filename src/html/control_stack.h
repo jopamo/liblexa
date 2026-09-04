@@ -79,6 +79,12 @@ lxa_status_t lxa_html_control_stack_get(lxa_html_control_stack_t *stack,
  */
 lxa_status_t lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_dom_namespace_t *out);
+/* Apply post-effect CDATA feedback over the same active slice. An exhausted
+ * slice publishes HTML even when the entry below it is foreign. Engines skip
+ * this after EOF and own failure latching. No WORK, allocation or stack mutation.
+ */
+lxa_status_t lxa_html_control_stack_namespace_feedback(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_tokenizer_t *tokenizer);
 lxa_status_t lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index);
 lxa_status_t lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,

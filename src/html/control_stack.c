@@ -454,6 +454,15 @@ lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *stack,
     return control_stack_current_namespace(&view, boundary, out);
 }
 
+lxa_status_t
+lxa_html_control_stack_namespace_feedback(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_tokenizer_t *tokenizer)
+{
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = lxa_html_control_stack_current_namespace(stack, boundary, &ns);
+    return status == LXA_OK ? lxa_html_tree_namespace_feedback(tokenizer, ns) : status;
+}
+
 #define LXA_SCOPE_NAME control_stack_scope_search
 #define LXA_ORDINARY_NAME control_stack_ordinary_search
 #define LXA_COLUMN_GROUP_NAME control_stack_column_group

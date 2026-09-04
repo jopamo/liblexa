@@ -6,6 +6,16 @@
 #include "html-tags.h"
 
 lxa_status_t
+lxa_html_tree_namespace_feedback(lxa_html_tokenizer_t *tokenizer,
+    lxa_dom_namespace_t ns)
+{
+    if (tokenizer == NULL || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    return lxa_html_tokenizer_allow_cdata(tokenizer, ns != LXA_DOM_NS_HTML) == LXA_HTML_OK
+        ? LXA_OK : LXA_ERROR_INTERNAL;
+}
+
+lxa_status_t
 lxa_html_tree_text_start_feedback(lxa_html_tokenizer_t *tokenizer,
     lxa_span_t name, lxa_limit_reason_t *reason)
 {
