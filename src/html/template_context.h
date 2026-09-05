@@ -58,6 +58,13 @@ lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, uint64_t *identity);
+/* Admit a prepared effective HTML formatting start after depth preflight.
+ * Reuse snapshot capture, Noah admission and rollback without retaining token
+ * views. Engines own anchor/nobr preprocessing and reconstruction scheduling.
+ * Clear identity on failure; output must not alias any owner storage.
+ */
+lxa_status_t lxa_html_template_context_admit_formatting(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity);
 /* Apply shared template table recovery only within the active content slice.
  * Retained boundaries cannot remove template owners or enclosing content.
  * Engines publish insertion-mode changes after successful effects.

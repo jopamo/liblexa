@@ -159,6 +159,26 @@ lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_admit_formatting(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (identity == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_formatting_tag(token->name))
+        return LXA_ERROR_ARGUMENT;
+    status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_admit(context->formatting, context->stack, token, identity);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->formatting->store->limit_reason;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_pop_table(lxa_html_template_context_t *context, size_t keep)
 {
     lxa_status_t status = begin(context);
