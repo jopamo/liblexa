@@ -51,6 +51,19 @@ lxa_status_t lxa_html_template_context_depth_check(lxa_html_template_context_t *
  */
 lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
+/* Admit an accepted HTML cell/caption/object-family marker owner after depth
+ * preflight. Validate attributes but retain none. Nested templates use enter.
+ * The name and identity output must not alias any owner storage. Clear
+ * identity on failure.
+ */
+lxa_status_t lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity);
+/* Apply shared template table recovery only within the active content slice.
+ * Retained boundaries cannot remove template owners or enclosing content.
+ * Engines publish insertion-mode changes after successful effects.
+ */
+lxa_status_t lxa_html_template_context_pop_table(lxa_html_template_context_t *context,
+    size_t keep);
 /* Close the active unpatched frame: plan, pop content, clear the newest marker,
  * pop its template owner, then publish the enclosing mode. EOF skips planning
  * scans. Failure preserves output and latches any completed effects. Output
