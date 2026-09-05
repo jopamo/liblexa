@@ -1282,15 +1282,14 @@ lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
 }
 
 lxa_status_t
-lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
+lxa_html_formatting_list_start_intake(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary,
-    const lxa_html_token_t *token, uint64_t *identity)
+    const lxa_html_token_t *token)
 {
-    if (identity != NULL) *identity = 0;
     formatting_stack_view_t view;
     lxa_status_t status = stack_view_init(list, stack, boundary, &view);
     if (status != LXA_OK) return status;
-    if (identity == NULL || !lxa_html_formatting_token_shape_valid(token)
+    if (!lxa_html_formatting_token_shape_valid(token)
         || !lxa_html_tree_formatting_tag(token->name))
         return LXA_ERROR_ARGUMENT;
     lxa_span_t descriptors = {(const uint8_t *) token->attributes,
@@ -1316,6 +1315,47 @@ lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
         if (status == LXA_OK && (start_alias(name, &view) || start_alias(value, &view)))
             status = LXA_ERROR_ARGUMENT;
     }
+    return status;
+}
+
+lxa_status_t
+lxa_html_formatting_list_plan_add(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary,
+    const lxa_html_token_t *token, size_t *drop)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (drop == NULL || !lxa_html_formatting_token_shape_valid(token)
+        || !lxa_html_tree_formatting_tag(token->name)) return LXA_ERROR_ARGUMENT;
+    return list_plan_add(&view, token, drop);
+}
+
+lxa_status_t
+lxa_html_formatting_list_admit_planned(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
+    size_t drop, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || !lxa_html_formatting_token_shape_valid(token)
+        || !lxa_html_tree_formatting_tag(token->name)
+        || (drop != SIZE_MAX && (drop < list_start(list)
+            || drop >= lxa_vector_length(&list->entries)))) return LXA_ERROR_ARGUMENT;
+    return list_admit_planned(list, stack, token, drop, identity);
+}
+
+lxa_status_t
+lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary,
+    const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    if (identity == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = lxa_html_formatting_list_start_intake(list, stack, boundary, token);
+    formatting_stack_view_t view = {list, stack, boundary};
     size_t drop;
     if (status == LXA_OK) status = list_prepare_start(&view, token, &drop);
     return status == LXA_OK ? list_admit_planned(list, stack, token, drop, identity) : status;

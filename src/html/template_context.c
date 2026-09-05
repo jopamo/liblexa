@@ -223,6 +223,97 @@ lxa_html_template_context_reconstruct(lxa_html_template_context_t *context)
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    size_t boundary;
+} template_start_view_t;
+
+static lxa_status_t
+start_stack_status(const template_start_view_t *view, lxa_status_t status)
+{
+    if (status == LXA_ERROR_LIMIT)
+        view->context->limit_reason = view->context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+start_identity(const template_start_view_t *view, size_t index, uint64_t *identity)
+{
+    lxa_html_formatting_item_t item;
+    lxa_status_t status = lxa_html_formatting_list_get(view->context->formatting, index, &item);
+    if (status == LXA_OK) *identity = item.identity;
+    return status;
+}
+
+#define LXA_FORMATTING_START_NAME context_prepare_start
+#define LXA_FORMATTING_START_VIEW template_start_view_t
+#define LXA_FORMATTING_START_REFERENCE uint64_t
+#define LXA_FORMATTING_START_FIND(view, name, index) \
+    lxa_html_formatting_list_find((view)->context->formatting, name, index)
+#define LXA_FORMATTING_START_IDENTITY start_identity
+#define LXA_FORMATTING_START_ADOPT(view, name) \
+    lxa_html_formatting_list_adopt((view)->context->formatting, (view)->context->stack, (view)->boundary, name)
+#define LXA_FORMATTING_START_FIND_REFERENCE(view, identity, index) \
+    lxa_html_formatting_list_find_reference((view)->context->formatting, identity, index)
+#define LXA_FORMATTING_START_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->context->formatting->entries)
+#define LXA_FORMATTING_START_REMOVE_FORMATTING(view, index) \
+    lxa_html_formatting_list_remove((view)->context->formatting, index)
+#define LXA_FORMATTING_START_OPEN(view, identity, index) start_stack_status(view, \
+    lxa_html_control_stack_open_reference_find((view)->context->stack, (view)->boundary, identity, index))
+#define LXA_FORMATTING_START_OPEN_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_FORMATTING_START_REMOVE_OPEN(view, index) start_stack_status(view, \
+    lxa_html_control_stack_remove((view)->context->stack, index))
+#define LXA_FORMATTING_START_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_FORMATTING_START_SCOPED(view, name, index) start_stack_status(view, \
+    lxa_html_control_stack_scope_find((view)->context->stack, (view)->boundary, name, LXA_HTML_SCOPE_NORMAL, index))
+#define LXA_FORMATTING_START_PLAN(view, token, drop) \
+    lxa_html_formatting_list_plan_add((view)->context->formatting, (view)->context->stack, (view)->boundary, token, drop)
+#include "html/formatting_start.inc"
+#undef LXA_FORMATTING_START_NAME
+#undef LXA_FORMATTING_START_VIEW
+#undef LXA_FORMATTING_START_REFERENCE
+#undef LXA_FORMATTING_START_FIND
+#undef LXA_FORMATTING_START_IDENTITY
+#undef LXA_FORMATTING_START_ADOPT
+#undef LXA_FORMATTING_START_FIND_REFERENCE
+#undef LXA_FORMATTING_START_FORMATTING_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_FORMATTING
+#undef LXA_FORMATTING_START_OPEN
+#undef LXA_FORMATTING_START_OPEN_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_OPEN
+#undef LXA_FORMATTING_START_RECONSTRUCT
+#undef LXA_FORMATTING_START_SCOPED
+#undef LXA_FORMATTING_START_PLAN
+
+lxa_status_t
+lxa_html_template_context_start_formatting(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (identity == NULL || count == 0) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    template_start_view_t view = {context, frames[count - 1].boundary};
+    status = lxa_html_formatting_list_start_intake(context->formatting, context->stack,
+        view.boundary, token);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    size_t drop;
+    if (status == LXA_OK) status = context_prepare_start(&view, token, &drop);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->formatting->store->limit_reason;
+    if (status == LXA_OK)
+        status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_admit_planned(context->formatting, context->stack,
+            token, drop, identity);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->formatting->store->limit_reason;
+    return finish(context, status);
+}
+
 lxa_status_t
 lxa_html_template_context_enter(lxa_html_template_context_t *context,
     lxa_html_root_mode_t mode, bool has_patch)

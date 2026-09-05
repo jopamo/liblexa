@@ -65,6 +65,12 @@ lxa_status_t lxa_html_template_context_admit_marker(lxa_html_template_context_t 
  */
 lxa_status_t lxa_html_template_context_admit_formatting(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, uint64_t *identity);
+/* Coordinate an accepted formatting start, including anchor/nobr recovery and
+ * context-depth-checked reconstruction. Consume one Noah plan. Token views
+ * and output must not alias owner storage. Failures latch completed effects.
+ */
+lxa_status_t lxa_html_template_context_start_formatting(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity);
 /* Apply shared template table recovery only within the active content slice.
  * Retained boundaries cannot remove template owners or enclosing content.
  * Engines publish insertion-mode changes after successful effects.

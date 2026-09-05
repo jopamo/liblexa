@@ -158,4 +158,19 @@ lxa_status_t lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary,
     const lxa_html_token_t *token, uint64_t *identity);
 
+/* Serialized start phases for context-owned reconstruction/depth admission.
+ * Intake validates non-aliasing token views before preprocessing effects.
+ * Plan checks ACTIVE and reserves membership. Reconstruction may change open
+ * identities, but membership and snapshots must remain unchanged before
+ * admitting the saved drop index. Do not repeat the Noah scan.
+ */
+lxa_status_t lxa_html_formatting_list_start_intake(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, const lxa_html_token_t *token);
+lxa_status_t lxa_html_formatting_list_plan_add(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary,
+    const lxa_html_token_t *token, size_t *drop);
+lxa_status_t lxa_html_formatting_list_admit_planned(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
+    size_t drop, uint64_t *identity);
+
 #endif
