@@ -2642,6 +2642,83 @@ template_boundary_valid(const lxa_html_tree_t *tree)
         length < 2 ? 0 : frames[length - 2].element_count);
 }
 
+typedef struct {
+    lxa_html_tree_scope_view_t scope;
+    lxa_html_template_frame_t frame;
+    size_t parents;
+} tree_template_close_view_t;
+
+static lxa_status_t
+template_close_patch(const tree_template_close_view_t *view)
+{
+    lxa_html_tree_t *tree = view->scope.tree;
+    lxa_dom_ref_t markers[] = {
+        tree->template_patch.start, tree->template_patch.end
+    };
+    for (size_t i = 0; i < sizeof(markers) / sizeof(markers[0]); ++i) {
+        lxa_dom_ref_t parent;
+        if (markers[i].handle == LXA_HANDLE_NONE) continue;
+        lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, markers[i], &parent);
+        if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
+            status = lxa_dom_nodes_detach_constructed_child(tree->nodes, markers[i]);
+        if (status != LXA_OK) return status;
+    }
+    tree->template_patch = (lxa_dom_content_patch_t){0};
+    return LXA_OK;
+}
+
+static lxa_status_t
+template_close_release(const tree_template_close_view_t *view, size_t boundary)
+{
+    (void) boundary;
+    if (lxa_budget_release(view->scope.tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1) != LXA_OK) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t
+template_close_publish(const tree_template_close_view_t *view)
+{
+    lxa_html_tree_t *tree = view->scope.tree;
+    if (view->parents != 0) {
+        if (lxa_vector_erase(&tree->template_stack, view->parents - 1, 1) != LXA_OK) {
+            assert(false);
+            return LXA_ERROR_INTERNAL;
+        }
+        tree->template_fragment = view->frame.fragment;
+        tree->template_patch = view->frame.patch;
+        tree->template_insertion_mode = view->frame.insertion_mode;
+    }
+    else {
+        tree->template_fragment = (lxa_dom_ref_t){0};
+        tree->template_patch = (lxa_dom_content_patch_t){0};
+        tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
+        tree->mode = tree->template_return_mode;
+    }
+    return LXA_OK;
+}
+
+#define LXA_TEMPLATE_CLOSE_NAME tree_template_close
+#define LXA_TEMPLATE_CLOSE_VIEW tree_template_close_view_t
+#define LXA_TEMPLATE_CLOSE_PLAN(view, boundary, explicit_end, has_patch, out) \
+    tree_template_close_plan(&(view)->scope, boundary, explicit_end, has_patch, out)
+#define LXA_TEMPLATE_CLOSE_POP(view, keep) template_pop_elements((view)->scope.tree, keep)
+#define LXA_TEMPLATE_CLOSE_PATCH template_close_patch
+#define LXA_TEMPLATE_CLOSE_CLEAR(view) clear_formatting_to_marker((view)->scope.tree)
+#define LXA_TEMPLATE_CLOSE_RELEASE template_close_release
+#define LXA_TEMPLATE_CLOSE_PUBLISH template_close_publish
+#include "html/template_close.inc"
+#undef LXA_TEMPLATE_CLOSE_NAME
+#undef LXA_TEMPLATE_CLOSE_VIEW
+#undef LXA_TEMPLATE_CLOSE_PLAN
+#undef LXA_TEMPLATE_CLOSE_POP
+#undef LXA_TEMPLATE_CLOSE_PATCH
+#undef LXA_TEMPLATE_CLOSE_CLEAR
+#undef LXA_TEMPLATE_CLOSE_RELEASE
+#undef LXA_TEMPLATE_CLOSE_PUBLISH
+
 static lxa_status_t
 close_template(lxa_html_tree_t *tree, bool explicit_end)
 {
@@ -2649,7 +2726,6 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
     size_t elements = lxa_vector_length(&tree->template_elements);
     lxa_html_template_frame_t frame = {0};
     size_t boundary = 0;
-    lxa_status_t status;
     if (!template_boundary_valid(tree)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
@@ -2675,53 +2751,12 @@ close_template(lxa_html_tree_t *tree, bool explicit_end)
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    const lxa_html_tree_scope_view_t view = {
-        tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data, elements
+    const tree_template_close_view_t view = {
+        {tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data, elements},
+        frame, length
     };
-    size_t keep;
-    status = tree_template_close_plan(&view, boundary, explicit_end,
-        tree->template_patch.target.handle != LXA_HANDLE_NONE, &keep);
-    if (status != LXA_OK) return status;
-    if (explicit_end && tree->template_patch.target.handle != LXA_HANDLE_NONE) {
-        status = template_pop_elements(tree, keep);
-        if (status != LXA_OK) return status;
-        lxa_dom_ref_t markers[] = {
-            tree->template_patch.start, tree->template_patch.end
-        };
-        for (size_t i = 0; i < sizeof(markers) / sizeof(markers[0]); ++i) {
-            lxa_dom_ref_t parent;
-            if (markers[i].handle == LXA_HANDLE_NONE) continue;
-            status = lxa_dom_nodes_parent(tree->nodes, markers[i], &parent);
-            if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
-                status = lxa_dom_nodes_detach_constructed_child(tree->nodes,
-                                                                 markers[i]);
-            if (status != LXA_OK) return status;
-        }
-        tree->template_patch = (lxa_dom_content_patch_t){0};
-    }
-    status = template_pop_elements(tree, boundary);
-    if (status != LXA_OK) return status;
-    status = clear_formatting_to_marker(tree);
-    if (status != LXA_OK) return status;
-    status = lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
-    if (status == LXA_OK && length != 0)
-        status = lxa_vector_erase(&tree->template_stack, length - 1, 1);
-    if (status != LXA_OK) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
-    }
-    if (length != 0) {
-        tree->template_fragment = frame.fragment;
-        tree->template_patch = frame.patch;
-        tree->template_insertion_mode = frame.insertion_mode;
-    }
-    else {
-        tree->template_fragment = (lxa_dom_ref_t){0};
-        tree->template_patch = (lxa_dom_content_patch_t){0};
-        tree->template_insertion_mode = LXA_TEMPLATE_INITIAL;
-        tree->mode = tree->template_return_mode;
-    }
-    return LXA_OK;
+    return tree_template_close(&view, boundary, explicit_end,
+        tree->template_patch.target.handle != LXA_HANDLE_NONE);
 }
 
 static size_t

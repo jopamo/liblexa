@@ -177,6 +177,72 @@ lxa_html_template_context_enter(lxa_html_template_context_t *context,
     return LXA_OK;
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    size_t count;
+    lxa_html_root_mode_t *mode;
+} template_close_view_t;
+
+static lxa_status_t
+close_plan(const template_close_view_t *view, size_t boundary,
+    bool explicit_end, bool has_patch, size_t *keep)
+{
+    lxa_status_t status = lxa_html_control_stack_template_close_plan(view->context->stack,
+        boundary, explicit_end, has_patch, keep);
+    if (status == LXA_ERROR_LIMIT)
+        view->context->limit_reason = view->context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+close_pop(const template_close_view_t *view, size_t keep)
+{
+    lxa_status_t status = lxa_html_control_stack_pop_to(view->context->stack, keep);
+    if (status == LXA_ERROR_LIMIT)
+        view->context->limit_reason = view->context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+close_clear(const template_close_view_t *view)
+{
+    lxa_status_t status = lxa_html_formatting_list_clear(view->context->formatting);
+    if (status == LXA_ERROR_LIMIT)
+        view->context->limit_reason = view->context->formatting->store->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+close_publish(const template_close_view_t *view)
+{
+    lxa_html_template_context_t *context = view->context;
+    if (lxa_vector_erase(&context->frames, view->count - 1, 1) != LXA_OK) return internal();
+    *view->mode = view->count == 1 ? context->return_mode : LXA_TREE_TEMPLATE_TEXT;
+    if (view->count == 1) {
+        context->root_length = 0;
+        context->return_mode = LXA_TREE_INITIAL;
+    }
+    return LXA_OK;
+}
+
+#define LXA_TEMPLATE_CLOSE_NAME context_template_close
+#define LXA_TEMPLATE_CLOSE_VIEW template_close_view_t
+#define LXA_TEMPLATE_CLOSE_PLAN close_plan
+#define LXA_TEMPLATE_CLOSE_POP close_pop
+#define LXA_TEMPLATE_CLOSE_PATCH(view) internal()
+#define LXA_TEMPLATE_CLOSE_CLEAR close_clear
+#define LXA_TEMPLATE_CLOSE_RELEASE(view, boundary) close_pop(view, (boundary) - 1)
+#define LXA_TEMPLATE_CLOSE_PUBLISH close_publish
+#include "html/template_close.inc"
+#undef LXA_TEMPLATE_CLOSE_NAME
+#undef LXA_TEMPLATE_CLOSE_VIEW
+#undef LXA_TEMPLATE_CLOSE_PLAN
+#undef LXA_TEMPLATE_CLOSE_POP
+#undef LXA_TEMPLATE_CLOSE_PATCH
+#undef LXA_TEMPLATE_CLOSE_CLEAR
+#undef LXA_TEMPLATE_CLOSE_RELEASE
+#undef LXA_TEMPLATE_CLOSE_PUBLISH
+
 lxa_status_t
 lxa_html_template_context_leave(lxa_html_template_context_t *context,
     bool explicit_end, lxa_html_root_mode_t *mode)
@@ -198,27 +264,8 @@ lxa_html_template_context_leave(lxa_html_template_context_t *context,
         || owner.namespace_id != LXA_DOM_NS_HTML
         || !lxa_html_tree_name_equals(owner.name, "template", 8)))
         status = internal();
-    size_t keep;
-    if (status == LXA_OK)
-        status = lxa_html_control_stack_template_close_plan(context->stack,
-            frame.boundary, explicit_end, false, &keep);
-    if (status == LXA_OK && keep != length) status = internal();
-    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, frame.boundary);
     if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
     if (status != LXA_OK) return finish(context, status);
-    status = lxa_html_formatting_list_clear(context->formatting);
-    if (status == LXA_ERROR_LIMIT)
-        context->limit_reason = context->formatting->store->limit_reason;
-    if (status != LXA_OK) return finish(context, status);
-    status = lxa_html_control_stack_pop_to(context->stack, frame.boundary - 1);
-    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-    if (status != LXA_OK) return finish(context, status);
-    status = lxa_vector_erase(&context->frames, count - 1, 1);
-    if (status != LXA_OK) return finish(context, internal());
-    *mode = count == 1 ? context->return_mode : LXA_TREE_TEMPLATE_TEXT;
-    if (count == 1) {
-        context->root_length = 0;
-        context->return_mode = LXA_TREE_INITIAL;
-    }
-    return LXA_OK;
+    const template_close_view_t view = {context, count, mode};
+    return finish(context, context_template_close(&view, frame.boundary, explicit_end, false));
 }
