@@ -822,22 +822,18 @@ lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_t *list,
     return list_reconstruct_plan(&view, list_start(list), start);
 }
 
-lxa_status_t
-lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, size_t boundary)
+static lxa_status_t
+reconstruct_suffix(const formatting_stack_view_t *view, size_t start)
 {
-    formatting_stack_view_t view;
-    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
-    if (status != LXA_OK) return status;
-    size_t start;
-    status = list_reconstruct_plan(&view, list_start(list), &start);
-    if (status != LXA_OK) return status;
+    lxa_html_formatting_list_t *list = view->list;
+    lxa_html_control_stack_t *stack = view->stack;
     size_t length = lxa_vector_length(&list->entries);
     for (size_t i = start; i < length; ++i) {
         lxa_html_formatting_item_t *item =
             (lxa_html_formatting_item_t *) list->entries.bytes.data + i;
+        if (item->identity == 0) return internal(LXA_ERROR_INTERNAL);
         const lxa_html_formatting_snapshot_t *snapshot;
-        status = snapshot_get(list->store, item->snapshot, &snapshot);
+        lxa_status_t status = snapshot_get(list->store, item->snapshot, &snapshot);
         if (status != LXA_OK) return internal(status);
         lxa_span_t name = {list->store->bytes.data + snapshot->name_offset, snapshot->name_length};
         uint64_t identity;
@@ -847,6 +843,30 @@ lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
         item->identity = identity;
     }
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_html_formatting_list_reconstruct_planned(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, size_t start)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (start < list_start(list) || start > lxa_vector_length(&list->entries))
+        return LXA_ERROR_ARGUMENT;
+    return reconstruct_suffix(&view, start);
+}
+
+lxa_status_t
+lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    size_t start;
+    status = list_reconstruct_plan(&view, list_start(list), &start);
+    return status == LXA_OK ? reconstruct_suffix(&view, start) : status;
 }
 
 static inline lxa_status_t

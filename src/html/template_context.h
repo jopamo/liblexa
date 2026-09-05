@@ -64,6 +64,11 @@ lxa_status_t lxa_html_template_context_admit_marker(lxa_html_template_context_t 
  */
 lxa_status_t lxa_html_template_context_pop_table(lxa_html_template_context_t *context,
     size_t keep);
+/* Plan reconstruction once, preflight the entire closed suffix's depth, then
+ * reopen it from immutable snapshots. No recapture or live formatting charge.
+ * Failure latches completed effects; engines own reconstruction scheduling.
+ */
+lxa_status_t lxa_html_template_context_reconstruct(lxa_html_template_context_t *context);
 /* Close the active unpatched frame: plan, pop content, clear the newest marker,
  * pop its template owner, then publish the enclosing mode. EOF skips planning
  * scans. Failure preserves output and latches any completed effects. Output

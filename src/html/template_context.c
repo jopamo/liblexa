@@ -177,6 +177,33 @@ lxa_html_template_context_pop_table(lxa_html_template_context_t *context, size_t
 }
 
 lxa_status_t
+lxa_html_template_context_reconstruct(lxa_html_template_context_t *context)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary, start;
+    status = lxa_html_formatting_list_reconstruct_plan(context->formatting, context->stack,
+        boundary, &start);
+    if (status == LXA_ERROR_LIMIT)
+        context->limit_reason = context->formatting->store->limit_reason;
+    if (status != LXA_OK) return finish(context, status);
+    size_t length = lxa_vector_length(&context->formatting->entries);
+    if (start == length) return LXA_OK;
+    if (start > length) return finish(context, internal());
+    status = check_depth(context, context->root_length, context->return_mode, count, length - start);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_reconstruct_planned(context->formatting, context->stack,
+            boundary, start);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->formatting->store->limit_reason;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_enter(lxa_html_template_context_t *context,
     lxa_html_root_mode_t mode, bool has_patch)
 {

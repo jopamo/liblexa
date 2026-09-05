@@ -94,6 +94,13 @@ lxa_status_t lxa_html_formatting_list_reconstruct_plan(lxa_html_formatting_list_
  */
 lxa_status_t lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary);
+/* Consume one closed-suffix plan without repeating its identity scan. Owners
+ * must remain unchanged between planning and execution; callers serialize
+ * access and preflight context depth before this call. Validate the retained
+ * marker boundary; completed pushes remain published on failure.
+ */
+lxa_status_t lxa_html_formatting_list_reconstruct_planned(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, size_t start);
 
 /* Select one canonical adoption outer round in the same identity domain.
  * Exclude entries before the last marker and open identities before boundary.
