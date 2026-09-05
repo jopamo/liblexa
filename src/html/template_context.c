@@ -88,6 +88,55 @@ lxa_html_template_context_destroy(lxa_html_template_context_t *context)
     context->limit_reason = LXA_BUDGET_COUNT;
 }
 
+static lxa_status_t
+check_depth(lxa_html_template_context_t *context, size_t root,
+    lxa_html_root_mode_t returning, size_t templates, size_t extra)
+{
+    size_t count = lxa_vector_length(&context->frames);
+    size_t length = lxa_vector_length(&context->stack->elements);
+    if (root > length || count > length - root
+        || (returning == LXA_TREE_IN_BODY && root == 0))
+        return internal();
+    size_t elements;
+    lxa_status_t status = lxa_size_add(length - root - count, extra, &elements);
+    if (status == LXA_OK)
+        status = lxa_html_tree_template_depth_check(context->stack->budget,
+            returning == LXA_TREE_IN_BODY ? root - 1 : 0,
+            templates, elements, &context->limit_reason);
+    return status;
+}
+
+lxa_status_t
+lxa_html_template_context_depth_check(lxa_html_template_context_t *context, size_t extra)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0) return LXA_ERROR_ARGUMENT;
+    return finish(context, check_depth(context, context->root_length,
+        context->return_mode, count, extra));
+}
+
+lxa_status_t
+lxa_html_template_context_push_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (identity == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_push_token(context->stack, token, ns, identity);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->stack->limit_reason;
+    return finish(context, status);
+}
+
 lxa_status_t
 lxa_html_template_context_enter(lxa_html_template_context_t *context,
     lxa_html_root_mode_t mode, bool has_patch)
@@ -101,15 +150,10 @@ lxa_html_template_context_enter(lxa_html_template_context_t *context,
         return LXA_ERROR_ARGUMENT;
     size_t root = count == 0 ? length : context->root_length;
     lxa_html_root_mode_t returning = count == 0 ? mode : context->return_mode;
-    if (root > length || count > length - root
-        || (returning == LXA_TREE_IN_BODY && root == 0))
-        return finish(context, internal());
     size_t required;
     status = lxa_size_add(count, 1, &required);
     if (status == LXA_OK)
-        status = lxa_html_tree_template_depth_check(context->stack->budget,
-            returning == LXA_TREE_IN_BODY ? root - 1 : 0,
-            required, length - root - count, &context->limit_reason);
+        status = check_depth(context, root, returning, required, 0);
     if (status == LXA_OK) status = lxa_vector_reserve(&context->frames, required);
     if (status != LXA_OK) {
         if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)

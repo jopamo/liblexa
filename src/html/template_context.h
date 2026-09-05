@@ -37,6 +37,20 @@ void lxa_html_template_context_destroy(lxa_html_template_context_t *context);
  */
 lxa_status_t lxa_html_template_context_enter(lxa_html_template_context_t *context,
     lxa_html_root_mode_t mode, bool has_patch);
+/* Preflight retained content plus extra elements using this owner's geometry.
+ * No allocation or live quota charge. Engines use this before coordinated
+ * formatting, marker or implied-element admission; it reserves no capacity.
+ */
+lxa_status_t lxa_html_template_context_depth_check(lxa_html_template_context_t *context,
+    size_t extra);
+/* Copy an accepted open start into the active content after depth preflight.
+ * Validate the effective token before effects; preserve SVG adjustments and
+ * MathML annotation eligibility. This performs only the stack effect, not
+ * formatting/marker admission, dispatch or tokenizer feedback. Clear identity
+ * on failure; its stable storage must not alias context or borrowed owners.
+ */
+lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
 /* Close the active unpatched frame: plan, pop content, clear the newest marker,
  * pop its template owner, then publish the enclosing mode. EOF skips planning
  * scans. Failure preserves output and latches any completed effects. Output
