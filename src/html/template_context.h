@@ -124,5 +124,12 @@ lxa_status_t lxa_html_template_context_reconstruct(lxa_html_template_context_t *
  */
 lxa_status_t lxa_html_template_context_leave(lxa_html_template_context_t *context,
     bool explicit_end, lxa_html_root_mode_t *mode);
+/* Precharge EOF recovery WORK for all templates/content, then close every
+ * unpatched frame through leave. Publish root mode only after complete unwind;
+ * later failure retains closed frames/effects and latches. Mode storage must
+ * not alias context or borrowed owners. Inactive contexts are rejected.
+ */
+lxa_status_t lxa_html_template_context_finish(lxa_html_template_context_t *context,
+    lxa_html_root_mode_t *mode);
 
 #endif

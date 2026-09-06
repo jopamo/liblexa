@@ -720,3 +720,25 @@ lxa_html_template_context_leave(lxa_html_template_context_t *context,
     const template_close_view_t view = {context, count, mode};
     return finish(context, context_template_close(&view, frame.boundary, explicit_end, false));
 }
+
+lxa_status_t
+lxa_html_template_context_finish(lxa_html_template_context_t *context,
+    lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || mode == NULL) return LXA_ERROR_ARGUMENT;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    /* Each metadata template owner replaces one canonical virtual-frame slot. */
+    status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+        length - context->root_length, &context->limit_reason);
+    if (status != LXA_OK) return finish(context, status);
+    lxa_html_root_mode_t restored = context->return_mode;
+    while (lxa_vector_length(&context->frames) != 0) {
+        status = lxa_html_template_context_leave(context, false, &restored);
+        if (status != LXA_OK) return status;
+    }
+    *mode = restored;
+    return LXA_OK;
+}
