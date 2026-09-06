@@ -77,6 +77,14 @@ lxa_status_t lxa_html_template_context_start_formatting(lxa_html_template_contex
  */
 lxa_status_t lxa_html_template_context_pop_table(lxa_html_template_context_t *context,
     size_t keep);
+/* Apply an accepted HTML table-part start (not table). Share retained-boundary
+ * plans, preflight replacement depth/OPEN and reserve slots before INSERT pops,
+ * then admit implied section/row/group and marker owners. Col retains only its
+ * implied group. Report false for ignored starts and failures. Token views and
+ * output must not alias owner storage. Engines retain mode publication.
+ */
+lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

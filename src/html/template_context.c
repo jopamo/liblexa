@@ -89,11 +89,10 @@ lxa_html_template_context_destroy(lxa_html_template_context_t *context)
 }
 
 static lxa_status_t
-check_depth(lxa_html_template_context_t *context, size_t root,
+check_depth_at(lxa_html_template_context_t *context, size_t length, size_t root,
     lxa_html_root_mode_t returning, size_t templates, size_t extra)
 {
     size_t count = lxa_vector_length(&context->frames);
-    size_t length = lxa_vector_length(&context->stack->elements);
     if (root > length || count > length - root
         || (returning == LXA_TREE_IN_BODY && root == 0))
         return internal();
@@ -104,6 +103,14 @@ check_depth(lxa_html_template_context_t *context, size_t root,
             returning == LXA_TREE_IN_BODY ? root - 1 : 0,
             templates, elements, &context->limit_reason);
     return status;
+}
+
+static lxa_status_t
+check_depth(lxa_html_template_context_t *context, size_t root,
+    lxa_html_root_mode_t returning, size_t templates, size_t extra)
+{
+    return check_depth_at(context, lxa_vector_length(&context->stack->elements),
+        root, returning, templates, extra);
 }
 
 lxa_status_t
@@ -193,6 +200,89 @@ lxa_html_template_context_pop_table(lxa_html_template_context_t *context, size_t
     status = lxa_html_formatting_list_pop_table(context->formatting, context->stack, keep, true);
     if (status == LXA_ERROR_LIMIT)
         context->limit_reason = context->formatting->store->limit_reason;
+    return finish(context, status);
+}
+
+static lxa_status_t
+push_table_part(lxa_html_template_context_t *context, const lxa_html_token_t *token)
+{
+    uint64_t identity;
+    return lxa_html_tree_formatting_marker_tag(token->name)
+        ? lxa_html_template_context_admit_marker(context, token, &identity)
+        : lxa_html_template_context_push_token(context, token, LXA_DOM_NS_HTML, &identity);
+}
+
+lxa_status_t
+lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted)
+{
+    if (inserted != NULL) *inserted = false;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (inserted == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG || !lxa_html_tree_table_part(token->name)
+        || lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary;
+    lxa_html_template_mode_t mode = frames[count - 1].insertion_mode;
+    lxa_html_control_stack_t *stack = context->stack;
+    lxa_html_template_table_start_plan_t plan;
+    for (;;) {
+        size_t length = lxa_vector_length(&stack->elements);
+        status = lxa_html_control_stack_template_table_start_plan(stack, boundary,
+            mode, token->name, &plan);
+        if (status != LXA_OK) break;
+        if (plan.action == LXA_HTML_TABLE_START_IGNORE) return LXA_OK;
+        size_t keep = plan.insertion.keep;
+        if (keep < boundary || keep > length) { status = internal(); break; }
+        if (plan.action == LXA_HTML_TABLE_START_INSERT) {
+            size_t extra = plan.insertion.extra, after;
+            status = lxa_size_add(keep, extra, &after);
+            if (status == LXA_OK)
+                status = check_depth_at(context, keep, context->root_length,
+                    context->return_mode, count, extra);
+            if (status == LXA_OK && extra > length - keep)
+                status = lxa_budget_check(stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                    extra - (length - keep), &context->limit_reason);
+            if (status == LXA_OK) status = lxa_vector_reserve(&stack->elements, after);
+            if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+                context->limit_reason = LXA_BUDGET_MEMORY;
+            if (status != LXA_OK) break;
+            status = lxa_html_template_context_pop_table(context, keep);
+            if (status != LXA_OK) break;
+            lxa_html_token_t implied = {.kind = LXA_HTML_START_TAG};
+            if (plan.insertion.implied_section) {
+                implied.name = (lxa_span_t){(const uint8_t *) "tbody", 5};
+                status = push_table_part(context, &implied);
+            }
+            if (status == LXA_OK && plan.insertion.implied_row) {
+                implied.name = (lxa_span_t){(const uint8_t *) "tr", 2};
+                status = push_table_part(context, &implied);
+            }
+            if (status == LXA_OK) {
+                if (lxa_html_tree_name_equals(token->name, "col", 3)) {
+                    implied.name = (lxa_span_t){(const uint8_t *) "colgroup", 8};
+                    status = push_table_part(context, &implied);
+                }
+                else status = push_table_part(context, token);
+            }
+            if (status == LXA_OK) *inserted = true;
+            break;
+        }
+        if ((plan.action != LXA_HTML_TABLE_START_POP_IGNORE
+                && plan.action != LXA_HTML_TABLE_START_POP_REPROCESS) || keep == length) {
+            status = internal();
+            break;
+        }
+        status = plan.table_pop ? lxa_html_template_context_pop_table(context, keep)
+            : lxa_html_control_stack_pop_to(stack, keep);
+        if (status != LXA_OK || plan.action == LXA_HTML_TABLE_START_POP_IGNORE) break;
+        /* Each reprocess removes at least one content entry. */
+    }
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = stack->limit_reason;
     return finish(context, status);
 }
 
