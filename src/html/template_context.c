@@ -321,6 +321,67 @@ lxa_html_template_context_end_boundary(lxa_html_template_context_t *context,
     return finish(context, context_end_effects(context, token->kind, token->name, handled));
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    size_t boundary;
+    lxa_html_template_mode_t mode;
+    bool implied_paragraph;
+} template_body_end_view_t;
+
+static lxa_status_t
+body_end_paragraph(template_body_end_view_t *view)
+{
+    view->implied_paragraph = true;
+    return LXA_OK;
+}
+
+#define LXA_TEMPLATE_BODY_END_NAME context_body_end
+#define LXA_TEMPLATE_BODY_END_VIEW template_body_end_view_t
+#define LXA_TEMPLATE_BODY_END_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_TEMPLATE_BODY_END_BOUNDARY(view) ((view)->boundary)
+#define LXA_TEMPLATE_BODY_END_MODE(view) ((view)->mode)
+#define LXA_TEMPLATE_BODY_END_SCOPED(view, name, scope, index) \
+    lxa_html_control_stack_scope_find((view)->context->stack, (view)->boundary, name, scope, index)
+#define LXA_TEMPLATE_BODY_END_ORDINARY(view, name, index) \
+    lxa_html_control_stack_ordinary_end_find((view)->context->stack, (view)->boundary, name, index)
+#define LXA_TEMPLATE_BODY_END_POP(view, index) end_pop((view)->context, index)
+#define LXA_TEMPLATE_BODY_END_ADOPT(view, name) \
+    lxa_html_formatting_list_adopt((view)->context->formatting, (view)->context->stack, (view)->boundary, name)
+#define LXA_TEMPLATE_BODY_END_PARAGRAPH body_end_paragraph
+#include "html/template_body_end.inc"
+#undef LXA_TEMPLATE_BODY_END_NAME
+#undef LXA_TEMPLATE_BODY_END_VIEW
+#undef LXA_TEMPLATE_BODY_END_LENGTH
+#undef LXA_TEMPLATE_BODY_END_BOUNDARY
+#undef LXA_TEMPLATE_BODY_END_MODE
+#undef LXA_TEMPLATE_BODY_END_SCOPED
+#undef LXA_TEMPLATE_BODY_END_ORDINARY
+#undef LXA_TEMPLATE_BODY_END_POP
+#undef LXA_TEMPLATE_BODY_END_ADOPT
+#undef LXA_TEMPLATE_BODY_END_PARAGRAPH
+
+lxa_status_t
+lxa_html_template_context_end_body(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *implied_paragraph)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (implied_paragraph == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_END_TAG) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    template_body_end_view_t view = {context, frames[count - 1].boundary,
+        frames[count - 1].insertion_mode, false};
+    status = context_body_end(&view, token->name);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT) {
+        context->limit_reason = lxa_html_tree_formatting_tag(token->name)
+            ? context->formatting->store->limit_reason : context->stack->limit_reason;
+    }
+    if (status == LXA_OK) *implied_paragraph = view.implied_paragraph;
+    return finish(context, status);
+}
+
 static lxa_status_t
 push_table_part(lxa_html_template_context_t *context, const lxa_html_token_t *token)
 {

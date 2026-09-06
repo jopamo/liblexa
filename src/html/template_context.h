@@ -85,6 +85,14 @@ lxa_status_t lxa_html_template_context_pop_table(lxa_html_template_context_t *co
  */
 lxa_status_t lxa_html_template_context_end_boundary(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *handled);
+/* Apply the final template in-body end rules after foreign/select/table/group
+ * recovery and template-close dispatch. Share scoped/list/ordinary matching
+ * and formatting adoption. Report a missing paragraph's closed insertion
+ * action without retaining metadata or charging node quotas. Output changes
+ * only on success; token views/output must not alias owner storage.
+ */
+lxa_status_t lxa_html_template_context_end_body(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *implied_paragraph);
 /* Apply an accepted HTML table-part start (not table). Share retained-boundary
  * plans, preflight replacement depth/OPEN and reserve slots before INSERT pops,
  * then admit implied section/row/group and marker owners. Col retains only its

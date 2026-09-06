@@ -3328,6 +3328,40 @@ template_close_elements(lxa_html_tree_t *tree, size_t index)
 }
 
 static lxa_status_t
+template_empty_paragraph(lxa_html_tree_t *tree)
+{
+    lxa_dom_ref_t parent, before, paragraph;
+    lxa_status_t status = template_insertion_location(tree, &parent, &before);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, literal("p"), &paragraph);
+    return status == LXA_OK ? insert_constructed(tree, parent, paragraph, before) : status;
+}
+
+#define LXA_TEMPLATE_BODY_END_NAME template_body_end
+#define LXA_TEMPLATE_BODY_END_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_BODY_END_LENGTH(tree) lxa_vector_length(&(tree)->template_elements)
+#define LXA_TEMPLATE_BODY_END_BOUNDARY template_boundary
+#define LXA_TEMPLATE_BODY_END_MODE(tree) ((tree)->template_insertion_mode)
+#define LXA_TEMPLATE_BODY_END_SCOPED(tree, name, scope, index) \
+    find_scoped_end_target(tree, &(tree)->template_elements, template_boundary(tree), name, scope, index)
+#define LXA_TEMPLATE_BODY_END_ORDINARY(tree, name, index) \
+    find_ordinary_end_target(tree, &(tree)->template_elements, template_boundary(tree), name, index)
+#define LXA_TEMPLATE_BODY_END_POP template_close_elements
+#define LXA_TEMPLATE_BODY_END_ADOPT adopt_formatting
+#define LXA_TEMPLATE_BODY_END_PARAGRAPH template_empty_paragraph
+#include "html/template_body_end.inc"
+#undef LXA_TEMPLATE_BODY_END_NAME
+#undef LXA_TEMPLATE_BODY_END_VIEW
+#undef LXA_TEMPLATE_BODY_END_LENGTH
+#undef LXA_TEMPLATE_BODY_END_BOUNDARY
+#undef LXA_TEMPLATE_BODY_END_MODE
+#undef LXA_TEMPLATE_BODY_END_SCOPED
+#undef LXA_TEMPLATE_BODY_END_ORDINARY
+#undef LXA_TEMPLATE_BODY_END_POP
+#undef LXA_TEMPLATE_BODY_END_ADOPT
+#undef LXA_TEMPLATE_BODY_END_PARAGRAPH
+
+static lxa_status_t
 begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
                    const lxa_html_token_t *token)
 {
@@ -4245,50 +4279,8 @@ reprocess_template_token:
                 || named(token->name, "td")
                 || named(token->name, "th")))
             return template_open_table_part(tree, token);
-        if (token->kind == LXA_HTML_END_TAG
-            && lxa_html_tree_template_scoped_end(token->name) && !named(token->name, "p")) {
-            size_t index;
-            status = find_scoped_end_target(tree, &tree->template_elements,
-                template_boundary(tree), token->name,
-                named(token->name, "li") ? LXA_HTML_SCOPE_LIST_ITEM : LXA_HTML_SCOPE_NORMAL,
-                &index);
-            if (status != LXA_OK) return status;
-            return index == lxa_vector_length(&tree->template_elements)
-                ? LXA_OK : template_close_elements(tree, index);
-        }
-        if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
-            && (tree->template_insertion_mode != LXA_TEMPLATE_INITIAL
-                || lxa_vector_length(&tree->template_elements)
-                   > template_boundary(tree))) {
-            size_t index;
-            status = find_scoped_end_target(tree, &tree->template_elements,
-                template_boundary(tree), token->name, LXA_HTML_SCOPE_BUTTON, &index);
-            if (status != LXA_OK) return status;
-            if (index == lxa_vector_length(&tree->template_elements)) {
-                lxa_dom_ref_t paragraph, before;
-                status = template_insertion_location(tree, &parent, &before);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
-                        literal("p"), &paragraph);
-                if (status != LXA_OK) return status;
-                return insert_constructed(tree, parent,
-                    paragraph, before);
-            }
-            return template_close_elements(tree, index);
-        }
-        if (token->kind == LXA_HTML_END_TAG
-            && lxa_html_tree_template_ordinary_end(token->name)) {
-            size_t index;
-            status = find_ordinary_end_target(tree, &tree->template_elements,
-                template_boundary(tree), token->name, &index);
-            if (status != LXA_OK) return status;
-            if (index == lxa_vector_length(&tree->template_elements))
-                return LXA_OK;
-            return template_close_elements(tree, index);
-        }
-        if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_formatting_tag(token->name))
-            return adopt_formatting(tree, token->name);
-        if (token->kind == LXA_HTML_END_TAG) return LXA_OK;
+        if (token->kind == LXA_HTML_END_TAG)
+            return template_body_end(tree, token->name);
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "template"))
             return begin_template(tree, token);
