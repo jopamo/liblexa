@@ -341,6 +341,72 @@ lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_start_column(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted)
+{
+    if (inserted != NULL) *inserted = false;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (inserted == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "col", 3)) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary;
+    lxa_html_template_mode_t mode = frames[count - 1].insertion_mode;
+    for (;;) {
+        lxa_html_column_start_plan_t plan;
+        status = lxa_html_control_stack_column_start_plan(context->stack, boundary, mode, &plan);
+        if (status != LXA_OK) break;
+        switch (plan.action) {
+            case LXA_HTML_COLUMN_START_VIRTUAL:
+                *inserted = true;
+                return LXA_OK;
+            case LXA_HTML_COLUMN_START_IGNORE: return LXA_OK;
+            case LXA_HTML_COLUMN_START_POP_IGNORE:
+                return finish(context, end_pop(context, plan.keep));
+            case LXA_HTML_COLUMN_START_POP_REPROCESS:
+                if (plan.keep < boundary
+                    || plan.keep >= lxa_vector_length(&context->stack->elements))
+                    return finish(context, internal());
+                status = lxa_html_template_context_pop_table(context, plan.keep);
+                if (status != LXA_OK) return status;
+                continue;
+            case LXA_HTML_COLUMN_START_TABLE_PART:
+                return lxa_html_template_context_start_table_part(context, token, inserted);
+            case LXA_HTML_COLUMN_START_APPEND:
+            case LXA_HTML_COLUMN_START_IMPLY_GROUP: break;
+            default: return finish(context, internal());
+        }
+        bool group = plan.action == LXA_HTML_COLUMN_START_IMPLY_GROUP;
+        status = check_depth(context, context->root_length, context->return_mode, count,
+            group ? 2 : 1);
+        if (status == LXA_OK && group)
+            status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                1, &context->limit_reason);
+        if (status == LXA_OK && group) {
+            size_t required;
+            status = lxa_size_add(lxa_vector_length(&context->stack->elements), 1, &required);
+            if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, required);
+            if (status == LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_MEMORY;
+        }
+        if (status == LXA_OK && group) {
+            lxa_html_token_t implied = {.kind = LXA_HTML_START_TAG,
+                .name = {(const uint8_t *) "colgroup", 8}};
+            bool admitted;
+            status = lxa_html_template_context_start_table_part(context, &implied, &admitted);
+            if (status == LXA_OK && !admitted) status = internal();
+        }
+        if (status == LXA_OK) *inserted = true;
+        break;
+    }
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->stack->limit_reason;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_reconstruct(lxa_html_template_context_t *context)
 {
     lxa_status_t status = begin(context);

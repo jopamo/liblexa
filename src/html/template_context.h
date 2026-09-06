@@ -93,6 +93,13 @@ lxa_status_t lxa_html_template_context_end_boundary(lxa_html_template_context_t 
  */
 lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
+/* Route an accepted HTML col start through virtual/current/implied groups.
+ * Append-only columns retain no metadata or OPEN charge; group admission uses
+ * table-part effects. Preserve canonical transient-column depth checks.
+ * Token views and output must not alias owner storage. Engines publish modes.
+ */
+lxa_status_t lxa_html_template_context_start_column(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
