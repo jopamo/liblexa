@@ -77,6 +77,14 @@ lxa_status_t lxa_html_template_context_start_formatting(lxa_html_template_contex
  */
 lxa_status_t lxa_html_template_context_pop_table(lxa_html_template_context_t *context,
     size_t keep);
+/* Apply table/marker end dispatch after foreign handling. Share plan-before-
+ * effects ordering, table cleanup or ordinary pops followed by one marker
+ * clear. Publish handled only on success; failure latches completed effects.
+ * Token views and output must not alias owner storage. Template closure and
+ * ordinary/formatting ends remain separate engine rules.
+ */
+lxa_status_t lxa_html_template_context_end_boundary(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 /* Apply an accepted HTML table-part start (not table). Share retained-boundary
  * plans, preflight replacement depth/OPEN and reserve slots before INSERT pops,
  * then admit implied section/row/group and marker owners. Col retains only its

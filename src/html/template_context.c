@@ -204,6 +204,60 @@ lxa_html_template_context_pop_table(lxa_html_template_context_t *context, size_t
 }
 
 static lxa_status_t
+end_plan(lxa_html_template_context_t *context, lxa_html_token_kind_t kind,
+    lxa_span_t name, lxa_html_template_end_plan_t *plan)
+{
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_status_t status = lxa_html_control_stack_template_end_plan(context->stack,
+        frames[lxa_vector_length(&context->frames) - 1].boundary, kind, name, plan);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+end_pop(lxa_html_template_context_t *context, size_t keep)
+{
+    lxa_status_t status = lxa_html_control_stack_pop_to(context->stack, keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+end_clear(lxa_html_template_context_t *context)
+{
+    lxa_status_t status = lxa_html_formatting_list_clear(context->formatting);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->formatting->store->limit_reason;
+    return status;
+}
+
+#define LXA_TEMPLATE_END_NAME context_end_effects
+#define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
+#define LXA_TEMPLATE_END_PLAN end_plan
+#define LXA_TEMPLATE_END_POP_TABLE lxa_html_template_context_pop_table
+#define LXA_TEMPLATE_END_POP end_pop
+#define LXA_TEMPLATE_END_CLEAR end_clear
+#include "html/template_end.inc"
+#undef LXA_TEMPLATE_END_NAME
+#undef LXA_TEMPLATE_END_VIEW
+#undef LXA_TEMPLATE_END_PLAN
+#undef LXA_TEMPLATE_END_POP_TABLE
+#undef LXA_TEMPLATE_END_POP
+#undef LXA_TEMPLATE_END_CLEAR
+
+lxa_status_t
+lxa_html_template_context_end_boundary(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    if (handled != NULL) *handled = false;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (handled == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    return finish(context, context_end_effects(context, token->kind, token->name, handled));
+}
+
+static lxa_status_t
 push_table_part(lxa_html_template_context_t *context, const lxa_html_token_t *token)
 {
     uint64_t identity;

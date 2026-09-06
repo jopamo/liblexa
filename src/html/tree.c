@@ -3370,35 +3370,35 @@ begin_template_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
 }
 
 static lxa_status_t
-template_end_formatting_boundary(lxa_html_tree_t *tree,
-                                 const lxa_html_token_t *token, bool *handled)
+template_end_plan(lxa_html_tree_t *tree, lxa_html_token_kind_t kind,
+    lxa_span_t name, lxa_html_template_end_plan_t *plan)
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data,
         lxa_vector_length(&tree->template_elements)
     };
-    lxa_html_template_end_plan_t plan;
-    *handled = false;
-    lxa_status_t status = tree_template_end_plan(&view, template_boundary(tree),
-        token->kind, token->name, &plan);
-    if (status != LXA_OK) return status;
-    switch (plan.action) {
-        case LXA_HTML_TEMPLATE_END_CONTINUE: return LXA_OK;
-        case LXA_HTML_TEMPLATE_END_IGNORE: break;
-        case LXA_HTML_TEMPLATE_END_POP_TABLE:
-            status = template_pop_table_elements(tree, plan.keep);
-            break;
-        case LXA_HTML_TEMPLATE_END_POP_MARKER:
-            status = template_pop_elements(tree, plan.keep);
-            if (status == LXA_OK) status = clear_formatting_to_marker(tree);
-            break;
-        default:
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-    }
-    if (status != LXA_OK) return status;
-    *handled = true;
-    return LXA_OK;
+    return tree_template_end_plan(&view, template_boundary(tree), kind, name, plan);
+}
+
+#define LXA_TEMPLATE_END_NAME template_end_effects
+#define LXA_TEMPLATE_END_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_END_PLAN template_end_plan
+#define LXA_TEMPLATE_END_POP_TABLE template_pop_table_elements
+#define LXA_TEMPLATE_END_POP template_pop_elements
+#define LXA_TEMPLATE_END_CLEAR clear_formatting_to_marker
+#include "html/template_end.inc"
+#undef LXA_TEMPLATE_END_NAME
+#undef LXA_TEMPLATE_END_VIEW
+#undef LXA_TEMPLATE_END_PLAN
+#undef LXA_TEMPLATE_END_POP_TABLE
+#undef LXA_TEMPLATE_END_POP
+#undef LXA_TEMPLATE_END_CLEAR
+
+static lxa_status_t
+template_end_formatting_boundary(lxa_html_tree_t *tree,
+    const lxa_html_token_t *token, bool *handled)
+{
+    return template_end_effects(tree, token->kind, token->name, handled);
 }
 
 static lxa_status_t
