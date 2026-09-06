@@ -203,6 +203,70 @@ lxa_html_template_context_pop_table(lxa_html_template_context_t *context, size_t
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_start_foreign(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || (ns != LXA_DOM_NS_SVG && ns != LXA_DOM_NS_MATHML)) return LXA_ERROR_ARGUMENT;
+    size_t keep = lxa_vector_length(&context->stack->elements);
+    uint64_t identity;
+    status = lxa_html_template_context_push_token(context, token, ns, &identity);
+    if (status == LXA_OK && token->self_closing) {
+        status = lxa_html_control_stack_pop_to(context->stack, keep);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    }
+    if (status == LXA_OK) {
+        lxa_html_template_control_frame_t *frames =
+            (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+            token->name, ns, &frames[count - 1].insertion_mode);
+    }
+    return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_template_context_end_foreign(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *reprocess)
+{
+    if (reprocess != NULL) *reprocess = false;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (reprocess == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_END_TAG) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_foreign_end_plan_t plan;
+    status = lxa_html_control_stack_foreign_end_plan(context->stack,
+        frames[count - 1].boundary, token->name, &plan);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    if (status == LXA_OK) *reprocess = plan.reprocess;
+    return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_template_context_breakout(lxa_html_template_context_t *context)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t keep;
+    status = lxa_html_control_stack_foreign_breakout_plan(context->stack,
+        frames[count - 1].boundary, &keep);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    return finish(context, status);
+}
+
 static lxa_status_t
 end_plan(lxa_html_template_context_t *context, lxa_html_token_kind_t kind,
     lxa_span_t name, lxa_html_template_end_plan_t *plan)

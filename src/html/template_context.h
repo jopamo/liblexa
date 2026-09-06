@@ -100,6 +100,18 @@ lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_contex
  */
 lxa_status_t lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
+/* Apply an already accepted SVG/MathML start, including self-closing pops.
+ * Publish initial-template mode only after successful effects. Foreign ends
+ * use adjusted-name matching and publish reprocess only after successful pops;
+ * breakout retains the nearest HTML/integration entry in the active slice.
+ * Engines own dispatch eligibility and post-effect tokenizer feedback.
+ * Token views and outputs must not alias owner storage. Failures latch effects.
+ */
+lxa_status_t lxa_html_template_context_start_foreign(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns);
+lxa_status_t lxa_html_template_context_end_foreign(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *reprocess);
+lxa_status_t lxa_html_template_context_breakout(lxa_html_template_context_t *context);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
