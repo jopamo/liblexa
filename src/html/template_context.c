@@ -219,11 +219,7 @@ lxa_html_template_context_start_container(lxa_html_template_context_t *context,
         status = lxa_html_template_context_reconstruct(context);
         if (status != LXA_OK) return status;
     }
-    if (lxa_html_tree_container_reconstructs(token->name)
-        && !lxa_html_tree_name_equals(token->name, "table", 5)
-        && !lxa_html_tree_name_equals(token->name, "form", 4)
-        && !lxa_html_tree_name_equals(token->name, "button", 6)
-        && !lxa_html_tree_name_equals(token->name, "plaintext", 9)) {
+    if (lxa_html_tree_template_container_reconstructs(token->name)) {
         status = lxa_html_template_context_reconstruct(context);
         if (status != LXA_OK) return status;
     }

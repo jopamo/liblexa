@@ -4419,11 +4419,7 @@ reprocess_template_token:
             if (named(token->name, "plaintext") && tokenizer == NULL)
                 return LXA_ERROR_ARGUMENT;
             if (formatting) status = prepare_formatting_start(tree, token, &drop);
-            else if (lxa_html_tree_container_reconstructs(token->name)
-                     && !named(token->name, "table")
-                     && !named(token->name, "form")
-                     && !named(token->name, "button")
-                     && !named(token->name, "plaintext"))
+            else if (lxa_html_tree_template_container_reconstructs(token->name))
                 status = reconstruct_formatting(tree);
             if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
             if (status != LXA_OK) return status;

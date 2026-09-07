@@ -303,6 +303,16 @@ lxa_html_tree_container_reconstructs(lxa_span_t name)
 }
 
 static inline bool
+lxa_html_tree_template_container_reconstructs(lxa_span_t name)
+{
+    return lxa_html_tree_container_reconstructs(name)
+        && !LXA_CONTAINER_NAMED(name, "table")
+        && !LXA_CONTAINER_NAMED(name, "form")
+        && !LXA_CONTAINER_NAMED(name, "button")
+        && !LXA_CONTAINER_NAMED(name, "plaintext");
+}
+
+static inline bool
 lxa_html_tree_head_void(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "base") || LXA_CONTAINER_NAMED(name, "basefont")
