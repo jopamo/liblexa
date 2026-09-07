@@ -388,6 +388,26 @@ end_plan(lxa_html_template_context_t *context, lxa_html_token_kind_t kind,
     return status;
 }
 
+lxa_status_t
+lxa_html_template_context_select_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *ignore)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (ignore == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_select_plan_t plan;
+    status = lxa_html_control_stack_select_plan(context->stack,
+        frames[count - 1].boundary, token->kind, token->name, &plan);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    if (status == LXA_OK) *ignore = plan.ignore;
+    return finish(context, status);
+}
+
 static lxa_status_t
 end_pop(lxa_html_template_context_t *context, size_t keep)
 {

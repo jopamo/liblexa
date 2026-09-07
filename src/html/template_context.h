@@ -141,6 +141,14 @@ lxa_status_t lxa_html_template_context_start_foreign(lxa_html_template_context_t
 lxa_status_t lxa_html_template_context_end_foreign(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *reprocess);
 lxa_status_t lxa_html_template_context_breakout(lxa_html_template_context_t *context);
+/* Apply select-token recovery after earlier foreign/end and column-group
+ * dispatch. Plan within active content, then apply ordinary pops. Publish
+ * ignore only on success; failures latch completed effects. Engines retain
+ * continued-token dispatch and insertion-mode publication. Token views/output
+ * must not alias context or borrowed owners.
+ */
+lxa_status_t lxa_html_template_context_select_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *ignore);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
