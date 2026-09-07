@@ -207,6 +207,18 @@ lxa_html_template_context_start_container(lxa_html_template_context_t *context,
             &context->limit_reason, &accepted);
     if (status != LXA_OK) return finish(context, status);
     if (!accepted) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_name_equals(token->name, "button", 6)) {
+        const lxa_html_template_control_frame_t *frames =
+            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        size_t keep;
+        status = lxa_html_control_stack_scope_find(context->stack,
+            frames[count - 1].boundary, token->name, LXA_HTML_SCOPE_NORMAL, &keep);
+        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status != LXA_OK) return finish(context, status);
+        status = lxa_html_template_context_reconstruct(context);
+        if (status != LXA_OK) return status;
+    }
     if (lxa_html_tree_container_reconstructs(token->name)
         && !lxa_html_tree_name_equals(token->name, "table", 5)
         && !lxa_html_tree_name_equals(token->name, "form", 4)

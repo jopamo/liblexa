@@ -61,7 +61,8 @@ lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *c
 lxa_status_t lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
     size_t keep, const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
 /* Coordinate an accepted ordinary HTML container after earlier foreign,
- * select/table/group/text/button rules. Formatting/marker starts use their
+ * select/table/group/text rules. Button starts close a scoped button before
+ * reconstruction. Formatting/marker starts use their
  * separate coordinators. Reconstruct, recover retained content and admit
  * metadata; report foster insertion on success. Normal success publishes
  * initial-template mode. Engines own DOM actions, newline and text feedback.
