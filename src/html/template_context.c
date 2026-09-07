@@ -191,6 +191,61 @@ lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_start_container(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool quirks, uint64_t *identity, bool *foster)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (identity == NULL || foster == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG || lxa_html_tree_formatting_tag(token->name)
+        || lxa_html_tree_formatting_marker_tag(token->name)) return LXA_ERROR_ARGUMENT;
+    bool accepted = lxa_html_tree_template_container_start(token->name);
+    if (!accepted)
+        status = lxa_html_tree_supported_container(token->name, context->stack->budget,
+            &context->limit_reason, &accepted);
+    if (status != LXA_OK) return finish(context, status);
+    if (!accepted) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_container_reconstructs(token->name)
+        && !lxa_html_tree_name_equals(token->name, "table", 5)
+        && !lxa_html_tree_name_equals(token->name, "form", 4)
+        && !lxa_html_tree_name_equals(token->name, "button", 6)
+        && !lxa_html_tree_name_equals(token->name, "plaintext", 9)) {
+        status = lxa_html_template_context_reconstruct(context);
+        if (status != LXA_OK) return status;
+    }
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_template_container_plan_t plan;
+    status = lxa_html_control_stack_template_container_plan(context->stack,
+        frames[count - 1].boundary, token->name, quirks, &plan);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    if (status != LXA_OK) return finish(context, status);
+    if (plan.foster) {
+        status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status == LXA_OK && lxa_html_tree_container_reconstructs(token->name))
+            status = lxa_html_template_context_reconstruct(context);
+        if (status == LXA_OK)
+            status = lxa_html_template_context_push_token(context, token, LXA_DOM_NS_HTML, identity);
+    }
+    else {
+        status = lxa_html_template_context_replace_token(context, plan.keep, token,
+            LXA_DOM_NS_HTML, identity);
+        if (status == LXA_OK) {
+            lxa_html_template_control_frame_t *active =
+                (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+            status = lxa_html_tree_template_start_mode(active[count - 1].insertion_mode,
+                token->name, LXA_DOM_NS_HTML, &active[count - 1].insertion_mode);
+        }
+    }
+    if (status == LXA_OK) *foster = plan.foster;
+    else *identity = 0;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, uint64_t *identity)
 {

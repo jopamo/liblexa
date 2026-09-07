@@ -400,6 +400,70 @@ lxa_html_tree_template_html_text_element(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "plaintext");
 }
 
+/* Explicit template-container start categories. Earlier dispatch takes
+ * precedence; use supported-container fallback when this predicate is false.
+ */
+static inline bool
+lxa_html_tree_template_container_start(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "form")
+    || lxa_html_tree_template_marker_container(name)
+    || lxa_html_tree_inline_container(name)
+    || LXA_CONTAINER_NAMED(name, "plaintext")
+    || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "div")
+    || LXA_CONTAINER_NAMED(name, "address")
+    || LXA_CONTAINER_NAMED(name, "dialog")
+    || LXA_CONTAINER_NAMED(name, "details")
+    || LXA_CONTAINER_NAMED(name, "summary")
+    || LXA_CONTAINER_NAMED(name, "fieldset")
+    || lxa_html_tree_template_sectioning(name)
+    || LXA_CONTAINER_NAMED(name, "pre")
+    || LXA_CONTAINER_NAMED(name, "listing")
+    || LXA_CONTAINER_NAMED(name, "blockquote")
+    || LXA_CONTAINER_NAMED(name, "center")
+    || LXA_CONTAINER_NAMED(name, "figure")
+    || LXA_CONTAINER_NAMED(name, "figcaption")
+    || LXA_CONTAINER_NAMED(name, "datalist")
+    || LXA_CONTAINER_NAMED(name, "output")
+    || LXA_CONTAINER_NAMED(name, "progress")
+    || LXA_CONTAINER_NAMED(name, "meter")
+    || LXA_CONTAINER_NAMED(name, "hgroup")
+    || LXA_CONTAINER_NAMED(name, "search")
+    || LXA_CONTAINER_NAMED(name, "dir")
+    || LXA_CONTAINER_NAMED(name, "dl")
+    || LXA_CONTAINER_NAMED(name, "dt")
+    || LXA_CONTAINER_NAMED(name, "dd")
+    || LXA_CONTAINER_NAMED(name, "noscript")
+    || LXA_CONTAINER_NAMED(name, "ul")
+    || LXA_CONTAINER_NAMED(name, "ol")
+    || LXA_CONTAINER_NAMED(name, "menu")
+    || LXA_CONTAINER_NAMED(name, "li")
+    || LXA_CONTAINER_NAMED(name, "ruby")
+    || LXA_CONTAINER_NAMED(name, "rt")
+    || LXA_CONTAINER_NAMED(name, "rp")
+    || lxa_html_tree_heading(name)
+    || LXA_CONTAINER_NAMED(name, "table")
+    || lxa_html_tree_select_container(name)
+    || LXA_CONTAINER_NAMED(name, "span")
+    || LXA_CONTAINER_NAMED(name, "label")
+    || LXA_CONTAINER_NAMED(name, "button")
+    || LXA_CONTAINER_NAMED(name, "q")
+    || LXA_CONTAINER_NAMED(name, "cite")
+    || LXA_CONTAINER_NAMED(name, "abbr")
+    || LXA_CONTAINER_NAMED(name, "sub")
+    || LXA_CONTAINER_NAMED(name, "sup")
+    || LXA_CONTAINER_NAMED(name, "big")
+    || LXA_CONTAINER_NAMED(name, "small")
+    || LXA_CONTAINER_NAMED(name, "s")
+    || LXA_CONTAINER_NAMED(name, "strike")
+    || LXA_CONTAINER_NAMED(name, "tt")
+    || LXA_CONTAINER_NAMED(name, "u")
+    || LXA_CONTAINER_NAMED(name, "var")
+    || LXA_CONTAINER_NAMED(name, "nobr")
+    || LXA_CONTAINER_NAMED(name, "font")
+    || lxa_html_tree_formatting_tag(name);
+}
+
 #undef LXA_CONTAINER_NAMED
 
 #endif

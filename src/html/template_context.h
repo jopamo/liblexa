@@ -60,6 +60,17 @@ lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
     size_t keep, const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
+/* Coordinate an accepted ordinary HTML container after earlier foreign,
+ * select/table/group/text/button rules. Formatting/marker starts use their
+ * separate coordinators. Reconstruct, recover retained content and admit
+ * metadata; report foster insertion on success. Normal success publishes
+ * initial-template mode. Engines own DOM actions, newline and text feedback.
+ * Clear identity on failure; preserve foster output. Outputs require distinct
+ * stable storage outside token views/owners. Token views must not alias owners.
+ * Failures latch completed reconstruction/pops.
+ */
+lxa_status_t lxa_html_template_context_start_container(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool quirks, uint64_t *identity, bool *foster);
 /* Admit an accepted HTML cell/caption/object-family marker owner after depth
  * preflight. Validate attributes but retain none. Nested templates use enter.
  * The name and identity output must not alias any owner storage. Clear
