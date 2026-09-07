@@ -697,6 +697,45 @@ lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
     return control_stack_ruby_plan(&view, boundary, except_rtc, out);
 }
 
+static lxa_status_t
+container_read(const control_stack_view_t *view, size_t index, lxa_span_t *name)
+{
+    lxa_dom_namespace_t ns;
+    return control_stack_read(view, index, name, &ns);
+}
+
+#define LXA_TEMPLATE_CONTAINER_NAME control_stack_template_container_plan
+#define LXA_TEMPLATE_CONTAINER_VIEW control_stack_view_t
+#define LXA_TEMPLATE_CONTAINER_LENGTH(view) ((view)->length)
+#define LXA_TEMPLATE_CONTAINER_RUBY(view, boundary, name, keep) \
+    control_stack_ruby_plan(view, boundary, lxa_html_tree_name_equals(name, "rp", 2) \
+        || lxa_html_tree_name_equals(name, "rt", 2), keep)
+#define LXA_TEMPLATE_CONTAINER_LIST control_stack_list_item_plan
+#define LXA_TEMPLATE_CONTAINER_PARAGRAPH(view, boundary, keep) \
+    control_stack_scope_search(view, boundary, (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep)
+#define LXA_TEMPLATE_CONTAINER_READ container_read
+#define LXA_TEMPLATE_CONTAINER_WORK(view, amount) \
+    lxa_budget_charge((view)->stack->budget, LXA_BUDGET_WORK, amount, &(view)->stack->limit_reason)
+#include "html/template_container_plan.inc"
+#undef LXA_TEMPLATE_CONTAINER_NAME
+#undef LXA_TEMPLATE_CONTAINER_VIEW
+#undef LXA_TEMPLATE_CONTAINER_LENGTH
+#undef LXA_TEMPLATE_CONTAINER_RUBY
+#undef LXA_TEMPLATE_CONTAINER_LIST
+#undef LXA_TEMPLATE_CONTAINER_PARAGRAPH
+#undef LXA_TEMPLATE_CONTAINER_READ
+#undef LXA_TEMPLATE_CONTAINER_WORK
+
+lxa_status_t
+lxa_html_control_stack_template_container_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t name, bool quirks, lxa_html_template_container_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    return status == LXA_OK
+        ? control_stack_template_container_plan(&view, boundary, name, quirks, out) : status;
+}
+
 lxa_status_t
 lxa_html_control_stack_foreign_end_plan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t name, lxa_html_foreign_end_plan_t *out)

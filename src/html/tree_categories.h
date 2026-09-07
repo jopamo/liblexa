@@ -29,6 +29,11 @@ typedef struct {
 
 typedef struct {
     size_t keep;
+    bool foster;
+} lxa_html_template_container_plan_t;
+
+typedef struct {
+    size_t keep;
     bool ignore;
 } lxa_html_select_plan_t;
 

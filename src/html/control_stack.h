@@ -111,6 +111,12 @@ lxa_status_t lxa_html_control_stack_implied_end_plan(lxa_html_control_stack_t *s
     size_t boundary, lxa_span_t except, size_t *out);
 lxa_status_t lxa_html_control_stack_ruby_start_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool except_rtc, size_t *out);
+/* Plan accepted template-container recovery after formatting preparation.
+ * Share ruby/list/paragraph/heading ordering and retained-table foster choice.
+ * No membership effects or admission; publish only on success.
+ */
+lxa_status_t lxa_html_control_stack_template_container_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t name, bool quirks, lxa_html_template_container_plan_t *out);
 /* Foreign-end plans adjust the token's normalized name separately for each
  * visited namespace. Reprocess at HTML or the virtual boundary without popping.
  * Breakout retains the nearest HTML/integration entry. Both publish only on
