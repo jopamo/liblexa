@@ -51,6 +51,15 @@ lxa_status_t lxa_html_template_context_depth_check(lxa_html_template_context_t *
  */
 lxa_status_t lxa_html_template_context_push_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
+/* Apply a prepared retained-length replacement within active content. Check
+ * replacement depth/net OPEN growth and reserve slots before ordinary pops,
+ * then copy accepted token metadata. This performs stack effects only, not
+ * formatting/marker cleanup or dispatch. Later capture failure latches the
+ * completed pops. Clear identity on failure. Token views/output must not alias
+ * any owner storage.
+ */
+lxa_status_t lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
+    size_t keep, const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
 /* Admit an accepted HTML cell/caption/object-family marker owner after depth
  * preflight. Validate attributes but retain none. Nested templates use enter.
  * The name and identity output must not alias any owner storage. Clear
