@@ -118,14 +118,17 @@ lxa_status_t lxa_html_template_context_end_body(lxa_html_template_context_t *con
  * plans, preflight replacement depth/OPEN and reserve slots before INSERT pops,
  * then admit implied section/row/group and marker owners. Col retains only its
  * implied group. Report false for ignored starts and failures. Token views and
- * output must not alias owner storage. Engines retain mode publication.
+ * output must not alias owner storage. Publish initial table-part mode before
+ * planning; BODY starts without a table in scope are ignored. Later failure
+ * retains that early mode change. Engines retain earlier dispatch precedence.
  */
 lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
 /* Route an accepted HTML col start through virtual/current/implied groups.
  * Append-only columns retain no metadata or OPEN charge; group admission uses
  * table-part effects. Preserve canonical transient-column depth checks.
- * Token views and output must not alias owner storage. Engines publish modes.
+ * Token views and output must not alias owner storage. Apply initial mode and
+ * BODY table-in-scope gating once before effects, including delegated admission.
  */
 lxa_status_t lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
