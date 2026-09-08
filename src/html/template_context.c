@@ -408,6 +408,34 @@ lxa_html_template_context_select_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_start_control(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_body_control_start(token->name)) return LXA_ERROR_ARGUMENT;
+    lxa_html_template_control_frame_t *frames =
+        (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    if (length > frames[count - 1].boundary
+        && !lxa_html_tree_name_equals(token->name, "html", 4)) {
+        lxa_html_scope_entry_t entry;
+        status = lxa_html_control_stack_get(context->stack, length - 1, &entry, NULL);
+        if (status == LXA_OK && lxa_html_tree_name_equals(entry.name, "colgroup", 8))
+            status = lxa_html_control_stack_pop_to(context->stack, length - 1);
+        if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+            context->limit_reason = context->stack->limit_reason;
+    }
+    if (status == LXA_OK)
+        status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+            token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
+    return finish(context, status);
+}
+
 static lxa_status_t
 end_pop(lxa_html_template_context_t *context, size_t keep)
 {

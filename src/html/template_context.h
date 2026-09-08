@@ -149,6 +149,13 @@ lxa_status_t lxa_html_template_context_breakout(lxa_html_template_context_t *con
  */
 lxa_status_t lxa_html_template_context_select_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *ignore);
+/* Ignore an accepted html/head/body/frameset/frame start after foreign/end
+ * dispatch. Non-html starts first pop a current colgroup. Publish template
+ * mode only after successful effects; failures latch completed pops. Retain
+ * no token views and admit no metadata. Views must not alias borrowed owners.
+ */
+lxa_status_t lxa_html_template_context_start_control(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
