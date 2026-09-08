@@ -479,6 +479,31 @@ end_clear(lxa_html_template_context_t *context)
     return status;
 }
 
+lxa_status_t
+lxa_html_template_context_start_text(lxa_html_template_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, bool *skip_newline)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (text == NULL || tokenizer == NULL || skip_newline == NULL || count == 0
+        || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
+        || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_template_simple_text_element(token->name)) return LXA_ERROR_ARGUMENT;
+    status = lxa_html_text_context_enter(text, tokenizer, token->name,
+        LXA_TREE_TEMPLATE_TEXT, &context->limit_reason);
+    if (status == LXA_OK) {
+        lxa_html_template_control_frame_t *frames =
+            (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+            token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
+    }
+    if (status == LXA_OK) *skip_newline = lxa_html_tree_name_equals(token->name, "textarea", 8);
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan

@@ -166,6 +166,15 @@ lxa_status_t lxa_html_template_context_start_control(lxa_html_template_context_t
  */
 lxa_status_t lxa_html_template_context_column_group_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_column_group_action_t *action);
+/* Enter an accepted simple HTML text element after earlier dispatch. Borrow
+ * an inactive text context and tokenizer using the same budget. Retain no
+ * open metadata. Commit feedback/text context before template mode and newline
+ * output; feedback failure latches. Engines publish TEXT and handle text/end/
+ * EOF. Xmp/plaintext retain separate recovery. Views/outputs must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_start_text(lxa_html_template_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, bool *skip_newline);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
