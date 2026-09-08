@@ -175,6 +175,13 @@ lxa_status_t lxa_html_template_context_column_group_token(lxa_html_template_cont
 lxa_status_t lxa_html_template_context_start_text(lxa_html_template_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token, bool *skip_newline);
+/* Admit an accepted plaintext start with ordinary paragraph recovery, then
+ * apply nonreturning tokenizer feedback. Feedback failure retains admitted
+ * metadata/mode, clears identity and latches. Tokenizer uses the same budget;
+ * token views/output must not alias owners. Engines retain earlier dispatch.
+ */
+lxa_status_t lxa_html_template_context_start_plaintext(lxa_html_template_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, uint64_t *identity);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

@@ -504,6 +504,25 @@ lxa_html_template_context_start_text(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_start_plaintext(lxa_html_template_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (tokenizer == NULL || identity == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "plaintext", 9)) return LXA_ERROR_ARGUMENT;
+    bool foster;
+    status = lxa_html_template_context_start_container(context, token, false, identity, &foster);
+    if (status == LXA_OK && foster) status = internal();
+    if (status == LXA_OK)
+        status = lxa_html_tree_text_start_feedback(tokenizer, token->name, &context->limit_reason);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
