@@ -156,6 +156,13 @@ lxa_status_t lxa_html_template_context_select_token(lxa_html_template_context_t 
  */
 lxa_status_t lxa_html_template_context_start_control(lxa_html_template_context_t *context,
     const lxa_html_token_t *token);
+/* Gate virtual column-group tokens after earlier foreign/end/table/control
+ * dispatch. Read current content only in column-group mode, charging one WORK.
+ * Publish continue/ignore/space-text only on success. Engines emit space text
+ * and continue accepted-token dispatch. Views/output must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_column_group_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_column_group_action_t *action);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
