@@ -3752,12 +3752,8 @@ reprocess_template_token:
             }
         }
         if (token->kind == LXA_HTML_END_TAG && named(token->name, "br")
-            && (lxa_vector_length(&tree->template_elements)
-                > template_boundary(tree)
-                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE
-                || tree->template_insertion_mode == LXA_TEMPLATE_TABLE_BODY
-                || tree->template_insertion_mode == LXA_TEMPLATE_ROW
-                || tree->template_insertion_mode == LXA_TEMPLATE_BODY)) {
+            && lxa_html_tree_template_end_br_start(tree->template_insertion_mode,
+                lxa_vector_length(&tree->template_elements) > template_boundary(tree))) {
             adjusted = *token;
             adjusted.kind = LXA_HTML_START_TAG;
             adjusted.attributes = NULL;

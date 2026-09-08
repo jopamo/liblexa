@@ -22,6 +22,14 @@ lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
         || mode == LXA_TEMPLATE_ROW;
 }
 
+/* Apply only after foreign end dispatch accepts an HTML br end tag. */
+static inline bool
+lxa_html_tree_template_end_br_start(lxa_html_template_mode_t mode, bool has_content)
+{
+    return has_content || mode == LXA_TEMPLATE_TABLE || mode == LXA_TEMPLATE_TABLE_BODY
+        || mode == LXA_TEMPLATE_ROW || mode == LXA_TEMPLATE_BODY;
+}
+
 typedef enum {
     LXA_TREE_INITIAL, LXA_TREE_BEFORE_HTML, LXA_TREE_BEFORE_HEAD,
     LXA_TREE_IN_HEAD, LXA_TREE_HEAD_NOSCRIPT, LXA_TREE_TEMPLATE_TEXT,
