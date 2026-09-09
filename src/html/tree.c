@@ -3955,15 +3955,7 @@ reprocess_template_token:
             if (ns == LXA_DOM_NS_HTML && last == template_boundary(tree)
                 && named(top, "colgroup")
                 && token->kind == LXA_HTML_START_TAG
-                && !named(token->name, "col")
-                && !named(token->name, "colgroup")
-                && !lxa_html_tree_table_section(token->name)
-                && !named(token->name, "caption")
-                && !named(token->name, "tr")
-                && !named(token->name, "td")
-                && !named(token->name, "th")
-                && !named(token->name, "html")
-                && !named(token->name, "template")) {
+                && lxa_html_tree_template_colgroup_start_reprocess(token->name)) {
                 if (lxa_html_tree_template_html_text_element(token->name)
                     && tokenizer == NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_budget_check(tree->nodes->budget,
@@ -3979,20 +3971,7 @@ reprocess_template_token:
                     || named(top, "tr"))) {
                 if (named(top, "colgroup")
                     && token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "select")
-                        || named(token->name, "frameset")
-                        || named(token->name, "body")
-                        || named(token->name, "html")
-                        || lxa_html_tree_heading(token->name)
-                        || named(token->name, "li")
-                        || named(token->name, "dt")
-                        || named(token->name, "dd")
-                        || named(token->name, "option")
-                        || named(token->name, "optgroup")
-                        || named(token->name, "ruby")
-                        || named(token->name, "rt")
-                        || named(token->name, "rp")
-                        || lxa_html_tree_block_container(token->name))) {
+                    && lxa_html_tree_template_colgroup_end_reprocess(token->name)) {
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
                     goto reprocess_template_token;

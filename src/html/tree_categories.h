@@ -482,6 +482,31 @@ lxa_html_tree_template_container_start(lxa_span_t name)
     || lxa_html_tree_formatting_tag(name);
 }
 
+/* After earlier dispatch, for a current HTML colgroup. Start recovery also
+ * requires the first content entry; engines own preflight, pops and reprocess.
+ */
+static inline bool
+lxa_html_tree_template_colgroup_start_reprocess(lxa_span_t name)
+{
+    return !LXA_CONTAINER_NAMED(name, "col") && !LXA_CONTAINER_NAMED(name, "colgroup")
+        && !lxa_html_tree_table_section(name) && !LXA_CONTAINER_NAMED(name, "caption")
+        && !LXA_CONTAINER_NAMED(name, "tr") && !LXA_CONTAINER_NAMED(name, "td")
+        && !LXA_CONTAINER_NAMED(name, "th") && !LXA_CONTAINER_NAMED(name, "html")
+        && !LXA_CONTAINER_NAMED(name, "template");
+}
+
+static inline bool
+lxa_html_tree_template_colgroup_end_reprocess(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "select") || LXA_CONTAINER_NAMED(name, "frameset")
+        || LXA_CONTAINER_NAMED(name, "body") || LXA_CONTAINER_NAMED(name, "html")
+        || lxa_html_tree_heading(name) || LXA_CONTAINER_NAMED(name, "li")
+        || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "option") || LXA_CONTAINER_NAMED(name, "optgroup")
+        || LXA_CONTAINER_NAMED(name, "ruby") || LXA_CONTAINER_NAMED(name, "rt")
+        || LXA_CONTAINER_NAMED(name, "rp") || lxa_html_tree_block_container(name);
+}
+
 #undef LXA_CONTAINER_NAMED
 
 #endif
