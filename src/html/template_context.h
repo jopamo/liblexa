@@ -79,6 +79,13 @@ lxa_status_t lxa_html_template_context_start_container(lxa_html_template_context
  */
 lxa_status_t lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, uint64_t *identity);
+/* Coordinate an accepted ordinary object/marquee/applet start after earlier
+ * foreign/table/foster dispatch. Reconstruct, reserve marker membership, then
+ * depth-check/admit and publish initial mode. Clear identity on failure and
+ * latch completed reconstruction. Views/output must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_start_marker(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity);
 /* Admit a prepared effective HTML formatting start after depth preflight.
  * Reuse snapshot capture, Noah admission and rollback without retaining token
  * views. Engines own anchor/nobr preprocessing and reconstruction scheduling.

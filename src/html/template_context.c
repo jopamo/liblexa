@@ -275,6 +275,33 @@ lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_start_marker(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (identity == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_template_marker_container(token->name)) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_template_container_reconstructs(token->name))
+        status = lxa_html_template_context_reconstruct(context);
+    if (status != LXA_OK) return status;
+    status = lxa_html_formatting_list_reserve_marker(context->formatting);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->formatting->store->limit_reason;
+    if (status == LXA_OK) status = lxa_html_template_context_admit_marker(context, token, identity);
+    if (status == LXA_OK) {
+        lxa_html_template_control_frame_t *frames =
+            (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+            token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
+    }
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_admit_formatting(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, uint64_t *identity)
 {

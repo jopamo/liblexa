@@ -32,6 +32,10 @@ lxa_status_t lxa_html_formatting_list_append(lxa_html_formatting_list_t *list,
     size_t snapshot, uint64_t identity);
 lxa_status_t lxa_html_formatting_list_push_marker(lxa_html_formatting_list_t *list,
     uint64_t identity);
+/* Preflight one marker's ACTIVE credit and membership capacity without OPEN
+ * checks or publication. No WORK charge; retained capacity belongs to the list.
+ */
+lxa_status_t lxa_html_formatting_list_reserve_marker(lxa_html_formatting_list_t *list);
 /* Admit an accepted HTML marker owner (including template) and its marker.
  * Share the stack's operation budget; the name must not alias owner storage.
  * Clear identity on failure. Ordinary failure preserves both memberships and

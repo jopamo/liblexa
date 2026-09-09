@@ -1236,6 +1236,29 @@ start_alias(lxa_span_t span, const formatting_stack_view_t *view)
         || overlaps_buffer(span, &view->list->entries.bytes);
 }
 
+static lxa_status_t
+reserve_marker(lxa_html_formatting_list_t *list, bool open)
+{
+    size_t required;
+    lxa_status_t status = lxa_size_add(lxa_vector_length(&list->entries), 1, &required);
+    if (status == LXA_OK)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK && open)
+        status = lxa_budget_check(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    return status;
+}
+
+lxa_status_t
+lxa_html_formatting_list_reserve_marker(lxa_html_formatting_list_t *list)
+{
+    lxa_status_t status = list_begin(list);
+    return status == LXA_OK ? reserve_marker(list, false) : status;
+}
+
 lxa_status_t
 lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, lxa_span_t name, uint64_t *identity)
@@ -1249,16 +1272,8 @@ lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
         || (!lxa_html_tree_formatting_marker_tag(name)
             && !lxa_html_tree_name_equals(name, "template", 8)))
         return LXA_ERROR_ARGUMENT;
-    size_t index = lxa_vector_length(&list->entries), required;
-    status = lxa_size_add(index, 1, &required);
-    if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
-                                  &list->store->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
-                                  &list->store->limit_reason);
-    if (status == LXA_OK)
-        status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    size_t index = lxa_vector_length(&list->entries);
+    status = reserve_marker(list, true);
     if (status == LXA_OK)
         status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                    &list->store->limit_reason);
