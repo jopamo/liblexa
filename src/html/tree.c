@@ -1975,9 +1975,7 @@ foster_element(lxa_html_tree_t *tree,
     else if (!is_void && lxa_html_tree_container_reconstructs(token->name))
         status = reconstruct_formatting(tree);
     else if (is_void && !lxa_html_tree_head_void(token->name)
-             && !named(token->name, "hr")
-             && !named(token->name, "param") && !named(token->name, "source")
-             && !named(token->name, "track"))
+             && lxa_html_tree_body_void_reconstructs(token->name))
         status = reconstruct_formatting(tree);
     if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
     if (status == LXA_OK)
@@ -2816,9 +2814,8 @@ template_foster_element(lxa_html_tree_t *tree,
     if (formatting) status = prepare_formatting_start(tree, token, &drop);
     else if (ns != LXA_DOM_NS_HTML
              || (keep_open && lxa_html_tree_container_reconstructs(token->name))
-             || (lxa_html_tree_body_void(token->name) && !named(token->name, "hr")
-                 && !named(token->name, "param") && !named(token->name, "source")
-                 && !named(token->name, "track")))
+             || (lxa_html_tree_body_void(token->name)
+                 && lxa_html_tree_body_void_reconstructs(token->name)))
         status = reconstruct_formatting(tree);
     if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
     if (status == LXA_OK)
@@ -4326,10 +4323,7 @@ reprocess_template_token:
             return append_void(tree, template_parent(tree), token);
         if (token->kind == LXA_HTML_START_TAG
             && (lxa_html_tree_body_void(token->name) || named(token->name, "image"))) {
-            if (!named(token->name, "hr")
-                && !named(token->name, "param")
-                && !named(token->name, "source")
-                && !named(token->name, "track")) {
+            if (lxa_html_tree_body_void_reconstructs(token->name)) {
                 status = reconstruct_formatting(tree);
                 if (status != LXA_OK) return status;
             }
@@ -5197,9 +5191,7 @@ reprocess_body_start:
                 if (status != LXA_OK) return status;
                 return append_closed_element_at(tree, parent, before, token, NULL);
             }
-            else if (!named(token->name, "param")
-                     && !named(token->name, "source")
-                     && !named(token->name, "track")) {
+            else if (lxa_html_tree_body_void_reconstructs(token->name)) {
                 status = reconstruct_formatting(tree);
                 if (status != LXA_OK) return status;
             }

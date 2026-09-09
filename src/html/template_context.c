@@ -569,6 +569,36 @@ lxa_html_template_context_start_plaintext(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_start_void(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (!lxa_html_tree_head_void(token->name) && !lxa_html_tree_body_void(token->name)
+            && !lxa_html_tree_name_equals(token->name, "image", 5))) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_head_void(token->name)) return LXA_OK;
+    if (lxa_html_tree_body_void_reconstructs(token->name)) {
+        status = lxa_html_template_context_reconstruct(context);
+        if (status != LXA_OK) return status;
+    }
+    lxa_html_template_control_frame_t *frames =
+        (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    if (lxa_html_tree_name_equals(token->name, "hr", 2)) {
+        size_t keep;
+        status = lxa_html_control_stack_scope_find(context->stack, frames[count - 1].boundary,
+            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status != LXA_OK) return finish(context, status);
+    }
+    status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+        token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan

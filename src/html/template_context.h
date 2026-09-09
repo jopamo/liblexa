@@ -191,6 +191,14 @@ lxa_status_t lxa_html_template_context_start_text(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_start_plaintext(lxa_html_template_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, uint64_t *identity);
+/* Apply an accepted HTML void/image start after earlier dispatch. Share
+ * reconstruction exclusions and hr paragraph recovery, retain no new open
+ * metadata, and publish initial mode after effects. Failures latch completed
+ * recovery. Engines own insertion, image normalization and meta observation.
+ * Token views must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_start_void(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

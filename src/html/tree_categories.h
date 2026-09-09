@@ -331,6 +331,14 @@ lxa_html_tree_body_void(lxa_span_t name)
            || LXA_CONTAINER_NAMED(name, "track") || LXA_CONTAINER_NAMED(name, "param");
 }
 
+/* Accepted body-void/image starts only; head starts dispatch separately. */
+static inline bool
+lxa_html_tree_body_void_reconstructs(lxa_span_t name)
+{
+    return !LXA_CONTAINER_NAMED(name, "hr") && !LXA_CONTAINER_NAMED(name, "param")
+        && !LXA_CONTAINER_NAMED(name, "source") && !LXA_CONTAINER_NAMED(name, "track");
+}
+
 static inline bool
 lxa_html_tree_body_control_start(lxa_span_t name)
 {
