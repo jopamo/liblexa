@@ -199,6 +199,14 @@ lxa_status_t lxa_html_template_context_start_plaintext(lxa_html_template_context
  */
 lxa_status_t lxa_html_template_context_start_void(lxa_html_template_context_t *context,
     const lxa_html_token_t *token);
+/* Route an accepted HTML form start after select recovery. Table-context forms
+ * report a closed insertion after ordinary colgroup pops, with no new metadata
+ * or mode publication. Other forms use ordinary container admission. Clear
+ * identity on failure; publish closed only on success. Engines own insertion
+ * and earlier dispatch. Token views/outputs must not alias owners or each other.
+ */
+lxa_status_t lxa_html_template_context_start_form(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, uint64_t *identity, bool *closed);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
