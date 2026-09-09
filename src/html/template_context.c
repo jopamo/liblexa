@@ -459,12 +459,12 @@ lxa_html_template_context_column_group_token(lxa_html_template_context_t *contex
     size_t length = lxa_vector_length(&context->stack->elements);
     bool group_open = false;
     if (mode == LXA_TEMPLATE_COLUMN_GROUP && length > frames[count - 1].boundary) {
-        lxa_html_scope_entry_t entry;
-        status = lxa_html_control_stack_get(context->stack, length - 1, &entry, NULL);
-        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
+            &context->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_column_group(context->stack,
+                frames[count - 1].boundary, &group_open);
         if (status != LXA_OK) return finish(context, status);
-        group_open = entry.namespace_id == LXA_DOM_NS_HTML
-            && lxa_html_tree_name_equals(entry.name, "colgroup", 8);
     }
     status = lxa_html_tree_template_column_group(mode, group_open,
         token->kind, token->name, action);
@@ -491,7 +491,26 @@ lxa_html_template_context_start_text(lxa_html_template_context_t *context,
         || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
         || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
         || token->kind != LXA_HTML_START_TAG
-        || !lxa_html_tree_template_simple_text_element(token->name)) return LXA_ERROR_ARGUMENT;
+        || (!lxa_html_tree_template_simple_text_element(token->name)
+            && !lxa_html_tree_name_equals(token->name, "xmp", 3))) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_name_equals(token->name, "xmp", 3)) {
+        const lxa_html_template_control_frame_t *frames =
+            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        size_t boundary = frames[count - 1].boundary, keep;
+        status = lxa_html_control_stack_scope_find(context->stack, boundary,
+            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+        bool group;
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_column_group(context->stack, boundary, &group);
+        if (status == LXA_OK && group)
+            status = lxa_html_control_stack_pop_to(context->stack,
+                lxa_vector_length(&context->stack->elements) - 1);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status != LXA_OK) return finish(context, status);
+        status = lxa_html_template_context_reconstruct(context);
+        if (status != LXA_OK) return status;
+    }
     status = lxa_html_text_context_enter(text, tokenizer, token->name,
         LXA_TREE_TEMPLATE_TEXT, &context->limit_reason);
     if (status == LXA_OK) {

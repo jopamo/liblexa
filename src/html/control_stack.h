@@ -85,6 +85,11 @@ lxa_status_t lxa_html_control_stack_current_namespace(lxa_html_control_stack_t *
  */
 lxa_status_t lxa_html_control_stack_namespace_feedback(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_tokenizer_t *tokenizer);
+/* Test the current active entry for an HTML colgroup without WORK or mutation.
+ * Exhausted slices exclude entries below boundary. Publish only on success.
+ */
+lxa_status_t lxa_html_control_stack_column_group(lxa_html_control_stack_t *stack,
+    size_t boundary, bool *out);
 lxa_status_t lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index);
 lxa_status_t lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,
