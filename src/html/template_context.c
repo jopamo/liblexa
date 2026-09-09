@@ -629,6 +629,44 @@ lxa_html_template_context_start_form(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_table_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_table_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (action == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary;
+    lxa_html_table_context_plan_t plan;
+    status = lxa_html_control_stack_table_context_plan(context->stack, boundary,
+        lxa_html_tree_template_table_context(frames[count - 1].insertion_mode), &plan);
+    size_t index = lxa_vector_length(&context->stack->elements);
+    if (status == LXA_OK && plan.in_table)
+        status = lxa_html_control_stack_scope_find(context->stack, boundary,
+            token->name, LXA_HTML_SCOPE_TABLE, &index);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    if (status != LXA_OK) return finish(context, status);
+    lxa_html_template_table_action_t result = LXA_HTML_TEMPLATE_TABLE_CONTINUE;
+    if (plan.in_table) {
+        if (index == lxa_vector_length(&context->stack->elements)) {
+            status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+            if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+            result = LXA_HTML_TEMPLATE_TABLE_IGNORE;
+        }
+        else {
+            status = lxa_html_template_context_pop_table(context, index);
+            result = LXA_HTML_TEMPLATE_TABLE_REPROCESS;
+        }
+    }
+    if (status == LXA_OK) *action = result;
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
