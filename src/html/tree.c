@@ -3972,12 +3972,12 @@ reprocess_template_token:
                     return insert_data_text(tree, template_parent(tree),
                                             token->data, false, true);
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "col"))
+                lxa_html_template_table_start_action_t start_action = token->kind == LXA_HTML_START_TAG
+                    ? lxa_html_tree_template_table_start_action(token->name, named(top, "colgroup"))
+                    : LXA_HTML_TEMPLATE_TABLE_START_CONTINUE;
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_COLUMN)
                     return template_open_column(tree, token);
-                if (token->kind == LXA_HTML_START_TAG
-                    && (named(token->name, "svg")
-                        || named(token->name, "math"))) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_FOREIGN) {
                     lxa_dom_namespace_t ns = named(token->name, "svg")
                         ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
                     if (named(top, "colgroup")) {
@@ -3987,8 +3987,7 @@ reprocess_template_token:
                     return template_foster_element(tree, token,
                         !token->self_closing, NULL, ns);
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && lxa_html_tree_head_void(token->name)) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_HEAD_VOID) {
                     if (named(top, "colgroup")) {
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
@@ -3996,8 +3995,7 @@ reprocess_template_token:
                     return template_foster_element(tree, token, false, NULL,
                                                     LXA_DOM_NS_HTML);
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && lxa_html_tree_template_foster_text_element(token->name)) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_TEXT) {
                     bool textarea = named(token->name, "textarea");
                     bool plaintext = named(token->name, "plaintext");
                     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
@@ -4015,21 +4013,15 @@ reprocess_template_token:
                         tree->skip_pre_newline = true;
                     return status;
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(top, "colgroup")
-                    && (named(token->name, "style")
-                        || named(token->name, "script"))) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_POP_GROUP) {
                     /* Column-group mode closes before reprocessing these
                      * through the head-compatible text-mode rule. */
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "xmp"))
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_XMP)
                     return begin_template_xmp(tree, tokenizer, token);
-                if (token->kind == LXA_HTML_START_TAG
-                    && (lxa_html_tree_body_void(token->name)
-                        || named(token->name, "image"))) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_VOID) {
                     bool in_colgroup = named(top, "colgroup");
                     if (in_colgroup) {
                         status = lxa_budget_check(tree->nodes->budget,
@@ -4052,61 +4044,7 @@ reprocess_template_token:
                                                      LXA_DOM_NS_HTML);
                     return status;
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && (lxa_html_tree_formatting_tag(token->name)
-                        || lxa_html_tree_inline_container(token->name)
-                        || named(token->name, "object")
-                        || named(token->name, "marquee")
-                        || named(token->name, "applet")
-                        || named(token->name, "ruby")
-                        || named(token->name, "button")
-                        || named(token->name, "p")
-                        || named(token->name, "div")
-                        || named(token->name, "section")
-                        || named(token->name, "dialog")
-                        || named(token->name, "details")
-                        || named(token->name, "summary")
-                        || named(token->name, "fieldset")
-                        || named(token->name, "legend")
-                        || named(token->name, "blockquote")
-                        || named(token->name, "center")
-                        || named(token->name, "address")
-                        || named(token->name, "figure")
-                        || named(token->name, "figcaption")
-                        || named(token->name, "picture")
-                        || named(token->name, "video")
-                        || named(token->name, "audio")
-                        || named(token->name, "canvas")
-                        || named(token->name, "map")
-                        || named(token->name, "datalist")
-                        || named(token->name, "output")
-                        || named(token->name, "progress")
-                        || named(token->name, "meter")
-                        || named(token->name, "hgroup")
-                        || named(token->name, "search")
-                        || named(token->name, "dir")
-                        || named(token->name, "noscript")
-                        || named(token->name, "dl")
-                        || named(token->name, "dt")
-                        || named(token->name, "dd")
-                        || named(token->name, "article")
-                        || named(token->name, "main")
-                        || named(token->name, "aside")
-                        || named(token->name, "header")
-                        || named(token->name, "footer")
-                        || named(token->name, "nav")
-                        || named(token->name, "ul")
-                        || named(token->name, "ol")
-                        || named(token->name, "menu")
-                        || lxa_html_tree_heading(token->name)
-                        || named(token->name, "pre")
-                        || named(token->name, "listing")
-                        || named(token->name, "select")
-                        || named(token->name, "option")
-                        || named(token->name, "optgroup")
-                        || named(token->name, "rt")
-                        || named(token->name, "rp")
-                        || named(token->name, "li"))) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_OPEN) {
                     if (named(top, "colgroup")) {
                         status = template_pop_elements(tree, last);
                         if (status != LXA_OK) return status;
@@ -4119,19 +4057,9 @@ reprocess_template_token:
                         tree->skip_pre_newline = true;
                     return status;
                 }
-                if (token->kind == LXA_HTML_START_TAG
-                    && (lxa_html_tree_table_section(token->name)
-                        || named(token->name, "caption")
-                        || named(token->name, "colgroup")
-                        || named(token->name, "tr")
-                        || named(token->name, "td")
-                        || named(token->name, "th")))
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_PART)
                     return template_open_table_part(tree, token);
-                if (token->kind == LXA_HTML_START_TAG
-                    && !named(token->name, "template")
-                    && !named(token->name, "table")
-                    && !named(token->name, "style")
-                    && !named(token->name, "script")) {
+                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_FALLBACK) {
                     bool ordinary;
                     status = lxa_html_tree_supported_container(token->name,
                         tree->nodes->budget, &tree->nodes->limit_reason, &ordinary);

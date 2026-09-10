@@ -531,6 +531,106 @@ lxa_html_tree_template_foster_text_element(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "noembed") || LXA_CONTAINER_NAMED(name, "plaintext");
 }
 
+static inline bool
+lxa_html_tree_template_foster_open_start(lxa_span_t name)
+{
+    return lxa_html_tree_formatting_tag(name)
+        || lxa_html_tree_inline_container(name)
+        || LXA_CONTAINER_NAMED(name, "object")
+        || LXA_CONTAINER_NAMED(name, "marquee")
+        || LXA_CONTAINER_NAMED(name, "applet")
+        || LXA_CONTAINER_NAMED(name, "ruby")
+        || LXA_CONTAINER_NAMED(name, "button")
+        || LXA_CONTAINER_NAMED(name, "p")
+        || LXA_CONTAINER_NAMED(name, "div")
+        || LXA_CONTAINER_NAMED(name, "section")
+        || LXA_CONTAINER_NAMED(name, "dialog")
+        || LXA_CONTAINER_NAMED(name, "details")
+        || LXA_CONTAINER_NAMED(name, "summary")
+        || LXA_CONTAINER_NAMED(name, "fieldset")
+        || LXA_CONTAINER_NAMED(name, "legend")
+        || LXA_CONTAINER_NAMED(name, "blockquote")
+        || LXA_CONTAINER_NAMED(name, "center")
+        || LXA_CONTAINER_NAMED(name, "address")
+        || LXA_CONTAINER_NAMED(name, "figure")
+        || LXA_CONTAINER_NAMED(name, "figcaption")
+        || LXA_CONTAINER_NAMED(name, "picture")
+        || LXA_CONTAINER_NAMED(name, "video")
+        || LXA_CONTAINER_NAMED(name, "audio")
+        || LXA_CONTAINER_NAMED(name, "canvas")
+        || LXA_CONTAINER_NAMED(name, "map")
+        || LXA_CONTAINER_NAMED(name, "datalist")
+        || LXA_CONTAINER_NAMED(name, "output")
+        || LXA_CONTAINER_NAMED(name, "progress")
+        || LXA_CONTAINER_NAMED(name, "meter")
+        || LXA_CONTAINER_NAMED(name, "hgroup")
+        || LXA_CONTAINER_NAMED(name, "search")
+        || LXA_CONTAINER_NAMED(name, "dir")
+        || LXA_CONTAINER_NAMED(name, "noscript")
+        || LXA_CONTAINER_NAMED(name, "dl")
+        || LXA_CONTAINER_NAMED(name, "dt")
+        || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "article")
+        || LXA_CONTAINER_NAMED(name, "main")
+        || LXA_CONTAINER_NAMED(name, "aside")
+        || LXA_CONTAINER_NAMED(name, "header")
+        || LXA_CONTAINER_NAMED(name, "footer")
+        || LXA_CONTAINER_NAMED(name, "nav")
+        || LXA_CONTAINER_NAMED(name, "ul")
+        || LXA_CONTAINER_NAMED(name, "ol")
+        || LXA_CONTAINER_NAMED(name, "menu")
+        || lxa_html_tree_heading(name)
+        || LXA_CONTAINER_NAMED(name, "pre")
+        || LXA_CONTAINER_NAMED(name, "listing")
+        || LXA_CONTAINER_NAMED(name, "select")
+        || LXA_CONTAINER_NAMED(name, "option")
+        || LXA_CONTAINER_NAMED(name, "optgroup")
+        || LXA_CONTAINER_NAMED(name, "rt")
+        || LXA_CONTAINER_NAMED(name, "rp")
+        || LXA_CONTAINER_NAMED(name, "li");
+}
+
+typedef enum {
+    LXA_HTML_TEMPLATE_TABLE_START_CONTINUE,
+    LXA_HTML_TEMPLATE_TABLE_START_COLUMN,
+    LXA_HTML_TEMPLATE_TABLE_START_FOREIGN,
+    LXA_HTML_TEMPLATE_TABLE_START_HEAD_VOID,
+    LXA_HTML_TEMPLATE_TABLE_START_TEXT,
+    LXA_HTML_TEMPLATE_TABLE_START_POP_GROUP,
+    LXA_HTML_TEMPLATE_TABLE_START_XMP,
+    LXA_HTML_TEMPLATE_TABLE_START_VOID,
+    LXA_HTML_TEMPLATE_TABLE_START_OPEN,
+    LXA_HTML_TEMPLATE_TABLE_START_PART,
+    LXA_HTML_TEMPLATE_TABLE_START_FALLBACK
+} lxa_html_template_table_start_action_t;
+
+/* Accepted start in an actual HTML table context, after earlier dispatch.
+ * FALLBACK retains the owner's budgeted supported-container lookup before pops.
+ */
+static inline lxa_html_template_table_start_action_t
+lxa_html_tree_template_table_start_action(lxa_span_t name, bool column_group)
+{
+    if (LXA_CONTAINER_NAMED(name, "col")) return LXA_HTML_TEMPLATE_TABLE_START_COLUMN;
+    if (LXA_CONTAINER_NAMED(name, "svg") || LXA_CONTAINER_NAMED(name, "math"))
+        return LXA_HTML_TEMPLATE_TABLE_START_FOREIGN;
+    if (lxa_html_tree_head_void(name)) return LXA_HTML_TEMPLATE_TABLE_START_HEAD_VOID;
+    if (lxa_html_tree_template_foster_text_element(name)) return LXA_HTML_TEMPLATE_TABLE_START_TEXT;
+    if (LXA_CONTAINER_NAMED(name, "style") || LXA_CONTAINER_NAMED(name, "script"))
+        return column_group ? LXA_HTML_TEMPLATE_TABLE_START_POP_GROUP
+                            : LXA_HTML_TEMPLATE_TABLE_START_CONTINUE;
+    if (LXA_CONTAINER_NAMED(name, "xmp")) return LXA_HTML_TEMPLATE_TABLE_START_XMP;
+    if (lxa_html_tree_body_void(name) || LXA_CONTAINER_NAMED(name, "image"))
+        return LXA_HTML_TEMPLATE_TABLE_START_VOID;
+    if (lxa_html_tree_template_foster_open_start(name)) return LXA_HTML_TEMPLATE_TABLE_START_OPEN;
+    if (lxa_html_tree_table_section(name) || LXA_CONTAINER_NAMED(name, "caption")
+        || LXA_CONTAINER_NAMED(name, "colgroup") || LXA_CONTAINER_NAMED(name, "tr")
+        || LXA_CONTAINER_NAMED(name, "td") || LXA_CONTAINER_NAMED(name, "th"))
+        return LXA_HTML_TEMPLATE_TABLE_START_PART;
+    if (!LXA_CONTAINER_NAMED(name, "template") && !LXA_CONTAINER_NAMED(name, "table"))
+        return LXA_HTML_TEMPLATE_TABLE_START_FALLBACK;
+    return LXA_HTML_TEMPLATE_TABLE_START_CONTINUE;
+}
+
 typedef enum {
     LXA_HTML_TEMPLATE_TABLE_END_CONTINUE,
     LXA_HTML_TEMPLATE_TABLE_END_IGNORE,
