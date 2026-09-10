@@ -120,30 +120,23 @@ ensure_element(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 }
 
 static lxa_status_t
-ensure_html(lxa_html_tree_t *tree)
+root_create(lxa_html_tree_t *tree, lxa_html_root_element_t element)
 {
-    return ensure_element(tree, tree->document, "html", &tree->html);
+    switch (element) {
+        case LXA_HTML_ROOT_ELEMENT_HTML:
+            return ensure_element(tree, tree->document, "html", &tree->html);
+        case LXA_HTML_ROOT_ELEMENT_HEAD:
+            return ensure_element(tree, tree->html, "head", &tree->head);
+        case LXA_HTML_ROOT_ELEMENT_BODY:
+            return ensure_element(tree, tree->html, "body", &tree->body);
+        default: assert(false); return LXA_ERROR_INTERNAL;
+    }
 }
 
 static lxa_status_t
-ensure_head(lxa_html_tree_t *tree)
+root_open_body(lxa_html_tree_t *tree)
 {
-    lxa_status_t status = ensure_html(tree);
-    return status == LXA_OK
-           ? ensure_element(tree, tree->html, "head", &tree->head) : status;
-}
-
-static lxa_status_t
-ensure_body(lxa_html_tree_t *tree)
-{
-    bool implicit = tree->body.handle == LXA_HANDLE_NONE;
-    lxa_status_t status = ensure_head(tree);
-    if (status == LXA_OK)
-        status = ensure_element(tree, tree->html, "body", &tree->body);
-    if (status == LXA_OK && implicit) tree->frameset_ok = true;
-    if (status != LXA_OK || lxa_vector_length(&tree->open_elements) != 0)
-        return status;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                                1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
     status = lxa_vector_push(&tree->open_elements, &tree->body);
@@ -154,6 +147,28 @@ ensure_body(lxa_html_tree_t *tree)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
     return status;
 }
+
+#define LXA_ROOT_ENSURE_NAME(name) ensure_##name
+#define LXA_ROOT_ENSURE_VIEW lxa_html_tree_t
+#define LXA_ROOT_ENSURE_HAS(view, element) LXA_ROOT_HAS_##element(view)
+#define LXA_ROOT_HAS_HTML(view) ((view)->html.handle != LXA_HANDLE_NONE)
+#define LXA_ROOT_HAS_HEAD(view) ((view)->head.handle != LXA_HANDLE_NONE)
+#define LXA_ROOT_HAS_BODY(view) ((view)->body.handle != LXA_HANDLE_NONE)
+#define LXA_ROOT_ENSURE_CREATE root_create
+#define LXA_ROOT_ENSURE_OPEN_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_ENSURE_OPEN_BODY root_open_body
+#define LXA_ROOT_ENSURE_FRAMESET(view) ((view)->frameset_ok = true)
+#include "html/root_ensure.inc"
+#undef LXA_ROOT_ENSURE_NAME
+#undef LXA_ROOT_ENSURE_VIEW
+#undef LXA_ROOT_ENSURE_HAS
+#undef LXA_ROOT_HAS_HTML
+#undef LXA_ROOT_HAS_HEAD
+#undef LXA_ROOT_HAS_BODY
+#undef LXA_ROOT_ENSURE_CREATE
+#undef LXA_ROOT_ENSURE_OPEN_LENGTH
+#undef LXA_ROOT_ENSURE_OPEN_BODY
+#undef LXA_ROOT_ENSURE_FRAMESET
 
 static lxa_dom_ref_t
 current_element(const lxa_html_tree_t *tree)
