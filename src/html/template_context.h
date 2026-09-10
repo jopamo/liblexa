@@ -266,6 +266,22 @@ typedef enum {
  */
 lxa_status_t lxa_html_template_context_end_table(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_table_end_result_t *result);
+typedef struct {
+    size_t space_prefix;
+    uint64_t column_group; /* removed owner for the prefix, zero when absent */
+    bool foster;
+} lxa_html_template_table_text_result_t;
+/* Flush accepted pending table text before processing the next token. Borrow
+ * bytes without retaining/copying them; precharge their WORK before recovery.
+ * Null/space-only text leaves metadata unchanged. Mixed text pops a current
+ * HTML colgroup and reconstructs formatting; report its leading space prefix
+ * and removed owner identity plus foster rule only on success. Failures latch
+ * completed effects.
+ * Engines emit text and clear their pending buffer only after success.
+ * Input/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_template_context_table_text(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_html_template_table_text_result_t *result);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

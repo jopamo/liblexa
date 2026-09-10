@@ -2904,15 +2904,7 @@ flush_template_table_text(lxa_html_tree_t *tree)
             if (status != LXA_OK) return status;
             colgroup = named(top, "colgroup");
         }
-        if (colgroup) {
-            while (prefix < bytes.length
-                   && (bytes.data[prefix] == ' '
-                       || bytes.data[prefix] == '\n'
-                       || bytes.data[prefix] == '\r'
-                       || bytes.data[prefix] == '\t'
-                       || bytes.data[prefix] == '\f'))
-                ++prefix;
-        }
+        if (colgroup) prefix = lxa_html_tree_space_prefix(bytes);
         if (prefix != 0) {
             lxa_span_t spaces = {bytes.data, prefix};
             status = append_character(tree, template_parent(tree),

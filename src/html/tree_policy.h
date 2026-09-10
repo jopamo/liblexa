@@ -84,6 +84,15 @@ lxa_html_tree_template_credit_valid(size_t elements, size_t boundary, uint64_t c
 }
 
 /* These predicates borrow an already validated text span. */
+static inline size_t
+lxa_html_tree_space_prefix(lxa_span_t data)
+{
+    size_t prefix = 0;
+    while (prefix < data.length && lxa_html_byte_tree_space(data.data[prefix]))
+        ++prefix;
+    return prefix;
+}
+
 static inline bool
 lxa_html_tree_space_only(lxa_span_t data)
 {

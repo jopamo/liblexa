@@ -815,6 +815,43 @@ lxa_html_template_context_end_table(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_table_text(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_html_template_table_text_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || result == NULL
+        || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
+    size_t prefix = 0;
+    uint64_t owner = 0;
+    bool mixed = false;
+    if (data.length != 0)
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+            data.length, &context->limit_reason);
+    if (status == LXA_OK && data.length != 0)
+        mixed = !lxa_html_tree_null_or_space_only(data);
+    if (status == LXA_OK && mixed) {
+        const lxa_html_template_control_frame_t *frames =
+            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        bool group;
+        status = lxa_html_control_stack_column_group(context->stack, frames[count - 1].boundary, &group);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status == LXA_OK && group) {
+            const lxa_html_control_element_t *entries =
+                (const lxa_html_control_element_t *) context->stack->elements.bytes.data;
+            owner = entries[lxa_vector_length(&context->stack->elements) - 1].identity;
+            prefix = lxa_html_tree_space_prefix(data);
+            status = end_pop(context, lxa_vector_length(&context->stack->elements) - 1);
+        }
+        if (status == LXA_OK) status = lxa_html_template_context_reconstruct(context);
+    }
+    if (status == LXA_OK)
+        *result = (lxa_html_template_table_text_result_t){prefix, owner, mixed};
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
