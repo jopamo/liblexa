@@ -242,6 +242,16 @@ lxa_status_t lxa_html_template_context_current_token(lxa_html_template_context_t
 lxa_status_t lxa_html_template_context_foster_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_dom_namespace_t ns, bool keep_open,
     uint64_t *identity);
+/* Coordinate accepted foster text admission and feedback without publishing
+ * template mode. Returning elements borrow an inactive text context; plaintext
+ * retains open metadata and uses nonreturning feedback. Later feedback failure
+ * retains admission/reconstruction, clears identity and latches. Publish newline
+ * output only on success. Tokenizer shares the budget; views/outputs must not
+ * alias owners or each other. Engines own insertion and TEXT publication.
+ */
+lxa_status_t lxa_html_template_context_foster_text(lxa_html_template_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, uint64_t *identity, bool *skip_newline);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

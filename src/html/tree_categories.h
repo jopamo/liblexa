@@ -523,6 +523,14 @@ lxa_html_tree_foster_reconstructs(lxa_span_t name, lxa_dom_namespace_t ns,
         || (lxa_html_tree_body_void(name) && lxa_html_tree_body_void_reconstructs(name));
 }
 
+static inline bool
+lxa_html_tree_template_foster_text_element(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "title") || LXA_CONTAINER_NAMED(name, "noframes")
+        || LXA_CONTAINER_NAMED(name, "textarea") || LXA_CONTAINER_NAMED(name, "iframe")
+        || LXA_CONTAINER_NAMED(name, "noembed") || LXA_CONTAINER_NAMED(name, "plaintext");
+}
+
 /* Classify one already-read active entry. Owners retain read charges,
  * start preflight, ordinary colgroup pops and full token reprocessing.
  */

@@ -728,6 +728,36 @@ lxa_html_template_context_foster_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_foster_text(lxa_html_template_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, uint64_t *identity, bool *skip_newline)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (tokenizer == NULL || identity == NULL || skip_newline == NULL
+        || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_template_foster_text_element(token->name))
+        return LXA_ERROR_ARGUMENT;
+    bool plaintext = lxa_html_tree_name_equals(token->name, "plaintext", 9);
+    if (!plaintext && (text == NULL || text->plan.mode != LXA_HTML_DATA
+        || text->plan.end_tag.data != NULL || text->plan.end_tag.length != 0))
+        return LXA_ERROR_ARGUMENT;
+    status = lxa_html_template_context_foster_token(context, token, LXA_DOM_NS_HTML,
+        plaintext, identity);
+    if (status == LXA_OK)
+        status = plaintext
+            ? lxa_html_tree_text_start_feedback(tokenizer, token->name, &context->limit_reason)
+            : lxa_html_text_context_enter(text, tokenizer, token->name,
+                LXA_TREE_TEMPLATE_TEXT, &context->limit_reason);
+    if (status == LXA_OK)
+        *skip_newline = lxa_html_tree_name_equals(token->name, "textarea", 8);
+    else *identity = 0;
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan

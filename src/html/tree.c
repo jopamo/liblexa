@@ -3997,48 +3997,7 @@ reprocess_template_token:
                                                     LXA_DOM_NS_HTML);
                 }
                 if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "title")) {
-                    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    status = template_foster_element(tree, token, false,
-                                                      &child, LXA_DOM_NS_HTML);
-                    if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token, child);
-                    return status;
-                }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "noframes")) {
-                    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    status = template_foster_element(tree, token, false,
-                                                      &child, LXA_DOM_NS_HTML);
-                    if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token, child);
-                    return status;
-                }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(top, "colgroup")
-                    && (named(token->name, "style")
-                        || named(token->name, "script"))) {
-                    /* Column-group mode closes before reprocessing these
-                     * through the head-compatible text-mode rule. */
-                    status = template_pop_elements(tree, last);
-                    if (status != LXA_OK) return status;
-                }
-                if (token->kind == LXA_HTML_START_TAG
-                    && named(token->name, "xmp"))
-                    return begin_template_xmp(tree, tokenizer, token);
-                if (token->kind == LXA_HTML_START_TAG
-                    && (named(token->name, "textarea")
-                        || named(token->name, "iframe")
-                        || named(token->name, "noembed")
-                        || named(token->name, "plaintext"))) {
+                    && lxa_html_tree_template_foster_text_element(token->name)) {
                     bool textarea = named(token->name, "textarea");
                     bool plaintext = named(token->name, "plaintext");
                     if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
@@ -4056,6 +4015,18 @@ reprocess_template_token:
                         tree->skip_pre_newline = true;
                     return status;
                 }
+                if (token->kind == LXA_HTML_START_TAG
+                    && named(top, "colgroup")
+                    && (named(token->name, "style")
+                        || named(token->name, "script"))) {
+                    /* Column-group mode closes before reprocessing these
+                     * through the head-compatible text-mode rule. */
+                    status = template_pop_elements(tree, last);
+                    if (status != LXA_OK) return status;
+                }
+                if (token->kind == LXA_HTML_START_TAG
+                    && named(token->name, "xmp"))
+                    return begin_template_xmp(tree, tokenizer, token);
                 if (token->kind == LXA_HTML_START_TAG
                     && (lxa_html_tree_body_void(token->name)
                         || named(token->name, "image"))) {
