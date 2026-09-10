@@ -507,6 +507,36 @@ lxa_html_tree_template_colgroup_end_reprocess(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "rp") || lxa_html_tree_block_container(name);
 }
 
+typedef enum {
+    LXA_HTML_TEMPLATE_CURRENT_CONTINUE,
+    LXA_HTML_TEMPLATE_CURRENT_TABLE,
+    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START,
+    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END
+} lxa_html_template_current_action_t;
+
+/* Classify one already-read active entry. Owners retain read charges,
+ * start preflight, ordinary colgroup pops and full token reprocessing.
+ */
+static inline lxa_html_template_current_action_t
+lxa_html_tree_template_current_action(lxa_span_t current, lxa_dom_namespace_t ns,
+    bool first, lxa_html_token_kind_t kind, lxa_span_t name)
+{
+    if (ns != LXA_DOM_NS_HTML) return LXA_HTML_TEMPLATE_CURRENT_CONTINUE;
+    if (LXA_CONTAINER_NAMED(current, "colgroup")) {
+        if (first && kind == LXA_HTML_START_TAG
+            && lxa_html_tree_template_colgroup_start_reprocess(name))
+            return LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START;
+        if (kind == LXA_HTML_END_TAG
+            && lxa_html_tree_template_colgroup_end_reprocess(name))
+            return LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END;
+        return LXA_HTML_TEMPLATE_CURRENT_TABLE;
+    }
+    if (LXA_CONTAINER_NAMED(current, "table")
+        || lxa_html_tree_table_section(current) || LXA_CONTAINER_NAMED(current, "tr"))
+        return LXA_HTML_TEMPLATE_CURRENT_TABLE;
+    return LXA_HTML_TEMPLATE_CURRENT_CONTINUE;
+}
+
 #undef LXA_CONTAINER_NAMED
 
 #endif

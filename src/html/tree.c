@@ -3952,10 +3952,10 @@ reprocess_template_token:
                 status = lxa_dom_nodes_element_namespace(tree->nodes,
                                                           open[last], &ns);
             if (status != LXA_OK) return status;
-            if (ns == LXA_DOM_NS_HTML && last == template_boundary(tree)
-                && named(top, "colgroup")
-                && token->kind == LXA_HTML_START_TAG
-                && lxa_html_tree_template_colgroup_start_reprocess(token->name)) {
+            lxa_html_template_current_action_t current_action =
+                lxa_html_tree_template_current_action(top, ns,
+                    last == template_boundary(tree), token->kind, token->name);
+            if (current_action == LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START) {
                 if (lxa_html_tree_template_html_text_element(token->name)
                     && tokenizer == NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_budget_check(tree->nodes->budget,
@@ -3965,13 +3965,8 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
                 goto reprocess_template_token;
             }
-            if (ns == LXA_DOM_NS_HTML
-                && (named(top, "table") || named(top, "colgroup")
-                    || lxa_html_tree_table_section(top)
-                    || named(top, "tr"))) {
-                if (named(top, "colgroup")
-                    && token->kind == LXA_HTML_END_TAG
-                    && lxa_html_tree_template_colgroup_end_reprocess(token->name)) {
+            if (current_action != LXA_HTML_TEMPLATE_CURRENT_CONTINUE) {
+                if (current_action == LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END) {
                     status = template_pop_elements(tree, last);
                     if (status != LXA_OK) return status;
                     goto reprocess_template_token;
