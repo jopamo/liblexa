@@ -514,6 +514,15 @@ typedef enum {
     LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END
 } lxa_html_template_current_action_t;
 
+static inline bool
+lxa_html_tree_foster_reconstructs(lxa_span_t name, lxa_dom_namespace_t ns,
+    bool keep_open)
+{
+    return ns != LXA_DOM_NS_HTML
+        || (keep_open && lxa_html_tree_container_reconstructs(name))
+        || (lxa_html_tree_body_void(name) && lxa_html_tree_body_void_reconstructs(name));
+}
+
 /* Classify one already-read active entry. Owners retain read charges,
  * start preflight, ordinary colgroup pops and full token reprocessing.
  */

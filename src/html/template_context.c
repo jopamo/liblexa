@@ -696,6 +696,38 @@ lxa_html_template_context_current_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_foster_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns, bool keep_open,
+    uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (identity == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return LXA_ERROR_ARGUMENT;
+    bool formatting = ns == LXA_DOM_NS_HTML && lxa_html_tree_formatting_tag(token->name);
+    bool marker = ns == LXA_DOM_NS_HTML && lxa_html_tree_formatting_marker_tag(token->name);
+    if (marker && !lxa_html_tree_template_marker_container(token->name))
+        return LXA_ERROR_ARGUMENT;
+    if ((formatting || marker) && !keep_open) return LXA_ERROR_ARGUMENT;
+    if (formatting)
+        return lxa_html_template_context_start_formatting(context, token, identity);
+    if (lxa_html_tree_foster_reconstructs(token->name, ns, keep_open))
+        status = lxa_html_template_context_reconstruct(context);
+    if (status != LXA_OK) return status;
+    if (marker) {
+        status = lxa_html_formatting_list_reserve_marker(context->formatting);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->formatting->store->limit_reason;
+        if (status == LXA_OK) status = lxa_html_template_context_admit_marker(context, token, identity);
+    }
+    else if (keep_open)
+        status = lxa_html_template_context_push_token(context, token, ns, identity);
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan

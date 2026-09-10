@@ -232,6 +232,16 @@ typedef struct {
  */
 lxa_status_t lxa_html_template_context_current_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_current_route_t *route);
+/* Admit an accepted foster start after earlier routing/colgroup pops. Preserve
+ * insertion mode; prepare formatting or reconstruct by the shared schedule.
+ * Closed insertion retains no new metadata. Open insertion uses existing
+ * formatting/marker/token admission. Clear identity on failure and latch
+ * completed effects. Engines own insertion and text feedback. Views/output
+ * must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_foster_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns, bool keep_open,
+    uint64_t *identity);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

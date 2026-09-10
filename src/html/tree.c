@@ -2812,10 +2812,7 @@ template_foster_element(lxa_html_tree_t *tree,
     bool marker = ns == LXA_DOM_NS_HTML && lxa_html_tree_formatting_marker_tag(token->name);
     lxa_status_t status = LXA_OK;
     if (formatting) status = prepare_formatting_start(tree, token, &drop);
-    else if (ns != LXA_DOM_NS_HTML
-             || (keep_open && lxa_html_tree_container_reconstructs(token->name))
-             || (lxa_html_tree_body_void(token->name)
-                 && lxa_html_tree_body_void_reconstructs(token->name)))
+    else if (lxa_html_tree_foster_reconstructs(token->name, ns, keep_open))
         status = reconstruct_formatting(tree);
     if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
     if (status == LXA_OK)
