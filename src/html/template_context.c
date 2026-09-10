@@ -667,6 +667,35 @@ lxa_html_template_context_table_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_template_context_current_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_current_route_t *route)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (route == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    lxa_html_template_current_route_t result = {LXA_HTML_TEMPLATE_CURRENT_CONTINUE, false};
+    if (length > boundary) {
+        lxa_html_scope_entry_t entry;
+        status = lxa_html_control_stack_get(context->stack, length - 1, &entry, NULL);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+        if (status == LXA_OK) {
+            result.action = lxa_html_tree_template_current_action(entry.name,
+                entry.namespace_id, length - 1 == boundary, token->kind, token->name);
+            result.column_group = entry.namespace_id == LXA_DOM_NS_HTML
+                && lxa_html_tree_name_equals(entry.name, "colgroup", 8);
+        }
+    }
+    if (status == LXA_OK) *route = result;
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
