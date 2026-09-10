@@ -531,6 +531,38 @@ lxa_html_tree_template_foster_text_element(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "noembed") || LXA_CONTAINER_NAMED(name, "plaintext");
 }
 
+typedef enum {
+    LXA_HTML_TEMPLATE_TABLE_END_CONTINUE,
+    LXA_HTML_TEMPLATE_TABLE_END_IGNORE,
+    LXA_HTML_TEMPLATE_TABLE_END_POP_IGNORE,
+    LXA_HTML_TEMPLATE_TABLE_END_PARAGRAPH,
+    LXA_HTML_TEMPLATE_TABLE_END_ORDINARY,
+    LXA_HTML_TEMPLATE_TABLE_END_FORMATTING
+} lxa_html_template_table_end_action_t;
+
+/* Accepted end in an actual HTML table context, after colgroup reprocessing. */
+static inline lxa_html_template_table_end_action_t
+lxa_html_tree_template_table_end_action(lxa_span_t name, bool column_group)
+{
+    if (LXA_CONTAINER_NAMED(name, "form"))
+        return column_group ? LXA_HTML_TEMPLATE_TABLE_END_POP_IGNORE
+                            : LXA_HTML_TEMPLATE_TABLE_END_IGNORE;
+    if (LXA_CONTAINER_NAMED(name, "p")) return LXA_HTML_TEMPLATE_TABLE_END_PARAGRAPH;
+    if (LXA_CONTAINER_NAMED(name, "body") || LXA_CONTAINER_NAMED(name, "html")
+        || lxa_html_tree_heading(name) || lxa_html_tree_template_list_item(name)
+        || LXA_CONTAINER_NAMED(name, "option") || LXA_CONTAINER_NAMED(name, "optgroup")
+        || LXA_CONTAINER_NAMED(name, "ruby") || LXA_CONTAINER_NAMED(name, "rt")
+        || LXA_CONTAINER_NAMED(name, "rp") || lxa_html_tree_block_container(name))
+        return LXA_HTML_TEMPLATE_TABLE_END_IGNORE;
+    if (LXA_CONTAINER_NAMED(name, "frameset"))
+        return column_group ? LXA_HTML_TEMPLATE_TABLE_END_POP_IGNORE
+                            : LXA_HTML_TEMPLATE_TABLE_END_IGNORE;
+    if (lxa_html_tree_template_ordinary_end(name)) return LXA_HTML_TEMPLATE_TABLE_END_ORDINARY;
+    if (column_group && lxa_html_tree_formatting_tag(name))
+        return LXA_HTML_TEMPLATE_TABLE_END_FORMATTING;
+    return LXA_HTML_TEMPLATE_TABLE_END_CONTINUE;
+}
+
 /* Classify one already-read active entry. Owners retain read charges,
  * start preflight, ordinary colgroup pops and full token reprocessing.
  */

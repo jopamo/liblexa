@@ -252,6 +252,20 @@ lxa_status_t lxa_html_template_context_foster_token(lxa_html_template_context_t 
 lxa_status_t lxa_html_template_context_foster_text(lxa_html_template_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token, uint64_t *identity, bool *skip_newline);
+typedef enum {
+    LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_PARAGRAPH,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS
+} lxa_html_template_table_end_result_t;
+/* Route an end through current actual-table rules after earlier dispatch.
+ * Read active content once, apply colgroup/ordinary pops, or report a closed
+ * foster paragraph. Preserve mode and publish only on success; latch failures.
+ * Engines own paragraph insertion and full reprocessing. Views/output must
+ * not alias owners.
+ */
+lxa_status_t lxa_html_template_context_end_table(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_table_end_result_t *result);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

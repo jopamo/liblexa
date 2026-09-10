@@ -4147,76 +4147,39 @@ reprocess_template_token:
                     return template_foster_element(tree, token, true, NULL,
                                                    LXA_DOM_NS_HTML);
                 }
-                if (token->kind == LXA_HTML_END_TAG
-                    && named(token->name, "form")) {
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
+                if (token->kind == LXA_HTML_END_TAG) {
+                    switch (lxa_html_tree_template_table_end_action(token->name,
+                        named(top, "colgroup"))) {
+                        case LXA_HTML_TEMPLATE_TABLE_END_CONTINUE: break;
+                        case LXA_HTML_TEMPLATE_TABLE_END_IGNORE:
+                            return LXA_OK; /* The table bounds end-tag scope. */
+                        case LXA_HTML_TEMPLATE_TABLE_END_POP_IGNORE:
+                            return template_pop_elements(tree, last);
+                        case LXA_HTML_TEMPLATE_TABLE_END_PARAGRAPH:
+                            /* No paragraph is in scope; insert a closed one. */
+                            adjusted = *token;
+                            adjusted.kind = LXA_HTML_START_TAG;
+                            if (named(top, "colgroup")) {
+                                status = template_pop_elements(tree, last);
+                                if (status != LXA_OK) return status;
+                            }
+                            return template_foster_element(tree, &adjusted, false,
+                                                           NULL, LXA_DOM_NS_HTML);
+                        case LXA_HTML_TEMPLATE_TABLE_END_ORDINARY: {
+                            size_t index;
+                            status = plan_ordinary_end_target(tree,
+                                &tree->template_elements,
+                                template_boundary(tree), token->name, &index);
+                            if (status != LXA_OK) return status;
+                            return template_close_elements(tree, index);
+                        }
+                        case LXA_HTML_TEMPLATE_TABLE_END_FORMATTING:
+                            status = lxa_budget_charge(tree->nodes->budget,
+                                LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+                            if (status == LXA_OK) status = template_pop_elements(tree, last);
+                            if (status != LXA_OK) return status;
+                            goto reprocess_template_token;
                     }
-                    return LXA_OK;
-                }
-                if (token->kind == LXA_HTML_END_TAG
-                    && named(token->name, "p")) {
-                    /* With no paragraph in scope, the in-body rule inserts
-                     * an empty one at the foster location. */
-                    adjusted = *token;
-                    adjusted.kind = LXA_HTML_START_TAG;
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return template_foster_element(tree, &adjusted, false,
-                                                   NULL, LXA_DOM_NS_HTML);
-                }
-                if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "body")
-                        || named(token->name, "html")))
-                    return LXA_OK; /* The template cannot close either root. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && lxa_html_tree_heading(token->name))
-                    return LXA_OK; /* A heading outside the table is out of scope. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "li")
-                        || named(token->name, "dt")
-                        || named(token->name, "dd")))
-                    return LXA_OK; /* The table ends list-item scope. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "option")
-                        || named(token->name, "optgroup")))
-                    return LXA_OK; /* Unmatched ends stop at this table element. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && (named(token->name, "ruby")
-                        || named(token->name, "rt")
-                        || named(token->name, "rp")))
-                    return LXA_OK; /* An annotation outside the table is out of scope. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && lxa_html_tree_block_container(token->name))
-                    return LXA_OK; /* The table ends ordinary block scope. */
-                if (token->kind == LXA_HTML_END_TAG
-                    && named(token->name, "frameset")) {
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return LXA_OK; /* No match in this table scope. */
-                }
-                if (token->kind == LXA_HTML_END_TAG
-                    && lxa_html_tree_template_ordinary_end(token->name)) {
-                    size_t index;
-                    status = plan_ordinary_end_target(tree,
-                        &tree->template_elements,
-                        template_boundary(tree), token->name, &index);
-                    if (status != LXA_OK) return status;
-                    return template_close_elements(tree, index);
-                }
-                if (token->kind == LXA_HTML_END_TAG
-                    && lxa_html_tree_formatting_tag(token->name) && named(top, "colgroup")) {
-                    status = lxa_budget_charge(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = template_pop_elements(tree, last);
-                    if (status != LXA_OK) return status;
-                    goto reprocess_template_token;
                 }
             }
             else if (ns == LXA_DOM_NS_HTML
