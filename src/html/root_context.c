@@ -207,6 +207,62 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
 }
 
 lxa_status_t
+lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || tokenizer == NULL
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "plaintext", 9)
+        || (*mode != LXA_TREE_BEFORE_HTML && *mode != LXA_TREE_BEFORE_HEAD
+            && *mode != LXA_TREE_IN_HEAD && *mode != LXA_TREE_AFTER_HEAD
+            && *mode != LXA_TREE_IN_BODY)
+        || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
+        || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
+        return LXA_ERROR_ARGUMENT;
+    status = context_ensure_body(context);
+    size_t keep;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_scope_find(context->stack, 0,
+            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+    bool group;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_column_group(context->stack, 0, &group);
+    if (status == LXA_OK) {
+        size_t length = lxa_vector_length(&context->stack->elements);
+        size_t retained = length - group, depth, count;
+        status = lxa_size_add(retained, 2, &depth);
+        if (status == LXA_OK)
+            status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+                depth, &context->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                group ? 0 : 1, &context->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+                token->name.length, &context->limit_reason);
+        if (status == LXA_OK) status = lxa_size_add(retained, 1, &count);
+        if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, count);
+        if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+            context->limit_reason = LXA_BUDGET_MEMORY;
+        if (status == LXA_OK && group)
+            status = lxa_html_control_stack_pop_to(context->stack, retained);
+    }
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, identity);
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_IN_BODY;
+        status = lxa_html_tree_text_start_feedback(tokenizer, token->name, &context->limit_reason);
+    }
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode)
 {

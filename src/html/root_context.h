@@ -58,6 +58,14 @@ lxa_status_t lxa_html_root_context_head_end(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *skip_newline);
+/* Apply accepted ordinary plaintext recovery after earlier routing.
+ * Close paragraph, recover current colgroup, admit open metadata and publish
+ * IN_BODY before feedback. Retain completed effects and clear identity on
+ * failure; no returning text context. Token/output must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
