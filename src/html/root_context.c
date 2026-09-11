@@ -113,6 +113,34 @@ LXA_ROOT_ENSURE_PUBLIC(head)
 LXA_ROOT_ENSURE_PUBLIC(body)
 #undef LXA_ROOT_ENSURE_PUBLIC
 
+#define LXA_ROOT_END_NAME context_prebody_end
+#define LXA_ROOT_END_VIEW lxa_html_root_context_t
+#define LXA_ROOT_END_HTML context_ensure_html
+#define LXA_ROOT_END_HEAD context_ensure_head
+#define LXA_ROOT_END_BODY context_ensure_body
+#include "html/root_prebody_end.inc"
+#undef LXA_ROOT_END_NAME
+#undef LXA_ROOT_END_VIEW
+#undef LXA_ROOT_END_HTML
+#undef LXA_ROOT_END_HEAD
+#undef LXA_ROOT_END_BODY
+
+lxa_status_t
+lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || context->body || lxa_vector_length(&context->stack->elements) != 0
+        || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
+        || (*mode == LXA_TREE_AFTER_HEAD && !context->head))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_prebody_end_action_t action;
+    status = lxa_html_tree_prebody_end_action(*mode, name, &action);
+    if (status != LXA_OK) return status;
+    return finish(context, context_prebody_end(context, action, mode));
+}
+
 lxa_status_t
 lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, const lxa_html_token_t *token,

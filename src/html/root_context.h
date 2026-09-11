@@ -28,6 +28,13 @@ void lxa_html_root_context_destroy(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_html(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_head(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context);
+/* Apply accepted prebody end recovery over an empty stack before BODY.
+ * Publish each intermediate mode after construction, retaining it on later
+ * failure. Engines continue remaining dispatch after success. No retained name
+ * views; mode storage must not alias the borrowed owners.
+ */
+lxa_status_t lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

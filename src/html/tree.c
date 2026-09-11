@@ -1215,6 +1215,18 @@ append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
            : status;
 }
 
+#define LXA_ROOT_END_NAME tree_prebody_end
+#define LXA_ROOT_END_VIEW lxa_html_tree_t
+#define LXA_ROOT_END_HTML ensure_html
+#define LXA_ROOT_END_HEAD ensure_head
+#define LXA_ROOT_END_BODY ensure_body
+#include "html/root_prebody_end.inc"
+#undef LXA_ROOT_END_NAME
+#undef LXA_ROOT_END_VIEW
+#undef LXA_ROOT_END_HTML
+#undef LXA_ROOT_END_HEAD
+#undef LXA_ROOT_END_BODY
+
 static lxa_status_t
 prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
 {
@@ -4604,21 +4616,8 @@ reprocess_template_token:
         status = lxa_html_tree_prebody_end_action(tree->mode, token->name, &action);
         if (status != LXA_OK) return status;
         if (action == LXA_HTML_PREBODY_END_IGNORE) return LXA_OK;
-        if (action == LXA_HTML_PREBODY_END_HTML_HEAD) {
-            status = ensure_html(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_BEFORE_HEAD;
-        }
-        if (action == LXA_HTML_PREBODY_END_BODY) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-        }
-        else {
-            status = ensure_head(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_HEAD;
-        }
+        status = tree_prebody_end(tree, action, &tree->mode);
+        if (status != LXA_OK) return status;
     }
     if (tree->mode == LXA_TREE_IN_BODY
         && token->kind == LXA_HTML_END_TAG
