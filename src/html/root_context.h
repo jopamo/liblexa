@@ -28,5 +28,18 @@ void lxa_html_root_context_destroy(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_html(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_head(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context);
+typedef struct {
+    lxa_html_initial_action_t action;
+    lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
+} lxa_html_root_initial_result_t;
+/* Process accepted INITIAL intake before virtual roots/open entries exist.
+ * Share classification and budgeted DOCTYPE resolution without retained views.
+ * Publish only on success; latch resolver failure. Engines emit comments and
+ * publish BEFORE_HTML/document mode for DOCTYPE or QUIRKS_REPROCESS, then rerun
+ * the latter through remaining dispatch. Token/output must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_root_initial_result_t *result);
 
 #endif

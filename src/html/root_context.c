@@ -112,3 +112,25 @@ LXA_ROOT_ENSURE_PUBLIC(html)
 LXA_ROOT_ENSURE_PUBLIC(head)
 LXA_ROOT_ENSURE_PUBLIC(body)
 #undef LXA_ROOT_ENSURE_PUBLIC
+
+lxa_status_t
+lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_root_initial_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_INITIAL || result == NULL || context->html || context->head || context->body
+        || lxa_vector_length(&context->stack->elements) != 0
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_initial_result_t out = {
+        lxa_html_tree_initial_action(token->kind, token->data), LXA_HTML_NO_QUIRKS
+    };
+    if (out.action == LXA_HTML_INITIAL_DOCTYPE)
+        status = lxa_html_tree_doctype_mode(token, context->stack->budget,
+            &context->limit_reason, &out.document_mode);
+    else if (out.action == LXA_HTML_INITIAL_QUIRKS_REPROCESS)
+        out.document_mode = LXA_HTML_QUIRKS;
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
+}

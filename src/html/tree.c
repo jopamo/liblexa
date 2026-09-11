@@ -3526,14 +3526,15 @@ consume(lxa_html_tree_t *tree,
     bool template_ordinary;
     if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     if (tree->mode == LXA_TREE_INITIAL) {
-        if (token->kind == LXA_HTML_COMMENT
-            || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
-            return append_comment_or_pi(tree, tree->document, token);
-        if (token->kind == LXA_HTML_TEXT && lxa_html_tree_space_only(token->data))
-            return LXA_OK;
-        if (token->kind != LXA_HTML_DOCTYPE) {
-            tree->document_mode = LXA_HTML_QUIRKS;
-            tree->mode = LXA_TREE_BEFORE_HTML;
+        switch (lxa_html_tree_initial_action(token->kind, token->data)) {
+            case LXA_HTML_INITIAL_COMMENT:
+                return append_comment_or_pi(tree, tree->document, token);
+            case LXA_HTML_INITIAL_IGNORE: return LXA_OK;
+            case LXA_HTML_INITIAL_DOCTYPE: break;
+            case LXA_HTML_INITIAL_QUIRKS_REPROCESS:
+                tree->document_mode = LXA_HTML_QUIRKS;
+                tree->mode = LXA_TREE_BEFORE_HTML;
+                break;
         }
     }
     if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {

@@ -105,6 +105,23 @@ lxa_html_tree_space_only(lxa_span_t data)
     return true;
 }
 
+typedef enum {
+    LXA_HTML_INITIAL_COMMENT, LXA_HTML_INITIAL_IGNORE,
+    LXA_HTML_INITIAL_DOCTYPE, LXA_HTML_INITIAL_QUIRKS_REPROCESS
+} lxa_html_initial_action_t;
+
+/* Initial-mode intake after token-shape validation. Only text reads data. */
+static inline lxa_html_initial_action_t
+lxa_html_tree_initial_action(lxa_html_token_kind_t kind, lxa_span_t data)
+{
+    if (kind == LXA_HTML_COMMENT || kind == LXA_HTML_PROCESSING_INSTRUCTION)
+        return LXA_HTML_INITIAL_COMMENT;
+    if (kind == LXA_HTML_TEXT && lxa_html_tree_space_only(data))
+        return LXA_HTML_INITIAL_IGNORE;
+    return kind == LXA_HTML_DOCTYPE ? LXA_HTML_INITIAL_DOCTYPE
+                                   : LXA_HTML_INITIAL_QUIRKS_REPROCESS;
+}
+
 static inline bool
 lxa_html_tree_null_only(lxa_span_t data)
 {
