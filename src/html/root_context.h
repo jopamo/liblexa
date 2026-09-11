@@ -41,5 +41,18 @@ typedef struct {
 lxa_status_t lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, const lxa_html_token_t *token,
     lxa_html_root_initial_result_t *result);
+typedef struct {
+    lxa_html_prebody_text_plan_t plan;
+    lxa_html_root_mode_t next_mode;
+} lxa_html_root_prebody_text_result_t;
+/* Prepare accepted prebody text over an empty stack before BODY construction.
+ * Apply shared prefix WORK and required virtual head creation, preserving
+ * completed roots on failure. Publish only on success; no retained text views.
+ * Engines emit the prefix before publishing next_mode and process the suffix.
+ * Input/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_html_root_prebody_text_result_t *result);
 
 #endif

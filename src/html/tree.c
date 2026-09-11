@@ -1218,17 +1218,12 @@ append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 static lxa_status_t
 prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
 {
-    size_t prefix = 0;
-    lxa_status_t status;
-    bool before_head = tree->mode == LXA_TREE_BEFORE_HTML
-                       || tree->mode == LXA_TREE_BEFORE_HEAD;
-    while (prefix < bytes->length
-           && lxa_html_byte_tree_space(bytes->data[prefix]))
-        ++prefix;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-        prefix + (prefix < bytes->length), &tree->nodes->limit_reason);
+    lxa_html_prebody_text_plan_t plan;
+    lxa_status_t status = lxa_html_tree_prebody_text_plan(tree->mode, *bytes,
+        tree->nodes->budget, &tree->nodes->limit_reason, &plan);
     if (status != LXA_OK) return status;
-    if (!before_head && prefix != 0) {
+    size_t prefix = plan.space_prefix;
+    if (plan.emit_prefix) {
         status = append_character(tree,
             tree->mode == LXA_TREE_IN_HEAD ? tree->head : tree->html,
             LXA_DOM_KIND_TEXT, (lxa_span_t){bytes->data, prefix});
@@ -1237,7 +1232,7 @@ prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
     if (prefix != 0) bytes->data += prefix;
     bytes->length -= prefix;
     if (bytes->length == 0) return LXA_OK;
-    if (before_head) {
+    if (plan.ensure_head) {
         status = ensure_head(tree);
         if (status != LXA_OK) return status;
     }

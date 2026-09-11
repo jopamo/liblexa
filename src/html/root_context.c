@@ -134,3 +134,25 @@ lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
     if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
+
+lxa_status_t
+lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data, lxa_html_root_prebody_text_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (result == NULL || context->body || lxa_vector_length(&context->stack->elements) != 0
+        || (mode == LXA_TREE_BEFORE_HEAD && !context->html)
+        || ((mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD) && !context->head))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_prebody_text_result_t out;
+    status = lxa_html_tree_prebody_text_plan(mode, data, context->stack->budget,
+        &context->limit_reason, &out.plan);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status == LXA_OK && out.plan.ensure_head) status = context_ensure_head(context);
+    if (status == LXA_OK) {
+        out.next_mode = out.plan.space_prefix < data.length ? LXA_TREE_AFTER_HEAD : mode;
+        *result = out;
+    }
+    return finish(context, status);
+}

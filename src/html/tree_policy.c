@@ -252,6 +252,26 @@ lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
 }
 
 lxa_status_t
+lxa_html_tree_prebody_text_plan(lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_prebody_text_plan_t *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || out == NULL || (data.length != 0 && data.data == NULL)
+        || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
+            && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_AFTER_HEAD))
+        return LXA_ERROR_ARGUMENT;
+    size_t prefix = lxa_html_tree_space_prefix(data);
+    bool before_head = mode == LXA_TREE_BEFORE_HTML || mode == LXA_TREE_BEFORE_HEAD;
+    lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+        prefix + (prefix < data.length), reason);
+    if (status == LXA_OK)
+        *out = (lxa_html_prebody_text_plan_t){
+            prefix, !before_head && prefix != 0, before_head && prefix < data.length
+        };
+    return status;
+}
+
+lxa_status_t
 lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
     lxa_budget_t *budget, lxa_limit_reason_t *reason,
     lxa_html_head_noscript_plan_t *out)

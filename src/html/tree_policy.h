@@ -268,6 +268,18 @@ lxa_status_t
 lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_prebody_end_action_t *out);
 
+typedef struct {
+    size_t space_prefix;
+    bool emit_prefix, ensure_head;
+} lxa_html_prebody_text_plan_t;
+
+/* Plan accepted prebody text. Precharge the prefix plus one nonspace byte
+ * before publishing; owners emit spaces, construct head and change mode.
+ */
+lxa_status_t lxa_html_tree_prebody_text_plan(lxa_html_root_mode_t mode,
+    lxa_span_t data, lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_prebody_text_plan_t *out);
+
 typedef enum {
     LXA_HTML_AFTER_BODY_SPACE_TEXT, LXA_HTML_AFTER_BODY_HTML_START,
     LXA_HTML_AFTER_BODY_REPROCESS
