@@ -252,6 +252,30 @@ lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
 }
 
 lxa_status_t
+lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode, lxa_span_t name,
+    lxa_html_root_text_plan_t *out)
+{
+    if (out == NULL || name.data == NULL || name.length == 0
+        || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
+            && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_HEAD_NOSCRIPT
+            && mode != LXA_TREE_AFTER_HEAD && mode != LXA_TREE_IN_BODY))
+        return LXA_ERROR_ARGUMENT;
+    bool title_style = lxa_html_tree_name_equals(name, "title", 5)
+        || lxa_html_tree_name_equals(name, "style", 5);
+    bool noframes = lxa_html_tree_name_equals(name, "noframes", 8);
+    bool script = lxa_html_tree_name_equals(name, "script", 6);
+    bool textarea = lxa_html_tree_name_equals(name, "textarea", 8);
+    bool iframe = lxa_html_tree_name_equals(name, "iframe", 6);
+    if (!lxa_html_tree_returning_text_element(name)) return LXA_ERROR_ARGUMENT;
+    bool body = title_style ? mode == LXA_TREE_IN_BODY
+        : (noframes || script) ? mode > LXA_TREE_AFTER_HEAD : true;
+    lxa_html_root_mode_t returning = body ? LXA_TREE_IN_BODY
+        : mode < LXA_TREE_IN_HEAD ? LXA_TREE_IN_HEAD : mode;
+    *out = (lxa_html_root_text_plan_t){returning, body, textarea || iframe, textarea};
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_head_end_action(lxa_span_t name, lxa_html_head_end_action_t *out)
 {
     if (name.data == NULL || name.length == 0 || out == NULL) return LXA_ERROR_ARGUMENT;

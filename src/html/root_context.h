@@ -49,6 +49,15 @@ lxa_status_t lxa_html_root_context_finish(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_head_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode, lxa_html_head_end_action_t *action);
+/* Coordinate accepted ordinary returning-text starts after earlier routing.
+ * Borrow an inactive text context; create roots, publish preparatory mode and
+ * frameset effects, then apply tokenizer feedback. Publish TEXT/newline only
+ * on success. Failed feedback retains preparatory effects and latches.
+ * Engines own insertion/text destination; storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_text(lxa_html_root_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *skip_newline);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

@@ -402,7 +402,7 @@ lxa_html_tree_template_sectioning(lxa_span_t name)
 }
 
 static inline bool
-lxa_html_tree_template_simple_text_element(lxa_span_t name)
+lxa_html_tree_returning_text_element(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "title") || LXA_CONTAINER_NAMED(name, "style")
         || LXA_CONTAINER_NAMED(name, "script") || LXA_CONTAINER_NAMED(name, "textarea")
@@ -413,7 +413,7 @@ lxa_html_tree_template_simple_text_element(lxa_span_t name)
 static inline bool
 lxa_html_tree_template_html_text_element(lxa_span_t name)
 {
-    return lxa_html_tree_template_simple_text_element(name)
+    return lxa_html_tree_returning_text_element(name)
         || LXA_CONTAINER_NAMED(name, "xmp")
         || LXA_CONTAINER_NAMED(name, "plaintext");
 }

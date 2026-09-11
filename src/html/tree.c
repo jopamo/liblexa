@@ -4214,7 +4214,7 @@ reprocess_template_token:
             return status;
         }
         if (token->kind == LXA_HTML_START_TAG
-            && lxa_html_tree_template_simple_text_element(token->name)
+            && lxa_html_tree_returning_text_element(token->name)
             && !named(token->name, "textarea")) {
             status = begin_text_element(tree, tokenizer, template_parent(tree),
                 token);
@@ -4931,60 +4931,19 @@ reprocess_body_start:
             if (status == LXA_OK) tree->form = current_element(tree);
             return status;
         }
-        if (named(token->name, "title") || named(token->name, "style")
-            || (named(token->name, "noframes")
-                && tree->mode <= LXA_TREE_AFTER_HEAD)) {
-            if ((named(token->name, "style")
-                 || named(token->name, "title"))
-                && tree->mode == LXA_TREE_IN_BODY) {
-                status = ensure_body(tree);
-                if (status != LXA_OK) return status;
-                parent = current_element(tree);
-            }
-            else {
-                status = ensure_head(tree);
-                if (status != LXA_OK) return status;
-                if (tree->mode < LXA_TREE_IN_HEAD)
-                    tree->mode = LXA_TREE_IN_HEAD;
-                parent = tree->mode == LXA_TREE_HEAD_NOSCRIPT
-                         ? tree->head_noscript : tree->head;
-            }
-            return begin_text_element(tree, tokenizer, parent, token);
-        }
-        if (named(token->name, "script")) {
-            if (tree->mode <= LXA_TREE_AFTER_HEAD) {
-                status = ensure_head(tree);
-                if (status != LXA_OK) return status;
-                if (tree->mode < LXA_TREE_IN_HEAD) tree->mode = LXA_TREE_IN_HEAD;
-                parent = tree->mode == LXA_TREE_HEAD_NOSCRIPT
-                         ? tree->head_noscript : tree->head;
-            }
-            else {
-                status = ensure_body(tree);
-                if (status != LXA_OK) return status;
-                tree->mode = LXA_TREE_IN_BODY;
-                parent = current_element(tree);
-            }
-            return begin_text_element(tree, tokenizer, parent, token);
-        }
-        if (named(token->name, "textarea")) {
-            status = ensure_body(tree);
+        if (lxa_html_tree_returning_text_element(token->name)) {
+            lxa_html_root_text_plan_t plan;
+            status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
             if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            tree->frameset_ok = false;
-            status = begin_text_element(tree, tokenizer, current_element(tree),
-                                        token);
-            if (status == LXA_OK) tree->skip_pre_newline = true;
+            status = plan.body ? ensure_body(tree) : ensure_head(tree);
+            if (status != LXA_OK) return status;
+            tree->mode = plan.return_mode;
+            if (plan.disable_frameset) tree->frameset_ok = false;
+            parent = plan.body ? current_element(tree)
+                : tree->mode == LXA_TREE_HEAD_NOSCRIPT ? tree->head_noscript : tree->head;
+            status = begin_text_element(tree, tokenizer, parent, token);
+            if (status == LXA_OK && plan.skip_newline) tree->skip_pre_newline = true;
             return status;
-        }
-        if (named(token->name, "iframe") || named(token->name, "noembed")
-            || named(token->name, "noframes")) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            if (named(token->name, "iframe")) tree->frameset_ok = false;
-            return begin_text_element(tree, tokenizer, current_element(tree),
-                                       token);
         }
         if (named(token->name, "xmp")) {
             return begin_root_xmp(tree, tokenizer, token);

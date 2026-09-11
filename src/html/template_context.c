@@ -518,7 +518,7 @@ lxa_html_template_context_start_text(lxa_html_template_context_t *context,
         || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
         || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
         || token->kind != LXA_HTML_START_TAG
-        || (!lxa_html_tree_template_simple_text_element(token->name)
+        || (!lxa_html_tree_returning_text_element(token->name)
             && !lxa_html_tree_name_equals(token->name, "xmp", 3))) return LXA_ERROR_ARGUMENT;
     if (lxa_html_tree_name_equals(token->name, "xmp", 3)) {
         const lxa_html_template_control_frame_t *frames =

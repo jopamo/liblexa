@@ -281,6 +281,17 @@ typedef enum {
 lxa_status_t lxa_html_tree_head_end_action(lxa_span_t name,
     lxa_html_head_end_action_t *out);
 
+typedef struct {
+    lxa_html_root_mode_t return_mode;
+    bool body, disable_frameset, skip_newline;
+} lxa_html_root_text_plan_t;
+
+/* Accepted ordinary returning-text starts, excluding earlier table/foster,
+ * frameset, template, xmp and plaintext rules. No WORK or retained views.
+ */
+lxa_status_t lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode,
+    lxa_span_t name, lxa_html_root_text_plan_t *out);
+
 /* Plan accepted prebody text. Precharge the prefix plus one nonspace byte
  * before publishing; owners emit spaces, construct head and change mode.
  */

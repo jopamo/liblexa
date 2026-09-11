@@ -174,6 +174,39 @@ lxa_html_root_context_head_end(lxa_html_root_context_t *context, lxa_span_t name
 }
 
 lxa_status_t
+lxa_html_root_context_start_text(lxa_html_root_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *skip_newline)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || text == NULL || tokenizer == NULL || skip_newline == NULL
+        || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
+        || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_text_plan_t plan;
+    status = lxa_html_tree_root_text_plan(*mode, token->name, &plan);
+    if (status != LXA_OK) return status;
+    if ((!plan.body && lxa_vector_length(&context->stack->elements) != 0)
+        || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
+        || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_HEAD_NOSCRIPT
+            || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
+        return LXA_ERROR_ARGUMENT;
+    status = plan.body ? context_ensure_body(context) : context_ensure_head(context);
+    if (status == LXA_OK) {
+        *mode = plan.return_mode;
+        if (plan.disable_frameset) context->frameset_ok = false;
+        status = lxa_html_text_context_enter(text, tokenizer, token->name,
+            plan.return_mode, &context->limit_reason);
+    }
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_TEXT;
+        *skip_newline = plan.skip_newline;
+    }
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode)
 {
