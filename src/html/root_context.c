@@ -125,6 +125,27 @@ LXA_ROOT_ENSURE_PUBLIC(body)
 #undef LXA_ROOT_END_HEAD
 #undef LXA_ROOT_END_BODY
 
+#define LXA_ROOT_FINISH_NAME context_finish_root
+#define LXA_ROOT_FINISH_VIEW lxa_html_root_context_t
+#define LXA_ROOT_FINISH_BODY context_ensure_body
+#define LXA_ROOT_FINISH_POP(view) lxa_html_control_stack_pop_to((view)->stack, 0)
+#include "html/root_finish.inc"
+#undef LXA_ROOT_FINISH_NAME
+#undef LXA_ROOT_FINISH_VIEW
+#undef LXA_ROOT_FINISH_BODY
+#undef LXA_ROOT_FINISH_POP
+
+lxa_status_t
+lxa_html_root_context_finish(lxa_html_root_context_t *context, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || !lxa_html_tree_root_mode_valid(*mode)
+        || *mode == LXA_TREE_INITIAL || *mode == LXA_TREE_DONE || *mode == LXA_TREE_TEMPLATE_TEXT)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, context_finish_root(context, mode));
+}
+
 lxa_status_t
 lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode)

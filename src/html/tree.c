@@ -1227,6 +1227,16 @@ append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 #undef LXA_ROOT_END_HEAD
 #undef LXA_ROOT_END_BODY
 
+#define LXA_ROOT_FINISH_NAME tree_finish_root
+#define LXA_ROOT_FINISH_VIEW lxa_html_tree_t
+#define LXA_ROOT_FINISH_BODY ensure_body
+#define LXA_ROOT_FINISH_POP(view) pop_elements(view, &(view)->open_elements, 0)
+#include "html/root_finish.inc"
+#undef LXA_ROOT_FINISH_NAME
+#undef LXA_ROOT_FINISH_VIEW
+#undef LXA_ROOT_FINISH_BODY
+#undef LXA_ROOT_FINISH_POP
+
 static lxa_status_t
 prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
 {
@@ -4364,10 +4374,7 @@ reprocess_template_token:
             token->name, &action);
         if (status != LXA_OK) return status;
         if (action == LXA_HTML_FRAMESET_EOF) {
-            status = pop_elements(tree, &tree->open_elements, 0);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_DONE;
-            return LXA_OK;
+            return tree_finish_root(tree, &tree->mode);
         }
         parent = tree->mode == LXA_TREE_IN_FRAMESET
                  ? current_element(tree)
@@ -4418,11 +4425,7 @@ reprocess_template_token:
         return LXA_ERROR_INTERNAL;
     }
     if (token->kind == LXA_HTML_EOF) {
-        status = ensure_body(tree);
-        if (status == LXA_OK)
-            status = pop_elements(tree, &tree->open_elements, 0);
-        if (status == LXA_OK) tree->mode = LXA_TREE_DONE;
-        return status;
+        return tree_finish_root(tree, &tree->mode);
     }
     if (tree->mode == LXA_TREE_TEXT) {
         lxa_span_t name = {0};
