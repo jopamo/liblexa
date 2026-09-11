@@ -5146,34 +5146,34 @@ reprocess_body_start:
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "head")
-        && tree->mode == LXA_TREE_IN_HEAD) {
-        tree->mode = LXA_TREE_AFTER_HEAD;
-        return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD
-        && !named(token->name, "body") && !named(token->name, "html")
-        && !named(token->name, "br"))
-        return LXA_OK; /* Any other in-head end tag is ignored. */
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD
-        && (named(token->name, "body") || named(token->name, "br"))) {
-        bool br = named(token->name, "br");
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-            (tree->body.handle == LXA_HANDLE_NONE ? 1 : 0) + (br ? 1 : 0),
-            &tree->nodes->limit_reason);
+    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD) {
+        lxa_html_head_end_action_t action;
+        status = lxa_html_tree_head_end_action(token->name, &action);
         if (status != LXA_OK) return status;
-        status = ensure_body(tree);
-        if (status != LXA_OK) return status;
-        tree->mode = br ? LXA_TREE_IN_BODY : LXA_TREE_AFTER_BODY;
-        if (!br) return LXA_OK;
-        /* Reprocess through the in-body start-tag rule with no attributes. */
-        adjusted = *token;
-        adjusted.kind = LXA_HTML_START_TAG;
-        adjusted.attributes = NULL;
-        adjusted.attribute_count = 0;
-        adjusted.self_closing = false;
-        token = &adjusted;
-        goto reprocess_body_start;
+        if (action == LXA_HTML_HEAD_END_CLOSE) {
+            tree->mode = LXA_TREE_AFTER_HEAD;
+            return LXA_OK;
+        }
+        if (action == LXA_HTML_HEAD_END_IGNORE) return LXA_OK;
+        if (action != LXA_HTML_HEAD_END_HTML) {
+            bool br = action == LXA_HTML_HEAD_END_BR;
+            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                (tree->body.handle == LXA_HANDLE_NONE ? 1 : 0) + (br ? 1 : 0),
+                &tree->nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            status = ensure_body(tree);
+            if (status != LXA_OK) return status;
+            tree->mode = br ? LXA_TREE_IN_BODY : LXA_TREE_AFTER_BODY;
+            if (!br) return LXA_OK;
+            /* Reprocess through the in-body start-tag rule with no attributes. */
+            adjusted = *token;
+            adjusted.kind = LXA_HTML_START_TAG;
+            adjusted.attributes = NULL;
+            adjusted.attribute_count = 0;
+            adjusted.self_closing = false;
+            token = &adjusted;
+            goto reprocess_body_start;
+        }
     }
     if (token->kind == LXA_HTML_END_TAG
         && (named(token->name, "body") || named(token->name, "html"))

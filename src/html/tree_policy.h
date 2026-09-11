@@ -273,6 +273,14 @@ typedef struct {
     bool emit_prefix, ensure_head;
 } lxa_html_prebody_text_plan_t;
 
+typedef enum {
+    LXA_HTML_HEAD_END_IGNORE, LXA_HTML_HEAD_END_CLOSE, LXA_HTML_HEAD_END_BODY,
+    LXA_HTML_HEAD_END_HTML, LXA_HTML_HEAD_END_BR
+} lxa_html_head_end_action_t;
+
+lxa_status_t lxa_html_tree_head_end_action(lxa_span_t name,
+    lxa_html_head_end_action_t *out);
+
 /* Plan accepted prebody text. Precharge the prefix plus one nonspace byte
  * before publishing; owners emit spaces, construct head and change mode.
  */

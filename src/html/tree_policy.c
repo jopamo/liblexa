@@ -252,6 +252,19 @@ lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
 }
 
 lxa_status_t
+lxa_html_tree_head_end_action(lxa_span_t name, lxa_html_head_end_action_t *out)
+{
+    if (name.data == NULL || name.length == 0 || out == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_head_end_action_t action = LXA_HTML_HEAD_END_IGNORE;
+    if (lxa_html_tree_name_equals(name, "head", 4)) action = LXA_HTML_HEAD_END_CLOSE;
+    else if (lxa_html_tree_name_equals(name, "body", 4)) action = LXA_HTML_HEAD_END_BODY;
+    else if (lxa_html_tree_name_equals(name, "html", 4)) action = LXA_HTML_HEAD_END_HTML;
+    else if (lxa_html_tree_name_equals(name, "br", 2)) action = LXA_HTML_HEAD_END_BR;
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_prebody_text_plan(lxa_html_root_mode_t mode, lxa_span_t data,
     lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_prebody_text_plan_t *out)
 {

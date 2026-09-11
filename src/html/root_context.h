@@ -42,6 +42,13 @@ lxa_status_t lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_finish(lxa_html_root_context_t *context,
     lxa_html_root_mode_t *mode);
+/* Apply accepted IN_HEAD ends over the virtual head and empty open stack.
+ * Publish mode/action after required BODY admission succeeds. Engines reprocess
+ * BR as an attribute-free start. Failures retain roots and latch; no name views.
+ * Input/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_head_end(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t *mode, lxa_html_head_end_action_t *action);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
