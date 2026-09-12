@@ -2,6 +2,7 @@
 #define LIBLEXA_HTML_ROOT_CONTEXT_H
 
 #include "html/control_stack.h"
+#include "html/formatting_list.h"
 
 /* Private virtual-root ledger over a borrowed complete-document stack.
  * HTML/head own no open entries. BODY enters the stack only when it is empty.
@@ -66,6 +67,13 @@ lxa_status_t lxa_html_root_context_start_text(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity);
+/* Reconstruct root BODY formatting from one saved closed-suffix plan.
+ * Borrow a live list sharing the stack budget; preflight the entire root depth
+ * before reopening. Failures retain completed pushes and latch. Call outside
+ * active templates; list ownership and mode remain engine-owned.
+ */
+lxa_status_t lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

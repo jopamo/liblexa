@@ -263,6 +263,39 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
 }
 
 lxa_status_t
+lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !context->body
+        || lxa_vector_length(&context->stack->elements) == 0)
+        return LXA_ERROR_ARGUMENT;
+    size_t start;
+    status = lxa_html_formatting_list_reconstruct_plan(formatting, context->stack, 0, &start);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = formatting->store->limit_reason;
+    if (status != LXA_OK) return finish(context, status);
+    size_t length = lxa_vector_length(&formatting->entries);
+    if (start == length) return LXA_OK;
+    if (start > length) {
+        assert(false);
+        return finish(context, LXA_ERROR_INTERNAL);
+    }
+    size_t depth;
+    status = lxa_size_add(lxa_vector_length(&context->stack->elements), length - start, &depth);
+    if (status == LXA_OK) status = lxa_size_add(depth, 1, &depth);
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+            depth, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_reconstruct_planned(formatting, context->stack, 0, start);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = formatting->store->limit_reason;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode)
 {
