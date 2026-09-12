@@ -94,6 +94,16 @@ lxa_status_t lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_void(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode);
+/* Admit accepted root formatting starts after earlier routing.
+ * Validate token ownership before effects; ensure BODY and publish IN_BODY,
+ * then share anchor/nobr preprocessing, depth-bounded reconstruction and one
+ * Noah plan. Preflight admission depth before consuming the saved drop index.
+ * Borrow a same-budget list. Retain completed effects, clear identity and latch
+ * ordinary failure; engines own insertion. Storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

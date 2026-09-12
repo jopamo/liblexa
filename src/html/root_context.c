@@ -447,3 +447,102 @@ lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
     }
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_formatting_list_t *formatting;
+} root_start_view_t;
+
+static lxa_status_t
+root_start_stack_status(const root_start_view_t *view, lxa_status_t status)
+{
+    if (status == LXA_ERROR_LIMIT)
+        view->context->limit_reason = view->context->stack->limit_reason;
+    return status;
+}
+
+static lxa_status_t
+root_start_identity(const root_start_view_t *view, size_t index, uint64_t *identity)
+{
+    lxa_html_formatting_item_t item;
+    lxa_status_t status = lxa_html_formatting_list_get(view->formatting, index, &item);
+    if (status == LXA_OK) *identity = item.identity;
+    return status;
+}
+
+#define LXA_FORMATTING_START_NAME root_prepare_start
+#define LXA_FORMATTING_START_VIEW root_start_view_t
+#define LXA_FORMATTING_START_REFERENCE uint64_t
+#define LXA_FORMATTING_START_FIND(view, name, index) \
+    lxa_html_formatting_list_find((view)->formatting, name, index)
+#define LXA_FORMATTING_START_IDENTITY root_start_identity
+#define LXA_FORMATTING_START_ADOPT(view, name) \
+    lxa_html_formatting_list_adopt((view)->formatting, (view)->context->stack, 0, name)
+#define LXA_FORMATTING_START_FIND_REFERENCE(view, identity, index) \
+    lxa_html_formatting_list_find_reference((view)->formatting, identity, index)
+#define LXA_FORMATTING_START_FORMATTING_LENGTH(view) lxa_vector_length(&(view)->formatting->entries)
+#define LXA_FORMATTING_START_REMOVE_FORMATTING(view, index) \
+    lxa_html_formatting_list_remove((view)->formatting, index)
+#define LXA_FORMATTING_START_OPEN(view, identity, index) root_start_stack_status(view, \
+    lxa_html_control_stack_open_reference_find((view)->context->stack, 0, identity, index))
+#define LXA_FORMATTING_START_OPEN_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_FORMATTING_START_REMOVE_OPEN(view, index) root_start_stack_status(view, \
+    lxa_html_control_stack_remove((view)->context->stack, index))
+#define LXA_FORMATTING_START_RECONSTRUCT(view) lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_FORMATTING_START_SCOPED(view, name, index) root_start_stack_status(view, \
+    lxa_html_control_stack_scope_find((view)->context->stack, 0, name, LXA_HTML_SCOPE_NORMAL, index))
+#define LXA_FORMATTING_START_PLAN(view, token, drop) \
+    lxa_html_formatting_list_plan_add((view)->formatting, (view)->context->stack, 0, token, drop)
+#include "html/formatting_start.inc"
+#undef LXA_FORMATTING_START_NAME
+#undef LXA_FORMATTING_START_VIEW
+#undef LXA_FORMATTING_START_REFERENCE
+#undef LXA_FORMATTING_START_FIND
+#undef LXA_FORMATTING_START_IDENTITY
+#undef LXA_FORMATTING_START_ADOPT
+#undef LXA_FORMATTING_START_FIND_REFERENCE
+#undef LXA_FORMATTING_START_FORMATTING_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_FORMATTING
+#undef LXA_FORMATTING_START_OPEN
+#undef LXA_FORMATTING_START_OPEN_LENGTH
+#undef LXA_FORMATTING_START_REMOVE_OPEN
+#undef LXA_FORMATTING_START_RECONSTRUCT
+#undef LXA_FORMATTING_START_SCOPED
+#undef LXA_FORMATTING_START_PLAN
+
+lxa_status_t
+lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !body_start_mode_valid(context, *mode))
+        return LXA_ERROR_ARGUMENT;
+    status = lxa_html_formatting_list_start_intake(formatting, context->stack, 0, token);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status == LXA_OK) status = context_ensure_body(context);
+    size_t drop;
+    root_start_view_t view = {context, formatting};
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_IN_BODY;
+        status = root_prepare_start(&view, token, &drop);
+    }
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = formatting->store->limit_reason;
+    size_t depth;
+    if (status == LXA_OK)
+        status = lxa_size_add(lxa_vector_length(&context->stack->elements), 2, &depth);
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+            depth, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_admit_planned(formatting, context->stack,
+            token, drop, identity);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = formatting->store->limit_reason;
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
