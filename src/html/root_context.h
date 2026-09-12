@@ -74,6 +74,16 @@ lxa_status_t lxa_html_root_context_start_plaintext(lxa_html_root_context_t *cont
  */
 lxa_status_t lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting);
+/* Coordinate accepted root xmp after earlier routing: recover current colgroup,
+ * close paragraph, reconstruct formatting, then publish IN_BODY/frameset effects
+ * and apply returning-text feedback. TEXT publishes only on success. Borrow an
+ * inactive text context and same-budget list; engines retain insertion effects.
+ * Input/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

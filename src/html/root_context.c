@@ -25,6 +25,15 @@ finish(lxa_html_root_context_t *context, lxa_status_t status)
     return status;
 }
 
+static bool
+body_start_mode_valid(const lxa_html_root_context_t *context, lxa_html_root_mode_t mode)
+{
+    return (mode == LXA_TREE_BEFORE_HTML || mode == LXA_TREE_BEFORE_HEAD
+            || mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD || mode == LXA_TREE_IN_BODY)
+        && (mode != LXA_TREE_BEFORE_HEAD || context->html)
+        && ((mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_AFTER_HEAD) || context->head);
+}
+
 lxa_status_t
 lxa_html_root_context_init(lxa_html_root_context_t *context,
     lxa_html_control_stack_t *stack)
@@ -217,11 +226,7 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
     if (mode == NULL || identity == NULL || tokenizer == NULL
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_name_equals(token->name, "plaintext", 9)
-        || (*mode != LXA_TREE_BEFORE_HTML && *mode != LXA_TREE_BEFORE_HEAD
-            && *mode != LXA_TREE_IN_HEAD && *mode != LXA_TREE_AFTER_HEAD
-            && *mode != LXA_TREE_IN_BODY)
-        || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
-        || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
+        || !body_start_mode_valid(context, *mode))
         return LXA_ERROR_ARGUMENT;
     status = context_ensure_body(context);
     size_t keep;
@@ -292,6 +297,43 @@ lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
         status = lxa_html_formatting_list_reconstruct_planned(formatting, context->stack, 0, start);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = formatting->store->limit_reason;
+    return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || text == NULL || tokenizer == NULL
+        || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
+        || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG || !lxa_html_tree_name_equals(token->name, "xmp", 3)
+        || !body_start_mode_valid(context, *mode)) return LXA_ERROR_ARGUMENT;
+    status = context_ensure_body(context);
+    bool group;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_column_group(context->stack, 0, &group);
+    if (status == LXA_OK && group)
+        status = lxa_html_control_stack_pop_to(context->stack,
+            lxa_vector_length(&context->stack->elements) - 1);
+    size_t keep;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_scope_find(context->stack, 0,
+            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+    if (status == LXA_OK) status = lxa_html_root_context_reconstruct(context, formatting);
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_IN_BODY;
+        context->frameset_ok = false;
+        status = lxa_html_text_context_enter(text, tokenizer, token->name,
+            LXA_TREE_IN_BODY, &context->limit_reason);
+    }
+    if (status == LXA_OK) *mode = LXA_TREE_TEXT;
     return finish(context, status);
 }
 
