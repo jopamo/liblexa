@@ -84,6 +84,16 @@ lxa_status_t lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode);
+/* Apply accepted HTML head/body void starts after earlier routing and image
+ * normalization. Share root, frameset/hidden-input, hr paragraph and formatting
+ * effects without retaining void-token entries. Borrow a same-budget list when reopening
+ * is required; otherwise NULL is permitted. Engines own closed insertion and
+ * accepted-meta observation. Retain completed effects and latch failures.
+ * Token/mode storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_void(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

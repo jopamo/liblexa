@@ -4974,9 +4974,7 @@ reprocess_body_start:
                     if (status != LXA_OK) return status;
                     if (!hidden) tree->frameset_ok = false;
                 }
-                else if (!named(token->name, "param")
-                         && !named(token->name, "source")
-                         && !named(token->name, "track"))
+                else if (!lxa_html_tree_body_void_frameset_exempt(token->name))
                     tree->frameset_ok = false;
             }
             if (named(token->name, "hr")) {

@@ -340,6 +340,13 @@ lxa_html_tree_body_void_reconstructs(lxa_span_t name)
 }
 
 static inline bool
+lxa_html_tree_body_void_frameset_exempt(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "param") || LXA_CONTAINER_NAMED(name, "source")
+        || LXA_CONTAINER_NAMED(name, "track");
+}
+
+static inline bool
 lxa_html_tree_body_control_start(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "html") || LXA_CONTAINER_NAMED(name, "head")
