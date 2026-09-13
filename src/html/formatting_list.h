@@ -66,6 +66,12 @@ lxa_status_t lxa_html_formatting_list_clear(lxa_html_formatting_list_t *list);
  */
 lxa_status_t lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t keep, bool template_context);
+/* Accepted root scoped end: plan once, pop, then clear a matched marker.
+ * Missing targets may still remove an excluded current HTML colgroup.
+ * Failed clearing retains completed pops. Engines own routing and latching.
+ */
+lxa_status_t lxa_html_formatting_list_end_scoped(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, lxa_span_t target, lxa_html_scope_kind_t scope);
 /* Copy one item for one WORK unit; clear output on failure. */
 lxa_status_t lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
     size_t index, lxa_html_formatting_item_t *out);

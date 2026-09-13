@@ -788,6 +788,34 @@ lxa_html_formatting_list_pop_table(lxa_html_formatting_list_t *list,
     return list_table_recovery(&view, keep, template_context);
 }
 
+#define LXA_SCOPED_END_NAME list_scoped_end
+#define LXA_SCOPED_END_VIEW formatting_stack_view_t
+#define LXA_SCOPED_END_PLAN(view, target, scope, out) adopt_stack_status(view, \
+    lxa_html_control_stack_scope_plan((view)->stack, 0, target, scope, out))
+#define LXA_SCOPED_END_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_SCOPED_END_POP(view, keep) adopt_stack_status(view, \
+    lxa_html_control_stack_pop_to((view)->stack, keep))
+#define LXA_SCOPED_END_TABLE(view, keep) list_table_recovery(view, keep, false)
+#define LXA_SCOPED_END_CLEAR(view) lxa_html_formatting_list_clear((view)->list)
+#include "html/scoped_end.inc"
+#undef LXA_SCOPED_END_NAME
+#undef LXA_SCOPED_END_VIEW
+#undef LXA_SCOPED_END_PLAN
+#undef LXA_SCOPED_END_LENGTH
+#undef LXA_SCOPED_END_POP
+#undef LXA_SCOPED_END_TABLE
+#undef LXA_SCOPED_END_CLEAR
+
+lxa_status_t
+lxa_html_formatting_list_end_scoped(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, lxa_span_t target, lxa_html_scope_kind_t scope)
+{
+    formatting_stack_view_t view;
+    lxa_status_t status = stack_view_init(list, stack, 0, &view);
+    if (status != LXA_OK) return status;
+    return list_scoped_end(&view, target, scope);
+}
+
 static inline lxa_status_t
 reconstruct_open(const formatting_stack_view_t *view, size_t index, bool *open)
 {

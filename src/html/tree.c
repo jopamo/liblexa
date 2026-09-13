@@ -1083,6 +1083,22 @@ plan_ruby_start(lxa_html_tree_t *tree, const lxa_vector_t *elements,
         named(target, "rp") || named(target, "rt"), keep);
 }
 
+#define LXA_SCOPED_END_NAME tree_scoped_end
+#define LXA_SCOPED_END_VIEW lxa_html_tree_scope_view_t
+#define LXA_SCOPED_END_PLAN(view, target, scope, out) tree_scope_plan(view, 0, target, scope, out)
+#define LXA_SCOPED_END_LENGTH(view) ((view)->length)
+#define LXA_SCOPED_END_POP(view, keep) pop_elements((view)->tree, &(view)->tree->open_elements, keep)
+#define LXA_SCOPED_END_TABLE(view, keep) pop_table_elements((view)->tree, keep)
+#define LXA_SCOPED_END_CLEAR(view) clear_formatting_to_marker((view)->tree)
+#include "html/scoped_end.inc"
+#undef LXA_SCOPED_END_NAME
+#undef LXA_SCOPED_END_VIEW
+#undef LXA_SCOPED_END_PLAN
+#undef LXA_SCOPED_END_LENGTH
+#undef LXA_SCOPED_END_POP
+#undef LXA_SCOPED_END_TABLE
+#undef LXA_SCOPED_END_CLEAR
+
 /* Close an HTML element through descendants up to the requested scope. */
 static lxa_status_t
 end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
@@ -1092,24 +1108,7 @@ end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
         tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
         lxa_vector_length(&tree->open_elements)
     };
-    lxa_html_end_target_plan_t plan;
-    lxa_status_t status = tree_scope_plan(&view, 0, target, scope, &plan);
-    if (status != LXA_OK) return status;
-    if (plan.index == plan.search_length) {
-        if (plan.search_length != view.length) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        return LXA_OK;
-    }
-    if (scope == LXA_HTML_SCOPE_TABLE)
-        return pop_table_elements(tree, plan.index);
-    while (lxa_vector_length(&tree->open_elements) > plan.index) {
-        status = pop_element(tree);
-        if (status != LXA_OK) return status;
-    }
-    return lxa_html_tree_formatting_marker_tag(target) ? clear_formatting_to_marker(tree)
-                                        : LXA_OK;
+    return tree_scoped_end(&view, target, scope);
 }
 
 static lxa_status_t
