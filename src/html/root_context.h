@@ -113,6 +113,15 @@ lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *con
 lxa_status_t lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode);
+/* Admit accepted object/marquee/applet roots after earlier routing.
+ * Publish BODY/frameset effects and reserve an open slot before reconstruction;
+ * then preflight depth and admit marker membership without attribute snapshots.
+ * Borrow a same-budget list. Retain completed effects and clear identity/latch
+ * on failure. Engines own insertion; storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
