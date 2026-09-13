@@ -546,3 +546,45 @@ lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
 }
+
+lxa_status_t
+lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (!lxa_html_tree_name_equals(token->name, "svg", 3)
+            && !lxa_html_tree_name_equals(token->name, "math", 4))) return LXA_ERROR_ARGUMENT;
+    status = context_ensure_body(context);
+    size_t count;
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+            1, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_size_add(lxa_vector_length(&context->stack->elements), 1, &count);
+    if (status == LXA_OK) {
+        status = lxa_vector_reserve(&context->stack->elements, count);
+        if (status == LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_MEMORY;
+    }
+    if (status == LXA_OK) status = lxa_html_root_context_reconstruct(context, formatting);
+    size_t depth;
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_IN_BODY;
+        status = lxa_size_add(lxa_vector_length(&context->stack->elements), 2, &depth);
+    }
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+            depth, &context->limit_reason);
+    size_t keep = lxa_vector_length(&context->stack->elements);
+    uint64_t identity;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_push_token(context->stack, token,
+            lxa_html_tree_name_equals(token->name, "svg", 3) ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML, &identity);
+    if (status == LXA_OK && token->self_closing)
+        status = lxa_html_control_stack_pop_to(context->stack, keep);
+    return finish(context, status);
+}

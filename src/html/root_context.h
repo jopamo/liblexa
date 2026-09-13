@@ -104,6 +104,15 @@ lxa_status_t lxa_html_root_context_start_void(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity);
+/* Admit accepted svg/math roots after earlier foreign/table routing.
+ * Ensure BODY, reserve an open slot, reconstruct formatting, then publish
+ * IN_BODY and admit effective metadata. Self-closing starts pop that entry.
+ * Borrow a same-budget list; failures retain completed effects and latch.
+ * Engines own insertion/attribute actions. Storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
