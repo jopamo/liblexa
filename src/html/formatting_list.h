@@ -132,6 +132,11 @@ lxa_status_t lxa_html_formatting_list_replace_open(lxa_html_formatting_list_t *l
     lxa_html_control_stack_t *stack, size_t formatting_index, size_t open_index,
     uint64_t *identity);
 
+/* Validate adoption subject ownership before preparatory recovery effects.
+ * No WORK, allocation or membership effects. Revalidate before adoption.
+ */
+lxa_status_t lxa_html_formatting_list_adopt_intake(lxa_html_formatting_list_t *list,
+    lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t subject);
 /* Execute shared adoption control, including shortcut, ordinary fallback,
  * bounded repair, cloning identities and bookmarks, without DOM effects.
  * The engine validates root/virtual-context geometry and owns insertion effects.

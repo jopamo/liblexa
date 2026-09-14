@@ -669,3 +669,31 @@ lxa_html_root_context_end_ordinary(lxa_html_root_context_t *context,
         status = lxa_html_control_stack_pop_to(context->stack, plan.index);
     return finish(context, status);
 }
+
+lxa_status_t
+lxa_html_root_context_end_formatting(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_span_t name,
+    lxa_html_root_mode_t mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY) return LXA_ERROR_ARGUMENT;
+    status = lxa_html_formatting_list_adopt_intake(formatting, context->stack, 0, name);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    bool group;
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_column_group(context->stack, 0, &group);
+    if (status == LXA_OK && group) {
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 2,
+            &context->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_pop_to(context->stack,
+                lxa_vector_length(&context->stack->elements) - 1);
+    }
+    if (status == LXA_OK) {
+        status = lxa_html_formatting_list_adopt(formatting, context->stack, 0, name);
+        if (status == LXA_ERROR_LIMIT)
+            context->limit_reason = formatting->store->limit_reason;
+    }
+    return finish(context, status);
+}
