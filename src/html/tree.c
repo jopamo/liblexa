@@ -1146,6 +1146,29 @@ close_open_button(lxa_html_tree_t *tree)
     return LXA_OK;
 }
 
+#define LXA_ROOT_CONTAINER_NAME tree_prepare_root_container
+#define LXA_ROOT_CONTAINER_VIEW lxa_html_tree_t
+#define LXA_ROOT_CONTAINER_RESERVE reserve_open_elements
+#define LXA_ROOT_CONTAINER_NODE(view) lxa_budget_check((view)->nodes->budget, \
+    LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_ROOT_CONTAINER_RUBY(view, name, out) plan_ruby_start(view, &(view)->open_elements, 0, name, out)
+#define LXA_ROOT_CONTAINER_POP(view, keep) pop_elements(view, &(view)->open_elements, keep)
+#define LXA_ROOT_CONTAINER_LIST close_list_item
+#define LXA_ROOT_CONTAINER_PARAGRAPH(view) close_paragraph(view, NULL)
+#define LXA_ROOT_CONTAINER_HEADING close_current_heading
+#define LXA_ROOT_CONTAINER_BUTTON close_open_button
+#include "html/root_container_prepare.inc"
+#undef LXA_ROOT_CONTAINER_NAME
+#undef LXA_ROOT_CONTAINER_VIEW
+#undef LXA_ROOT_CONTAINER_RESERVE
+#undef LXA_ROOT_CONTAINER_NODE
+#undef LXA_ROOT_CONTAINER_RUBY
+#undef LXA_ROOT_CONTAINER_POP
+#undef LXA_ROOT_CONTAINER_LIST
+#undef LXA_ROOT_CONTAINER_PARAGRAPH
+#undef LXA_ROOT_CONTAINER_HEADING
+#undef LXA_ROOT_CONTAINER_BUTTON
+
 static lxa_status_t
 insert_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             lxa_dom_ref_t before, lxa_span_t bytes)
@@ -5019,64 +5042,13 @@ reprocess_body_start:
             bool formatting = lxa_html_tree_formatting_tag(token->name);
             size_t drop = SIZE_MAX;
             bool reconstruct = lxa_html_tree_container_reconstructs(token->name);
-            bool closes_paragraph = named(token->name, "p")
-                || lxa_html_tree_heading(token->name)
-                || (lxa_html_tree_block_container(token->name)
-                    && !named(token->name, "button"))
-                || named(token->name, "li") || named(token->name, "dt")
-                || named(token->name, "dd");
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_BODY;
-            if (tree->frameset_ok
-                && (named(token->name, "pre") || named(token->name, "listing")
-                || named(token->name, "li") || named(token->name, "dt")
-                || named(token->name, "dd") || named(token->name, "button")
-                || named(token->name, "select")
-                || lxa_html_tree_formatting_marker_tag(token->name)))
+            if (tree->frameset_ok && lxa_html_tree_root_container_disables_frameset(token->name))
                 tree->frameset_ok = false;
-            if (!formatting && !lxa_html_tree_ruby_annotation(token->name)
-                && !named(token->name, "button")
-                && (!closes_paragraph || lxa_html_tree_heading(token->name))) {
-                status = reserve_open_elements(tree, lxa_html_tree_heading(token->name) ? 0 : 1);
-                if (status != LXA_OK) return status;
-            }
-            if (lxa_html_tree_ruby_annotation(token->name)) {
-                size_t keep;
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = plan_ruby_start(tree, &tree->open_elements, 0,
-                                              token->name, &keep);
-                if (status != LXA_OK) return status;
-                while (lxa_vector_length(&tree->open_elements) > keep) {
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                status = reserve_open_elements(tree, 1);
-                if (status != LXA_OK) return status;
-            }
-            if (named(token->name, "li") || named(token->name, "dt")
-                || named(token->name, "dd")) {
-                status = close_list_item(tree, !named(token->name, "li"));
-                if (status != LXA_OK) return status;
-            }
-            if (closes_paragraph) {
-                status = close_paragraph(tree, NULL);
-                if (status == LXA_OK && !lxa_html_tree_heading(token->name))
-                    status = reserve_open_elements(tree, 1);
-                if (status != LXA_OK) return status;
-            }
-            if (lxa_html_tree_heading(token->name)) {
-                status = close_current_heading(tree);
-                if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-                if (status != LXA_OK) return status;
-            }
-            if (named(token->name, "button")) {
-                status = close_open_button(tree);
-                if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-                if (status != LXA_OK) return status;
-            }
+            status = tree_prepare_root_container(tree, token->name, formatting);
+            if (status != LXA_OK) return status;
             if (formatting) {
                 status = prepare_formatting_start(tree, token, &drop);
                 if (status == LXA_OK) status = reserve_open_elements(tree, 1);

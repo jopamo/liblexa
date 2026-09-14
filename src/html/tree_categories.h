@@ -383,6 +383,21 @@ lxa_html_tree_template_scoped_end(lxa_span_t name)
         || lxa_html_tree_heading(name);
 }
 
+static inline bool
+lxa_html_tree_root_container_closes_paragraph(lxa_span_t name)
+{
+    return lxa_html_tree_template_paragraph_container(name)
+        || lxa_html_tree_template_list_item(name);
+}
+
+static inline bool
+lxa_html_tree_root_container_disables_frameset(lxa_span_t name)
+{
+    return LXA_CONTAINER_NAMED(name, "pre") || LXA_CONTAINER_NAMED(name, "listing")
+        || lxa_html_tree_template_list_item(name) || LXA_CONTAINER_NAMED(name, "button")
+        || LXA_CONTAINER_NAMED(name, "select") || lxa_html_tree_formatting_marker_tag(name);
+}
+
 /* Final root scoped-end rules, after table/form/paragraph recovery; zero skips. */
 static inline lxa_html_scope_kind_t
 lxa_html_tree_root_end_scope(lxa_span_t name)
