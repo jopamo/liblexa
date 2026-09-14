@@ -654,3 +654,18 @@ lxa_html_root_context_end_body(lxa_html_root_context_t *context,
         return LXA_ERROR_ARGUMENT;
     return finish(context, lxa_html_control_stack_end_body(context->stack, html_end, mode));
 }
+
+lxa_status_t
+lxa_html_root_context_end_ordinary(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY || name.data == NULL || name.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_end_target_plan_t plan;
+    status = lxa_html_control_stack_ordinary_end_plan(context->stack, 0, name, &plan);
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_pop_to(context->stack, plan.index);
+    return finish(context, status);
+}

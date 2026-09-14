@@ -135,6 +135,12 @@ lxa_status_t lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_end_body(lxa_html_root_context_t *context,
     bool html_end, lxa_html_root_mode_t *mode);
+/* Accepted fallback end after special/scoped/formatting rules. Plan once and
+ * apply its retained index, including missing-target colgroup recovery.
+ * Require admitted BODY/IN_BODY; preserve mode/framesets and latch failure.
+ */
+lxa_status_t lxa_html_root_context_end_ordinary(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
