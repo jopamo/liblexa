@@ -67,6 +67,19 @@ begin(lxa_html_control_stack_t *stack)
     return LXA_OK;
 }
 
+lxa_status_t
+lxa_html_control_stack_claim_identity(lxa_html_control_stack_t *stack, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    if (identity == NULL) return LXA_ERROR_ARGUMENT;
+    if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
+    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
+    if (status == LXA_OK) *identity = stack->next_identity++;
+    return status;
+}
+
 static lxa_status_t
 check_push(lxa_html_control_stack_t *stack, size_t total)
 {

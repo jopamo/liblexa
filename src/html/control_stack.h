@@ -26,6 +26,13 @@ typedef struct {
  */
 lxa_status_t lxa_html_control_stack_init(lxa_html_control_stack_t *stack,
     const lxa_allocator_t *allocator, lxa_budget_t *budget);
+/* Reserve a unique key for an accepted closed owner without open membership
+ * or name storage. Charge one WORK before publication; clear output on failure.
+ * Keys share the open/replacement sequence and are never reused while live.
+ * Output must not alias stack headers/storage.
+ */
+lxa_status_t lxa_html_control_stack_claim_identity(lxa_html_control_stack_t *stack,
+    uint64_t *identity);
 void lxa_html_control_stack_destroy(lxa_html_control_stack_t *stack);
 
 /* Copy a normalized HTML or adjusted foreign name and snapshot annotation

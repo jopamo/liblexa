@@ -151,10 +151,23 @@ lxa_status_t lxa_html_root_context_end_formatting(lxa_html_root_context_t *conte
 /* Accepted in-body form end over the engine's retained identity. Borrow owner
  * only for this call; it must not alias context/stack headers or storage.
  * Shared clearing/pop/middle-removal ordering retains partial effects; latch
- * failure without replay. Form admission/identity lifetime remain engine-owned.
+ * failure without replay. Form-start dispatch/identity lifetime remain engine-owned.
  */
 lxa_status_t lxa_html_root_context_end_form(lxa_html_root_context_t *context,
     uint64_t *owner, lxa_html_root_mode_t mode);
+typedef enum {
+    LXA_HTML_ROOT_FORM_IGNORE, LXA_HTML_ROOT_FORM_OPEN, LXA_HTML_ROOT_FORM_CLOSED
+} lxa_html_root_form_action_t;
+/* Accepted form start after earlier routing. Borrow the engine's stable owner
+ * scalar and publish action only on success. Table forms reserve a closed key
+ * before colgroup pops; ordinary forms close paragraphs before open admission.
+ * Retain completed roots/pops/keys and latch failure. Token/output storage must
+ * not alias context/stack headers/storage or each other. Engines retain insertion
+ * and form identity lifetime.
+ */
+lxa_status_t lxa_html_root_context_start_form(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, uint64_t *owner, lxa_html_root_mode_t *mode,
+    lxa_html_root_form_action_t *action);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

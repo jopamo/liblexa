@@ -708,3 +708,62 @@ lxa_html_root_context_end_form(lxa_html_root_context_t *context,
         return LXA_ERROR_ARGUMENT;
     return finish(context, lxa_html_control_stack_end_form(context->stack, owner));
 }
+
+lxa_status_t
+lxa_html_root_context_start_form(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, uint64_t *owner, lxa_html_root_mode_t *mode,
+    lxa_html_root_form_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (owner == NULL || mode == NULL || action == NULL
+        || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "form", 4)) return LXA_ERROR_ARGUMENT;
+    status = context_ensure_body(context);
+    lxa_html_table_context_plan_t plan;
+    if (status == LXA_OK) {
+        *mode = LXA_TREE_IN_BODY;
+        status = lxa_html_control_stack_table_context_plan(context->stack, 0, false, &plan);
+    }
+    lxa_html_root_form_action_t out = LXA_HTML_ROOT_FORM_IGNORE;
+    uint64_t identity = 0;
+    static const uint8_t name[] = "form";
+    if (status == LXA_OK && *owner != 0)
+        status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+    else if (status == LXA_OK && plan.in_table) {
+        if (plan.keep == 0) {
+            assert(false);
+            return finish(context, LXA_ERROR_INTERNAL);
+        }
+        status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+            sizeof(name) - 1, &context->limit_reason);
+        if (status == LXA_OK) status = check_body_child_depth(context, plan.keep);
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_claim_identity(context->stack, &identity);
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+        if (status == LXA_OK) {
+            *owner = identity;
+            out = LXA_HTML_ROOT_FORM_CLOSED;
+        }
+    }
+    else if (status == LXA_OK) {
+        size_t keep;
+        status = lxa_html_control_stack_scope_find(context->stack, 0,
+            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+        if (status == LXA_OK) status = reserve_open_slot(context);
+        if (status == LXA_OK)
+            status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
+        if (status == LXA_OK)
+            status = lxa_html_control_stack_push(context->stack,
+                (lxa_span_t){name, sizeof(name) - 1}, LXA_DOM_NS_HTML, false, &identity);
+        if (status == LXA_OK) {
+            *owner = identity;
+            out = LXA_HTML_ROOT_FORM_OPEN;
+        }
+    }
+    if (status == LXA_OK) *action = out;
+    return finish(context, status);
+}
