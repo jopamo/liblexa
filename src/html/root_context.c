@@ -642,3 +642,14 @@ lxa_html_root_context_end_marker(lxa_html_root_context_t *context,
         context->limit_reason = formatting->store->limit_reason;
     return finish(context, status);
 }
+
+lxa_status_t
+lxa_html_root_context_end_body(lxa_html_root_context_t *context,
+    bool html_end, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode == NULL || *mode != LXA_TREE_IN_BODY)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, lxa_html_control_stack_end_body(context->stack, html_end, mode));
+}

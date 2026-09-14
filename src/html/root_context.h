@@ -129,6 +129,12 @@ lxa_status_t lxa_html_root_context_start_marker(lxa_html_root_context_t *context
 lxa_status_t lxa_html_root_context_end_marker(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t name,
     lxa_html_root_mode_t mode);
+/* Accepted body/html end in IN_BODY over an admitted BODY. Shared recovery
+ * retains ordinary descendants and publishes after-body/html only on success.
+ * Failed planning/pops preserve mode and latch; engines own earlier routing.
+ */
+lxa_status_t lxa_html_root_context_end_body(lxa_html_root_context_t *context,
+    bool html_end, lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
