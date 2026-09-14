@@ -122,11 +122,11 @@ lxa_status_t lxa_html_root_context_start_foreign(lxa_html_root_context_t *contex
 lxa_status_t lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity);
-/* Accepted in-body object/marquee/applet end after earlier dispatch.
+/* Accepted final in-body scoped end after table/form/paragraph dispatch.
  * Borrow a same-budget list; shared scope planning precedes pops and clearing.
  * Retain completed effects and latch failure without changing mode/framesets.
  */
-lxa_status_t lxa_html_root_context_end_marker(lxa_html_root_context_t *context,
+lxa_status_t lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t name,
     lxa_html_root_mode_t mode);
 /* Accepted body/html end in IN_BODY over an admitted BODY. Shared recovery

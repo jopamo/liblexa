@@ -383,6 +383,17 @@ lxa_html_tree_template_scoped_end(lxa_span_t name)
         || lxa_html_tree_heading(name);
 }
 
+/* Final root scoped-end rules, after table/form/paragraph recovery; zero skips. */
+static inline lxa_html_scope_kind_t
+lxa_html_tree_root_end_scope(lxa_span_t name)
+{
+    if (LXA_CONTAINER_NAMED(name, "li")) return LXA_HTML_SCOPE_LIST_ITEM;
+    if (lxa_html_tree_template_list_item(name) || lxa_html_tree_block_container(name)
+        || lxa_html_tree_heading(name) || lxa_html_tree_template_marker_container(name))
+        return LXA_HTML_SCOPE_NORMAL;
+    return 0;
+}
+
 static inline bool
 lxa_html_tree_template_ordinary_end(lxa_span_t name)
 {

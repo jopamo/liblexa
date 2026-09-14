@@ -5231,21 +5231,10 @@ reprocess_body_start:
         }
         return status;
     }
-    /* The heading end-tag rule accepts any h1-h6 in scope, and ignores a
-     * stray heading end without creating content. */
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY && lxa_html_tree_heading(token->name))
-        return end_scoped_element(tree, token->name, LXA_HTML_SCOPE_NORMAL);
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && (lxa_html_tree_block_container(token->name) || lxa_html_tree_formatting_marker_tag(token->name)))
-        return end_scoped_element(tree, token->name, LXA_HTML_SCOPE_NORMAL);
-    if (token->kind == LXA_HTML_END_TAG
-        && tree->mode == LXA_TREE_IN_BODY
-        && (named(token->name, "li") || named(token->name, "dt")
-            || named(token->name, "dd")))
-        return end_scoped_element(tree, token->name,
-            named(token->name, "li") ? LXA_HTML_SCOPE_LIST_ITEM : LXA_HTML_SCOPE_NORMAL);
+    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY) {
+        lxa_html_scope_kind_t scope = lxa_html_tree_root_end_scope(token->name);
+        if (scope != 0) return end_scoped_element(tree, token->name, scope);
+    }
     if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
         return end_ordinary_element(tree, token->name);
     if (token->kind == LXA_HTML_TEXT) {

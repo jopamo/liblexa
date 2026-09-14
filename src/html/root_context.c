@@ -624,7 +624,7 @@ lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
 }
 
 lxa_status_t
-lxa_html_root_context_end_marker(lxa_html_root_context_t *context,
+lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t name,
     lxa_html_root_mode_t mode)
 {
@@ -634,10 +634,11 @@ lxa_html_root_context_end_marker(lxa_html_root_context_t *context,
         || lxa_vector_length(&context->stack->elements) == 0
         || formatting == NULL || formatting->store == NULL
         || formatting->store->budget != context->stack->budget
-        || name.data == NULL || name.length == 0
-        || !lxa_html_tree_template_marker_container(name)) return LXA_ERROR_ARGUMENT;
+        || name.data == NULL || name.length == 0) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_kind_t scope = lxa_html_tree_root_end_scope(name);
+    if (scope == 0) return LXA_ERROR_ARGUMENT;
     status = lxa_html_formatting_list_end_scoped(formatting, context->stack,
-        name, LXA_HTML_SCOPE_NORMAL);
+        name, scope);
     if (status == LXA_ERROR_LIMIT)
         context->limit_reason = formatting->store->limit_reason;
     return finish(context, status);
