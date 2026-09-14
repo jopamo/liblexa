@@ -148,6 +148,13 @@ lxa_status_t lxa_html_root_context_end_ordinary(lxa_html_root_context_t *context
 lxa_status_t lxa_html_root_context_end_formatting(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t name,
     lxa_html_root_mode_t mode);
+/* Accepted in-body form end over the engine's retained identity. Borrow owner
+ * only for this call; it must not alias context/stack headers or storage.
+ * Shared clearing/pop/middle-removal ordering retains partial effects; latch
+ * failure without replay. Form admission/identity lifetime remain engine-owned.
+ */
+lxa_status_t lxa_html_root_context_end_form(lxa_html_root_context_t *context,
+    uint64_t *owner, lxa_html_root_mode_t mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
