@@ -212,6 +212,16 @@ lxa_status_t lxa_html_root_context_select_token(lxa_html_root_context_t *context
  */
 lxa_status_t lxa_html_root_context_control_group(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name);
+/* Accepted after-body/after-html token after earlier EOF/foreign/comment/
+ * DOCTYPE dispatch. Preflight text scan WORK, share whitespace reconstruction
+ * or in-body reprocessing publication; html starts preserve the current mode.
+ * Borrow a same-budget list for whitespace, including empty text. Publish action
+ * only on success and latch failed preparation. Engines retain text insertion
+ * and subsequent dispatch. Input/output storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_after_body(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, lxa_html_after_body_action_t *action);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

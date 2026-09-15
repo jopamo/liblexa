@@ -753,6 +753,16 @@ root_data_table(lxa_html_tree_t *tree, bool *table)
 #undef LXA_ROOT_DATA_TABLE_QUERY
 #undef LXA_ROOT_DATA_RECONSTRUCT
 
+#define LXA_AFTER_BODY_NAME tree_execute_after_body
+#define LXA_AFTER_BODY_VIEW lxa_html_tree_t
+#define LXA_AFTER_BODY_RECONSTRUCT reconstruct_formatting
+#define LXA_AFTER_BODY_MODE(view) ((view)->mode)
+#include "html/after_body_execute.inc"
+#undef LXA_AFTER_BODY_NAME
+#undef LXA_AFTER_BODY_VIEW
+#undef LXA_AFTER_BODY_RECONSTRUCT
+#undef LXA_AFTER_BODY_MODE
+
 static lxa_status_t plan_list_item(lxa_html_tree_t *, const lxa_vector_t *,
                                    size_t, bool, size_t *);
 
@@ -4722,15 +4732,12 @@ reprocess_template_token:
         || tree->mode == LXA_TREE_AFTER_HTML) {
         lxa_html_after_body_action_t action;
         status = lxa_html_tree_after_body_action(token, &action);
+        if (status == LXA_OK) status = tree_execute_after_body(tree, action);
         if (status != LXA_OK) return status;
         if (action == LXA_HTML_AFTER_BODY_SPACE_TEXT) {
-            status = reconstruct_formatting(tree);
-            if (status != LXA_OK) return status;
             return insert_data_text(tree, current_element(tree), token->data,
                                     false, false);
         }
-        if (action == LXA_HTML_AFTER_BODY_REPROCESS)
-            tree->mode = LXA_TREE_IN_BODY;
     }
     if (token->kind == LXA_HTML_END_TAG
         && (tree->mode == LXA_TREE_BEFORE_HTML

@@ -1044,3 +1044,42 @@ lxa_html_root_context_control_group(lxa_html_root_context_t *context,
         || !lxa_html_tree_root_control_group(kind, name)) return LXA_ERROR_ARGUMENT;
     return finish(context, recover_root_group(context));
 }
+
+#define LXA_AFTER_BODY_NAME root_execute_after_body
+#define LXA_AFTER_BODY_VIEW root_data_view_t
+#define LXA_AFTER_BODY_RECONSTRUCT(view) lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_AFTER_BODY_MODE(view) (*(view)->mode)
+#include "html/after_body_execute.inc"
+#undef LXA_AFTER_BODY_NAME
+#undef LXA_AFTER_BODY_VIEW
+#undef LXA_AFTER_BODY_RECONSTRUCT
+#undef LXA_AFTER_BODY_MODE
+
+lxa_status_t
+lxa_html_root_context_after_body(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, lxa_html_after_body_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode == NULL || action == NULL
+        || (*mode != LXA_TREE_AFTER_BODY && *mode != LXA_TREE_AFTER_HTML)
+        || !lxa_html_tree_token_shape_valid(token)
+        || (token->kind != LXA_HTML_TEXT && token->kind != LXA_HTML_START_TAG
+            && token->kind != LXA_HTML_END_TAG)
+        || (formatting != NULL && (formatting->store == NULL
+            || formatting->store->budget != context->stack->budget)))
+        return LXA_ERROR_ARGUMENT;
+    if (token->kind == LXA_HTML_TEXT)
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+            token->data.length, &context->limit_reason);
+    lxa_html_after_body_action_t out;
+    if (status == LXA_OK) status = lxa_html_tree_after_body_action(token, &out);
+    if (status == LXA_OK && out == LXA_HTML_AFTER_BODY_SPACE_TEXT
+        && (formatting == NULL || lxa_vector_length(&context->stack->elements) == 0))
+        return LXA_ERROR_ARGUMENT;
+    root_data_view_t view = {context, formatting, mode};
+    if (status == LXA_OK) status = root_execute_after_body(&view, out);
+    if (status == LXA_OK) *action = out;
+    return finish(context, status);
+}
