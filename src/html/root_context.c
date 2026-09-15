@@ -676,6 +676,21 @@ lxa_html_root_context_end_ordinary(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+#define LXA_ROOT_GROUP_NAME recover_root_group
+#define LXA_ROOT_GROUP_VIEW lxa_html_root_context_t
+#define LXA_ROOT_GROUP_QUERY(view, out) lxa_html_control_stack_column_group((view)->stack, 0, out)
+#define LXA_ROOT_GROUP_BUDGET(view) ((view)->stack->budget)
+#define LXA_ROOT_GROUP_REASON(view) (&(view)->limit_reason)
+#define LXA_ROOT_GROUP_POP(view) \
+    lxa_html_control_stack_pop_to((view)->stack, lxa_vector_length(&(view)->stack->elements) - 1)
+#include "html/root_group_recover.inc"
+#undef LXA_ROOT_GROUP_NAME
+#undef LXA_ROOT_GROUP_VIEW
+#undef LXA_ROOT_GROUP_QUERY
+#undef LXA_ROOT_GROUP_BUDGET
+#undef LXA_ROOT_GROUP_REASON
+#undef LXA_ROOT_GROUP_POP
+
 lxa_status_t
 lxa_html_root_context_end_formatting(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t name,
@@ -686,16 +701,7 @@ lxa_html_root_context_end_formatting(lxa_html_root_context_t *context,
     if (!context->body || mode != LXA_TREE_IN_BODY) return LXA_ERROR_ARGUMENT;
     status = lxa_html_formatting_list_adopt_intake(formatting, context->stack, 0, name);
     if (status == LXA_ERROR_ARGUMENT) return status;
-    bool group;
-    if (status == LXA_OK)
-        status = lxa_html_control_stack_column_group(context->stack, 0, &group);
-    if (status == LXA_OK && group) {
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 2,
-            &context->limit_reason);
-        if (status == LXA_OK)
-            status = lxa_html_control_stack_pop_to(context->stack,
-                lxa_vector_length(&context->stack->elements) - 1);
-    }
+    if (status == LXA_OK) status = recover_root_group(context);
     if (status == LXA_OK) {
         status = lxa_html_formatting_list_adopt(formatting, context->stack, 0, name);
         if (status == LXA_ERROR_LIMIT)
@@ -1025,4 +1031,16 @@ lxa_html_root_context_select_token(lxa_html_root_context_t *context,
         || !lxa_html_select_arguments_valid(kind, name)) return LXA_ERROR_ARGUMENT;
     const root_select_view_t view = {context->stack};
     return finish(context, root_execute_select(&view, kind, name, ignore));
+}
+
+lxa_status_t
+lxa_html_root_context_control_group(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || !context->body
+        || !lxa_html_select_arguments_valid(kind, name)
+        || !lxa_html_tree_root_control_group(kind, name)) return LXA_ERROR_ARGUMENT;
+    return finish(context, recover_root_group(context));
 }

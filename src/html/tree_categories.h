@@ -355,6 +355,14 @@ lxa_html_tree_body_control_start(lxa_span_t name)
 }
 
 static inline bool
+lxa_html_tree_root_control_group(lxa_html_token_kind_t kind, lxa_span_t name)
+{
+    return (kind == LXA_HTML_START_TAG && lxa_html_tree_body_control_start(name)
+            && !LXA_CONTAINER_NAMED(name, "html"))
+        || (kind == LXA_HTML_END_TAG && LXA_CONTAINER_NAMED(name, "head"));
+}
+
+static inline bool
 lxa_html_tree_template_paragraph_container(lxa_span_t name)
 {
     return (lxa_html_tree_block_container(name) && !LXA_CONTAINER_NAMED(name, "button"))

@@ -205,6 +205,13 @@ lxa_status_t lxa_html_root_context_prepare_data(lxa_html_root_context_t *context
 lxa_status_t lxa_html_root_context_select_token(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name,
     bool *ignore);
+/* Accepted in-body control prelude: head/body/frameset/frame starts or head
+ * end, not html start. Recover current HTML colgroup with the shared two-WORK
+ * pre-pop charge. Latch failure; engines retain subsequent control dispatch.
+ * Borrowed name must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_control_group(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

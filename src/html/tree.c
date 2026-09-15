@@ -1088,6 +1088,20 @@ current_html_column_group(lxa_html_tree_t *tree, const lxa_vector_t *elements,
     return tree_current_column_group(&view, boundary, column_group);
 }
 
+#define LXA_ROOT_GROUP_NAME tree_recover_root_group
+#define LXA_ROOT_GROUP_VIEW lxa_html_tree_t
+#define LXA_ROOT_GROUP_QUERY(view, out) current_html_column_group(view, &(view)->open_elements, 0, out)
+#define LXA_ROOT_GROUP_BUDGET(view) ((view)->nodes->budget)
+#define LXA_ROOT_GROUP_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_ROOT_GROUP_POP pop_element
+#include "html/root_group_recover.inc"
+#undef LXA_ROOT_GROUP_NAME
+#undef LXA_ROOT_GROUP_VIEW
+#undef LXA_ROOT_GROUP_QUERY
+#undef LXA_ROOT_GROUP_BUDGET
+#undef LXA_ROOT_GROUP_REASON
+#undef LXA_ROOT_GROUP_POP
+
 static lxa_status_t
 plan_ordinary_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                          size_t boundary, lxa_span_t target, size_t *index)
@@ -4743,22 +4757,9 @@ reprocess_template_token:
     }
 reprocess_body_start:
     if (tree->mode == LXA_TREE_IN_BODY
-        && ((token->kind == LXA_HTML_START_TAG
-             && lxa_html_tree_body_control_start(token->name)
-             && !named(token->name, "html"))
-            || (token->kind == LXA_HTML_END_TAG
-                && named(token->name, "head")))) {
-        bool column_group;
-        status = current_html_column_group(tree, &tree->open_elements, 0,
-                                            &column_group);
+        && lxa_html_tree_root_control_group(token->kind, token->name)) {
+        status = tree_recover_root_group(tree);
         if (status != LXA_OK) return status;
-        if (column_group) {
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                        2, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
     }
     if (token->kind == LXA_HTML_START_TAG
         && tree->mode == LXA_TREE_IN_BODY) {
@@ -5217,17 +5218,8 @@ reprocess_body_start:
         return LXA_OK;
     if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_formatting_tag(token->name)
         && tree->mode == LXA_TREE_IN_BODY) {
-        bool column_group;
-        status = current_html_column_group(tree, &tree->open_elements, 0,
-                                            &column_group);
+        status = tree_recover_root_group(tree);
         if (status != LXA_OK) return status;
-        if (column_group) {
-            status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 2,
-                                        &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
         return adopt_formatting(tree, token->name);
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "form")
