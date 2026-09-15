@@ -398,10 +398,12 @@ lxa_html_tree_root_container_disables_frameset(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "select") || lxa_html_tree_formatting_marker_tag(name);
 }
 
-/* Final root scoped-end rules, after table/form/paragraph recovery; zero skips. */
+/* Root scoped-end rules, after col/form/paragraph recovery; zero skips. */
 static inline lxa_html_scope_kind_t
 lxa_html_tree_root_end_scope(lxa_span_t name)
 {
+    if (lxa_html_tree_table_part(name) && !LXA_CONTAINER_NAMED(name, "col"))
+        return LXA_HTML_SCOPE_TABLE;
     if (LXA_CONTAINER_NAMED(name, "li")) return LXA_HTML_SCOPE_LIST_ITEM;
     if (lxa_html_tree_template_list_item(name) || lxa_html_tree_block_container(name)
         || lxa_html_tree_heading(name) || lxa_html_tree_template_marker_container(name))

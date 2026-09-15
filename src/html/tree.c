@@ -5168,10 +5168,9 @@ reprocess_body_start:
         tree->mode = LXA_TREE_AFTER_HTML;
         return LXA_OK;
     }
-    if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_table_part(token->name)
+    if (token->kind == LXA_HTML_END_TAG && named(token->name, "col")
         && tree->mode == LXA_TREE_IN_BODY)
-        return named(token->name, "col") ? LXA_OK
-               : end_scoped_element(tree, token->name, LXA_HTML_SCOPE_TABLE);
+        return LXA_OK;
     if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_formatting_tag(token->name)
         && tree->mode == LXA_TREE_IN_BODY) {
         bool column_group;

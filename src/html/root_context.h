@@ -122,8 +122,9 @@ lxa_status_t lxa_html_root_context_start_foreign(lxa_html_root_context_t *contex
 lxa_status_t lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity);
-/* Accepted final in-body scoped end after table/form/paragraph dispatch.
+/* Accepted in-body scoped end after col/form/paragraph dispatch.
  * Borrow a same-budget list; shared scope planning precedes pops and clearing.
+ * Table parts use table scope and clear removed cell/caption markers.
  * Retain completed effects and latch failure without changing mode/framesets.
  */
 lxa_status_t lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,
