@@ -187,6 +187,16 @@ lxa_status_t lxa_html_root_context_start_container(lxa_html_root_context_t *cont
  */
 lxa_status_t lxa_html_root_context_end_paragraph(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, bool *implied);
+/* Accepted root data after prebody/foreign/template dispatch. Borrow a
+ * same-budget list; charge byte scanning before effects, then share BODY/mode,
+ * frameset, table routing and conditional reconstruction. No text metadata or
+ * DOM-node quota. Publish action only on success; latch completed preparation.
+ * Engines own insertion, destination and token delivery. Storage must not alias
+ * context/stack/list owners.
+ */
+lxa_status_t lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_span_t data,
+    lxa_html_root_mode_t *mode, lxa_html_root_data_action_t *action);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

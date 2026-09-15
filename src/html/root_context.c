@@ -942,3 +942,58 @@ lxa_html_root_context_end_paragraph(lxa_html_root_context_t *context,
     if (status == LXA_OK) *implied = view.implied;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_formatting_list_t *formatting;
+    lxa_html_root_mode_t *mode;
+} root_data_view_t;
+
+static lxa_status_t
+data_table(root_data_view_t *view, bool *table)
+{
+    lxa_html_control_stack_t *stack = view->context->stack;
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_get(stack,
+        lxa_vector_length(&stack->elements) - 1, &entry, NULL);
+    if (status == LXA_OK) *table = lxa_html_tree_table_context(entry.name);
+    return status;
+}
+
+#define LXA_ROOT_DATA_NAME root_prepare_data
+#define LXA_ROOT_DATA_VIEW root_data_view_t
+#define LXA_ROOT_DATA_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_DATA_MODE(view) (*(view)->mode)
+#define LXA_ROOT_DATA_FRAMESET(view) ((view)->context->frameset_ok)
+#define LXA_ROOT_DATA_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_ROOT_DATA_TABLE_QUERY data_table
+#define LXA_ROOT_DATA_RECONSTRUCT(view) lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#include "html/root_data_prepare.inc"
+#undef LXA_ROOT_DATA_NAME
+#undef LXA_ROOT_DATA_VIEW
+#undef LXA_ROOT_DATA_BODY
+#undef LXA_ROOT_DATA_MODE
+#undef LXA_ROOT_DATA_FRAMESET
+#undef LXA_ROOT_DATA_LENGTH
+#undef LXA_ROOT_DATA_TABLE_QUERY
+#undef LXA_ROOT_DATA_RECONSTRUCT
+
+lxa_status_t
+lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_span_t data,
+    lxa_html_root_mode_t *mode, lxa_html_root_data_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || action == NULL || (*mode != LXA_TREE_AFTER_HEAD && *mode != LXA_TREE_IN_BODY)
+        || !body_start_mode_valid(context, *mode) || formatting == NULL
+        || formatting->store == NULL || formatting->store->budget != context->stack->budget
+        || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
+    status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+        data.length, &context->limit_reason);
+    root_data_view_t view = {context, formatting, mode};
+    lxa_html_root_data_action_t out;
+    if (status == LXA_OK) status = root_prepare_data(&view, data, &out);
+    if (status == LXA_OK) *action = out;
+    return finish(context, status);
+}

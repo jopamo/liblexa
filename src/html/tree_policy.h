@@ -122,6 +122,12 @@ lxa_html_tree_initial_action(lxa_html_token_kind_t kind, lxa_span_t data)
                                    : LXA_HTML_INITIAL_QUIRKS_REPROCESS;
 }
 
+typedef enum {
+    LXA_HTML_ROOT_DATA_IGNORE,
+    LXA_HTML_ROOT_DATA_TABLE,
+    LXA_HTML_ROOT_DATA_NORMAL
+} lxa_html_root_data_action_t;
+
 static inline bool
 lxa_html_tree_null_only(lxa_span_t data)
 {

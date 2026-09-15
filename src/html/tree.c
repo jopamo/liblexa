@@ -726,6 +726,33 @@ reconstruct_formatting(lxa_html_tree_t *tree)
     return status;
 }
 
+static lxa_status_t
+root_data_table(lxa_html_tree_t *tree, bool *table)
+{
+    lxa_span_t name;
+    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &name);
+    if (status == LXA_OK) *table = lxa_html_tree_table_context(name);
+    return status;
+}
+
+#define LXA_ROOT_DATA_NAME tree_prepare_root_data
+#define LXA_ROOT_DATA_VIEW lxa_html_tree_t
+#define LXA_ROOT_DATA_BODY ensure_body
+#define LXA_ROOT_DATA_MODE(view) ((view)->mode)
+#define LXA_ROOT_DATA_FRAMESET(view) ((view)->frameset_ok)
+#define LXA_ROOT_DATA_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_DATA_TABLE_QUERY root_data_table
+#define LXA_ROOT_DATA_RECONSTRUCT reconstruct_formatting
+#include "html/root_data_prepare.inc"
+#undef LXA_ROOT_DATA_NAME
+#undef LXA_ROOT_DATA_VIEW
+#undef LXA_ROOT_DATA_BODY
+#undef LXA_ROOT_DATA_MODE
+#undef LXA_ROOT_DATA_FRAMESET
+#undef LXA_ROOT_DATA_LENGTH
+#undef LXA_ROOT_DATA_TABLE_QUERY
+#undef LXA_ROOT_DATA_RECONSTRUCT
+
 static lxa_status_t plan_list_item(lxa_html_tree_t *, const lxa_vector_t *,
                                    size_t, bool, size_t *);
 
@@ -5215,27 +5242,12 @@ reprocess_body_start:
             if (status != LXA_OK) return status;
             token = &adjusted;
         }
-        if (token->data.length == 0) return LXA_OK;
-        status = ensure_body(tree);
+        lxa_html_root_data_action_t action;
+        status = tree_prepare_root_data(tree, token->data, &action);
         if (status != LXA_OK) return status;
-        tree->mode = LXA_TREE_IN_BODY;
-        if (tree->frameset_ok && !lxa_html_tree_null_or_space_only(token->data))
-            tree->frameset_ok = false;
-        if (lxa_vector_length(&tree->open_elements) > 1) {
-            lxa_span_t top;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                current_element(tree), &top);
-            if (status != LXA_OK) return status;
-            if (lxa_html_tree_table_context(top))
-                return insert_data_text(tree, current_element(tree),
-                                        token->data, false, true);
-        }
-        if (lxa_html_tree_null_only(token->data))
-            return LXA_OK;
-        status = reconstruct_formatting(tree);
-        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_ROOT_DATA_IGNORE) return LXA_OK;
         return insert_data_text(tree, current_element(tree), token->data,
-                                false, false);
+                                false, action == LXA_HTML_ROOT_DATA_TABLE);
     }
     assert(false);
     return LXA_ERROR_INTERNAL;
