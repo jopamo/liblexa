@@ -771,6 +771,45 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
 static lxa_status_t find_ordinary_end_target(lxa_html_tree_t *,
     const lxa_vector_t *, size_t, lxa_span_t, size_t *);
 
+static lxa_status_t
+insert_missing_root_paragraph(lxa_html_tree_t *tree)
+{
+    lxa_dom_namespace_t ns;
+    lxa_span_t top;
+    lxa_dom_ref_t parent, before, child;
+    lxa_status_t status = lxa_dom_nodes_element_namespace(tree->nodes, current_element(tree), &ns);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &top);
+    if (status != LXA_OK) return status;
+    bool column_group = ns == LXA_DOM_NS_HTML && named(top, "colgroup");
+    status = reserve_open_elements(tree, column_group ? 0 : 1);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    status = root_insertion_location(tree, current_element(tree), &parent, &before);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, literal("p"), &child);
+    if (status == LXA_OK) status = insert_constructed(tree, parent, child, before);
+    if (status == LXA_OK && column_group) status = pop_element(tree);
+    if (status == LXA_OK) status = push_element(tree, child);
+    if (status == LXA_OK) status = pop_element(tree);
+    return status;
+}
+
+#define LXA_ROOT_PARAGRAPH_END_NAME tree_end_root_paragraph
+#define LXA_ROOT_PARAGRAPH_END_VIEW lxa_html_tree_t
+#define LXA_ROOT_PARAGRAPH_END_CLOSE close_paragraph
+#define LXA_ROOT_PARAGRAPH_END_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_PARAGRAPH_END_BODY ensure_body
+#define LXA_ROOT_PARAGRAPH_END_MISSING insert_missing_root_paragraph
+#include "html/root_paragraph_end.inc"
+#undef LXA_ROOT_PARAGRAPH_END_NAME
+#undef LXA_ROOT_PARAGRAPH_END_VIEW
+#undef LXA_ROOT_PARAGRAPH_END_CLOSE
+#undef LXA_ROOT_PARAGRAPH_END_LENGTH
+#undef LXA_ROOT_PARAGRAPH_END_BODY
+#undef LXA_ROOT_PARAGRAPH_END_MISSING
+
 static lxa_status_t current_html_column_group(lxa_html_tree_t *,
     const lxa_vector_t *, size_t, bool *);
 static lxa_status_t plan_ordinary_end_target(lxa_html_tree_t *,
@@ -5159,49 +5198,7 @@ reprocess_body_start:
     }
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
         && tree->mode == LXA_TREE_IN_BODY) {
-        bool closed, column_group;
-        lxa_dom_namespace_t ns;
-        lxa_span_t top;
-        lxa_dom_ref_t before;
-        status = close_paragraph(tree, &closed);
-        if (status != LXA_OK || closed) return status;
-        /* A stray </p> implies an empty paragraph at the insertion point. */
-        if (lxa_vector_length(&tree->open_elements) == 0) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-        }
-        status = lxa_dom_nodes_element_namespace(tree->nodes,
-            current_element(tree), &ns);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                current_element(tree), &top);
-        if (status != LXA_OK) return status;
-        column_group = ns == LXA_DOM_NS_HTML && named(top, "colgroup");
-        status = reserve_open_elements(tree, column_group ? 0 : 1);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        status = root_insertion_location(tree, current_element(tree),
-                                          &parent, &before);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
-                literal("p"), &child);
-        if (status == LXA_OK)
-            status = insert_constructed(tree, parent,
-                child, before);
-        if (status == LXA_OK) {
-            if (column_group) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            status = push_element(tree, child);
-        }
-        if (status == LXA_OK) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        return status;
+        return tree_end_root_paragraph(tree);
     }
     if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY) {
         lxa_html_scope_kind_t scope = lxa_html_tree_root_end_scope(token->name);

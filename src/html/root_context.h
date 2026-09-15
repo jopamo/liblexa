@@ -178,6 +178,14 @@ lxa_status_t lxa_html_root_context_start_form(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_container(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity, bool *skip_newline);
+/* Accepted in-body paragraph end. Close a scoped paragraph, or recover an
+ * empty BODY/current HTML colgroup and report a closed insertion. No retained
+ * paragraph entry/name/key or DOM-node quota. Publish implied only on success;
+ * latch failed recovery. Engines retain insertion/destination and earlier
+ * routing. Output must not alias context/stack headers or storage.
+ */
+lxa_status_t lxa_html_root_context_end_paragraph(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, bool *implied);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

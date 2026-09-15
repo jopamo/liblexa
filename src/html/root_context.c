@@ -887,3 +887,58 @@ lxa_html_root_context_start_container(lxa_html_root_context_t *context,
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    bool implied;
+} root_paragraph_end_view_t;
+
+static lxa_status_t
+paragraph_end_close(root_paragraph_end_view_t *view, bool *closed)
+{
+    size_t length = lxa_vector_length(&view->context->stack->elements), keep;
+    lxa_status_t status = lxa_html_control_stack_scope_find(view->context->stack, 0,
+        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(view->context->stack, keep);
+    if (status == LXA_OK) *closed = keep != length;
+    return status;
+}
+
+static lxa_status_t
+paragraph_end_missing(root_paragraph_end_view_t *view)
+{
+    lxa_html_control_stack_t *stack = view->context->stack;
+    bool group;
+    lxa_status_t status = lxa_html_control_stack_column_group(stack, 0, &group);
+    if (status == LXA_OK && group)
+        status = lxa_html_control_stack_pop_to(stack, lxa_vector_length(&stack->elements) - 1);
+    if (status == LXA_OK) view->implied = true;
+    return status;
+}
+
+#define LXA_ROOT_PARAGRAPH_END_NAME root_end_paragraph
+#define LXA_ROOT_PARAGRAPH_END_VIEW root_paragraph_end_view_t
+#define LXA_ROOT_PARAGRAPH_END_CLOSE paragraph_end_close
+#define LXA_ROOT_PARAGRAPH_END_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_ROOT_PARAGRAPH_END_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_PARAGRAPH_END_MISSING paragraph_end_missing
+#include "html/root_paragraph_end.inc"
+#undef LXA_ROOT_PARAGRAPH_END_NAME
+#undef LXA_ROOT_PARAGRAPH_END_VIEW
+#undef LXA_ROOT_PARAGRAPH_END_CLOSE
+#undef LXA_ROOT_PARAGRAPH_END_LENGTH
+#undef LXA_ROOT_PARAGRAPH_END_BODY
+#undef LXA_ROOT_PARAGRAPH_END_MISSING
+
+lxa_status_t
+lxa_html_root_context_end_paragraph(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, bool *implied)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY || implied == NULL) return LXA_ERROR_ARGUMENT;
+    root_paragraph_end_view_t view = {context, false};
+    status = root_end_paragraph(&view);
+    if (status == LXA_OK) *implied = view.implied;
+    return finish(context, status);
+}
