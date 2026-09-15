@@ -197,6 +197,14 @@ lxa_status_t lxa_html_root_context_end_paragraph(lxa_html_root_context_t *contex
 lxa_status_t lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t data,
     lxa_html_root_mode_t *mode, lxa_html_root_data_action_t *action);
+/* Accepted root select routing after foreign/hidden-table-input dispatch.
+ * Consume one shared plan, pop its retained suffix, then publish ignore.
+ * Latch failures without replay; modes, framesets and formatting are unchanged.
+ * Output/name storage must not alias context/stack owners.
+ */
+lxa_status_t lxa_html_root_context_select_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name,
+    bool *ignore);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

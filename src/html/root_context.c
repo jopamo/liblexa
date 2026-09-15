@@ -997,3 +997,32 @@ lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
     if (status == LXA_OK) *action = out;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_control_stack_t *stack;
+} root_select_view_t;
+
+#define LXA_SELECT_EXECUTE_NAME root_execute_select
+#define LXA_SELECT_EXECUTE_VIEW root_select_view_t
+#define LXA_SELECT_EXECUTE_PLAN(view, kind, name, out) \
+    lxa_html_control_stack_select_plan((view)->stack, 0, kind, name, out)
+#define LXA_SELECT_EXECUTE_POP(view, keep) \
+    lxa_html_control_stack_pop_to((view)->stack, keep)
+#include "html/select_execute.inc"
+#undef LXA_SELECT_EXECUTE_NAME
+#undef LXA_SELECT_EXECUTE_VIEW
+#undef LXA_SELECT_EXECUTE_PLAN
+#undef LXA_SELECT_EXECUTE_POP
+
+lxa_status_t
+lxa_html_root_context_select_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name,
+    bool *ignore)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || !context->body || ignore == NULL
+        || !lxa_html_select_arguments_valid(kind, name)) return LXA_ERROR_ARGUMENT;
+    const root_select_view_t view = {context->stack};
+    return finish(context, root_execute_select(&view, kind, name, ignore));
+}

@@ -2061,6 +2061,25 @@ plan_select_token(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 }
 
 static lxa_status_t
+root_select_pop(const lxa_html_tree_scope_view_t *view, size_t keep)
+{
+    lxa_status_t status = LXA_OK;
+    while (status == LXA_OK && lxa_vector_length(&view->tree->open_elements) > keep)
+        status = pop_element(view->tree);
+    return status;
+}
+
+#define LXA_SELECT_EXECUTE_NAME tree_execute_root_select
+#define LXA_SELECT_EXECUTE_VIEW lxa_html_tree_scope_view_t
+#define LXA_SELECT_EXECUTE_PLAN(view, kind, name, out) tree_select_plan(view, 0, kind, name, out)
+#define LXA_SELECT_EXECUTE_POP root_select_pop
+#include "html/select_execute.inc"
+#undef LXA_SELECT_EXECUTE_NAME
+#undef LXA_SELECT_EXECUTE_VIEW
+#undef LXA_SELECT_EXECUTE_PLAN
+#undef LXA_SELECT_EXECUTE_POP
+
+static lxa_status_t
 table_in_scope(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                size_t boundary, bool *found)
 {
@@ -4772,20 +4791,18 @@ reprocess_body_start:
         && tree->mode >= LXA_TREE_IN_HEAD)
         return LXA_OK;
     if (tree->mode == LXA_TREE_IN_BODY) {
-        size_t keep;
         bool ignore;
         {
             bool handled;
             status = insert_hidden_table_input(tree, token, &handled);
             if (status != LXA_OK || handled) return status;
         }
-        status = plan_select_token(tree, &tree->open_elements, 0, token,
-                                   &keep, &ignore);
+        const lxa_html_tree_scope_view_t view = {
+            tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+            lxa_vector_length(&tree->open_elements)
+        };
+        status = tree_execute_root_select(&view, token->kind, token->name, &ignore);
         if (status != LXA_OK) return status;
-        while (lxa_vector_length(&tree->open_elements) > keep) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
         if (ignore) return LXA_OK;
     }
     if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
