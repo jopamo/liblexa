@@ -216,8 +216,7 @@ lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
     lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out)
 {
     if (out == NULL
-        || (mode != LXA_TREE_IN_FRAMESET && mode != LXA_TREE_AFTER_FRAMESET
-            && mode != LXA_TREE_AFTER_AFTER_FRAMESET)
+        || !lxa_html_tree_frameset_mode(mode)
         || (unsigned) kind > LXA_HTML_PROCESSING_INSTRUCTION
         || ((kind == LXA_HTML_START_TAG || kind == LXA_HTML_END_TAG)
             && (name.data == NULL || name.length == 0)))
@@ -255,10 +254,19 @@ lxa_status_t
 lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode, lxa_span_t name,
     lxa_html_root_text_plan_t *out)
 {
-    if (out == NULL || name.data == NULL || name.length == 0
-        || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
-            && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_HEAD_NOSCRIPT
-            && mode != LXA_TREE_AFTER_HEAD && mode != LXA_TREE_IN_BODY))
+    if (out == NULL || name.data == NULL || name.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_frameset_mode(mode)) {
+        lxa_html_frameset_action_t action;
+        lxa_status_t status = lxa_html_tree_frameset_action(mode, LXA_HTML_START_TAG, name, &action);
+        if (status != LXA_OK) return status;
+        if (action != LXA_HTML_FRAMESET_NOFRAMES_START) return LXA_ERROR_ARGUMENT;
+        *out = (lxa_html_root_text_plan_t){mode, false, false, false};
+        return LXA_OK;
+    }
+    if (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
+        && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_HEAD_NOSCRIPT
+        && mode != LXA_TREE_AFTER_HEAD && mode != LXA_TREE_IN_BODY)
         return LXA_ERROR_ARGUMENT;
     bool title_style = lxa_html_tree_name_equals(name, "title", 5)
         || lxa_html_tree_name_equals(name, "style", 5);

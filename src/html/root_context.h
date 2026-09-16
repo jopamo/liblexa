@@ -39,7 +39,7 @@ lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context)
  */
 lxa_status_t lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode);
-/* Finish accepted EOF after INITIAL intake and all template closures.
+/* Finish accepted EOF after INITIAL intake, TEXT restoration and template closures.
  * Ensure ordinary BODY, skip it for framesets, then release open membership.
  * Publish DONE only after success; retain completed roots and latch failure.
  * Text/formatting owners remain engine-owned. Mode must not alias owners.
@@ -53,7 +53,8 @@ lxa_status_t lxa_html_root_context_finish(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_head_end(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode, lxa_html_head_end_action_t *action);
-/* Coordinate accepted ordinary returning-text starts after earlier routing.
+/* Coordinate accepted root returning-text starts after earlier routing,
+ * including frameset-dispatched noframes without resurrecting BODY.
  * Borrow an inactive text context; create roots, publish preparatory mode and
  * frameset effects, then apply tokenizer feedback. Publish TEXT/newline only
  * on success. Failed feedback retains preparatory effects and latches.

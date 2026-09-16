@@ -184,7 +184,8 @@ lxa_html_root_context_finish(lxa_html_root_context_t *context, lxa_html_root_mod
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
     if (mode == NULL || !lxa_html_tree_root_mode_valid(*mode)
-        || *mode == LXA_TREE_INITIAL || *mode == LXA_TREE_DONE || *mode == LXA_TREE_TEMPLATE_TEXT)
+        || *mode == LXA_TREE_INITIAL || *mode == LXA_TREE_DONE
+        || *mode == LXA_TREE_TEXT || *mode == LXA_TREE_TEMPLATE_TEXT)
         return LXA_ERROR_ARGUMENT;
     return finish(context, context_finish_root(context, mode));
 }
@@ -230,7 +231,11 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     lxa_html_root_text_plan_t plan;
     status = lxa_html_tree_root_text_plan(*mode, token->name, &plan);
     if (status != LXA_OK) return status;
-    if ((!plan.body && lxa_vector_length(&context->stack->elements) != 0)
+    bool frameset = lxa_html_tree_frameset_mode(*mode);
+    size_t length = lxa_vector_length(&context->stack->elements);
+    if ((!plan.body && length != 0 && !frameset)
+        || (frameset && (!context->head || context->body
+            || ((*mode == LXA_TREE_IN_FRAMESET) != (length != 0))))
         || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
         || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_HEAD_NOSCRIPT
             || *mode == LXA_TREE_AFTER_HEAD) && !context->head))

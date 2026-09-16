@@ -42,6 +42,13 @@ typedef enum {
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
+static inline bool
+lxa_html_tree_frameset_mode(lxa_html_root_mode_t mode)
+{
+    return mode == LXA_TREE_IN_FRAMESET || mode == LXA_TREE_AFTER_FRAMESET
+        || mode == LXA_TREE_AFTER_AFTER_FRAMESET;
+}
+
 /* In-body frameset replacement requires the admitted BODY at stack root. */
 static inline bool
 lxa_html_tree_frameset_body_eligible(bool frameset_ok, uint64_t body_identity,
@@ -62,8 +69,7 @@ lxa_html_tree_text_return_mode_valid(lxa_html_root_mode_t mode)
 {
     return mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_HEAD_NOSCRIPT
         || mode == LXA_TREE_TEMPLATE_TEXT || mode == LXA_TREE_AFTER_HEAD
-        || mode == LXA_TREE_IN_BODY || mode == LXA_TREE_IN_FRAMESET
-        || mode == LXA_TREE_AFTER_FRAMESET || mode == LXA_TREE_AFTER_AFTER_FRAMESET;
+        || mode == LXA_TREE_IN_BODY || lxa_html_tree_frameset_mode(mode);
 }
 
 static inline bool
@@ -301,8 +307,9 @@ typedef struct {
     bool body, disable_frameset, skip_newline;
 } lxa_html_root_text_plan_t;
 
-/* Accepted ordinary returning-text starts, excluding earlier table/foster,
- * frameset, template, xmp and plaintext rules. No WORK or retained views.
+/* Accepted root returning-text starts, including frameset-dispatched noframes.
+ * Earlier table/foster, template, xmp and plaintext routing remains separate.
+ * No WORK or retained views.
  */
 lxa_status_t lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_root_text_plan_t *out);

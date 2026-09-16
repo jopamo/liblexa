@@ -4561,9 +4561,7 @@ reprocess_template_token:
             }
         }
     }
-    if (tree->mode == LXA_TREE_IN_FRAMESET
-        || tree->mode == LXA_TREE_AFTER_FRAMESET
-        || tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET) {
+    if (lxa_html_tree_frameset_mode(tree->mode)) {
         lxa_html_frameset_action_t action;
         status = lxa_html_tree_frameset_action(tree->mode, token->kind,
             token->name, &action);
