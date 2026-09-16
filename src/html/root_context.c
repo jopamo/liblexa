@@ -1196,3 +1196,60 @@ lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
             context->body ? context->body_identity : 0, length, first);
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_mode_t *mode;
+    uint64_t *identity;
+} root_prebody_frameset_view_t;
+
+static lxa_status_t
+prebody_frameset_admit(root_prebody_frameset_view_t *view, const lxa_html_token_t *token)
+{
+    (void) token;
+    lxa_html_root_context_t *context = view->context;
+    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+        LXA_BUDGET_NAME_BYTES, 8, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH, 2, &context->limit_reason);
+    return status;
+}
+
+#define LXA_FRAMESET_START_NAME root_start_prebody_frameset
+#define LXA_FRAMESET_START_VIEW root_prebody_frameset_view_t
+#define LXA_FRAMESET_START_PREPARE(view) reserve_open_slot((view)->context)
+#define LXA_FRAMESET_START_HEAD(view) context_ensure_head((view)->context)
+#define LXA_FRAMESET_START_ADMIT prebody_frameset_admit
+#define LXA_FRAMESET_START_REPLACE(view) LXA_OK
+#define LXA_FRAMESET_START_PUSH(view) lxa_html_control_stack_push((view)->context->stack, \
+    (lxa_span_t){(const uint8_t *) "frameset", 8}, LXA_DOM_NS_HTML, false, (view)->identity)
+#define LXA_FRAMESET_START_MODE(view) (*(view)->mode)
+#include "html/frameset_start.inc"
+#undef LXA_FRAMESET_START_NAME
+#undef LXA_FRAMESET_START_VIEW
+#undef LXA_FRAMESET_START_PREPARE
+#undef LXA_FRAMESET_START_HEAD
+#undef LXA_FRAMESET_START_ADMIT
+#undef LXA_FRAMESET_START_REPLACE
+#undef LXA_FRAMESET_START_PUSH
+#undef LXA_FRAMESET_START_MODE
+
+lxa_status_t
+lxa_html_root_context_start_prebody_frameset(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || context->body
+        || lxa_vector_length(&context->stack->elements) != 0
+        || !body_start_mode_valid(context, *mode) || *mode == LXA_TREE_IN_BODY
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "frameset", 8)) return LXA_ERROR_ARGUMENT;
+    root_prebody_frameset_view_t view = {context, mode, identity};
+    status = root_start_prebody_frameset(&view, token);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}

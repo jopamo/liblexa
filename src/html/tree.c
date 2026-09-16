@@ -2652,13 +2652,18 @@ begin_root_plaintext(lxa_html_tree_t *tree,
     return set_tokenizer_text_mode(tree, tokenizer, token);
 }
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_dom_ref_t child;
+    bool replace_body;
+} root_frameset_view_t;
+
 static lxa_status_t
-begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
-                    bool replace_body)
+root_frameset_prepare(root_frameset_view_t *view)
 {
-    lxa_dom_ref_t child, parent;
+    lxa_html_tree_t *tree = view->tree;
     lxa_budget_t after = *tree->nodes->budget;
-    size_t pop_count = replace_body
+    size_t pop_count = view->replace_body
         ? lxa_vector_length(&tree->open_elements) : 0;
     size_t needed = 1;
     lxa_status_t status = lxa_budget_release(&after, LXA_BUDGET_OPEN_ELEMENTS,
@@ -2679,30 +2684,63 @@ begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     if (status == LXA_OK)
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
             pop_count, &tree->nodes->limit_reason);
-    if (status == LXA_OK) status = ensure_head(tree);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
-                                                    token->name, &child);
-    if (status == LXA_OK) status = apply_attributes(tree, child, token);
+    return status;
+}
+
+static lxa_status_t
+root_frameset_admit(root_frameset_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_tree_t *tree = view->tree;
+    lxa_status_t status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, token->name, &view->child);
+    if (status == LXA_OK) status = apply_attributes(tree, view->child, token);
     if (status == LXA_OK)
         status = insert_constructed(tree, tree->html,
-            child, (lxa_dom_ref_t){0});
-    if (status != LXA_OK) return status;
-    if (replace_body) {
-        status = lxa_dom_nodes_parent(tree->nodes, tree->body, &parent);
-        if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
-            status = lxa_dom_nodes_detach_constructed_child(tree->nodes,
-                                                             tree->body);
-        if (status != LXA_OK) return status;
-        while (lxa_vector_length(&tree->open_elements) != 0) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        tree->body = (lxa_dom_ref_t){0};
-    }
-    status = push_element(tree, child);
-    if (status == LXA_OK) tree->mode = LXA_TREE_IN_FRAMESET;
+            view->child, (lxa_dom_ref_t){0});
     return status;
+}
+
+static lxa_status_t
+root_frameset_replace(root_frameset_view_t *view)
+{
+    if (!view->replace_body) return LXA_OK;
+    lxa_html_tree_t *tree = view->tree;
+    lxa_dom_ref_t parent;
+    lxa_status_t status = lxa_dom_nodes_parent(tree->nodes, tree->body, &parent);
+    if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
+        status = lxa_dom_nodes_detach_constructed_child(tree->nodes, tree->body);
+    if (status != LXA_OK) return status;
+    while (lxa_vector_length(&tree->open_elements) != 0) {
+        status = pop_element(tree);
+        if (status != LXA_OK) return status;
+    }
+    tree->body = (lxa_dom_ref_t){0};
+    return LXA_OK;
+}
+
+#define LXA_FRAMESET_START_NAME tree_start_root_frameset
+#define LXA_FRAMESET_START_VIEW root_frameset_view_t
+#define LXA_FRAMESET_START_PREPARE root_frameset_prepare
+#define LXA_FRAMESET_START_HEAD(view) ensure_head((view)->tree)
+#define LXA_FRAMESET_START_ADMIT root_frameset_admit
+#define LXA_FRAMESET_START_REPLACE root_frameset_replace
+#define LXA_FRAMESET_START_PUSH(view) push_element((view)->tree, (view)->child)
+#define LXA_FRAMESET_START_MODE(view) ((view)->tree->mode)
+#include "html/frameset_start.inc"
+#undef LXA_FRAMESET_START_NAME
+#undef LXA_FRAMESET_START_VIEW
+#undef LXA_FRAMESET_START_PREPARE
+#undef LXA_FRAMESET_START_HEAD
+#undef LXA_FRAMESET_START_ADMIT
+#undef LXA_FRAMESET_START_REPLACE
+#undef LXA_FRAMESET_START_PUSH
+#undef LXA_FRAMESET_START_MODE
+
+static lxa_status_t
+begin_root_frameset(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+                    bool replace_body)
+{
+    root_frameset_view_t view = {tree, {0}, replace_body};
+    return tree_start_root_frameset(&view, token);
 }
 
 lxa_status_t
