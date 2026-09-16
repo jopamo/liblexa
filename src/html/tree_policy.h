@@ -42,6 +42,15 @@ typedef enum {
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
+/* In-body frameset replacement requires the admitted BODY at stack root. */
+static inline bool
+lxa_html_tree_frameset_body_eligible(bool frameset_ok, uint64_t body_identity,
+    size_t open_length, uint64_t first_identity)
+{
+    return frameset_ok && body_identity != 0 && open_length != 0
+        && first_identity == body_identity;
+}
+
 static inline bool
 lxa_html_tree_root_mode_valid(lxa_html_root_mode_t mode)
 {

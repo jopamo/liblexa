@@ -4799,9 +4799,9 @@ reprocess_body_start:
         if (named(token->name, "frameset")) {
             const lxa_dom_ref_t *open =
                 (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-            if (!tree->frameset_ok || tree->body.handle == LXA_HANDLE_NONE
-                || lxa_vector_length(&tree->open_elements) == 0
-                || open[0].handle != tree->body.handle)
+            size_t length = lxa_vector_length(&tree->open_elements);
+            if (!lxa_html_tree_frameset_body_eligible(tree->frameset_ok,
+                tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : open[0].handle))
                 return LXA_OK;
             return begin_root_frameset(tree, token, true);
         }

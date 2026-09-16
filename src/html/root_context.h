@@ -5,12 +5,14 @@
 #include "html/formatting_list.h"
 
 /* Private virtual-root ledger over a borrowed complete-document stack.
- * HTML/head own no open entries. BODY enters the stack only when it is empty.
+ * HTML/head own no open entries. BODY enters the stack only when it is empty;
+ * its key records the last successful admission and survives borrowed pops.
  * Only frameset_ok is engine-writable. The engine owns mode changes and
  * accepted-rule dispatch; call outside active template/text rules.
  */
 typedef struct {
     lxa_html_control_stack_t *stack;
+    uint64_t body_identity;
     bool html, head, body, frameset_ok;
     lxa_status_t failure;
     lxa_limit_reason_t limit_reason;
@@ -239,6 +241,14 @@ lxa_status_t lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *c
  */
 lxa_status_t lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
+/* Plan accepted in-body frameset replacement against the admitted BODY key,
+ * not merely a body-shaped entry. Read the root entry only when other gates
+ * pass, publish eligible only on success and latch failed WORK.
+ * Engines retain frameset admission, replacement and mode publication.
+ * Output must not alias context/stack owners.
+ */
+lxa_status_t lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, bool *eligible);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

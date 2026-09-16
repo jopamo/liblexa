@@ -116,8 +116,10 @@ static lxa_status_t
 open_body(lxa_html_root_context_t *context)
 {
     uint64_t identity;
-    return lxa_html_control_stack_push(context->stack,
+    lxa_status_t status = lxa_html_control_stack_push(context->stack,
         (lxa_span_t){(const uint8_t *) "body", 4}, LXA_DOM_NS_HTML, false, &identity);
+    if (status == LXA_OK) context->body_identity = identity;
+    return status;
 }
 
 #define LXA_ROOT_ENSURE_NAME(name) context_ensure_##name
@@ -1169,4 +1171,28 @@ lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
         || !lxa_html_tree_name_equals(token->name, "noscript", 8)) return LXA_ERROR_ARGUMENT;
     root_head_noscript_view_t view = {context, mode};
     return finish(context, root_start_head_noscript(&view, token));
+}
+
+lxa_status_t
+lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, bool *eligible)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || eligible == NULL) return LXA_ERROR_ARGUMENT;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    uint64_t first = 0;
+    if (context->frameset_ok && context->body && length != 0) {
+        if (context->body_identity == 0) {
+            assert(false);
+            return finish(context, LXA_ERROR_INTERNAL);
+        }
+        lxa_html_scope_entry_t entry;
+        status = lxa_html_control_stack_get(context->stack, 0, &entry, NULL);
+        if (status == LXA_OK) first = entry.identity;
+    }
+    if (status == LXA_OK)
+        *eligible = lxa_html_tree_frameset_body_eligible(context->frameset_ok,
+            context->body ? context->body_identity : 0, length, first);
+    return finish(context, status);
 }
