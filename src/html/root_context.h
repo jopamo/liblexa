@@ -6,7 +6,8 @@
 
 /* Private virtual-root ledger over a borrowed complete-document stack.
  * HTML/head own no open entries. BODY enters the stack only when it is empty;
- * its key records the last successful admission and survives borrowed pops.
+ * its key records the last successful admission, survives borrowed pops and
+ * clears when frameset replacement removes the BODY owner.
  * Only frameset_ok is engine-writable. The engine owns mode changes and
  * accepted-rule dispatch; call outside active template/text rules.
  */
@@ -244,18 +245,20 @@ lxa_status_t lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *
 /* Plan accepted in-body frameset replacement against the admitted BODY key,
  * not merely a body-shaped entry. Read the root entry only when other gates
  * pass, publish eligible only on success and latch failed WORK.
- * Engines retain frameset admission, replacement and mode publication.
+ * This query does not admit framesets, replace BODY or change mode.
  * Output must not alias context/stack owners.
  */
 lxa_status_t lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, bool *eligible);
-/* Accepted prebody frameset start. Preflight OPEN admission before HEAD,
- * prepare static-name/depth admission, then push and publish IN_FRAMESET.
- * No BODY replacement, attribute snapshots or DOM-node quota. Retain completed
- * roots/capacity, clear identity and latch failure. Engines own insertion and
- * earlier routing; token/mode/output storage must not alias owners.
+/* Accepted frameset start after root control/foreign dispatch. Prebody starts
+ * preflight OPEN before HEAD. In-body starts consume eligibility once, account
+ * released OPEN credits, and preflight name/work/storage/key admission before
+ * BODY pops/owner clearing. Push then publish IN_FRAMESET; identity zero with
+ * success means ignored. No attribute snapshots or DOM-node quota. Retain
+ * completed effects/capacity, clear identity and latch failure. Engines own
+ * insertion; token/mode/output storage must not alias owners.
  */
-lxa_status_t lxa_html_root_context_start_prebody_frameset(lxa_html_root_context_t *context,
+lxa_status_t lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode, uint64_t *identity);
 typedef struct {
     lxa_html_initial_action_t action;
