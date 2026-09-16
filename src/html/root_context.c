@@ -1083,3 +1083,45 @@ lxa_html_root_context_after_body(lxa_html_root_context_t *context,
     if (status == LXA_OK) *action = out;
     return finish(context, status);
 }
+
+static lxa_status_t
+hidden_table_destination(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, size_t keep)
+{
+    (void) token;
+    if (keep == 0 || keep > lxa_vector_length(&context->stack->elements)) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return LXA_OK;
+}
+
+#define LXA_HIDDEN_TABLE_NAME root_hidden_table_input
+#define LXA_HIDDEN_TABLE_VIEW lxa_html_root_context_t
+#define LXA_HIDDEN_TABLE_BUDGET(view) ((view)->stack->budget)
+#define LXA_HIDDEN_TABLE_REASON(view) (&(view)->limit_reason)
+#define LXA_HIDDEN_TABLE_PLAN(view, out) lxa_html_control_stack_table_context_plan((view)->stack, 0, false, out)
+#define LXA_HIDDEN_TABLE_INSERT hidden_table_destination
+#define LXA_HIDDEN_TABLE_POP(view, keep) lxa_html_control_stack_pop_to((view)->stack, keep)
+#include "html/hidden_table_input.inc"
+#undef LXA_HIDDEN_TABLE_NAME
+#undef LXA_HIDDEN_TABLE_VIEW
+#undef LXA_HIDDEN_TABLE_BUDGET
+#undef LXA_HIDDEN_TABLE_REASON
+#undef LXA_HIDDEN_TABLE_PLAN
+#undef LXA_HIDDEN_TABLE_INSERT
+#undef LXA_HIDDEN_TABLE_POP
+
+lxa_status_t
+lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token, bool *handled)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY || handled == NULL
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    bool out;
+    status = root_hidden_table_input(context, token, &out);
+    if (status == LXA_OK) *handled = out;
+    return finish(context, status);
+}

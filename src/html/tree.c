@@ -3630,39 +3630,41 @@ plan_table_context(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 }
 
 static lxa_status_t
-insert_hidden_table_input(lxa_html_tree_t *tree,
-                          const lxa_html_token_t *token, bool *handled)
+hidden_table_plan(lxa_html_tree_t *tree, lxa_html_table_context_plan_t *plan)
 {
-    lxa_vector_t *elements;
-    size_t keep, boundary;
-    bool hidden, in_table;
-    lxa_status_t status;
-    *handled = false;
-    if (token->kind != LXA_HTML_START_TAG || !named(token->name, "input"))
-        return LXA_OK;
-    status = lxa_html_tree_hidden_input(token,
-        tree->nodes->budget, &tree->nodes->limit_reason, &hidden);
-    if (status != LXA_OK || !hidden) return status;
-    elements = formatting_elements(tree);
-    boundary = formatting_boundary(tree);
-    status = plan_table_context(tree, elements, boundary,
+    return plan_table_context(tree, formatting_elements(tree), formatting_boundary(tree),
         tree->mode == LXA_TREE_TEMPLATE_TEXT
             && lxa_html_tree_template_table_context(tree->template_insertion_mode),
-        &keep, &in_table);
-    if (status != LXA_OK || !in_table) return status;
-    if (keep == boundary) {
-        if (tree->mode != LXA_TREE_TEMPLATE_TEXT) return LXA_ERROR_INTERNAL;
-        status = append_void(tree, tree->template_fragment, token);
-    }
-    else {
-        const lxa_dom_ref_t *open =
-            (const lxa_dom_ref_t *) elements->bytes.data;
-        status = append_void(tree, open[keep - 1], token);
-    }
-    if (status == LXA_OK) status = formatting_pop_elements(tree, keep);
-    if (status == LXA_OK) *handled = true;
-    return status;
+        &plan->keep, &plan->in_table);
 }
+
+static lxa_status_t
+hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t keep)
+{
+    if (keep == formatting_boundary(tree)) {
+        if (tree->mode != LXA_TREE_TEMPLATE_TEXT) return LXA_ERROR_INTERNAL;
+        return append_void(tree, tree->template_fragment, token);
+    }
+    const lxa_dom_ref_t *open =
+        (const lxa_dom_ref_t *) formatting_elements(tree)->bytes.data;
+    return append_void(tree, open[keep - 1], token);
+}
+
+#define LXA_HIDDEN_TABLE_NAME insert_hidden_table_input
+#define LXA_HIDDEN_TABLE_VIEW lxa_html_tree_t
+#define LXA_HIDDEN_TABLE_BUDGET(view) ((view)->nodes->budget)
+#define LXA_HIDDEN_TABLE_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_HIDDEN_TABLE_PLAN hidden_table_plan
+#define LXA_HIDDEN_TABLE_INSERT hidden_table_insert
+#define LXA_HIDDEN_TABLE_POP formatting_pop_elements
+#include "html/hidden_table_input.inc"
+#undef LXA_HIDDEN_TABLE_NAME
+#undef LXA_HIDDEN_TABLE_VIEW
+#undef LXA_HIDDEN_TABLE_BUDGET
+#undef LXA_HIDDEN_TABLE_REASON
+#undef LXA_HIDDEN_TABLE_PLAN
+#undef LXA_HIDDEN_TABLE_INSERT
+#undef LXA_HIDDEN_TABLE_POP
 
 static lxa_status_t
 consume(lxa_html_tree_t *tree,

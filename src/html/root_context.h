@@ -222,6 +222,14 @@ lxa_status_t lxa_html_root_context_control_group(lxa_html_root_context_t *contex
 lxa_status_t lxa_html_root_context_after_body(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, lxa_html_after_body_action_t *action);
+/* Root hidden-input table rule before select routing. Share budgeted attribute
+ * classification and table planning, then remove the planned suffix. Closed
+ * input retains no metadata/name/key or DOM-node quota; engines own insertion
+ * and destination effects. Publish handled only on success and latch failure.
+ * Roots/framesets/formatting remain unchanged; storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token, bool *handled);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
