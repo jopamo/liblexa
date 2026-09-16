@@ -230,6 +230,15 @@ lxa_status_t lxa_html_root_context_after_body(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, const lxa_html_token_t *token, bool *handled);
+/* Accepted disabled-scripting head noscript start before/in head. Share HEAD
+ * construction before admission and publish HEAD_NOSCRIPT only on success.
+ * Metadata checks the static name/depth and charges one virtual creation WORK,
+ * without OPEN/name/attribute/key storage or DOM-node quota. Latch failures;
+ * engines retain insertion and subsequent prefix/closure dispatch.
+ * Token/mode storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

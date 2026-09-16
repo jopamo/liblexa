@@ -3667,6 +3667,30 @@ hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t
 #undef LXA_HIDDEN_TABLE_POP
 
 static lxa_status_t
+admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t child;
+    lxa_status_t status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, token->name, &child);
+    if (status == LXA_OK) status = apply_attributes(tree, child, token);
+    if (status == LXA_OK)
+        status = insert_constructed(tree, tree->head, child, (lxa_dom_ref_t){0});
+    if (status == LXA_OK) tree->head_noscript = child;
+    return status;
+}
+
+#define LXA_HEAD_NOSCRIPT_NAME tree_start_head_noscript
+#define LXA_HEAD_NOSCRIPT_VIEW lxa_html_tree_t
+#define LXA_HEAD_NOSCRIPT_HEAD ensure_head
+#define LXA_HEAD_NOSCRIPT_ADMIT admit_head_noscript
+#define LXA_HEAD_NOSCRIPT_MODE(view) ((view)->mode)
+#include "html/head_noscript_start.inc"
+#undef LXA_HEAD_NOSCRIPT_NAME
+#undef LXA_HEAD_NOSCRIPT_VIEW
+#undef LXA_HEAD_NOSCRIPT_HEAD
+#undef LXA_HEAD_NOSCRIPT_ADMIT
+#undef LXA_HEAD_NOSCRIPT_MODE
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -4963,20 +4987,7 @@ reprocess_body_start:
          * in-head noscript insertion mode. */
         if (named(token->name, "noscript")
             && tree->mode <= LXA_TREE_IN_HEAD) {
-            status = ensure_head(tree);
-            if (status == LXA_OK)
-                status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
-                                                            token->name, &child);
-            if (status == LXA_OK)
-                status = apply_attributes(tree, child, token);
-            if (status == LXA_OK)
-                status = insert_constructed(tree, tree->head,
-                    child, (lxa_dom_ref_t){0});
-            if (status == LXA_OK) {
-                tree->head_noscript = child;
-                tree->mode = LXA_TREE_HEAD_NOSCRIPT;
-            }
-            return status;
+            return tree_start_head_noscript(tree, token);
         }
         if (named(token->name, "html")) {
             bool initial = tree->mode == LXA_TREE_BEFORE_HTML;

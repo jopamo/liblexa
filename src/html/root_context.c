@@ -1125,3 +1125,48 @@ lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *context,
     if (status == LXA_OK) *handled = out;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_mode_t *mode;
+} root_head_noscript_view_t;
+
+static lxa_status_t
+head_noscript_admit(root_head_noscript_view_t *view, const lxa_html_token_t *token)
+{
+    (void) token;
+    lxa_html_root_context_t *context = view->context;
+    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+        LXA_BUDGET_NAME_BYTES, 8, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH, 3, &context->limit_reason);
+    return status;
+}
+
+#define LXA_HEAD_NOSCRIPT_NAME root_start_head_noscript
+#define LXA_HEAD_NOSCRIPT_VIEW root_head_noscript_view_t
+#define LXA_HEAD_NOSCRIPT_HEAD(view) context_ensure_head((view)->context)
+#define LXA_HEAD_NOSCRIPT_ADMIT head_noscript_admit
+#define LXA_HEAD_NOSCRIPT_MODE(view) (*(view)->mode)
+#include "html/head_noscript_start.inc"
+#undef LXA_HEAD_NOSCRIPT_NAME
+#undef LXA_HEAD_NOSCRIPT_VIEW
+#undef LXA_HEAD_NOSCRIPT_HEAD
+#undef LXA_HEAD_NOSCRIPT_ADMIT
+#undef LXA_HEAD_NOSCRIPT_MODE
+
+lxa_status_t
+lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || context->body || lxa_vector_length(&context->stack->elements) != 0
+        || !body_start_mode_valid(context, *mode) || *mode > LXA_TREE_IN_HEAD
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "noscript", 8)) return LXA_ERROR_ARGUMENT;
+    root_head_noscript_view_t view = {context, mode};
+    return finish(context, root_start_head_noscript(&view, token));
+}
