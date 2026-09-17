@@ -66,6 +66,35 @@ check_body_child_depth(lxa_html_root_context_t *context, size_t retained)
             depth, &context->limit_reason) : status;
 }
 
+#define LXA_FRAMESET_END_NAME context_frameset_end
+#define LXA_FRAMESET_END_VIEW lxa_html_root_context_t
+#define LXA_FRAMESET_END_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_FRAMESET_END_POP(view) \
+    lxa_html_control_stack_pop_to((view)->stack, LXA_FRAMESET_END_LENGTH(view) - 1)
+#include "html/frameset_end.inc"
+#undef LXA_FRAMESET_END_NAME
+#undef LXA_FRAMESET_END_VIEW
+#undef LXA_FRAMESET_END_LENGTH
+#undef LXA_FRAMESET_END_POP
+
+lxa_status_t
+lxa_html_root_context_end_frameset(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || !context->head || context->body)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_frameset_action_t action;
+    status = lxa_html_tree_frameset_action(*mode, LXA_HTML_END_TAG, name, &action);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    if ((action != LXA_HTML_FRAMESET_END && action != LXA_HTML_FRAMESET_HTML_END)
+        || ((*mode == LXA_TREE_IN_FRAMESET) != (length != 0)))
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, context_frameset_end(context, action, mode));
+}
+
 lxa_status_t
 lxa_html_root_context_init(lxa_html_root_context_t *context,
     lxa_html_control_stack_t *stack)

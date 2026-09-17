@@ -261,6 +261,13 @@ lxa_status_t lxa_html_root_context_frameset_body(lxa_html_root_context_t *contex
  */
 lxa_status_t lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode, uint64_t *identity);
+/* Accepted frameset/html family ends after classification. Pop one frameset,
+ * publish AFTER_FRAMESET only when membership empties, or publish
+ * AFTER_AFTER_FRAMESET for html ends. Latch failed pops without mode changes.
+ * Require HEAD without BODY; mode storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_end_frameset(lxa_html_root_context_t *context,
+    lxa_span_t name, lxa_html_root_mode_t *mode);
 typedef struct {
     lxa_html_initial_action_t action;
     lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */

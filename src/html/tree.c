@@ -309,6 +309,16 @@ pop_element(lxa_html_tree_t *tree)
 static lxa_status_t
 tree_pop_table(lxa_html_tree_t *, size_t, bool);
 
+#define LXA_FRAMESET_END_NAME tree_frameset_end
+#define LXA_FRAMESET_END_VIEW lxa_html_tree_t
+#define LXA_FRAMESET_END_POP(view) pop_element(view)
+#define LXA_FRAMESET_END_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#include "html/frameset_end.inc"
+#undef LXA_FRAMESET_END_NAME
+#undef LXA_FRAMESET_END_VIEW
+#undef LXA_FRAMESET_END_POP
+#undef LXA_FRAMESET_END_LENGTH
+
 static lxa_status_t
 pop_table_elements(lxa_html_tree_t *tree, size_t keep)
 {
@@ -4590,10 +4600,8 @@ reprocess_template_token:
                 ? begin_text_element(tree, tokenizer,
                     parent, token) : status;
         }
-        if (action == LXA_HTML_FRAMESET_HTML_END) {
-            tree->mode = LXA_TREE_AFTER_AFTER_FRAMESET;
-            return LXA_OK;
-        }
+        if (action == LXA_HTML_FRAMESET_HTML_END)
+            return tree_frameset_end(tree, action, &tree->mode);
         if (action == LXA_HTML_FRAMESET_START) {
             status = reserve_open_elements(tree, 1);
             if (status == LXA_OK)
@@ -4607,13 +4615,8 @@ reprocess_template_token:
             return status == LXA_OK
                 ? append_void(tree, current_element(tree), token) : status;
         }
-        if (action == LXA_HTML_FRAMESET_END) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-            if (lxa_vector_length(&tree->open_elements) == 0)
-                tree->mode = LXA_TREE_AFTER_FRAMESET;
-            return LXA_OK;
-        }
+        if (action == LXA_HTML_FRAMESET_END)
+            return tree_frameset_end(tree, action, &tree->mode);
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
