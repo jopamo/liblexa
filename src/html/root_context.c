@@ -90,7 +90,8 @@ lxa_html_root_context_end_frameset(lxa_html_root_context_t *context,
     if (status != LXA_OK) return status;
     size_t length = lxa_vector_length(&context->stack->elements);
     if ((action != LXA_HTML_FRAMESET_END && action != LXA_HTML_FRAMESET_HTML_END)
-        || ((*mode == LXA_TREE_IN_FRAMESET) != (length != 0)))
+        || (*mode == LXA_TREE_IN_FRAMESET && length == 0)
+        || (*mode == LXA_TREE_AFTER_FRAMESET && length != 0))
         return LXA_ERROR_ARGUMENT;
     return finish(context, context_frameset_end(context, action, mode));
 }
@@ -264,7 +265,8 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     size_t length = lxa_vector_length(&context->stack->elements);
     if ((!plan.body && length != 0 && !frameset)
         || (frameset && (!context->head || context->body
-            || ((*mode == LXA_TREE_IN_FRAMESET) != (length != 0))))
+            || (*mode == LXA_TREE_IN_FRAMESET && length == 0)
+            || (*mode == LXA_TREE_AFTER_FRAMESET && length != 0)))
         || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
         || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_HEAD_NOSCRIPT
             || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
