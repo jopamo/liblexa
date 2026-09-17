@@ -411,6 +411,24 @@ lxa_html_root_context_start_void(lxa_html_root_context_t *context,
     if (status != LXA_OK) return status;
     if (mode == NULL || !lxa_html_tree_token_shape_valid(token)
         || token->kind != LXA_HTML_START_TAG) return LXA_ERROR_ARGUMENT;
+    if (lxa_html_tree_frameset_mode(*mode)) {
+        lxa_html_frameset_action_t action;
+        status = lxa_html_tree_frameset_action(*mode, token->kind, token->name, &action);
+        if (status != LXA_OK) return status;
+        if (action != LXA_HTML_FRAMESET_FRAME_START || !context->head || context->body
+            || lxa_vector_length(&context->stack->elements) == 0
+            || (formatting != NULL && (formatting->store == NULL
+                || formatting->store->budget != context->stack->budget)))
+            return LXA_ERROR_ARGUMENT;
+        status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+            5, &context->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
+                &context->limit_reason);
+        if (status == LXA_OK)
+            status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
+        return finish(context, status);
+    }
     bool head = lxa_html_tree_head_void(token->name);
     bool reconstruct = !head && lxa_html_tree_body_void_reconstructs(token->name);
     if ((!head && !lxa_html_tree_body_void(token->name))
