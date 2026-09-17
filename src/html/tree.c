@@ -1993,6 +1993,25 @@ open_container(lxa_html_tree_t *tree,
     return open_container_ns(tree, token, LXA_DOM_NS_HTML);
 }
 
+#define LXA_FRAMESET_START_NAME tree_start_nested_frameset
+#define LXA_FRAMESET_START_VIEW lxa_html_tree_t
+#define LXA_FRAMESET_START_PREPARE(view) reserve_open_elements(view, 1)
+#define LXA_FRAMESET_START_HEAD(view) LXA_OK
+#define LXA_FRAMESET_START_ADMIT(view, token) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_FRAMESET_START_REPLACE(view) LXA_OK
+#define LXA_FRAMESET_START_PUSH(view) open_container(view, token)
+#define LXA_FRAMESET_START_MODE(view) ((view)->mode)
+#include "html/frameset_start.inc"
+#undef LXA_FRAMESET_START_NAME
+#undef LXA_FRAMESET_START_VIEW
+#undef LXA_FRAMESET_START_PREPARE
+#undef LXA_FRAMESET_START_HEAD
+#undef LXA_FRAMESET_START_ADMIT
+#undef LXA_FRAMESET_START_REPLACE
+#undef LXA_FRAMESET_START_PUSH
+#undef LXA_FRAMESET_START_MODE
+
 static lxa_status_t
 plan_foreign_breakout(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                        size_t boundary, size_t *keep)
@@ -4602,13 +4621,8 @@ reprocess_template_token:
         }
         if (action == LXA_HTML_FRAMESET_HTML_END)
             return tree_frameset_end(tree, action, &tree->mode);
-        if (action == LXA_HTML_FRAMESET_START) {
-            status = reserve_open_elements(tree, 1);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            return status == LXA_OK ? open_container(tree, token) : status;
-        }
+        if (action == LXA_HTML_FRAMESET_START)
+            return tree_start_nested_frameset(tree, token);
         if (action == LXA_HTML_FRAMESET_FRAME_START) {
             status = lxa_budget_check(tree->nodes->budget,
                 LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);

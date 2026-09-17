@@ -251,7 +251,9 @@ lxa_status_t lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *
  */
 lxa_status_t lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, bool *eligible);
-/* Accepted frameset start after root control/foreign dispatch. Prebody starts
+/* Accepted frameset start after root control/foreign dispatch. Nested starts
+ * retain the current frame owner and check depth from open membership.
+ * Prebody starts
  * preflight OPEN before HEAD. In-body starts consume eligibility once, account
  * released OPEN credits, and preflight name/work/storage/key admission before
  * BODY pops/owner clearing. Push then publish IN_FRAMESET; identity zero with

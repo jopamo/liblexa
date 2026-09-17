@@ -1269,7 +1269,9 @@ frameset_admit(root_frameset_control_view_t *view, const lxa_html_token_t *token
     if (status == LXA_OK)
         status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH, 2, &context->limit_reason);
+        status = check_body_child_depth(context,
+            *view->mode == LXA_TREE_IN_FRAMESET
+                ? lxa_vector_length(&context->stack->elements) : 0);
     if (status == LXA_OK && view->replace_body) {
         lxa_html_control_stack_t *stack = context->stack;
         if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
@@ -1326,8 +1328,11 @@ lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
     if (identity != NULL) *identity = 0;
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    if (mode == NULL || identity == NULL || !body_start_mode_valid(context, *mode)
-        || (*mode != LXA_TREE_IN_BODY && (context->body
+    if (mode == NULL || identity == NULL
+        || (*mode != LXA_TREE_IN_FRAMESET && !body_start_mode_valid(context, *mode))
+        || (*mode == LXA_TREE_IN_FRAMESET && (!context->head || context->body
+            || lxa_vector_length(&context->stack->elements) == 0))
+        || (*mode != LXA_TREE_IN_BODY && *mode != LXA_TREE_IN_FRAMESET && (context->body
             || lxa_vector_length(&context->stack->elements) != 0))
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_name_equals(token->name, "frameset", 8)) return LXA_ERROR_ARGUMENT;
