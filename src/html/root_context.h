@@ -78,6 +78,13 @@ lxa_status_t lxa_html_root_context_start_plaintext(lxa_html_root_context_t *cont
  */
 lxa_status_t lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting);
+/* Reconstruct accepted AFTER_AFTER_FRAMESET whitespace under HTML/current
+ * formatting without BODY admission. Borrow a same-budget list and consume
+ * one closed-suffix plan, retaining partial reopen effects on latched failure.
+ * Engines own mode, filtered text and insertion; require HEAD without BODY.
+ */
+lxa_status_t lxa_html_root_context_reconstruct_after_frameset(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting);
 /* Coordinate accepted root xmp after earlier routing: recover current colgroup,
  * close paragraph, reconstruct formatting, then publish IN_BODY/frameset effects
  * and apply returning-text feedback. TEXT publishes only on success. Borrow an

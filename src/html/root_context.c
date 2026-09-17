@@ -334,15 +334,16 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
-lxa_status_t
-lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
-    lxa_html_formatting_list_t *formatting)
+static lxa_status_t
+context_reconstruct(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, bool after_frameset)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
     if (formatting == NULL || formatting->store == NULL
-        || formatting->store->budget != context->stack->budget || !context->body
-        || lxa_vector_length(&context->stack->elements) == 0)
+        || formatting->store->budget != context->stack->budget
+        || (after_frameset ? (!context->head || context->body)
+            : (!context->body || lxa_vector_length(&context->stack->elements) == 0)))
         return LXA_ERROR_ARGUMENT;
     size_t start;
     status = lxa_html_formatting_list_reconstruct_plan(formatting, context->stack, 0, &start);
@@ -365,6 +366,20 @@ lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = formatting->store->limit_reason;
     return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting)
+{
+    return context_reconstruct(context, formatting, false);
+}
+
+lxa_status_t
+lxa_html_root_context_reconstruct_after_frameset(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting)
+{
+    return context_reconstruct(context, formatting, true);
 }
 
 lxa_status_t
