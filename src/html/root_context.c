@@ -1426,3 +1426,62 @@ lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    const lxa_html_root_frameset_borrowers_t *borrowers;
+    lxa_html_root_mode_t *mode;
+    lxa_html_root_frameset_result_t *result;
+} root_frameset_execute_view_t;
+
+#define LXA_FRAMESET_EXECUTE_NAME root_execute_frameset
+#define LXA_FRAMESET_EXECUTE_VIEW root_frameset_execute_view_t
+#define LXA_FRAMESET_EXECUTE_FINISH(view) lxa_html_root_context_finish((view)->context, (view)->mode)
+#define LXA_FRAMESET_EXECUTE_COMMENT(view, token) LXA_OK
+#define LXA_FRAMESET_EXECUTE_HTML(view, token) LXA_OK
+#define LXA_FRAMESET_EXECUTE_SPACES(view, token) lxa_html_root_context_prepare_frameset_data( \
+    (view)->context, (view)->borrowers->formatting, *(view)->mode, (token)->data, (view)->borrowers->spaces)
+#define LXA_FRAMESET_EXECUTE_TEXT(view, token) lxa_html_root_context_start_text((view)->context, \
+    (view)->borrowers->text, (view)->borrowers->tokenizer, token, (view)->mode, &(view)->result->skip_newline)
+#define LXA_FRAMESET_EXECUTE_START(view, token) lxa_html_root_context_start_frameset( \
+    (view)->context, token, (view)->mode, &(view)->result->identity)
+#define LXA_FRAMESET_EXECUTE_FRAME(view, token) \
+    lxa_html_root_context_start_void((view)->context, NULL, token, (view)->mode)
+#define LXA_FRAMESET_EXECUTE_END(view, token, action) \
+    lxa_html_root_context_end_frameset((view)->context, (token)->name, (view)->mode)
+#include "html/frameset_execute.inc"
+#undef LXA_FRAMESET_EXECUTE_NAME
+#undef LXA_FRAMESET_EXECUTE_VIEW
+#undef LXA_FRAMESET_EXECUTE_FINISH
+#undef LXA_FRAMESET_EXECUTE_COMMENT
+#undef LXA_FRAMESET_EXECUTE_HTML
+#undef LXA_FRAMESET_EXECUTE_SPACES
+#undef LXA_FRAMESET_EXECUTE_TEXT
+#undef LXA_FRAMESET_EXECUTE_START
+#undef LXA_FRAMESET_EXECUTE_FRAME
+#undef LXA_FRAMESET_EXECUTE_END
+
+lxa_status_t
+lxa_html_root_context_frameset_token(lxa_html_root_context_t *context,
+    const lxa_html_root_frameset_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, lxa_html_root_frameset_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || result == NULL || token == NULL || !frameset_owner_valid(context, *mode))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_frameset_action_t action;
+    status = lxa_html_tree_frameset_action(*mode, token->kind, token->name, &action);
+    if (status != LXA_OK) return status;
+    /* Admission hooks validate their token once; quiet actions have no hook. */
+    if (action != LXA_HTML_FRAMESET_START && action != LXA_HTML_FRAMESET_FRAME_START
+        && action != LXA_HTML_FRAMESET_NOFRAMES_START && !lxa_html_tree_token_shape_valid(token))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_root_frameset_borrowers_t empty = {0};
+    lxa_html_root_frameset_result_t out = {action, 0, false};
+    root_frameset_execute_view_t view = {context, borrowers == NULL ? &empty : borrowers, mode, &out};
+    status = root_execute_frameset(&view, token, action);
+    if (status == LXA_OK) *result = out;
+    if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
+    return finish(context, status);
+}

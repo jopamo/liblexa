@@ -3743,6 +3743,55 @@ admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 #undef LXA_HEAD_NOSCRIPT_ADMIT
 #undef LXA_HEAD_NOSCRIPT_MODE
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_html_tokenizer_t *tokenizer;
+} tree_frameset_execute_view_t;
+
+static lxa_dom_ref_t
+frameset_parent(lxa_html_tree_t *tree)
+{
+    return tree->mode == LXA_TREE_IN_FRAMESET ? current_element(tree)
+        : tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET ? formatting_parent(tree) : tree->html;
+}
+
+static lxa_status_t
+frameset_child(tree_frameset_execute_view_t *view, const lxa_html_token_t *token, bool text)
+{
+    lxa_html_tree_t *tree = view->tree;
+    lxa_status_t status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+        1, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    return text ? begin_text_element(tree, view->tokenizer, frameset_parent(tree), token)
+        : append_void(tree, current_element(tree), token);
+}
+
+#define LXA_FRAMESET_EXECUTE_NAME tree_execute_frameset
+#define LXA_FRAMESET_EXECUTE_VIEW tree_frameset_execute_view_t
+#define LXA_FRAMESET_EXECUTE_FINISH(view) tree_finish_root((view)->tree, &(view)->tree->mode)
+#define LXA_FRAMESET_EXECUTE_COMMENT(view, token) append_comment_or_pi((view)->tree, \
+    (view)->tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET ? (view)->tree->document \
+        : frameset_parent((view)->tree), token)
+#define LXA_FRAMESET_EXECUTE_HTML(view, token) apply_attributes((view)->tree, (view)->tree->html, token)
+#define LXA_FRAMESET_EXECUTE_SPACES(view, token) append_space_text((view)->tree, \
+    frameset_parent((view)->tree), (token)->data, (view)->tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET)
+#define LXA_FRAMESET_EXECUTE_TEXT(view, token) frameset_child(view, token, true)
+#define LXA_FRAMESET_EXECUTE_START(view, token) tree_start_nested_frameset((view)->tree, token)
+#define LXA_FRAMESET_EXECUTE_FRAME(view, token) frameset_child(view, token, false)
+#define LXA_FRAMESET_EXECUTE_END(view, token, action) \
+    tree_frameset_end((view)->tree, action, &(view)->tree->mode)
+#include "html/frameset_execute.inc"
+#undef LXA_FRAMESET_EXECUTE_NAME
+#undef LXA_FRAMESET_EXECUTE_VIEW
+#undef LXA_FRAMESET_EXECUTE_FINISH
+#undef LXA_FRAMESET_EXECUTE_COMMENT
+#undef LXA_FRAMESET_EXECUTE_HTML
+#undef LXA_FRAMESET_EXECUTE_SPACES
+#undef LXA_FRAMESET_EXECUTE_TEXT
+#undef LXA_FRAMESET_EXECUTE_START
+#undef LXA_FRAMESET_EXECUTE_FRAME
+#undef LXA_FRAMESET_EXECUTE_END
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -4581,44 +4630,8 @@ reprocess_template_token:
         status = lxa_html_tree_frameset_action(tree->mode, token->kind,
             token->name, &action);
         if (status != LXA_OK) return status;
-        if (action == LXA_HTML_FRAMESET_EOF) {
-            return tree_finish_root(tree, &tree->mode);
-        }
-        parent = tree->mode == LXA_TREE_IN_FRAMESET
-                 ? current_element(tree)
-                 : tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
-                   ? formatting_parent(tree) : tree->html;
-        if (action == LXA_HTML_FRAMESET_COMMENT)
-            return append_comment_or_pi(tree,
-                tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
-                    ? tree->document : parent, token);
-        if (action == LXA_HTML_FRAMESET_IGNORE) return LXA_OK;
-        if (action == LXA_HTML_FRAMESET_HTML_START)
-            return apply_attributes(tree, tree->html, token);
-        if (action == LXA_HTML_FRAMESET_TEXT)
-            return append_space_text(tree, parent, token->data,
-                tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET);
-        if (action == LXA_HTML_FRAMESET_NOFRAMES_START) {
-            status = lxa_budget_check(tree->nodes->budget,
-                LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            return status == LXA_OK
-                ? begin_text_element(tree, tokenizer,
-                    parent, token) : status;
-        }
-        if (action == LXA_HTML_FRAMESET_HTML_END)
-            return tree_frameset_end(tree, action, &tree->mode);
-        if (action == LXA_HTML_FRAMESET_START)
-            return tree_start_nested_frameset(tree, token);
-        if (action == LXA_HTML_FRAMESET_FRAME_START) {
-            status = lxa_budget_check(tree->nodes->budget,
-                LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            return status == LXA_OK
-                ? append_void(tree, current_element(tree), token) : status;
-        }
-        if (action == LXA_HTML_FRAMESET_END)
-            return tree_frameset_end(tree, action, &tree->mode);
-        assert(false);
-        return LXA_ERROR_INTERNAL;
+        tree_frameset_execute_view_t view = {tree, tokenizer};
+        return tree_execute_frameset(&view, token, action);
     }
     if (token->kind == LXA_HTML_EOF) {
         return tree_finish_root(tree, &tree->mode);
