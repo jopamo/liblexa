@@ -284,6 +284,41 @@ lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode, lxa_span_t name,
 }
 
 lxa_status_t
+lxa_html_tree_filter_spaces(lxa_span_t data, lxa_buffer_t *spaces,
+    lxa_limit_reason_t *reason)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (spaces == NULL || spaces->budget == NULL || spaces->length != 0
+        || spaces->allocator.allocate == NULL || spaces->allocator.resize == NULL
+        || spaces->allocator.release == NULL
+        || (spaces->capacity != 0 && spaces->data == NULL)
+        || (data.length != 0 && data.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    if (data.length != 0) {
+        uintptr_t source = (uintptr_t) data.data, base = (uintptr_t) spaces;
+        if (source >= base ? source - base < sizeof(*spaces) : base - source < data.length)
+            return LXA_ERROR_ARGUMENT;
+    }
+    if (data.length != 0 && spaces->data != NULL && spaces->capacity != 0) {
+        uintptr_t source = (uintptr_t) data.data, base = (uintptr_t) spaces->data;
+        if (source >= base ? source - base < spaces->capacity : base - source < data.length)
+            return LXA_ERROR_ARGUMENT;
+    }
+    lxa_status_t status = lxa_budget_charge(spaces->budget, LXA_BUDGET_WORK, data.length, reason);
+    size_t i = 0;
+    while (i < data.length && status == LXA_OK) {
+        size_t start = i;
+        while (i < data.length && lxa_html_byte_tree_space(data.data[i])) ++i;
+        if (i != start)
+            status = lxa_buffer_append(spaces, (lxa_span_t){data.data + start, i - start});
+        if (i < data.length) ++i;
+    }
+    if (status == LXA_ERROR_LIMIT && reason != NULL && *reason == LXA_BUDGET_COUNT)
+        *reason = LXA_BUDGET_MEMORY;
+    return status;
+}
+
+lxa_status_t
 lxa_html_tree_head_end_action(lxa_span_t name, lxa_html_head_end_action_t *out)
 {
     if (name.data == NULL || name.length == 0 || out == NULL) return LXA_ERROR_ARGUMENT;

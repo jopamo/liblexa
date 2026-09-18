@@ -85,6 +85,15 @@ lxa_status_t lxa_html_root_context_reconstruct(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_reconstruct_after_frameset(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting);
+/* Filter accepted frameset-family text into a borrowed empty initialized buffer
+ * sharing the stack budget. Reconstruct only nonempty AFTER_AFTER_FRAMESET
+ * output using a same-budget formatting borrower. Retain partial output and
+ * reopen effects on latched failure. Engines own filtered storage/insertion;
+ * destroy the buffer before its budget. Input/storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_prepare_frameset_data(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
+    lxa_span_t data, lxa_buffer_t *spaces);
 /* Coordinate accepted root xmp after earlier routing: recover current colgroup,
  * close paragraph, reconstruct formatting, then publish IN_BODY/frameset effects
  * and apply returning-text feedback. TEXT publishes only on success. Borrow an

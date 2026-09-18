@@ -3495,25 +3495,11 @@ append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes,
                   bool reconstruct)
 {
     lxa_buffer_t spaces;
-    size_t i = 0, start;
-    lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
-        LXA_BUDGET_WORK, bytes.length, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    status = lxa_buffer_init(&spaces, &tree->nodes->allocator);
+    lxa_status_t status = lxa_buffer_init(&spaces, &tree->nodes->allocator);
     if (status != LXA_OK) return status;
     status = lxa_buffer_bind_budget(&spaces, tree->nodes->budget);
-    while (i < bytes.length && status == LXA_OK) {
-        start = i;
-        while (i < bytes.length
-               && (bytes.data[i] == ' ' || bytes.data[i] == '\t'
-                   || bytes.data[i] == '\n' || bytes.data[i] == '\f'
-                   || bytes.data[i] == '\r'))
-            ++i;
-        if (i != start)
-            status = lxa_buffer_append(&spaces,
-                (lxa_span_t){bytes.data + start, i - start});
-        if (i < bytes.length) ++i;
-    }
+    if (status == LXA_OK)
+        status = lxa_html_tree_filter_spaces(bytes, &spaces, &tree->nodes->limit_reason);
     if (status == LXA_OK && spaces.length != 0) {
         if (reconstruct) {
             status = reconstruct_formatting(tree);

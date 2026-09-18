@@ -276,6 +276,12 @@ typedef enum {
 lxa_status_t
 lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
     lxa_html_token_kind_t kind, lxa_span_t name, lxa_html_frameset_action_t *out);
+/* Filter accepted space-only tree text into an empty initialized budgeted
+ * buffer. Precharge the complete scan; retain partial output on append failure.
+ * Input must not alias the output object or its allocation.
+ */
+lxa_status_t lxa_html_tree_filter_spaces(lxa_span_t data, lxa_buffer_t *spaces,
+    lxa_limit_reason_t *reason);
 
 typedef enum {
     LXA_HTML_PREBODY_END_IGNORE, LXA_HTML_PREBODY_END_HTML_HEAD,

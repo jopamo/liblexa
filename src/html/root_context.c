@@ -50,6 +50,15 @@ reserve_open_slots(lxa_html_root_context_t *context, size_t additional)
     return status;
 }
 
+static bool
+frameset_owner_valid(const lxa_html_root_context_t *context, lxa_html_root_mode_t mode)
+{
+    size_t length = lxa_vector_length(&context->stack->elements);
+    return context->head && !context->body && lxa_html_tree_frameset_mode(mode)
+        && (mode != LXA_TREE_IN_FRAMESET || length != 0)
+        && (mode != LXA_TREE_AFTER_FRAMESET || length == 0);
+}
+
 static lxa_status_t
 reserve_open_slot(lxa_html_root_context_t *context)
 {
@@ -88,10 +97,8 @@ lxa_html_root_context_end_frameset(lxa_html_root_context_t *context,
     lxa_html_frameset_action_t action;
     status = lxa_html_tree_frameset_action(*mode, LXA_HTML_END_TAG, name, &action);
     if (status != LXA_OK) return status;
-    size_t length = lxa_vector_length(&context->stack->elements);
     if ((action != LXA_HTML_FRAMESET_END && action != LXA_HTML_FRAMESET_HTML_END)
-        || (*mode == LXA_TREE_IN_FRAMESET && length == 0)
-        || (*mode == LXA_TREE_AFTER_FRAMESET && length != 0))
+        || !frameset_owner_valid(context, *mode))
         return LXA_ERROR_ARGUMENT;
     return finish(context, context_frameset_end(context, action, mode));
 }
@@ -264,9 +271,7 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     bool frameset = lxa_html_tree_frameset_mode(*mode);
     size_t length = lxa_vector_length(&context->stack->elements);
     if ((!plan.body && length != 0 && !frameset)
-        || (frameset && (!context->head || context->body
-            || (*mode == LXA_TREE_IN_FRAMESET && length == 0)
-            || (*mode == LXA_TREE_AFTER_FRAMESET && length != 0)))
+        || (frameset && !frameset_owner_valid(context, *mode))
         || (*mode == LXA_TREE_BEFORE_HEAD && !context->html)
         || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_HEAD_NOSCRIPT
             || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
@@ -383,6 +388,26 @@ lxa_html_root_context_reconstruct_after_frameset(lxa_html_root_context_t *contex
 }
 
 lxa_status_t
+lxa_html_root_context_prepare_frameset_data(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
+    lxa_span_t data, lxa_buffer_t *spaces)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!frameset_owner_valid(context, mode) || spaces == NULL
+        || spaces->budget != context->stack->budget
+        || (formatting != NULL && (formatting->store == NULL
+            || formatting->store->budget != context->stack->budget))
+        || (mode == LXA_TREE_AFTER_AFTER_FRAMESET && formatting == NULL))
+        return LXA_ERROR_ARGUMENT;
+    status = lxa_html_tree_filter_spaces(data, spaces, &context->limit_reason);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status == LXA_OK && spaces->length != 0 && mode == LXA_TREE_AFTER_AFTER_FRAMESET)
+        status = lxa_html_root_context_reconstruct_after_frameset(context, formatting);
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
@@ -432,8 +457,7 @@ lxa_html_root_context_start_void(lxa_html_root_context_t *context,
         lxa_html_frameset_action_t action;
         status = lxa_html_tree_frameset_action(*mode, token->kind, token->name, &action);
         if (status != LXA_OK) return status;
-        if (action != LXA_HTML_FRAMESET_FRAME_START || !context->head || context->body
-            || lxa_vector_length(&context->stack->elements) == 0
+        if (action != LXA_HTML_FRAMESET_FRAME_START || !frameset_owner_valid(context, *mode)
             || (formatting != NULL && (formatting->store == NULL
                 || formatting->store->budget != context->stack->budget)))
             return LXA_ERROR_ARGUMENT;
@@ -1365,8 +1389,7 @@ lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
     if (status != LXA_OK) return status;
     if (mode == NULL || identity == NULL
         || (*mode != LXA_TREE_IN_FRAMESET && !body_start_mode_valid(context, *mode))
-        || (*mode == LXA_TREE_IN_FRAMESET && (!context->head || context->body
-            || lxa_vector_length(&context->stack->elements) == 0))
+        || (*mode == LXA_TREE_IN_FRAMESET && !frameset_owner_valid(context, *mode))
         || (*mode != LXA_TREE_IN_BODY && *mode != LXA_TREE_IN_FRAMESET && (context->body
             || lxa_vector_length(&context->stack->elements) != 0))
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
