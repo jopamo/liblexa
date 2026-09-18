@@ -419,6 +419,34 @@ lxa_html_tree_root_end_scope(lxa_span_t name)
     return 0;
 }
 
+typedef enum {
+    LXA_HTML_ROOT_BODY_END_BODY, LXA_HTML_ROOT_BODY_END_HTML,
+    LXA_HTML_ROOT_BODY_END_COL, LXA_HTML_ROOT_BODY_END_FORMATTING,
+    LXA_HTML_ROOT_BODY_END_FORM, LXA_HTML_ROOT_BODY_END_PARAGRAPH,
+    LXA_HTML_ROOT_BODY_END_SCOPED, LXA_HTML_ROOT_BODY_END_ORDINARY
+} lxa_html_root_body_end_action_t;
+
+typedef struct {
+    lxa_html_root_body_end_action_t action;
+    lxa_html_scope_kind_t scope;
+} lxa_html_root_body_end_plan_t;
+
+/* Accepted in-body ends after earlier foreign/template/head/br/select rules. */
+static inline lxa_html_root_body_end_plan_t
+lxa_html_tree_root_body_end_plan(lxa_span_t name)
+{
+    lxa_html_root_body_end_plan_t plan = {LXA_HTML_ROOT_BODY_END_ORDINARY, 0};
+    if (LXA_CONTAINER_NAMED(name, "html")) plan.action = LXA_HTML_ROOT_BODY_END_HTML;
+    else if (LXA_CONTAINER_NAMED(name, "body")) plan.action = LXA_HTML_ROOT_BODY_END_BODY;
+    else if (LXA_CONTAINER_NAMED(name, "col")) plan.action = LXA_HTML_ROOT_BODY_END_COL;
+    else if (lxa_html_tree_formatting_tag(name)) plan.action = LXA_HTML_ROOT_BODY_END_FORMATTING;
+    else if (LXA_CONTAINER_NAMED(name, "form")) plan.action = LXA_HTML_ROOT_BODY_END_FORM;
+    else if (LXA_CONTAINER_NAMED(name, "p")) plan.action = LXA_HTML_ROOT_BODY_END_PARAGRAPH;
+    else if ((plan.scope = lxa_html_tree_root_end_scope(name)) != 0)
+        plan.action = LXA_HTML_ROOT_BODY_END_SCOPED;
+    return plan;
+}
+
 static inline bool
 lxa_html_tree_template_ordinary_end(lxa_span_t name)
 {

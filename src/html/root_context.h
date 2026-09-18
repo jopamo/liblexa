@@ -42,6 +42,17 @@ lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context)
  */
 lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
+/* In-body end dispatch after foreign/template/head/br routing. Apply select
+ * recovery before the shared body/formatting/form/paragraph/scoped/fallback
+ * dispatch. Borrow same-budget formatting for formatting/scoped ends and a form
+ * key only for form ends; other names permit NULL borrowers. Publish body/html
+ * modes and implied-paragraph output only after recovery succeeds. Latch
+ * execution failures without replay. Engines insert a reported closed paragraph.
+ * Token/mode/form-key/output storage must not alias the borrowed owners or each other.
+ */
+lxa_status_t lxa_html_root_context_body_end_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, uint64_t *form_owner,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *implied_paragraph);
 /* Apply accepted prebody end recovery over an empty stack before BODY.
  * Publish each intermediate mode after construction, retaining it on later
  * failure. Engines continue remaining dispatch after success. No retained name

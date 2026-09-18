@@ -1340,6 +1340,68 @@ lxa_html_root_context_head_noscript_token(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_formatting_list_t *formatting;
+    uint64_t *form_owner;
+    bool implied_paragraph;
+} root_body_end_view_t;
+
+#define LXA_ROOT_BODY_END_NAME context_body_end_token
+#define LXA_ROOT_BODY_END_VIEW root_body_end_view_t
+#define LXA_ROOT_BODY_END_BODY(view, html, mode) \
+    lxa_html_root_context_end_body((view)->context, html, mode)
+#define LXA_ROOT_BODY_END_FORMATTING(view, name) \
+    lxa_html_root_context_end_formatting((view)->context, (view)->formatting, name, LXA_TREE_IN_BODY)
+#define LXA_ROOT_BODY_END_FORM(view) \
+    lxa_html_root_context_end_form((view)->context, (view)->form_owner, LXA_TREE_IN_BODY)
+#define LXA_ROOT_BODY_END_PARAGRAPH(view) \
+    lxa_html_root_context_end_paragraph((view)->context, LXA_TREE_IN_BODY, &(view)->implied_paragraph)
+#define LXA_ROOT_BODY_END_SCOPED(view, name, scope) \
+    ((void) (scope), lxa_html_root_context_end_scoped((view)->context, \
+        (view)->formatting, name, LXA_TREE_IN_BODY))
+#define LXA_ROOT_BODY_END_ORDINARY(view, name) \
+    lxa_html_root_context_end_ordinary((view)->context, name, LXA_TREE_IN_BODY)
+#include "html/root_body_end.inc"
+#undef LXA_ROOT_BODY_END_NAME
+#undef LXA_ROOT_BODY_END_VIEW
+#undef LXA_ROOT_BODY_END_BODY
+#undef LXA_ROOT_BODY_END_FORMATTING
+#undef LXA_ROOT_BODY_END_FORM
+#undef LXA_ROOT_BODY_END_PARAGRAPH
+#undef LXA_ROOT_BODY_END_SCOPED
+#undef LXA_ROOT_BODY_END_ORDINARY
+
+lxa_status_t
+lxa_html_root_context_body_end_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, uint64_t *form_owner,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *implied_paragraph)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || implied_paragraph == NULL || *mode != LXA_TREE_IN_BODY || !context->body
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG
+        || lxa_html_tree_name_equals(token->name, "head", 4)
+        || lxa_html_tree_name_equals(token->name, "template", 8)
+        || lxa_html_tree_name_equals(token->name, "br", 2))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_body_end_plan_t plan = lxa_html_tree_root_body_end_plan(token->name);
+    bool needs_formatting = plan.action == LXA_HTML_ROOT_BODY_END_FORMATTING
+        || plan.action == LXA_HTML_ROOT_BODY_END_SCOPED;
+    if ((needs_formatting && formatting == NULL)
+        || (formatting != NULL && (formatting->store == NULL
+            || formatting->store->budget != context->stack->budget))
+        || (plan.action == LXA_HTML_ROOT_BODY_END_FORM && form_owner == NULL))
+        return LXA_ERROR_ARGUMENT;
+    bool ignore;
+    root_body_end_view_t view = {context, formatting, form_owner, false};
+    status = lxa_html_root_context_select_token(context, *mode, token->kind, token->name, &ignore);
+    if (status == LXA_OK && !ignore)
+        status = context_body_end_token(&view, token->name, plan, mode);
+    if (status == LXA_OK) *implied_paragraph = view.implied_paragraph;
+    return finish(context, status);
+}
+
 lxa_status_t
 lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, bool *eligible)

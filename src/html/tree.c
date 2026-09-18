@@ -3819,6 +3819,51 @@ frameset_child(tree_frameset_execute_view_t *view, const lxa_html_token_t *token
 #undef LXA_FRAMESET_EXECUTE_END
 
 static lxa_status_t
+tree_body_end_body(lxa_html_tree_t *tree, bool html, lxa_html_root_mode_t *mode)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+        lxa_vector_length(&tree->open_elements)
+    };
+    return tree_end_body(&view, html, mode);
+}
+
+static lxa_status_t
+tree_body_end_form(lxa_html_tree_t *tree)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+        lxa_vector_length(&tree->open_elements)
+    };
+    return tree_end_form(&view, &tree->form.handle);
+}
+
+static lxa_status_t
+tree_body_end_formatting(lxa_html_tree_t *tree, lxa_span_t name)
+{
+    lxa_status_t status = tree_recover_root_group(tree);
+    return status == LXA_OK ? adopt_formatting(tree, name) : status;
+}
+
+#define LXA_ROOT_BODY_END_NAME tree_body_end_token
+#define LXA_ROOT_BODY_END_VIEW lxa_html_tree_t
+#define LXA_ROOT_BODY_END_BODY tree_body_end_body
+#define LXA_ROOT_BODY_END_FORMATTING tree_body_end_formatting
+#define LXA_ROOT_BODY_END_FORM tree_body_end_form
+#define LXA_ROOT_BODY_END_PARAGRAPH tree_end_root_paragraph
+#define LXA_ROOT_BODY_END_SCOPED end_scoped_element
+#define LXA_ROOT_BODY_END_ORDINARY end_ordinary_element
+#include "html/root_body_end.inc"
+#undef LXA_ROOT_BODY_END_NAME
+#undef LXA_ROOT_BODY_END_VIEW
+#undef LXA_ROOT_BODY_END_BODY
+#undef LXA_ROOT_BODY_END_FORMATTING
+#undef LXA_ROOT_BODY_END_FORM
+#undef LXA_ROOT_BODY_END_PARAGRAPH
+#undef LXA_ROOT_BODY_END_SCOPED
+#undef LXA_ROOT_BODY_END_ORDINARY
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5257,17 +5302,9 @@ reprocess_body_start:
             goto reprocess_body_start;
         }
     }
-    if (token->kind == LXA_HTML_END_TAG
-        && (named(token->name, "body") || named(token->name, "html"))
-        && tree->mode == LXA_TREE_IN_BODY) {
-        const lxa_html_tree_scope_view_t view = {
-            tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
-            lxa_vector_length(&tree->open_elements)
-        };
-        /* The open stack retains ordinary descendants until EOF; </body>
-         * changes insertion mode without detaching or popping them. */
-        return tree_end_body(&view, named(token->name, "html"), &tree->mode);
-    }
+    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
+        return tree_body_end_token(tree, token->name,
+            lxa_html_tree_root_body_end_plan(token->name), &tree->mode);
     if (token->kind == LXA_HTML_END_TAG && named(token->name, "html")) {
         if (tree->mode == LXA_TREE_AFTER_HEAD
             || tree->mode == LXA_TREE_IN_HEAD
@@ -5275,42 +5312,13 @@ reprocess_body_start:
             status = ensure_body(tree);
             if (status != LXA_OK) return status;
         }
-        else if (tree->mode != LXA_TREE_IN_BODY
-                 && tree->mode != LXA_TREE_AFTER_BODY) {
+        else if (tree->mode != LXA_TREE_AFTER_BODY) {
             assert(false);
             return LXA_ERROR_INTERNAL;
         }
         tree->mode = LXA_TREE_AFTER_HTML;
         return LXA_OK;
     }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "col")
-        && tree->mode == LXA_TREE_IN_BODY)
-        return LXA_OK;
-    if (token->kind == LXA_HTML_END_TAG && lxa_html_tree_formatting_tag(token->name)
-        && tree->mode == LXA_TREE_IN_BODY) {
-        status = tree_recover_root_group(tree);
-        if (status != LXA_OK) return status;
-        return adopt_formatting(tree, token->name);
-    }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "form")
-        && tree->mode == LXA_TREE_IN_BODY) {
-        const lxa_html_tree_scope_view_t view = {
-            tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
-            lxa_vector_length(&tree->open_elements)
-        };
-        /* Ordinary descendants retain their open references and DOM parents. */
-        return tree_end_form(&view, &tree->form.handle);
-    }
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")
-        && tree->mode == LXA_TREE_IN_BODY) {
-        return tree_end_root_paragraph(tree);
-    }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY) {
-        lxa_html_scope_kind_t scope = lxa_html_tree_root_end_scope(token->name);
-        if (scope != 0) return end_scoped_element(tree, token->name, scope);
-    }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
-        return end_ordinary_element(tree, token->name);
     if (token->kind == LXA_HTML_TEXT) {
         if (tree->mode == LXA_TREE_BEFORE_HTML
             || tree->mode == LXA_TREE_BEFORE_HEAD
