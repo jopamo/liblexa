@@ -35,7 +35,7 @@ lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context)
 /* Accepted html/head/body starts after earlier routing. Reuse root construction
  * without capturing attributes; publish mode after admission, disable framesets
  * for explicit BODY. Latch failures while retaining completed roots.
- * Call outside templates, text and framesets; duplicate HEAD is engine-ignored.
+ * Call outside templates, text and framesets; ignore duplicate HEAD without WORK.
  * Mode storage must not alias the context, stack or token.
  */
 lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,

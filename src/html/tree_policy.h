@@ -42,6 +42,17 @@ typedef enum {
     LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
+typedef enum {
+    LXA_HTML_ROOT_START_OTHER, LXA_HTML_ROOT_START_HTML,
+    LXA_HTML_ROOT_START_HEAD, LXA_HTML_ROOT_START_BODY, LXA_HTML_ROOT_START_IGNORE_HEAD
+} lxa_html_root_start_action_t;
+
+/* Root dispatch after template/text/frameset and after-body routing.
+ * Classify normalized names without WORK or retained views.
+ */
+lxa_status_t lxa_html_tree_root_start_action(lxa_html_root_mode_t mode,
+    lxa_span_t name, lxa_html_root_start_action_t *out);
+
 static inline bool
 lxa_html_tree_frameset_mode(lxa_html_root_mode_t mode)
 {

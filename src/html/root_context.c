@@ -216,20 +216,28 @@ lxa_html_root_context_start_root(lxa_html_root_context_t *context,
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    if (mode == NULL || !body_start_mode_valid(context, *mode)
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
+    if (mode == NULL || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG)
         return LXA_ERROR_ARGUMENT;
-    lxa_html_root_element_t element;
-    if (lxa_html_tree_name_equals(token->name, "html", 4))
-        element = LXA_HTML_ROOT_ELEMENT_HTML;
-    else if (lxa_html_tree_name_equals(token->name, "head", 4)
-        && (*mode == LXA_TREE_BEFORE_HTML || *mode == LXA_TREE_BEFORE_HEAD))
-        element = LXA_HTML_ROOT_ELEMENT_HEAD;
-    else if (lxa_html_tree_name_equals(token->name, "body", 4))
-        element = LXA_HTML_ROOT_ELEMENT_BODY;
-    else return LXA_ERROR_ARGUMENT;
+    lxa_html_root_start_action_t action;
+    status = lxa_html_tree_root_start_action(*mode, token->name, &action);
+    if (status != LXA_OK) return status;
+    bool noscript = *mode == LXA_TREE_HEAD_NOSCRIPT && context->head && !context->body
+        && (action == LXA_HTML_ROOT_START_HTML || action == LXA_HTML_ROOT_START_IGNORE_HEAD);
+    bool after_body = (*mode == LXA_TREE_AFTER_BODY || *mode == LXA_TREE_AFTER_HTML)
+        && context->body && action == LXA_HTML_ROOT_START_HTML;
+    if (!body_start_mode_valid(context, *mode) && !noscript && !after_body)
+        return LXA_ERROR_ARGUMENT;
     if (!context->body && lxa_vector_length(&context->stack->elements) != 0)
         return LXA_ERROR_ARGUMENT;
+    lxa_html_root_element_t element;
+    switch (action) {
+        case LXA_HTML_ROOT_START_HTML: element = LXA_HTML_ROOT_ELEMENT_HTML; break;
+        case LXA_HTML_ROOT_START_HEAD: element = LXA_HTML_ROOT_ELEMENT_HEAD; break;
+        case LXA_HTML_ROOT_START_BODY: element = LXA_HTML_ROOT_ELEMENT_BODY; break;
+        case LXA_HTML_ROOT_START_IGNORE_HEAD: return LXA_OK;
+        default: return LXA_ERROR_ARGUMENT;
+    }
     return finish(context, context_start_root(context, element, token, mode));
 }
 

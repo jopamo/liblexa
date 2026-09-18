@@ -3818,6 +3818,7 @@ consume(lxa_html_tree_t *tree,
     lxa_html_token_t adjusted;
     lxa_dom_ref_t parent, child;
     bool template_ordinary;
+    lxa_html_root_start_action_t root_start = LXA_HTML_ROOT_START_OTHER;
     if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     if (tree->mode == LXA_TREE_INITIAL) {
         switch (lxa_html_tree_initial_action(token->kind, token->data)) {
@@ -4864,6 +4865,10 @@ reprocess_body_start:
         status = tree_recover_root_group(tree);
         if (status != LXA_OK) return status;
     }
+    if (token->kind == LXA_HTML_START_TAG) {
+        status = lxa_html_tree_root_start_action(tree->mode, token->name, &root_start);
+        if (status != LXA_OK) return status;
+    }
     if (token->kind == LXA_HTML_START_TAG
         && tree->mode == LXA_TREE_IN_BODY) {
         if (named(token->name, "frameset")) {
@@ -4890,9 +4895,7 @@ reprocess_body_start:
     }
     /* In-head, after-head and in-body ignore another head start. In table
      * context, fostering reprocesses it under the in-body rule as well. */
-    if (token->kind == LXA_HTML_START_TAG
-        && named(token->name, "head")
-        && tree->mode >= LXA_TREE_IN_HEAD)
+    if (token->kind == LXA_HTML_START_TAG && root_start == LXA_HTML_ROOT_START_IGNORE_HEAD)
         return LXA_OK;
     if (tree->mode == LXA_TREE_IN_BODY) {
         bool ignore;
@@ -5059,14 +5062,12 @@ reprocess_body_start:
             && tree->mode <= LXA_TREE_IN_HEAD) {
             return tree_start_head_noscript(tree, token);
         }
-        if (named(token->name, "html"))
+        if (root_start == LXA_HTML_ROOT_START_HTML)
             return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_HTML, token, &tree->mode);
-        if (named(token->name, "head")
-            && (tree->mode == LXA_TREE_BEFORE_HTML
-                || tree->mode == LXA_TREE_BEFORE_HEAD)) {
+        if (root_start == LXA_HTML_ROOT_START_HEAD) {
             return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_HEAD, token, &tree->mode);
         }
-        if (named(token->name, "body")) {
+        if (root_start == LXA_HTML_ROOT_START_BODY) {
             return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_BODY, token, &tree->mode);
         }
         if (named(token->name, "form")) {
