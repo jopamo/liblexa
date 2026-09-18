@@ -255,6 +255,13 @@ typedef struct {
     size_t space_prefix;
 } lxa_html_head_noscript_plan_t;
 
+static inline lxa_html_root_mode_t
+lxa_html_tree_head_noscript_next_mode(lxa_html_head_noscript_action_t action)
+{
+    return action == LXA_HTML_HEAD_NOSCRIPT_CLOSE || action == LXA_HTML_HEAD_NOSCRIPT_REPROCESS
+        ? LXA_TREE_IN_HEAD : LXA_TREE_HEAD_NOSCRIPT;
+}
+
 /* Plan accepted head-noscript tokens after EOF/text-mode dispatch. Charge the
  * text prefix scan before effects; engines insert spaces and publish mode.
  */

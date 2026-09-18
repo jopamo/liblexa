@@ -1267,6 +1267,27 @@ lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
 }
 
 lxa_status_t
+lxa_html_root_context_head_noscript_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_root_head_noscript_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_HEAD_NOSCRIPT || result == NULL || !context->head || context->body
+        || lxa_vector_length(&context->stack->elements) != 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_head_noscript_result_t out;
+    status = lxa_html_tree_head_noscript_plan(token, context->stack->budget,
+        &context->limit_reason, &out.plan);
+    if (status == LXA_OK) {
+        out.next_mode = lxa_html_tree_head_noscript_next_mode(out.plan.action);
+        *result = out;
+    }
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_root_context_frameset_body(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, bool *eligible)
 {

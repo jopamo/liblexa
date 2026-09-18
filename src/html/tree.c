@@ -4653,10 +4653,10 @@ reprocess_template_token:
             token = &adjusted;
         }
         if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE) return LXA_OK;
-        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE
-            || plan.action == LXA_HTML_HEAD_NOSCRIPT_REPROCESS) {
+        lxa_html_root_mode_t next_mode = lxa_html_tree_head_noscript_next_mode(plan.action);
+        if (next_mode != tree->mode) {
             tree->head_noscript = (lxa_dom_ref_t){0};
-            tree->mode = LXA_TREE_IN_HEAD;
+            tree->mode = next_mode;
             if (plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE) return LXA_OK;
         }
     }
