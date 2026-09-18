@@ -32,10 +32,12 @@ void lxa_html_root_context_destroy(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_html(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_head(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context);
-/* Accepted html/head/body starts after earlier routing. Reuse root construction
- * without capturing attributes; publish mode after admission, disable framesets
- * for explicit BODY. Latch failures while retaining completed roots.
- * Call outside templates, text and framesets; ignore duplicate HEAD without WORK.
+/* Root html/head/body dispatch after earlier mode/foreign routing. Recover current
+ * HTML colgroup for head/body in IN_BODY, then ignore HEAD before select routing.
+ * Root names bypass the select plan's unconditional continue path.
+ * Reuse root construction without capturing attributes; publish mode after
+ * admission, disable framesets for explicit BODY. Latch failures while retaining
+ * completed effects. Call outside templates, text and framesets.
  * Mode storage must not alias the context, stack or token.
  */
 lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,

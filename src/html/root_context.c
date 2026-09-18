@@ -210,6 +210,14 @@ LXA_ROOT_ENSURE_PUBLIC(body)
 #undef LXA_ROOT_START_FRAMESET
 #undef LXA_ROOT_START_ATTRIBUTES
 
+#define LXA_ROOT_START_DISPATCH_NAME context_dispatch_root_start
+#define LXA_ROOT_START_DISPATCH_VIEW lxa_html_root_context_t
+#define LXA_ROOT_START_DISPATCH_EXECUTE context_start_root
+#include "html/root_start_dispatch.inc"
+#undef LXA_ROOT_START_DISPATCH_NAME
+#undef LXA_ROOT_START_DISPATCH_VIEW
+#undef LXA_ROOT_START_DISPATCH_EXECUTE
+
 lxa_status_t
 lxa_html_root_context_start_root(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode)
@@ -230,15 +238,12 @@ lxa_html_root_context_start_root(lxa_html_root_context_t *context,
         return LXA_ERROR_ARGUMENT;
     if (!context->body && lxa_vector_length(&context->stack->elements) != 0)
         return LXA_ERROR_ARGUMENT;
-    lxa_html_root_element_t element;
-    switch (action) {
-        case LXA_HTML_ROOT_START_HTML: element = LXA_HTML_ROOT_ELEMENT_HTML; break;
-        case LXA_HTML_ROOT_START_HEAD: element = LXA_HTML_ROOT_ELEMENT_HEAD; break;
-        case LXA_HTML_ROOT_START_BODY: element = LXA_HTML_ROOT_ELEMENT_BODY; break;
-        case LXA_HTML_ROOT_START_IGNORE_HEAD: return LXA_OK;
-        default: return LXA_ERROR_ARGUMENT;
-    }
-    return finish(context, context_start_root(context, element, token, mode));
+    if (action == LXA_HTML_ROOT_START_OTHER) return LXA_ERROR_ARGUMENT;
+    if (*mode == LXA_TREE_IN_BODY && lxa_html_tree_root_control_group(token->kind, token->name))
+        status = lxa_html_root_context_control_group(context, *mode, token->kind, token->name);
+    if (status == LXA_OK)
+        status = context_dispatch_root_start(context, action, token, mode);
+    return finish(context, status);
 }
 
 #define LXA_ROOT_END_NAME context_prebody_end
