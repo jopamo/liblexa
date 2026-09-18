@@ -32,6 +32,14 @@ void lxa_html_root_context_destroy(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_html(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_head(lxa_html_root_context_t *context);
 lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context);
+/* Accepted html/head/body starts after earlier routing. Reuse root construction
+ * without capturing attributes; publish mode after admission, disable framesets
+ * for explicit BODY. Latch failures while retaining completed roots.
+ * Call outside templates, text and framesets; duplicate HEAD is engine-ignored.
+ * Mode storage must not alias the context, stack or token.
+ */
+lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
 /* Apply accepted prebody end recovery over an empty stack before BODY.
  * Publish each intermediate mode after construction, retaining it on later
  * failure. Engines continue remaining dispatch after success. No retained name

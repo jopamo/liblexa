@@ -1939,6 +1939,24 @@ apply_attributes(lxa_html_tree_t *tree,
     return LXA_OK;
 }
 
+#define LXA_ROOT_START_NAME tree_start_root
+#define LXA_ROOT_START_VIEW lxa_html_tree_t
+#define LXA_ROOT_START_HTML ensure_html
+#define LXA_ROOT_START_HEAD ensure_head
+#define LXA_ROOT_START_BODY ensure_body
+#define LXA_ROOT_START_FRAMESET(view) ((view)->frameset_ok = false)
+#define LXA_ROOT_START_ATTRIBUTES(view, element, token) \
+    apply_attributes(view, (element) == LXA_HTML_ROOT_ELEMENT_HTML ? (view)->html \
+        : (element) == LXA_HTML_ROOT_ELEMENT_HEAD ? (view)->head : (view)->body, token)
+#include "html/root_start.inc"
+#undef LXA_ROOT_START_NAME
+#undef LXA_ROOT_START_VIEW
+#undef LXA_ROOT_START_HTML
+#undef LXA_ROOT_START_HEAD
+#undef LXA_ROOT_START_BODY
+#undef LXA_ROOT_START_FRAMESET
+#undef LXA_ROOT_START_ATTRIBUTES
+
 static lxa_status_t
 connect_selectedcontent(lxa_html_tree_t *tree, lxa_dom_ref_t element)
 {
@@ -5041,32 +5059,15 @@ reprocess_body_start:
             && tree->mode <= LXA_TREE_IN_HEAD) {
             return tree_start_head_noscript(tree, token);
         }
-        if (named(token->name, "html")) {
-            bool initial = tree->mode == LXA_TREE_BEFORE_HTML;
-            status = ensure_html(tree);
-            if (status == LXA_OK)
-                status = apply_attributes(tree, tree->html, token);
-            if (status == LXA_OK && initial)
-                tree->mode = LXA_TREE_BEFORE_HEAD;
-            return status;
-        }
+        if (named(token->name, "html"))
+            return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_HTML, token, &tree->mode);
         if (named(token->name, "head")
             && (tree->mode == LXA_TREE_BEFORE_HTML
                 || tree->mode == LXA_TREE_BEFORE_HEAD)) {
-            status = ensure_head(tree);
-            if (status == LXA_OK)
-                status = apply_attributes(tree, tree->head, token);
-            if (status == LXA_OK) tree->mode = LXA_TREE_IN_HEAD;
-            return status;
+            return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_HEAD, token, &tree->mode);
         }
         if (named(token->name, "body")) {
-            status = ensure_body(tree);
-            if (status == LXA_OK) {
-                tree->frameset_ok = false;
-                status = apply_attributes(tree, tree->body, token);
-            }
-            if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
-            return status;
+            return tree_start_root(tree, LXA_HTML_ROOT_ELEMENT_BODY, token, &tree->mode);
         }
         if (named(token->name, "form")) {
             size_t keep;

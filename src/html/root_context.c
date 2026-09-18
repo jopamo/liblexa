@@ -193,6 +193,46 @@ LXA_ROOT_ENSURE_PUBLIC(head)
 LXA_ROOT_ENSURE_PUBLIC(body)
 #undef LXA_ROOT_ENSURE_PUBLIC
 
+#define LXA_ROOT_START_NAME context_start_root
+#define LXA_ROOT_START_VIEW lxa_html_root_context_t
+#define LXA_ROOT_START_HTML context_ensure_html
+#define LXA_ROOT_START_HEAD context_ensure_head
+#define LXA_ROOT_START_BODY context_ensure_body
+#define LXA_ROOT_START_FRAMESET(view) ((view)->frameset_ok = false)
+#define LXA_ROOT_START_ATTRIBUTES(view, element, token) \
+    ((void) (view), (void) (element), (void) (token), LXA_OK)
+#include "html/root_start.inc"
+#undef LXA_ROOT_START_NAME
+#undef LXA_ROOT_START_VIEW
+#undef LXA_ROOT_START_HTML
+#undef LXA_ROOT_START_HEAD
+#undef LXA_ROOT_START_BODY
+#undef LXA_ROOT_START_FRAMESET
+#undef LXA_ROOT_START_ATTRIBUTES
+
+lxa_status_t
+lxa_html_root_context_start_root(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_element_t element;
+    if (lxa_html_tree_name_equals(token->name, "html", 4))
+        element = LXA_HTML_ROOT_ELEMENT_HTML;
+    else if (lxa_html_tree_name_equals(token->name, "head", 4)
+        && (*mode == LXA_TREE_BEFORE_HTML || *mode == LXA_TREE_BEFORE_HEAD))
+        element = LXA_HTML_ROOT_ELEMENT_HEAD;
+    else if (lxa_html_tree_name_equals(token->name, "body", 4))
+        element = LXA_HTML_ROOT_ELEMENT_BODY;
+    else return LXA_ERROR_ARGUMENT;
+    if (!context->body && lxa_vector_length(&context->stack->elements) != 0)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, context_start_root(context, element, token, mode));
+}
+
 #define LXA_ROOT_END_NAME context_prebody_end
 #define LXA_ROOT_END_VIEW lxa_html_root_context_t
 #define LXA_ROOT_END_HTML context_ensure_html
