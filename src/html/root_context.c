@@ -891,6 +891,73 @@ lxa_html_root_context_end_form(lxa_html_root_context_t *context,
     return finish(context, lxa_html_control_stack_end_form(context->stack, owner));
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    uint64_t *owner;
+    lxa_html_root_form_action_t action;
+} root_form_view_t;
+
+static lxa_status_t
+context_form_closed(root_form_view_t *view, const lxa_html_token_t *token, size_t keep)
+{
+    (void) token;
+    lxa_html_root_context_t *context = view->context;
+    uint64_t identity;
+    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+        LXA_BUDGET_NAME_BYTES, 4, &context->limit_reason);
+    if (status == LXA_OK) status = check_body_child_depth(context, keep);
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_claim_identity(context->stack, &identity);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+    if (status == LXA_OK) {
+        *view->owner = identity;
+        view->action = LXA_HTML_ROOT_FORM_CLOSED;
+    }
+    return status;
+}
+
+static lxa_status_t
+context_form_open(root_form_view_t *view, const lxa_html_token_t *token)
+{
+    (void) token;
+    lxa_html_root_context_t *context = view->context;
+    size_t keep;
+    uint64_t identity;
+    lxa_status_t status = lxa_html_control_stack_scope_find(context->stack, 0,
+        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
+    if (status == LXA_OK) status = reserve_open_slot(context);
+    if (status == LXA_OK)
+        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_push(context->stack,
+            (lxa_span_t){(const uint8_t *) "form", 4}, LXA_DOM_NS_HTML, false, &identity);
+    if (status == LXA_OK) {
+        *view->owner = identity;
+        view->action = LXA_HTML_ROOT_FORM_OPEN;
+    }
+    return status;
+}
+
+#define LXA_ROOT_FORM_NAME context_start_form
+#define LXA_ROOT_FORM_VIEW root_form_view_t
+#define LXA_ROOT_FORM_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_FORM_PLAN(view, plan) \
+    lxa_html_control_stack_table_context_plan((view)->context->stack, 0, false, plan)
+#define LXA_ROOT_FORM_OWNED(view) (*(view)->owner != 0)
+#define LXA_ROOT_FORM_POP(view, keep) lxa_html_control_stack_pop_to((view)->context->stack, keep)
+#define LXA_ROOT_FORM_CLOSED context_form_closed
+#define LXA_ROOT_FORM_OPEN context_form_open
+#include "html/root_form_start.inc"
+#undef LXA_ROOT_FORM_NAME
+#undef LXA_ROOT_FORM_VIEW
+#undef LXA_ROOT_FORM_BODY
+#undef LXA_ROOT_FORM_PLAN
+#undef LXA_ROOT_FORM_OWNED
+#undef LXA_ROOT_FORM_POP
+#undef LXA_ROOT_FORM_CLOSED
+#undef LXA_ROOT_FORM_OPEN
+
 lxa_status_t
 lxa_html_root_context_start_form(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, uint64_t *owner, lxa_html_root_mode_t *mode,
@@ -902,51 +969,9 @@ lxa_html_root_context_start_form(lxa_html_root_context_t *context,
         || !body_start_mode_valid(context, *mode)
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_name_equals(token->name, "form", 4)) return LXA_ERROR_ARGUMENT;
-    status = context_ensure_body(context);
-    lxa_html_table_context_plan_t plan;
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        status = lxa_html_control_stack_table_context_plan(context->stack, 0, false, &plan);
-    }
-    lxa_html_root_form_action_t out = LXA_HTML_ROOT_FORM_IGNORE;
-    uint64_t identity = 0;
-    static const uint8_t name[] = "form";
-    if (status == LXA_OK && *owner != 0)
-        status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
-    else if (status == LXA_OK && plan.in_table) {
-        if (plan.keep == 0) {
-            assert(false);
-            return finish(context, LXA_ERROR_INTERNAL);
-        }
-        status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
-            sizeof(name) - 1, &context->limit_reason);
-        if (status == LXA_OK) status = check_body_child_depth(context, plan.keep);
-        if (status == LXA_OK)
-            status = lxa_html_control_stack_claim_identity(context->stack, &identity);
-        if (status == LXA_OK)
-            status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
-        if (status == LXA_OK) {
-            *owner = identity;
-            out = LXA_HTML_ROOT_FORM_CLOSED;
-        }
-    }
-    else if (status == LXA_OK) {
-        size_t keep;
-        status = lxa_html_control_stack_scope_find(context->stack, 0,
-            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
-        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
-        if (status == LXA_OK) status = reserve_open_slot(context);
-        if (status == LXA_OK)
-            status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
-        if (status == LXA_OK)
-            status = lxa_html_control_stack_push(context->stack,
-                (lxa_span_t){name, sizeof(name) - 1}, LXA_DOM_NS_HTML, false, &identity);
-        if (status == LXA_OK) {
-            *owner = identity;
-            out = LXA_HTML_ROOT_FORM_OPEN;
-        }
-    }
-    if (status == LXA_OK) *action = out;
+    root_form_view_t view = {context, owner, LXA_HTML_ROOT_FORM_IGNORE};
+    status = context_start_form(&view, token, mode);
+    if (status == LXA_OK) *action = view.action;
     return finish(context, status);
 }
 

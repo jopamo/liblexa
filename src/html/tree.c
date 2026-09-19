@@ -3960,6 +3960,55 @@ tree_body_end_formatting(lxa_html_tree_t *tree, lxa_span_t name)
 #undef LXA_ROOT_BODY_END_ORDINARY
 
 static lxa_status_t
+tree_root_form_plan(lxa_html_tree_t *tree, lxa_html_table_context_plan_t *plan)
+{
+    return plan_table_context(tree, &tree->open_elements, 0, false,
+        &plan->keep, &plan->in_table);
+}
+
+static lxa_status_t
+tree_root_form_closed(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t keep)
+{
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
+    lxa_dom_ref_t child;
+    lxa_status_t status = append_closed_element_at(tree, open[keep - 1],
+        (lxa_dom_ref_t){0}, token, &child);
+    if (status == LXA_OK) status = pop_elements(tree, &tree->open_elements, keep);
+    if (status == LXA_OK) tree->form = child;
+    return status;
+}
+
+static lxa_status_t
+tree_root_form_open(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    lxa_status_t status = lxa_budget_check(tree->nodes->budget,
+        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = close_paragraph(tree, NULL);
+    if (status == LXA_OK) status = reserve_open_elements(tree, 1);
+    if (status == LXA_OK) status = open_container(tree, token);
+    if (status == LXA_OK) tree->form = current_element(tree);
+    return status;
+}
+
+#define LXA_ROOT_FORM_NAME tree_start_root_form
+#define LXA_ROOT_FORM_VIEW lxa_html_tree_t
+#define LXA_ROOT_FORM_BODY ensure_body
+#define LXA_ROOT_FORM_PLAN tree_root_form_plan
+#define LXA_ROOT_FORM_OWNED(view) ((view)->form.handle != LXA_HANDLE_NONE)
+#define LXA_ROOT_FORM_POP(view, keep) pop_elements(view, &(view)->open_elements, keep)
+#define LXA_ROOT_FORM_CLOSED tree_root_form_closed
+#define LXA_ROOT_FORM_OPEN tree_root_form_open
+#include "html/root_form_start.inc"
+#undef LXA_ROOT_FORM_NAME
+#undef LXA_ROOT_FORM_VIEW
+#undef LXA_ROOT_FORM_BODY
+#undef LXA_ROOT_FORM_PLAN
+#undef LXA_ROOT_FORM_OWNED
+#undef LXA_ROOT_FORM_POP
+#undef LXA_ROOT_FORM_CLOSED
+#undef LXA_ROOT_FORM_OPEN
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5186,47 +5235,8 @@ reprocess_body_start:
             && tree->mode <= LXA_TREE_IN_HEAD) {
             return tree_start_head_noscript(tree, token);
         }
-        if (named(token->name, "form")) {
-            size_t keep;
-            bool in_table;
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            status = plan_table_context(tree, &tree->open_elements, 0, false,
-                                            &keep, &in_table);
-            if (status != LXA_OK) return status;
-            if (tree->form.handle != LXA_HANDLE_NONE) {
-                while (lxa_vector_length(&tree->open_elements) > keep) {
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                return LXA_OK;
-            }
-            if (in_table) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->open_elements.bytes.data;
-                if (keep == 0) return LXA_ERROR_INTERNAL;
-                status = append_closed_element_at(tree, open[keep - 1],
-                    (lxa_dom_ref_t){0}, token, &child);
-                if (status == LXA_OK) {
-                    while (lxa_vector_length(&tree->open_elements) > keep) {
-                        status = pop_element(tree);
-                        if (status != LXA_OK) return status;
-                    }
-                    tree->form = child;
-                }
-                return status;
-            }
-            status = lxa_budget_check(tree->nodes->budget,
-                LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = close_paragraph(tree, NULL);
-            if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-            if (status != LXA_OK) return status;
-            status = open_container(tree, token);
-            if (status == LXA_OK) tree->form = current_element(tree);
-            return status;
-        }
+        if (named(token->name, "form"))
+            return tree_start_root_form(tree, token, &tree->mode);
         if (lxa_html_tree_returning_text_element(token->name)) {
             lxa_html_root_text_plan_t plan;
             status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
