@@ -425,6 +425,15 @@ lxa_html_text_context_enter(lxa_html_text_context_t *context,
 lxa_status_t
 lxa_html_text_context_leave(lxa_html_text_context_t *context,
     lxa_html_root_mode_t *mode);
+/* Validate returning TEXT intake without DOM effects. Report APPEND without
+ * copying/retaining bytes, or restore the return mode and clear the context for
+ * matching ends/EOF. Publish action only on success; failures preserve state and
+ * output. Engines emit text, latch failures and reprocess EOF in the restored
+ * root/template/frameset mode. Token/mode/action must not alias context or each other.
+ */
+lxa_status_t lxa_html_text_context_token(lxa_html_text_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
+    lxa_html_text_action_t *action);
 
 /* Apply feedback for an already accepted HTML text-start rule. An unknown name
  * is an internal dispatch mismatch. The tokenizer copies its end target;

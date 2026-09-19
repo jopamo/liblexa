@@ -82,6 +82,40 @@ lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
     return LXA_OK;
 }
 
+static lxa_status_t
+text_context_target(lxa_html_text_context_t *context, lxa_span_t *target)
+{
+    *target = context->plan.end_tag;
+    return LXA_OK;
+}
+
+#define LXA_TEXT_TOKEN_NAME text_context_token
+#define LXA_TEXT_TOKEN_VIEW lxa_html_text_context_t
+#define LXA_TEXT_TOKEN_TARGET text_context_target
+#define LXA_TEXT_TOKEN_APPEND(view, token) ((void) (view), (void) (token), LXA_OK)
+#define LXA_TEXT_TOKEN_RETURN lxa_html_text_context_leave
+#include "html/text_token_execute.inc"
+#undef LXA_TEXT_TOKEN_NAME
+#undef LXA_TEXT_TOKEN_VIEW
+#undef LXA_TEXT_TOKEN_TARGET
+#undef LXA_TEXT_TOKEN_APPEND
+#undef LXA_TEXT_TOKEN_RETURN
+
+lxa_status_t
+lxa_html_text_context_token(lxa_html_text_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
+    lxa_html_text_action_t *action)
+{
+    if (context == NULL || mode == NULL || action == NULL || *mode != LXA_TREE_TEXT
+        || context->plan.mode == LXA_HTML_DATA || !lxa_html_tree_token_shape_valid(token))
+        return LXA_ERROR_ARGUMENT;
+    if (!lxa_html_text_context_valid(context)) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return text_context_token(context, token, mode, action);
+}
+
 lxa_status_t
 lxa_html_tree_namespace_feedback(lxa_html_tokenizer_t *tokenizer,
     lxa_dom_namespace_t ns)

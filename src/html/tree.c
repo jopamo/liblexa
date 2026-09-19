@@ -2597,13 +2597,33 @@ enter_text_mode(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-leave_text_mode(lxa_html_tree_t *tree)
+leave_text_mode(lxa_html_tree_t *tree, lxa_html_root_mode_t *mode)
 {
-    lxa_status_t status = lxa_html_text_context_leave(&tree->text_context, &tree->mode);
+    lxa_status_t status = lxa_html_text_context_leave(&tree->text_context, mode);
     if (status != LXA_OK) return status;
     tree->text_element = (lxa_dom_ref_t){0};
     return LXA_OK;
 }
+
+static lxa_status_t
+tree_text_target(lxa_html_tree_t *tree, lxa_span_t *target)
+{
+    return lxa_dom_nodes_element_name(tree->nodes, tree->text_element, target) == LXA_OK
+        ? LXA_OK : LXA_ERROR_INTERNAL;
+}
+
+#define LXA_TEXT_TOKEN_NAME tree_text_token
+#define LXA_TEXT_TOKEN_VIEW lxa_html_tree_t
+#define LXA_TEXT_TOKEN_TARGET tree_text_target
+#define LXA_TEXT_TOKEN_APPEND(view, token) \
+    append_character(view, (view)->text_element, LXA_DOM_KIND_TEXT, (token)->data)
+#define LXA_TEXT_TOKEN_RETURN leave_text_mode
+#include "html/text_token_execute.inc"
+#undef LXA_TEXT_TOKEN_NAME
+#undef LXA_TEXT_TOKEN_VIEW
+#undef LXA_TEXT_TOKEN_TARGET
+#undef LXA_TEXT_TOKEN_APPEND
+#undef LXA_TEXT_TOKEN_RETURN
 
 static lxa_status_t
 begin_text_element_at(lxa_html_tree_t *tree,
@@ -3913,7 +3933,7 @@ consume(lxa_html_tree_t *tree,
         }
     }
     if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
-        status = leave_text_mode(tree);
+        status = tree_text_token(tree, token, &tree->mode, NULL);
         if (status != LXA_OK) return status;
     }
     if (token->kind != LXA_HTML_TEXT) {
@@ -4735,20 +4755,8 @@ reprocess_template_token:
     if (token->kind == LXA_HTML_EOF) {
         return tree_finish_root(tree, &tree->mode);
     }
-    if (tree->mode == LXA_TREE_TEXT) {
-        lxa_span_t name = {0};
-        lxa_html_text_action_t action;
-        if (token->kind == LXA_HTML_END_TAG
-            && lxa_dom_nodes_element_name(tree->nodes, tree->text_element, &name) != LXA_OK)
-            return LXA_ERROR_INTERNAL;
-        status = lxa_html_tree_text_action(token->kind, token->name, name, &action);
-        if (status != LXA_OK) return LXA_ERROR_INTERNAL;
-        if (action == LXA_HTML_TEXT_APPEND) {
-            return append_character(tree, tree->text_element,
-                                    LXA_DOM_KIND_TEXT, token->data);
-        }
-        return leave_text_mode(tree);
-    }
+    if (tree->mode == LXA_TREE_TEXT)
+        return tree_text_token(tree, token, &tree->mode, NULL);
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         lxa_html_head_noscript_plan_t plan;
         status = lxa_html_tree_head_noscript_plan(token, tree->nodes->budget,
