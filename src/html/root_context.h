@@ -53,6 +53,16 @@ lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_body_end_token(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, uint64_t *form_owner,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *implied_paragraph);
+/* Root end prelude after earlier mode/foreign routing and prebody recovery.
+ * Recover current HTML colgroup before ignoring an in-body head end. Ignore
+ * template/unmatched head, or report in-body br reprocessing as a start with
+ * attributes/self-closing cleared by the engine. Publish only on success and
+ * latch recovery failure; do not change mode/framesets or retain token views.
+ * Output must not alias context/stack/token storage.
+ */
+lxa_status_t lxa_html_root_context_end_prelude(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t mode,
+    lxa_html_root_end_prelude_action_t *action);
 /* Apply accepted prebody end recovery over an empty stack before BODY.
  * Publish each intermediate mode after construction, retaining it on later
  * failure. Engines continue remaining dispatch after success. No retained name

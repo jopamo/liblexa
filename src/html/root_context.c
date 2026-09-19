@@ -1193,6 +1193,28 @@ lxa_html_root_context_control_group(lxa_html_root_context_t *context,
     return finish(context, recover_root_group(context));
 }
 
+#define LXA_ROOT_END_PRELUDE_NAME context_end_prelude
+#define LXA_ROOT_END_PRELUDE_VIEW lxa_html_root_context_t
+#define LXA_ROOT_END_PRELUDE_GROUP recover_root_group
+#include "html/root_end_prelude.inc"
+#undef LXA_ROOT_END_PRELUDE_NAME
+#undef LXA_ROOT_END_PRELUDE_VIEW
+#undef LXA_ROOT_END_PRELUDE_GROUP
+
+lxa_status_t
+lxa_html_root_context_end_prelude(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t mode,
+    lxa_html_root_end_prelude_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (action == NULL || !body_start_mode_valid(context, mode)
+        || (mode == LXA_TREE_IN_BODY && !context->body)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, context_end_prelude(context, mode, token->name, action));
+}
+
 #define LXA_AFTER_BODY_NAME root_execute_after_body
 #define LXA_AFTER_BODY_VIEW root_data_view_t
 #define LXA_AFTER_BODY_RECONSTRUCT(view) lxa_html_root_context_reconstruct((view)->context, (view)->formatting)

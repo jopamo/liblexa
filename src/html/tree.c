@@ -3818,6 +3818,14 @@ frameset_child(tree_frameset_execute_view_t *view, const lxa_html_token_t *token
 #undef LXA_FRAMESET_EXECUTE_FRAME
 #undef LXA_FRAMESET_EXECUTE_END
 
+#define LXA_ROOT_END_PRELUDE_NAME tree_end_prelude
+#define LXA_ROOT_END_PRELUDE_VIEW lxa_html_tree_t
+#define LXA_ROOT_END_PRELUDE_GROUP tree_recover_root_group
+#include "html/root_end_prelude.inc"
+#undef LXA_ROOT_END_PRELUDE_NAME
+#undef LXA_ROOT_END_PRELUDE_VIEW
+#undef LXA_ROOT_END_PRELUDE_GROUP
+
 static lxa_status_t
 tree_body_end_body(lxa_html_tree_t *tree, bool html, lxa_html_root_mode_t *mode)
 {
@@ -4900,20 +4908,22 @@ reprocess_template_token:
         status = tree_prebody_end(tree, action, &tree->mode);
         if (status != LXA_OK) return status;
     }
-    if (tree->mode == LXA_TREE_IN_BODY
-        && token->kind == LXA_HTML_END_TAG
-        && named(token->name, "br")) {
-        /* In body, </br> follows the br start-tag algorithm; any end-tag
-         * attributes are discarded before table fostering or insertion. */
-        adjusted = *token;
-        adjusted.kind = LXA_HTML_START_TAG;
-        adjusted.attributes = NULL;
-        adjusted.attribute_count = 0;
-        adjusted.self_closing = false;
-        token = &adjusted;
+    if (token->kind == LXA_HTML_END_TAG) {
+        lxa_html_root_end_prelude_action_t action;
+        status = tree_end_prelude(tree, tree->mode, token->name, &action);
+        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_ROOT_END_IGNORE) return LXA_OK;
+        if (action == LXA_HTML_ROOT_END_BR_START) {
+            adjusted = *token;
+            adjusted.kind = LXA_HTML_START_TAG;
+            adjusted.attributes = NULL;
+            adjusted.attribute_count = 0;
+            adjusted.self_closing = false;
+            token = &adjusted;
+        }
     }
 reprocess_body_start:
-    if (tree->mode == LXA_TREE_IN_BODY
+    if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
         && lxa_html_tree_root_control_group(token->kind, token->name)) {
         status = tree_recover_root_group(tree);
         if (status != LXA_OK) return status;
@@ -4934,17 +4944,6 @@ reprocess_body_start:
             return begin_root_frameset(tree, token, true);
         }
         if (named(token->name, "frame")) return LXA_OK;
-    }
-    /* A template end without an active template is ignored by the in-head
-     * rule, including when that rule is reached from body/table/select. */
-    if (token->kind == LXA_HTML_END_TAG
-        && named(token->name, "template"))
-        return LXA_OK;
-    /* Ignore unmatched head ends after column-group recovery. */
-    if (token->kind == LXA_HTML_END_TAG
-        && named(token->name, "head")
-        && tree->mode >= LXA_TREE_AFTER_HEAD) {
-        return LXA_OK;
     }
     if (token->kind == LXA_HTML_START_TAG && root_start != LXA_HTML_ROOT_START_OTHER)
         return tree_dispatch_root_start(tree, root_start, token, &tree->mode);

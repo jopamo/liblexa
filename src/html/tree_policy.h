@@ -53,6 +53,10 @@ typedef enum {
 lxa_status_t lxa_html_tree_root_start_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_root_start_action_t *out);
 
+typedef enum {
+    LXA_HTML_ROOT_END_CONTINUE, LXA_HTML_ROOT_END_IGNORE, LXA_HTML_ROOT_END_BR_START
+} lxa_html_root_end_prelude_action_t;
+
 static inline bool
 lxa_html_tree_frameset_mode(lxa_html_root_mode_t mode)
 {
