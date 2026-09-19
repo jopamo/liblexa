@@ -497,6 +497,44 @@ lxa_html_root_context_start_xmp(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_formatting_list_t *formatting;
+} root_void_view_t;
+
+static lxa_status_t
+root_void_paragraph(root_void_view_t *view)
+{
+    size_t keep;
+    lxa_status_t status = lxa_html_control_stack_scope_find(view->context->stack, 0,
+        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
+    return status == LXA_OK ? lxa_html_control_stack_pop_to(view->context->stack, keep) : status;
+}
+
+#define LXA_ROOT_VOID_NAME context_start_void
+#define LXA_ROOT_VOID_VIEW root_void_view_t
+#define LXA_ROOT_VOID_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_VOID_HEAD(view) context_ensure_head((view)->context)
+#define LXA_ROOT_VOID_FRAMESET(view) ((view)->context->frameset_ok)
+#define LXA_ROOT_VOID_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_ROOT_VOID_REASON(view) (&(view)->context->limit_reason)
+#define LXA_ROOT_VOID_PARAGRAPH root_void_paragraph
+#define LXA_ROOT_VOID_RECONSTRUCT(view) \
+    lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_ROOT_VOID_INSERT(view, token, head, hr, mode) \
+    ((void) (view), (void) (token), (void) (head), (void) (hr), (void) (mode), LXA_OK)
+#include "html/root_void_start.inc"
+#undef LXA_ROOT_VOID_NAME
+#undef LXA_ROOT_VOID_VIEW
+#undef LXA_ROOT_VOID_BODY
+#undef LXA_ROOT_VOID_HEAD
+#undef LXA_ROOT_VOID_FRAMESET
+#undef LXA_ROOT_VOID_BUDGET
+#undef LXA_ROOT_VOID_REASON
+#undef LXA_ROOT_VOID_PARAGRAPH
+#undef LXA_ROOT_VOID_RECONSTRUCT
+#undef LXA_ROOT_VOID_INSERT
+
 lxa_status_t
 lxa_html_root_context_start_void(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
@@ -534,34 +572,8 @@ lxa_html_root_context_start_void(lxa_html_root_context_t *context,
         || (formatting != NULL && (formatting->store == NULL
             || formatting->store->budget != context->stack->budget)))
         return LXA_ERROR_ARGUMENT;
-    if (head) {
-        status = *mode == LXA_TREE_IN_BODY ? context_ensure_body(context) : context_ensure_head(context);
-        if (status == LXA_OK && *mode < LXA_TREE_IN_HEAD) *mode = LXA_TREE_IN_HEAD;
-        return finish(context, status);
-    }
-    status = context_ensure_body(context);
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        if (context->frameset_ok) {
-            if (lxa_html_tree_name_equals(token->name, "input", 5)) {
-                bool hidden;
-                status = lxa_html_tree_hidden_input(token, context->stack->budget,
-                    &context->limit_reason, &hidden);
-                if (status == LXA_OK && !hidden) context->frameset_ok = false;
-            }
-            else if (!lxa_html_tree_body_void_frameset_exempt(token->name))
-                context->frameset_ok = false;
-        }
-    }
-    if (status == LXA_OK && lxa_html_tree_name_equals(token->name, "hr", 2)) {
-        size_t keep;
-        status = lxa_html_control_stack_scope_find(context->stack, 0,
-            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
-        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
-    }
-    else if (status == LXA_OK && reconstruct)
-        status = lxa_html_root_context_reconstruct(context, formatting);
-    return finish(context, status);
+    root_void_view_t view = {context, formatting};
+    return finish(context, context_start_void(&view, token, head, reconstruct, mode));
 }
 
 lxa_status_t

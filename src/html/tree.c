@@ -3847,6 +3847,43 @@ frameset_child(tree_frameset_execute_view_t *view, const lxa_html_token_t *token
 #undef LXA_ROOT_END_PRELUDE_GROUP
 
 static lxa_status_t
+tree_root_void_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    bool head, bool hr, lxa_html_root_mode_t mode)
+{
+    if (head)
+        return append_void(tree, mode == LXA_TREE_IN_BODY ? current_element(tree)
+            : mode == LXA_TREE_HEAD_NOSCRIPT ? tree->head_noscript : tree->head, token);
+    if (hr) {
+        lxa_dom_ref_t parent, before;
+        lxa_status_t status = root_insertion_location(tree, current_element(tree), &parent, &before);
+        return status == LXA_OK ? append_closed_element_at(tree, parent, before, token, NULL) : status;
+    }
+    return append_void(tree, current_element(tree), token);
+}
+
+#define LXA_ROOT_VOID_NAME tree_start_root_void
+#define LXA_ROOT_VOID_VIEW lxa_html_tree_t
+#define LXA_ROOT_VOID_BODY ensure_body
+#define LXA_ROOT_VOID_HEAD ensure_head
+#define LXA_ROOT_VOID_FRAMESET(view) ((view)->frameset_ok)
+#define LXA_ROOT_VOID_BUDGET(view) ((view)->nodes->budget)
+#define LXA_ROOT_VOID_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_ROOT_VOID_PARAGRAPH(view) close_paragraph(view, NULL)
+#define LXA_ROOT_VOID_RECONSTRUCT reconstruct_formatting
+#define LXA_ROOT_VOID_INSERT tree_root_void_insert
+#include "html/root_void_start.inc"
+#undef LXA_ROOT_VOID_NAME
+#undef LXA_ROOT_VOID_VIEW
+#undef LXA_ROOT_VOID_BODY
+#undef LXA_ROOT_VOID_HEAD
+#undef LXA_ROOT_VOID_FRAMESET
+#undef LXA_ROOT_VOID_BUDGET
+#undef LXA_ROOT_VOID_REASON
+#undef LXA_ROOT_VOID_PARAGRAPH
+#undef LXA_ROOT_VOID_RECONSTRUCT
+#undef LXA_ROOT_VOID_INSERT
+
+static lxa_status_t
 tree_head_end_prepare(lxa_html_tree_t *tree, lxa_html_head_end_action_t action)
 {
     if (action == LXA_HTML_HEAD_END_HTML) return LXA_OK;
@@ -5198,47 +5235,11 @@ reprocess_body_start:
         if (named(token->name, "plaintext")) {
             return begin_root_plaintext(tree, tokenizer, token);
         }
-        if (lxa_html_tree_head_void(token->name)) {
-            bool in_body = tree->mode == LXA_TREE_IN_BODY;
-            status = in_body ? ensure_body(tree) : ensure_head(tree);
-            if (status == LXA_OK)
-                status = append_void(tree, in_body ? current_element(tree)
-                    : tree->mode == LXA_TREE_HEAD_NOSCRIPT
-                      ? tree->head_noscript : tree->head, token);
-            if (status == LXA_OK && tree->mode < LXA_TREE_IN_HEAD)
-                tree->mode = LXA_TREE_IN_HEAD;
-            return status;
-        }
-        if (lxa_html_tree_body_void(token->name)) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            if (tree->frameset_ok) {
-                if (named(token->name, "input")) {
-                    bool hidden;
-                    status = lxa_html_tree_hidden_input(token,
-                        tree->nodes->budget, &tree->nodes->limit_reason, &hidden);
-                    if (status != LXA_OK) return status;
-                    if (!hidden) tree->frameset_ok = false;
-                }
-                else if (!lxa_html_tree_body_void_frameset_exempt(token->name))
-                    tree->frameset_ok = false;
-            }
-            if (named(token->name, "hr")) {
-                lxa_dom_ref_t parent, before;
-                status = close_paragraph(tree, NULL);
-                if (status == LXA_OK)
-                    status = root_insertion_location(tree, current_element(tree),
-                                                      &parent, &before);
-                if (status != LXA_OK) return status;
-                return append_closed_element_at(tree, parent, before, token, NULL);
-            }
-            else if (lxa_html_tree_body_void_reconstructs(token->name)) {
-                status = reconstruct_formatting(tree);
-                if (status != LXA_OK) return status;
-            }
-            return append_void(tree, current_element(tree), token);
-        }
+        if (lxa_html_tree_head_void(token->name))
+            return tree_start_root_void(tree, token, true, false, &tree->mode);
+        if (lxa_html_tree_body_void(token->name))
+            return tree_start_root_void(tree, token, false,
+                lxa_html_tree_body_void_reconstructs(token->name), &tree->mode);
         if (lxa_html_tree_table_part(token->name))
             return open_table_part(tree, token);
         if (named(token->name, "svg") || named(token->name, "math")) {
