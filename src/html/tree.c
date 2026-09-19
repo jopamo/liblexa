@@ -2645,6 +2645,18 @@ begin_text_element_at(lxa_html_tree_t *tree,
            : status;
 }
 
+#define LXA_ROOT_TEXT_PREPARE_NAME tree_prepare_root_text
+#define LXA_ROOT_TEXT_PREPARE_VIEW lxa_html_tree_t
+#define LXA_ROOT_TEXT_PREPARE_BODY ensure_body
+#define LXA_ROOT_TEXT_PREPARE_HEAD ensure_head
+#define LXA_ROOT_TEXT_PREPARE_FRAMESET(view) ((view)->frameset_ok)
+#include "html/root_text_prepare.inc"
+#undef LXA_ROOT_TEXT_PREPARE_NAME
+#undef LXA_ROOT_TEXT_PREPARE_VIEW
+#undef LXA_ROOT_TEXT_PREPARE_BODY
+#undef LXA_ROOT_TEXT_PREPARE_HEAD
+#undef LXA_ROOT_TEXT_PREPARE_FRAMESET
+
 static lxa_status_t
 begin_text_element(lxa_html_tree_t *tree,
     lxa_html_tokenizer_t *tokenizer, lxa_dom_ref_t parent,
@@ -5219,10 +5231,8 @@ reprocess_body_start:
             lxa_html_root_text_plan_t plan;
             status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
             if (status != LXA_OK) return status;
-            status = plan.body ? ensure_body(tree) : ensure_head(tree);
+            status = tree_prepare_root_text(tree, &plan, &tree->mode);
             if (status != LXA_OK) return status;
-            tree->mode = plan.return_mode;
-            if (plan.disable_frameset) tree->frameset_ok = false;
             parent = plan.body ? current_element(tree)
                 : tree->mode == LXA_TREE_HEAD_NOSCRIPT ? tree->head_noscript : tree->head;
             status = begin_text_element(tree, tokenizer, parent, token);

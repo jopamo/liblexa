@@ -307,6 +307,18 @@ lxa_html_root_context_head_end(lxa_html_root_context_t *context, lxa_span_t name
     return finish(context, status);
 }
 
+#define LXA_ROOT_TEXT_PREPARE_NAME context_prepare_text
+#define LXA_ROOT_TEXT_PREPARE_VIEW lxa_html_root_context_t
+#define LXA_ROOT_TEXT_PREPARE_BODY context_ensure_body
+#define LXA_ROOT_TEXT_PREPARE_HEAD context_ensure_head
+#define LXA_ROOT_TEXT_PREPARE_FRAMESET(view) ((view)->frameset_ok)
+#include "html/root_text_prepare.inc"
+#undef LXA_ROOT_TEXT_PREPARE_NAME
+#undef LXA_ROOT_TEXT_PREPARE_VIEW
+#undef LXA_ROOT_TEXT_PREPARE_BODY
+#undef LXA_ROOT_TEXT_PREPARE_HEAD
+#undef LXA_ROOT_TEXT_PREPARE_FRAMESET
+
 lxa_status_t
 lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
@@ -329,10 +341,8 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
         || ((*mode == LXA_TREE_IN_HEAD || *mode == LXA_TREE_HEAD_NOSCRIPT
             || *mode == LXA_TREE_AFTER_HEAD) && !context->head))
         return LXA_ERROR_ARGUMENT;
-    status = plan.body ? context_ensure_body(context) : context_ensure_head(context);
+    status = context_prepare_text(context, &plan, mode);
     if (status == LXA_OK) {
-        *mode = plan.return_mode;
-        if (plan.disable_frameset) context->frameset_ok = false;
         status = lxa_html_text_context_enter(text, tokenizer, token->name,
             plan.return_mode, &context->limit_reason);
     }
