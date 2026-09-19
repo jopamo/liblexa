@@ -280,6 +280,16 @@ lxa_html_root_context_finish(lxa_html_root_context_t *context, lxa_html_root_mod
     return finish(context, context_finish_root(context, mode));
 }
 
+#define LXA_ROOT_HEAD_END_NAME context_head_end
+#define LXA_ROOT_HEAD_END_VIEW lxa_html_root_context_t
+#define LXA_ROOT_HEAD_END_PREPARE(view, action) ((void) (view), (void) (action), LXA_OK)
+#define LXA_ROOT_HEAD_END_BODY context_ensure_body
+#include "html/root_head_end.inc"
+#undef LXA_ROOT_HEAD_END_NAME
+#undef LXA_ROOT_HEAD_END_VIEW
+#undef LXA_ROOT_HEAD_END_PREPARE
+#undef LXA_ROOT_HEAD_END_BODY
+
 lxa_status_t
 lxa_html_root_context_head_end(lxa_html_root_context_t *context, lxa_span_t name,
     lxa_html_root_mode_t *mode, lxa_html_head_end_action_t *action)
@@ -292,18 +302,8 @@ lxa_html_root_context_head_end(lxa_html_root_context_t *context, lxa_span_t name
     lxa_html_head_end_action_t out;
     status = lxa_html_tree_head_end_action(name, &out);
     if (status != LXA_OK) return status;
-    if (out == LXA_HTML_HEAD_END_BODY || out == LXA_HTML_HEAD_END_HTML || out == LXA_HTML_HEAD_END_BR)
-        status = context_ensure_body(context);
-    if (status == LXA_OK) {
-        switch (out) {
-            case LXA_HTML_HEAD_END_IGNORE: break;
-            case LXA_HTML_HEAD_END_CLOSE: *mode = LXA_TREE_AFTER_HEAD; break;
-            case LXA_HTML_HEAD_END_BODY: *mode = LXA_TREE_AFTER_BODY; break;
-            case LXA_HTML_HEAD_END_HTML: *mode = LXA_TREE_AFTER_HTML; break;
-            case LXA_HTML_HEAD_END_BR: *mode = LXA_TREE_IN_BODY; break;
-        }
-        *action = out;
-    }
+    status = context_head_end(context, out, mode);
+    if (status == LXA_OK) *action = out;
     return finish(context, status);
 }
 

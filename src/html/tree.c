@@ -3827,6 +3827,25 @@ frameset_child(tree_frameset_execute_view_t *view, const lxa_html_token_t *token
 #undef LXA_ROOT_END_PRELUDE_GROUP
 
 static lxa_status_t
+tree_head_end_prepare(lxa_html_tree_t *tree, lxa_html_head_end_action_t action)
+{
+    if (action == LXA_HTML_HEAD_END_HTML) return LXA_OK;
+    return lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+        (tree->body.handle == LXA_HANDLE_NONE ? 1 : 0) + (action == LXA_HTML_HEAD_END_BR ? 1 : 0),
+        &tree->nodes->limit_reason);
+}
+
+#define LXA_ROOT_HEAD_END_NAME tree_head_end
+#define LXA_ROOT_HEAD_END_VIEW lxa_html_tree_t
+#define LXA_ROOT_HEAD_END_PREPARE tree_head_end_prepare
+#define LXA_ROOT_HEAD_END_BODY ensure_body
+#include "html/root_head_end.inc"
+#undef LXA_ROOT_HEAD_END_NAME
+#undef LXA_ROOT_HEAD_END_VIEW
+#undef LXA_ROOT_HEAD_END_PREPARE
+#undef LXA_ROOT_HEAD_END_BODY
+
+static lxa_status_t
 tree_body_end_body(lxa_html_tree_t *tree, bool html, lxa_html_root_mode_t *mode)
 {
     const lxa_html_tree_scope_view_t view = {
@@ -5275,22 +5294,9 @@ reprocess_body_start:
     if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD) {
         lxa_html_head_end_action_t action;
         status = lxa_html_tree_head_end_action(token->name, &action);
+        if (status == LXA_OK) status = tree_head_end(tree, action, &tree->mode);
         if (status != LXA_OK) return status;
-        if (action == LXA_HTML_HEAD_END_CLOSE) {
-            tree->mode = LXA_TREE_AFTER_HEAD;
-            return LXA_OK;
-        }
-        if (action == LXA_HTML_HEAD_END_IGNORE) return LXA_OK;
-        if (action != LXA_HTML_HEAD_END_HTML) {
-            bool br = action == LXA_HTML_HEAD_END_BR;
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                (tree->body.handle == LXA_HANDLE_NONE ? 1 : 0) + (br ? 1 : 0),
-                &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = br ? LXA_TREE_IN_BODY : LXA_TREE_AFTER_BODY;
-            if (!br) return LXA_OK;
+        if (action == LXA_HTML_HEAD_END_BR) {
             /* Reprocess through the in-body start-tag rule with no attributes. */
             adjusted = *token;
             adjusted.kind = LXA_HTML_START_TAG;
@@ -5300,24 +5306,11 @@ reprocess_body_start:
             token = &adjusted;
             goto reprocess_body_start;
         }
+        return LXA_OK;
     }
     if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
         return tree_body_end_token(tree, token->name,
             lxa_html_tree_root_body_end_plan(token->name), &tree->mode);
-    if (token->kind == LXA_HTML_END_TAG && named(token->name, "html")) {
-        if (tree->mode == LXA_TREE_AFTER_HEAD
-            || tree->mode == LXA_TREE_IN_HEAD
-            || tree->mode == LXA_TREE_BEFORE_HEAD) {
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-        }
-        else if (tree->mode != LXA_TREE_AFTER_BODY) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-        tree->mode = LXA_TREE_AFTER_HTML;
-        return LXA_OK;
-    }
     if (token->kind == LXA_HTML_TEXT) {
         if (tree->mode == LXA_TREE_BEFORE_HTML
             || tree->mode == LXA_TREE_BEFORE_HEAD
