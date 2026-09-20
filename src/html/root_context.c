@@ -1047,6 +1047,39 @@ ordinary_container_start(lxa_span_t name)
         && !lxa_html_tree_name_equals(name, "math", 4);
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_formatting_list_t *formatting;
+    uint64_t *identity;
+} root_container_start_view_t;
+
+static lxa_status_t
+context_container_insert(root_container_start_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_root_context_t *context = view->context;
+    lxa_status_t status = check_body_child_depth(context,
+        lxa_vector_length(&context->stack->elements));
+    return status == LXA_OK ? lxa_html_control_stack_push_token(context->stack,
+        token, LXA_DOM_NS_HTML, view->identity) : status;
+}
+
+#define LXA_ROOT_CONTAINER_START_NAME context_start_container
+#define LXA_ROOT_CONTAINER_START_VIEW root_container_start_view_t
+#define LXA_ROOT_CONTAINER_START_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_CONTAINER_START_FRAMESET(view) ((view)->context->frameset_ok)
+#define LXA_ROOT_CONTAINER_START_PREPARE(view, name) root_prepare_container((view)->context, name, false)
+#define LXA_ROOT_CONTAINER_START_RECONSTRUCT(view) \
+    lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_ROOT_CONTAINER_START_INSERT context_container_insert
+#include "html/root_container_start.inc"
+#undef LXA_ROOT_CONTAINER_START_NAME
+#undef LXA_ROOT_CONTAINER_START_VIEW
+#undef LXA_ROOT_CONTAINER_START_BODY
+#undef LXA_ROOT_CONTAINER_START_FRAMESET
+#undef LXA_ROOT_CONTAINER_START_PREPARE
+#undef LXA_ROOT_CONTAINER_START_RECONSTRUCT
+#undef LXA_ROOT_CONTAINER_START_INSERT
+
 lxa_status_t
 lxa_html_root_context_start_container(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
@@ -1069,22 +1102,8 @@ lxa_html_root_context_start_container(lxa_html_root_context_t *context,
         &context->limit_reason, &supported);
     if (status != LXA_OK) return finish(context, status);
     if (!supported) return LXA_ERROR_ARGUMENT;
-    status = context_ensure_body(context);
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        if (context->frameset_ok && lxa_html_tree_root_container_disables_frameset(token->name))
-            context->frameset_ok = false;
-        status = root_prepare_container(context, token->name, false);
-    }
-    if (status == LXA_OK && reconstruct)
-        status = lxa_html_root_context_reconstruct(context, formatting);
-    if (status == LXA_OK)
-        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
-    if (status == LXA_OK)
-        status = lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, identity);
-    if (status == LXA_OK)
-        *skip_newline = lxa_html_tree_name_equals(token->name, "pre", 3)
-            || lxa_html_tree_name_equals(token->name, "listing", 7);
+    root_container_start_view_t view = {context, formatting, identity};
+    status = context_start_container(&view, token, mode, skip_newline);
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
 }
