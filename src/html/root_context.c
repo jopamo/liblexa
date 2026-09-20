@@ -1189,6 +1189,53 @@ lxa_html_root_context_start_table(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t
+context_table_part_insert(root_container_start_view_t *view, const lxa_html_token_t *token)
+{
+    view->marker = lxa_html_tree_formatting_marker_tag(token->name);
+    lxa_status_t status = context_container_insert(view, token);
+    if (status == LXA_ERROR_LIMIT && view->marker
+        && view->context->limit_reason == LXA_BUDGET_COUNT)
+        view->context->limit_reason = view->formatting->store->limit_reason;
+    return status;
+}
+
+#define LXA_TABLE_PART_ADMIT_NAME context_admit_table_part
+#define LXA_TABLE_PART_ADMIT_VIEW root_container_start_view_t
+#define LXA_TABLE_PART_ADMIT_RESERVE(view, count) reserve_open_slots((view)->context, count)
+#define LXA_TABLE_PART_ADMIT_NODE(view, count) LXA_OK
+#define LXA_TABLE_PART_ADMIT_INSERT context_table_part_insert
+#include "html/table_part_admit.inc"
+#undef LXA_TABLE_PART_ADMIT_NAME
+#undef LXA_TABLE_PART_ADMIT_VIEW
+#undef LXA_TABLE_PART_ADMIT_RESERVE
+#undef LXA_TABLE_PART_ADMIT_NODE
+#undef LXA_TABLE_PART_ADMIT_INSERT
+
+lxa_status_t
+lxa_html_root_context_admit_table_part(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    if (identity == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !context->body
+        || mode != LXA_TREE_IN_BODY || length == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_virtual_table_start_plan_t plan;
+    status = lxa_html_control_stack_prepared_table_part_plan(context->stack, token->name, &plan);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status != LXA_OK) return finish(context, status);
+    root_container_start_view_t view = {context, formatting, identity, false};
+    status = context_admit_table_part(&view, token, &plan);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
 typedef struct {
     lxa_html_root_context_t *context;
     bool implied;

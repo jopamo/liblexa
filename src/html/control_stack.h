@@ -153,6 +153,12 @@ lxa_status_t lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t 
  */
 lxa_status_t lxa_html_control_stack_root_table_close_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool current_context, bool *out);
+/* Constant current-HTML-name preparation; no WORK, allocation or membership
+ * effects. Reject empty/foreign contexts or geometry needing further recovery.
+ * Publish only on success; the engine owns earlier actual-table scope checks.
+ */
+lxa_status_t lxa_html_control_stack_prepared_table_part_plan(lxa_html_control_stack_t *stack,
+    lxa_span_t target, lxa_html_virtual_table_start_plan_t *out);
 /* Same precharge/publication contract as borrowed missing-table recovery.
  * Leave HTML cells and entries before boundary open; the engine owns effects.
  */

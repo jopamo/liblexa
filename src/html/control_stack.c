@@ -835,6 +835,21 @@ lxa_html_control_stack_root_table_close_plan(lxa_html_control_stack_t *stack,
 }
 
 lxa_status_t
+lxa_html_control_stack_prepared_table_part_plan(lxa_html_control_stack_t *stack,
+    lxa_span_t target, lxa_html_virtual_table_start_plan_t *out)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&stack->elements);
+    if (length == 0 || out == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    status = read_element(stack, length - 1, &entry, NULL);
+    if (status != LXA_OK) return status;
+    if (entry.namespace_id != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    return lxa_html_tree_prepared_table_part_plan(entry.name, target, out);
+}
+
+lxa_status_t
 lxa_html_control_stack_template_missing_table_plan(lxa_html_control_stack_t *stack,
     size_t boundary, size_t *out)
 {

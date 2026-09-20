@@ -536,6 +536,27 @@ lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
 }
 
 lxa_status_t
+lxa_html_tree_prepared_table_part_plan(lxa_span_t top, lxa_span_t target,
+    lxa_html_virtual_table_start_plan_t *out)
+{
+    if (out == NULL || (!lxa_html_tree_table_section(target)
+        && !lxa_html_tree_name_equals(target, "tr", 2)
+        && !lxa_html_tree_name_equals(target, "td", 2)
+        && !lxa_html_tree_name_equals(target, "th", 2))) return LXA_ERROR_ARGUMENT;
+    lxa_html_template_mode_t mode;
+    if (lxa_html_tree_name_equals(top, "table", 5)) mode = LXA_TEMPLATE_TABLE;
+    else if (lxa_html_tree_table_section(top)) mode = LXA_TEMPLATE_TABLE_BODY;
+    else if (lxa_html_tree_name_equals(top, "tr", 2)) mode = LXA_TEMPLATE_ROW;
+    else return LXA_ERROR_ARGUMENT;
+    lxa_html_virtual_table_start_plan_t plan;
+    lxa_status_t status = lxa_html_tree_virtual_table_start_plan(mode, target, &plan);
+    if (status != LXA_OK) return status;
+    if (plan.ignore) return LXA_ERROR_ARGUMENT;
+    *out = plan;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
     size_t length, lxa_span_t top, lxa_span_t target, lxa_html_table_start_plan_t *out)
 {
