@@ -4034,6 +4034,30 @@ tree_root_container_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 #undef LXA_ROOT_CONTAINER_START_INSERT
 
 static lxa_status_t
+tree_root_foreign_reserve(lxa_html_tree_t *tree)
+{
+    lxa_status_t status = reserve_open_elements(tree, 1);
+    return status == LXA_OK ? lxa_budget_check(tree->nodes->budget,
+        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason) : status;
+}
+
+#define LXA_ROOT_FOREIGN_START_NAME tree_start_root_foreign
+#define LXA_ROOT_FOREIGN_START_VIEW lxa_html_tree_t
+#define LXA_ROOT_FOREIGN_START_BODY ensure_body
+#define LXA_ROOT_FOREIGN_START_RESERVE tree_root_foreign_reserve
+#define LXA_ROOT_FOREIGN_START_RECONSTRUCT reconstruct_formatting
+#define LXA_ROOT_FOREIGN_START_INSERT open_container_ns
+#define LXA_ROOT_FOREIGN_START_POP pop_element
+#include "html/root_foreign_start.inc"
+#undef LXA_ROOT_FOREIGN_START_NAME
+#undef LXA_ROOT_FOREIGN_START_VIEW
+#undef LXA_ROOT_FOREIGN_START_BODY
+#undef LXA_ROOT_FOREIGN_START_RESERVE
+#undef LXA_ROOT_FOREIGN_START_RECONSTRUCT
+#undef LXA_ROOT_FOREIGN_START_INSERT
+#undef LXA_ROOT_FOREIGN_START_POP
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5287,24 +5311,8 @@ reprocess_body_start:
                 lxa_html_tree_body_void_reconstructs(token->name), &tree->mode);
         if (lxa_html_tree_table_part(token->name))
             return open_table_part(tree, token);
-        if (named(token->name, "svg") || named(token->name, "math")) {
-            lxa_dom_namespace_t ns = named(token->name, "svg")
-                                     ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
-            status = ensure_body(tree);
-            if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK) status = reconstruct_formatting(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            status = open_container_ns(tree, token, ns);
-            if (status == LXA_OK && token->self_closing) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            return status;
-        }
+        if (named(token->name, "svg") || named(token->name, "math"))
+            return tree_start_root_foreign(tree, token, &tree->mode);
         status = lxa_html_tree_supported_container(token->name,
             tree->nodes->budget, &tree->nodes->limit_reason, &container);
         if (status != LXA_OK) return status;

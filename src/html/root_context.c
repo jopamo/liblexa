@@ -741,6 +741,37 @@ lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t
+context_foreign_insert(root_start_view_t *view, const lxa_html_token_t *token,
+    lxa_dom_namespace_t ns)
+{
+    lxa_html_root_context_t *context = view->context;
+    uint64_t identity;
+    lxa_status_t status = check_body_child_depth(context,
+        lxa_vector_length(&context->stack->elements));
+    return status == LXA_OK
+        ? lxa_html_control_stack_push_token(context->stack, token, ns, &identity) : status;
+}
+
+#define LXA_ROOT_FOREIGN_START_NAME context_start_foreign
+#define LXA_ROOT_FOREIGN_START_VIEW root_start_view_t
+#define LXA_ROOT_FOREIGN_START_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_FOREIGN_START_RESERVE(view) reserve_open_slot((view)->context)
+#define LXA_ROOT_FOREIGN_START_RECONSTRUCT(view) \
+    lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_ROOT_FOREIGN_START_INSERT context_foreign_insert
+#define LXA_ROOT_FOREIGN_START_POP(view) \
+    lxa_html_control_stack_pop_to((view)->context->stack, \
+        lxa_vector_length(&(view)->context->stack->elements) - 1)
+#include "html/root_foreign_start.inc"
+#undef LXA_ROOT_FOREIGN_START_NAME
+#undef LXA_ROOT_FOREIGN_START_VIEW
+#undef LXA_ROOT_FOREIGN_START_BODY
+#undef LXA_ROOT_FOREIGN_START_RESERVE
+#undef LXA_ROOT_FOREIGN_START_RECONSTRUCT
+#undef LXA_ROOT_FOREIGN_START_INSERT
+#undef LXA_ROOT_FOREIGN_START_POP
+
 lxa_status_t
 lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
@@ -753,21 +784,8 @@ lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || (!lxa_html_tree_name_equals(token->name, "svg", 3)
             && !lxa_html_tree_name_equals(token->name, "math", 4))) return LXA_ERROR_ARGUMENT;
-    status = context_ensure_body(context);
-    if (status == LXA_OK) status = reserve_open_slot(context);
-    if (status == LXA_OK) status = lxa_html_root_context_reconstruct(context, formatting);
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
-    }
-    size_t keep = lxa_vector_length(&context->stack->elements);
-    uint64_t identity;
-    if (status == LXA_OK)
-        status = lxa_html_control_stack_push_token(context->stack, token,
-            lxa_html_tree_name_equals(token->name, "svg", 3) ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML, &identity);
-    if (status == LXA_OK && token->self_closing)
-        status = lxa_html_control_stack_pop_to(context->stack, keep);
-    return finish(context, status);
+    root_start_view_t view = {context, formatting};
+    return finish(context, context_start_foreign(&view, token, mode));
 }
 
 lxa_status_t
