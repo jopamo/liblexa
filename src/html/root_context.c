@@ -788,34 +788,6 @@ lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
     return finish(context, context_start_foreign(&view, token, mode));
 }
 
-lxa_status_t
-lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
-    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
-    lxa_html_root_mode_t *mode, uint64_t *identity)
-{
-    if (identity != NULL) *identity = 0;
-    lxa_status_t status = begin(context);
-    if (status != LXA_OK) return status;
-    if (mode == NULL || identity == NULL || formatting == NULL || formatting->store == NULL
-        || formatting->store->budget != context->stack->budget || !body_start_mode_valid(context, *mode)
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
-        || !lxa_html_tree_template_marker_container(token->name)) return LXA_ERROR_ARGUMENT;
-    status = context_ensure_body(context);
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        context->frameset_ok = false;
-        status = reserve_open_slot(context);
-    }
-    if (status == LXA_OK) status = lxa_html_root_context_reconstruct(context, formatting);
-    if (status == LXA_OK)
-        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
-    if (status == LXA_OK)
-        status = lxa_html_formatting_list_admit_marker(formatting, context->stack, token->name, identity);
-    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
-        context->limit_reason = formatting->store->limit_reason;
-    if (status != LXA_OK) *identity = 0;
-    return finish(context, status);
-}
 
 lxa_status_t
 lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,
@@ -1069,6 +1041,7 @@ typedef struct {
     lxa_html_root_context_t *context;
     lxa_html_formatting_list_t *formatting;
     uint64_t *identity;
+    bool marker;
 } root_container_start_view_t;
 
 static lxa_status_t
@@ -1077,8 +1050,11 @@ context_container_insert(root_container_start_view_t *view, const lxa_html_token
     lxa_html_root_context_t *context = view->context;
     lxa_status_t status = check_body_child_depth(context,
         lxa_vector_length(&context->stack->elements));
-    return status == LXA_OK ? lxa_html_control_stack_push_token(context->stack,
-        token, LXA_DOM_NS_HTML, view->identity) : status;
+    if (status != LXA_OK) return status;
+    return view->marker
+        ? lxa_html_formatting_list_admit_marker(view->formatting, context->stack,
+            token->name, view->identity)
+        : lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, view->identity);
 }
 
 #define LXA_ROOT_CONTAINER_START_NAME context_start_container
@@ -1120,8 +1096,29 @@ lxa_html_root_context_start_container(lxa_html_root_context_t *context,
         &context->limit_reason, &supported);
     if (status != LXA_OK) return finish(context, status);
     if (!supported) return LXA_ERROR_ARGUMENT;
-    root_container_start_view_t view = {context, formatting, identity};
+    root_container_start_view_t view = {context, formatting, identity, false};
     status = context_start_container(&view, token, mode, skip_newline);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_template_marker_container(token->name)) return LXA_ERROR_ARGUMENT;
+    root_container_start_view_t view = {context, formatting, identity, true};
+    bool newline;
+    status = context_start_container(&view, token, mode, &newline);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = formatting->store->limit_reason;
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
 }
