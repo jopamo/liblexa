@@ -222,6 +222,15 @@ typedef enum {
 lxa_status_t lxa_html_root_context_start_form(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, uint64_t *owner, lxa_html_root_mode_t *mode,
     lxa_html_root_form_action_t *action);
+/* Accepted root table start after earlier select/foreign/table routing. Borrow
+ * a same-budget formatting list for table-marker cleanup and document mode for
+ * paragraph recovery. Preserve completed roots/pops/marker cleanup on failure, clear
+ * identity and latch. HTML self-close syntax retains the table. Token/output
+ * storage must not alias context/stack/list storage or each other.
+ */
+lxa_status_t lxa_html_root_context_start_table(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode, uint64_t *identity);
 /* Accepted ordinary HTML container after earlier specialized start dispatch.
  * Share recovery/reservation order, then reconstruct when required and check
  * child depth before admission. Borrow a same-budget list only when needed.

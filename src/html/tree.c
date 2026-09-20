@@ -2345,9 +2345,52 @@ close_caption_for_table_start(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+tree_root_table_top(lxa_html_tree_t *tree, lxa_span_t *top)
+{
+    return lxa_dom_nodes_element_name(tree->nodes, current_element(tree), top);
+}
+
+static lxa_status_t
+tree_root_table_plan(lxa_html_tree_t *tree, lxa_span_t top, bool *close_existing)
+{
+    const lxa_html_tree_scope_view_t view = {tree,
+        (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+        lxa_vector_length(&tree->open_elements)};
+    return tree_root_table_close_plan(&view, 1,
+        lxa_html_tree_table_context(top), close_existing);
+}
+
+#define LXA_ROOT_TABLE_START_NAME tree_start_root_table
+#define LXA_ROOT_TABLE_START_VIEW lxa_html_tree_t
+#define LXA_ROOT_TABLE_START_BODY ensure_body
+#define LXA_ROOT_TABLE_START_TOP tree_root_table_top
+#define LXA_ROOT_TABLE_START_FRAMESET(view) ((view)->frameset_ok)
+#define LXA_ROOT_TABLE_START_PLAN tree_root_table_plan
+#define LXA_ROOT_TABLE_START_RESERVE reserve_open_elements
+#define LXA_ROOT_TABLE_START_NODE(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_ROOT_TABLE_START_CLOSE(view) end_scoped_element(view, literal("table"), LXA_HTML_SCOPE_TABLE)
+#define LXA_ROOT_TABLE_START_PARAGRAPH(view) close_paragraph(view, NULL)
+#define LXA_ROOT_TABLE_START_INSERT open_container
+#include "html/root_table_start.inc"
+#undef LXA_ROOT_TABLE_START_NAME
+#undef LXA_ROOT_TABLE_START_VIEW
+#undef LXA_ROOT_TABLE_START_BODY
+#undef LXA_ROOT_TABLE_START_TOP
+#undef LXA_ROOT_TABLE_START_FRAMESET
+#undef LXA_ROOT_TABLE_START_PLAN
+#undef LXA_ROOT_TABLE_START_RESERVE
+#undef LXA_ROOT_TABLE_START_NODE
+#undef LXA_ROOT_TABLE_START_CLOSE
+#undef LXA_ROOT_TABLE_START_PARAGRAPH
+#undef LXA_ROOT_TABLE_START_INSERT
+
+static lxa_status_t
 open_table_part(lxa_html_tree_t *tree,
                 const lxa_html_token_t *token)
 {
+    if (named(token->name, "table"))
+        return tree_start_root_table(tree, token, tree->document_mode == LXA_HTML_QUIRKS, &tree->mode);
     lxa_html_token_t implied = {0};
     lxa_span_t top;
     bool section, row, cell;
@@ -2356,17 +2399,14 @@ open_table_part(lxa_html_tree_t *tree,
     lxa_status_t status = ensure_body(tree);
     if (status != LXA_OK) return status;
     tree->mode = LXA_TREE_IN_BODY;
-    if (!named(token->name, "table")) {
-        bool found;
-        status = table_in_scope(tree, &tree->open_elements, 0, &found);
-        if (status != LXA_OK || !found) return status;
-    }
+    bool found;
+    status = table_in_scope(tree, &tree->open_elements, 0, &found);
+    if (status != LXA_OK || !found) return status;
     status = lxa_dom_nodes_element_name(tree->nodes,
                                         current_element(tree), &top);
     if (status != LXA_OK) return status;
-    if (!named(token->name, "table")
-        && (!lxa_html_tree_table_context(top)
-            || (column && !named(top, "table") && !named(top, "colgroup")))) {
+    if (!lxa_html_tree_table_context(top)
+        || (column && !named(top, "table") && !named(top, "colgroup"))) {
         const lxa_dom_ref_t *open =
             (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
         size_t i = lxa_vector_length(&tree->open_elements);
@@ -2414,33 +2454,6 @@ open_table_part(lxa_html_tree_t *tree,
             }
             break;
         }
-    }
-    if (named(token->name, "table")) {
-        bool close_existing;
-        tree->frameset_ok = false;
-        const lxa_html_tree_scope_view_t view = {tree,
-            (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
-            lxa_vector_length(&tree->open_elements)};
-        status = tree_root_table_close_plan(&view, 1,
-            lxa_html_tree_table_context(top), &close_existing);
-        if (status != LXA_OK) return status;
-        bool reserve_after_close = close_existing
-            || tree->document_mode != LXA_HTML_QUIRKS;
-        status = reserve_open_elements(tree, reserve_after_close ? 0 : 1);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-        if (status != LXA_OK) return status;
-        if (close_existing) {
-            status = end_scoped_element(tree, literal("table"), LXA_HTML_SCOPE_TABLE);
-            if (status != LXA_OK) return status;
-        }
-        status = tree->document_mode == LXA_HTML_QUIRKS ? LXA_OK
-                 : close_paragraph(tree, NULL);
-        if (status == LXA_OK && reserve_after_close)
-            status = reserve_open_elements(tree, 1);
-        if (status != LXA_OK) return status;
-        return open_container(tree, token);
     }
     status = close_caption_for_table_start(tree, token->name);
     if (status != LXA_OK) return status;

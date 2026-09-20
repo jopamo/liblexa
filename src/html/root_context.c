@@ -1123,6 +1123,72 @@ lxa_html_root_context_start_marker(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t
+context_table_top(root_container_start_view_t *view, lxa_span_t *top)
+{
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_get(view->context->stack,
+        lxa_vector_length(&view->context->stack->elements) - 1, &entry, NULL);
+    if (status == LXA_OK) *top = entry.name;
+    return status;
+}
+
+static lxa_status_t
+context_table_close(root_container_start_view_t *view)
+{
+    lxa_status_t status = lxa_html_formatting_list_end_scoped(view->formatting,
+        view->context->stack, (lxa_span_t){(const uint8_t *) "table", 5}, LXA_HTML_SCOPE_TABLE);
+    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->formatting->store->limit_reason;
+    return status;
+}
+
+#define LXA_ROOT_TABLE_START_NAME context_start_table
+#define LXA_ROOT_TABLE_START_VIEW root_container_start_view_t
+#define LXA_ROOT_TABLE_START_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_TABLE_START_TOP context_table_top
+#define LXA_ROOT_TABLE_START_FRAMESET(view) ((view)->context->frameset_ok)
+#define LXA_ROOT_TABLE_START_PLAN(view, top, out) \
+    lxa_html_control_stack_root_table_close_plan((view)->context->stack, 1, \
+        lxa_html_tree_table_context(top), out)
+#define LXA_ROOT_TABLE_START_RESERVE(view, count) reserve_open_slots((view)->context, count)
+#define LXA_ROOT_TABLE_START_NODE(view) LXA_OK
+#define LXA_ROOT_TABLE_START_CLOSE context_table_close
+#define LXA_ROOT_TABLE_START_PARAGRAPH(view) \
+    close_scoped((view)->context, (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON)
+#define LXA_ROOT_TABLE_START_INSERT context_container_insert
+#include "html/root_table_start.inc"
+#undef LXA_ROOT_TABLE_START_NAME
+#undef LXA_ROOT_TABLE_START_VIEW
+#undef LXA_ROOT_TABLE_START_BODY
+#undef LXA_ROOT_TABLE_START_TOP
+#undef LXA_ROOT_TABLE_START_FRAMESET
+#undef LXA_ROOT_TABLE_START_PLAN
+#undef LXA_ROOT_TABLE_START_RESERVE
+#undef LXA_ROOT_TABLE_START_NODE
+#undef LXA_ROOT_TABLE_START_CLOSE
+#undef LXA_ROOT_TABLE_START_PARAGRAPH
+#undef LXA_ROOT_TABLE_START_INSERT
+
+lxa_status_t
+lxa_html_root_context_start_table(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget
+        || !body_start_mode_valid(context, *mode)
+        || (unsigned) document_mode > LXA_HTML_QUIRKS
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    root_container_start_view_t view = {context, formatting, identity, false};
+    status = context_start_table(&view, token, document_mode == LXA_HTML_QUIRKS, mode);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
 typedef struct {
     lxa_html_root_context_t *context;
     bool implied;
