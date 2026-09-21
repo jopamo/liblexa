@@ -1265,6 +1265,45 @@ context_table_part_pop(root_start_view_t *view, size_t keep)
     return status;
 }
 
+static lxa_status_t
+context_caption_find(root_start_view_t *view, size_t *index)
+{
+    return lxa_html_control_stack_scope_find(view->context->stack, 0,
+        (lxa_span_t){(const uint8_t *) "caption", 7}, LXA_HTML_SCOPE_TABLE, index);
+}
+
+#define LXA_ROOT_CAPTION_NAME context_recover_caption
+#define LXA_ROOT_CAPTION_VIEW root_start_view_t
+#define LXA_ROOT_CAPTION_FIND context_caption_find
+#define LXA_ROOT_CAPTION_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_ROOT_CAPTION_RESERVE(view, count) reserve_open_slots((view)->context, count)
+#define LXA_ROOT_CAPTION_NODE(view, count) LXA_OK
+#define LXA_ROOT_CAPTION_POP context_table_part_pop
+#include "html/root_caption_recover.inc"
+#undef LXA_ROOT_CAPTION_NAME
+#undef LXA_ROOT_CAPTION_VIEW
+#undef LXA_ROOT_CAPTION_FIND
+#undef LXA_ROOT_CAPTION_LENGTH
+#undef LXA_ROOT_CAPTION_RESERVE
+#undef LXA_ROOT_CAPTION_NODE
+#undef LXA_ROOT_CAPTION_POP
+
+lxa_status_t
+lxa_html_root_context_recover_caption(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY || formatting == NULL
+        || formatting->store == NULL || formatting->store->budget != context->stack->budget
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_table_part(token->name)
+        || lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    root_start_view_t view = {context, formatting};
+    return finish(context, context_recover_caption(&view, token->name));
+}
+
 #define LXA_ROOT_TABLE_PART_RECOVER_NAME context_recover_table_part_context
 #define LXA_ROOT_TABLE_PART_RECOVER_VIEW root_start_view_t
 #define LXA_ROOT_TABLE_PART_RECOVER_BODY(view) context_ensure_body((view)->context)

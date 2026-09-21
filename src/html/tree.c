@@ -2337,26 +2337,28 @@ close_open_table_part(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-close_caption_for_table_start(lxa_html_tree_t *tree,
-                              lxa_span_t incoming)
+tree_root_caption_find(lxa_html_tree_t *tree, size_t *index)
 {
-    size_t i;
-    size_t needed = named(incoming, "td") || named(incoming, "th") ? 3
-                    : named(incoming, "tr") || named(incoming, "col") ? 2 : 1;
-    lxa_status_t status = find_scoped_end_target(tree, &tree->open_elements,
-        0, literal("caption"), LXA_HTML_SCOPE_TABLE, &i);
-    if (status != LXA_OK || i == lxa_vector_length(&tree->open_elements))
-        return status;
-    /* Reprocessing may allocate implicit tbody/tr nodes. */
-    size_t removed = lxa_vector_length(&tree->open_elements) - i;
-    size_t slots = named(incoming, "col") ? 1 : needed;
-    status = reserve_open_elements(tree, slots > removed ? slots - removed : 0);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget,
-            LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    return pop_table_elements(tree, i);
+    return find_scoped_end_target(tree, &tree->open_elements, 0,
+        literal("caption"), LXA_HTML_SCOPE_TABLE, index);
 }
+
+#define LXA_ROOT_CAPTION_NAME close_caption_for_table_start
+#define LXA_ROOT_CAPTION_VIEW lxa_html_tree_t
+#define LXA_ROOT_CAPTION_FIND tree_root_caption_find
+#define LXA_ROOT_CAPTION_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_CAPTION_RESERVE reserve_open_elements
+#define LXA_ROOT_CAPTION_NODE(view, count) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, count, &(view)->nodes->limit_reason)
+#define LXA_ROOT_CAPTION_POP pop_table_elements
+#include "html/root_caption_recover.inc"
+#undef LXA_ROOT_CAPTION_NAME
+#undef LXA_ROOT_CAPTION_VIEW
+#undef LXA_ROOT_CAPTION_FIND
+#undef LXA_ROOT_CAPTION_LENGTH
+#undef LXA_ROOT_CAPTION_RESERVE
+#undef LXA_ROOT_CAPTION_NODE
+#undef LXA_ROOT_CAPTION_POP
 
 static lxa_status_t
 tree_root_table_top(lxa_html_tree_t *tree, lxa_span_t *top)

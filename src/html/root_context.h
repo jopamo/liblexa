@@ -255,6 +255,15 @@ lxa_status_t lxa_html_root_context_admit_table_part(lxa_html_root_context_t *con
 lxa_status_t lxa_html_root_context_recover_table_part_context(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, bool *in_scope);
+/* Next accepted non-table part phase over BODY/IN_BODY. Close an in-scope
+ * caption after OPEN preflight and clear its marker through a same-budget list.
+ * No mode publication or NODE charge; retain effects and latch failure.
+ * Caller owns prior scope gating and subsequent group/part recovery.
+ * Token storage must not alias context/stack/list storage.
+ */
+lxa_status_t lxa_html_root_context_recover_caption(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t mode);
 /* Accepted ordinary HTML container after earlier specialized start dispatch.
  * Share recovery/reservation order, then reconstruct when required and check
  * child depth before admission. Borrow a same-budget list only when needed.
