@@ -1246,6 +1246,62 @@ lxa_html_root_context_admit_table_part(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t
+context_table_part_scope(root_start_view_t *view, bool *found)
+{
+    size_t index;
+    lxa_status_t status = lxa_html_control_stack_scope_find(view->context->stack, 0,
+        (lxa_span_t){(const uint8_t *) "table", 5}, LXA_HTML_SCOPE_TABLE, &index);
+    if (status == LXA_OK) *found = index != lxa_vector_length(&view->context->stack->elements);
+    return status;
+}
+
+static lxa_status_t
+context_table_part_pop(root_start_view_t *view, size_t keep)
+{
+    lxa_status_t status = lxa_html_formatting_list_pop_table(view->formatting,
+        view->context->stack, keep, false);
+    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->formatting->store->limit_reason;
+    return status;
+}
+
+#define LXA_ROOT_TABLE_PART_RECOVER_NAME context_recover_table_part_context
+#define LXA_ROOT_TABLE_PART_RECOVER_VIEW root_start_view_t
+#define LXA_ROOT_TABLE_PART_RECOVER_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_TABLE_PART_RECOVER_SCOPE context_table_part_scope
+#define LXA_ROOT_TABLE_PART_RECOVER_PLAN(view, target, plan) \
+    lxa_html_control_stack_root_table_part_context_plan((view)->context->stack, 1, target, plan)
+#define LXA_ROOT_TABLE_PART_RECOVER_RESERVE(view, count) reserve_open_slots((view)->context, count)
+#define LXA_ROOT_TABLE_PART_RECOVER_NODE(view, count) LXA_OK
+#define LXA_ROOT_TABLE_PART_RECOVER_POP context_table_part_pop
+#define LXA_ROOT_TABLE_PART_RECOVER_POSTPOP(view) LXA_OK
+#include "html/root_table_part_context_recover.inc"
+#undef LXA_ROOT_TABLE_PART_RECOVER_NAME
+#undef LXA_ROOT_TABLE_PART_RECOVER_VIEW
+#undef LXA_ROOT_TABLE_PART_RECOVER_BODY
+#undef LXA_ROOT_TABLE_PART_RECOVER_SCOPE
+#undef LXA_ROOT_TABLE_PART_RECOVER_PLAN
+#undef LXA_ROOT_TABLE_PART_RECOVER_RESERVE
+#undef LXA_ROOT_TABLE_PART_RECOVER_NODE
+#undef LXA_ROOT_TABLE_PART_RECOVER_POP
+#undef LXA_ROOT_TABLE_PART_RECOVER_POSTPOP
+
+lxa_status_t
+lxa_html_root_context_recover_table_part_context(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, bool *in_scope)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || in_scope == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_table_part(token->name)
+        || lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    root_start_view_t view = {context, formatting};
+    return finish(context, context_recover_table_part_context(&view, token, mode, in_scope));
+}
+
 typedef struct {
     lxa_html_root_context_t *context;
     bool implied;

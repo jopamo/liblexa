@@ -244,6 +244,17 @@ lxa_status_t lxa_html_root_context_start_table(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_admit_table_part(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t mode, uint64_t *identity);
+/* First accepted non-table part phase after earlier select/foreign dispatch.
+ * Ensure BODY/IN_BODY, gate on actual-table scope and recover ordinary suffixes
+ * to context with pre-pop OPEN checks and same-budget table-marker cleanup.
+ * Publish in_scope only on success; false ignores admission after root effects.
+ * True still requires caption/group/part recovery before prepared admission.
+ * Preserve completed effects and latch failures. Token/mode/output storage must
+ * not alias context/stack/list storage or each other.
+ */
+lxa_status_t lxa_html_root_context_recover_table_part_context(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, bool *in_scope);
 /* Accepted ordinary HTML container after earlier specialized start dispatch.
  * Share recovery/reservation order, then reconstruct when required and check
  * child depth before admission. Borrow a same-budget list only when needed.

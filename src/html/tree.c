@@ -2415,6 +2415,47 @@ tree_root_table_plan(lxa_html_tree_t *tree, lxa_span_t top, bool *close_existing
 #undef LXA_TABLE_PART_ADMIT_VOID
 
 static lxa_status_t
+tree_root_table_part_plan(lxa_html_tree_t *tree, lxa_span_t target,
+    lxa_html_root_table_part_context_plan_t *plan)
+{
+    lxa_span_t top;
+    lxa_status_t status = tree_root_table_top(tree, &top);
+    if (status != LXA_OK) return status;
+    const lxa_html_tree_scope_view_t view = {tree,
+        (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
+        lxa_vector_length(&tree->open_elements)};
+    return tree_root_table_part_context_plan(&view, 1, top, target, plan);
+}
+
+static lxa_status_t
+tree_root_table_part_postpop(lxa_html_tree_t *tree)
+{
+    lxa_span_t top;
+    return tree_root_table_top(tree, &top);
+}
+
+#define LXA_ROOT_TABLE_PART_RECOVER_NAME tree_recover_table_part_context
+#define LXA_ROOT_TABLE_PART_RECOVER_VIEW lxa_html_tree_t
+#define LXA_ROOT_TABLE_PART_RECOVER_BODY ensure_body
+#define LXA_ROOT_TABLE_PART_RECOVER_SCOPE(view, out) table_in_scope(view, &(view)->open_elements, 0, out)
+#define LXA_ROOT_TABLE_PART_RECOVER_PLAN tree_root_table_part_plan
+#define LXA_ROOT_TABLE_PART_RECOVER_RESERVE reserve_open_elements
+#define LXA_ROOT_TABLE_PART_RECOVER_NODE(view, count) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, count, &(view)->nodes->limit_reason)
+#define LXA_ROOT_TABLE_PART_RECOVER_POP pop_table_elements
+#define LXA_ROOT_TABLE_PART_RECOVER_POSTPOP tree_root_table_part_postpop
+#include "html/root_table_part_context_recover.inc"
+#undef LXA_ROOT_TABLE_PART_RECOVER_NAME
+#undef LXA_ROOT_TABLE_PART_RECOVER_VIEW
+#undef LXA_ROOT_TABLE_PART_RECOVER_BODY
+#undef LXA_ROOT_TABLE_PART_RECOVER_SCOPE
+#undef LXA_ROOT_TABLE_PART_RECOVER_PLAN
+#undef LXA_ROOT_TABLE_PART_RECOVER_RESERVE
+#undef LXA_ROOT_TABLE_PART_RECOVER_NODE
+#undef LXA_ROOT_TABLE_PART_RECOVER_POP
+#undef LXA_ROOT_TABLE_PART_RECOVER_POSTPOP
+
+static lxa_status_t
 open_table_part(lxa_html_tree_t *tree,
                 const lxa_html_token_t *token)
 {
@@ -2422,31 +2463,9 @@ open_table_part(lxa_html_tree_t *tree,
         return tree_start_root_table(tree, token, tree->document_mode == LXA_HTML_QUIRKS, &tree->mode);
     lxa_span_t top;
     bool section, row, cell;
-    lxa_status_t status = ensure_body(tree);
-    if (status != LXA_OK) return status;
-    tree->mode = LXA_TREE_IN_BODY;
     bool found;
-    status = table_in_scope(tree, &tree->open_elements, 0, &found);
+    lxa_status_t status = tree_recover_table_part_context(tree, token, &tree->mode, &found);
     if (status != LXA_OK || !found) return status;
-    status = lxa_dom_nodes_element_name(tree->nodes,
-                                        current_element(tree), &top);
-    if (status != LXA_OK) return status;
-    const lxa_html_tree_scope_view_t view = {tree,
-        (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)};
-    lxa_html_root_table_part_context_plan_t context_plan;
-    status = tree_root_table_part_context_plan(&view, 1, top, token->name, &context_plan);
-    if (status != LXA_OK) return status;
-    if (context_plan.pop) {
-        status = reserve_open_elements(tree, context_plan.extra);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                context_plan.nodes_before_pop, &tree->nodes->limit_reason);
-        if (status == LXA_OK) status = pop_table_elements(tree, context_plan.keep);
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &top);
-        if (status != LXA_OK) return status;
-    }
     status = close_caption_for_table_start(tree, token->name);
     if (status != LXA_OK) return status;
     status = lxa_dom_nodes_element_name(tree->nodes,
