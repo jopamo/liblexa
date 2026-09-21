@@ -1200,17 +1200,27 @@ context_table_part_insert(root_container_start_view_t *view, const lxa_html_toke
     return status;
 }
 
+static lxa_status_t
+context_table_part_void(root_container_start_view_t *view, const lxa_html_token_t *token)
+{
+    (void) token;
+    *view->identity = 0;
+    return LXA_OK;
+}
+
 #define LXA_TABLE_PART_ADMIT_NAME context_admit_table_part
 #define LXA_TABLE_PART_ADMIT_VIEW root_container_start_view_t
 #define LXA_TABLE_PART_ADMIT_RESERVE(view, count) reserve_open_slots((view)->context, count)
 #define LXA_TABLE_PART_ADMIT_NODE(view, count) LXA_OK
 #define LXA_TABLE_PART_ADMIT_INSERT context_table_part_insert
+#define LXA_TABLE_PART_ADMIT_VOID context_table_part_void
 #include "html/table_part_admit.inc"
 #undef LXA_TABLE_PART_ADMIT_NAME
 #undef LXA_TABLE_PART_ADMIT_VIEW
 #undef LXA_TABLE_PART_ADMIT_RESERVE
 #undef LXA_TABLE_PART_ADMIT_NODE
 #undef LXA_TABLE_PART_ADMIT_INSERT
+#undef LXA_TABLE_PART_ADMIT_VOID
 
 lxa_status_t
 lxa_html_root_context_admit_table_part(lxa_html_root_context_t *context,
@@ -1226,7 +1236,7 @@ lxa_html_root_context_admit_table_part(lxa_html_root_context_t *context,
         || mode != LXA_TREE_IN_BODY || length == 0
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
         return LXA_ERROR_ARGUMENT;
-    lxa_html_virtual_table_start_plan_t plan;
+    lxa_html_prepared_table_part_plan_t plan;
     status = lxa_html_control_stack_prepared_table_part_plan(context->stack, token->name, &plan);
     if (status == LXA_ERROR_ARGUMENT) return status;
     if (status != LXA_OK) return finish(context, status);

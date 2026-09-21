@@ -537,21 +537,39 @@ lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
 
 lxa_status_t
 lxa_html_tree_prepared_table_part_plan(lxa_span_t top, lxa_span_t target,
-    lxa_html_virtual_table_start_plan_t *out)
+    lxa_html_prepared_table_part_plan_t *out)
 {
-    if (out == NULL || (!lxa_html_tree_table_section(target)
-        && !lxa_html_tree_name_equals(target, "tr", 2)
-        && !lxa_html_tree_name_equals(target, "td", 2)
-        && !lxa_html_tree_name_equals(target, "th", 2))) return LXA_ERROR_ARGUMENT;
-    lxa_html_template_mode_t mode;
-    if (lxa_html_tree_name_equals(top, "table", 5)) mode = LXA_TEMPLATE_TABLE;
-    else if (lxa_html_tree_table_section(top)) mode = LXA_TEMPLATE_TABLE_BODY;
-    else if (lxa_html_tree_name_equals(top, "tr", 2)) mode = LXA_TEMPLATE_ROW;
-    else return LXA_ERROR_ARGUMENT;
-    lxa_html_virtual_table_start_plan_t plan;
-    lxa_status_t status = lxa_html_tree_virtual_table_start_plan(mode, target, &plan);
-    if (status != LXA_OK) return status;
-    if (plan.ignore) return LXA_ERROR_ARGUMENT;
+    if (out == NULL || !lxa_html_tree_table_part(target)
+        || lxa_html_tree_name_equals(target, "table", 5)) return LXA_ERROR_ARGUMENT;
+    bool table = lxa_html_tree_name_equals(top, "table", 5);
+    bool column = lxa_html_tree_name_equals(target, "col", 3);
+    lxa_html_prepared_table_part_plan_t plan = {1, 1, false, false, false, column};
+    if (column) {
+        if (table) { plan.implied_group = true; plan.preflight_nodes = 2; }
+        else if (lxa_html_tree_name_equals(top, "colgroup", 8)) {
+            plan.extra = 0;
+            plan.preflight_nodes = 0;
+        }
+        else return LXA_ERROR_ARGUMENT;
+    }
+    else if (lxa_html_tree_name_equals(target, "caption", 7)
+        || lxa_html_tree_name_equals(target, "colgroup", 8)) {
+        if (!table) return LXA_ERROR_ARGUMENT;
+    }
+    else {
+        lxa_html_template_mode_t mode;
+        if (table) mode = LXA_TEMPLATE_TABLE;
+        else if (lxa_html_tree_table_section(top)) mode = LXA_TEMPLATE_TABLE_BODY;
+        else if (lxa_html_tree_name_equals(top, "tr", 2)) mode = LXA_TEMPLATE_ROW;
+        else return LXA_ERROR_ARGUMENT;
+        lxa_html_virtual_table_start_plan_t geometry;
+        lxa_status_t status = lxa_html_tree_virtual_table_start_plan(mode, target, &geometry);
+        if (status != LXA_OK) return status;
+        if (geometry.ignore) return LXA_ERROR_ARGUMENT;
+        plan.extra = plan.preflight_nodes = geometry.extra;
+        plan.implied_section = geometry.implied_section;
+        plan.implied_row = geometry.implied_row;
+    }
     *out = plan;
     return LXA_OK;
 }

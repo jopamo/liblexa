@@ -836,7 +836,7 @@ lxa_html_control_stack_root_table_close_plan(lxa_html_control_stack_t *stack,
 
 lxa_status_t
 lxa_html_control_stack_prepared_table_part_plan(lxa_html_control_stack_t *stack,
-    lxa_span_t target, lxa_html_virtual_table_start_plan_t *out)
+    lxa_span_t target, lxa_html_prepared_table_part_plan_t *out)
 {
     lxa_status_t status = begin(stack);
     if (status != LXA_OK) return status;

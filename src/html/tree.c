@@ -2391,12 +2391,14 @@ tree_root_table_plan(lxa_html_tree_t *tree, lxa_span_t top, bool *close_existing
 #define LXA_TABLE_PART_ADMIT_NODE(view, count) \
     lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, count, &(view)->nodes->limit_reason)
 #define LXA_TABLE_PART_ADMIT_INSERT open_container
+#define LXA_TABLE_PART_ADMIT_VOID(view, token) append_void(view, current_element(view), token)
 #include "html/table_part_admit.inc"
 #undef LXA_TABLE_PART_ADMIT_NAME
 #undef LXA_TABLE_PART_ADMIT_VIEW
 #undef LXA_TABLE_PART_ADMIT_RESERVE
 #undef LXA_TABLE_PART_ADMIT_NODE
 #undef LXA_TABLE_PART_ADMIT_INSERT
+#undef LXA_TABLE_PART_ADMIT_VOID
 
 static lxa_status_t
 open_table_part(lxa_html_tree_t *tree,
@@ -2404,7 +2406,6 @@ open_table_part(lxa_html_tree_t *tree,
 {
     if (named(token->name, "table"))
         return tree_start_root_table(tree, token, tree->document_mode == LXA_HTML_QUIRKS, &tree->mode);
-    lxa_html_token_t implied = {0};
     lxa_span_t top;
     bool section, row, cell;
     bool column = named(token->name, "col") || named(token->name, "colgroup");
@@ -2491,46 +2492,6 @@ open_table_part(lxa_html_tree_t *tree,
         if (status != LXA_OK) return status;
         top = literal("table");
     }
-    if (named(token->name, "colgroup")) {
-        if (!named(top, "table")) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-        status = reserve_open_elements(tree, 1);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-        return status == LXA_OK ? open_container(tree, token) : status;
-    }
-    if (named(token->name, "col")) {
-        if (!named(top, "table") && !named(top, "colgroup")) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-        if (named(top, "table")) {
-            status = reserve_open_elements(tree, 1);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 2, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            implied.kind = LXA_HTML_START_TAG;
-            implied.name = literal("colgroup");
-            status = open_container(tree, &implied);
-            if (status != LXA_OK) return status;
-        }
-        return append_void(tree, current_element(tree), token);
-    }
-    if (named(token->name, "caption")) {
-        if (!named(top, "table")) {
-            assert(false);
-            return LXA_ERROR_INTERNAL;
-        }
-        status = reserve_open_elements(tree, 1);
-        if (status == LXA_OK)
-            status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                       1, &tree->nodes->limit_reason);
-        return status == LXA_OK ? open_container(tree, token) : status;
-    }
     section = lxa_html_tree_table_section(token->name);
     row = named(token->name, "tr");
     cell = named(token->name, "td") || named(token->name, "th");
@@ -2544,7 +2505,7 @@ open_table_part(lxa_html_tree_t *tree,
                                             current_element(tree), &top);
         if (status != LXA_OK) return status;
     }
-    lxa_html_virtual_table_start_plan_t plan;
+    lxa_html_prepared_table_part_plan_t plan;
     status = lxa_html_tree_prepared_table_part_plan(top, token->name, &plan);
     if (status == LXA_ERROR_ARGUMENT) {
         assert(false);

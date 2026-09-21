@@ -110,12 +110,17 @@ lxa_status_t
 lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
     lxa_span_t target, lxa_html_virtual_table_start_plan_t *out);
 
-/* Prepared actual table/section/row insertion after earlier recovery. Reuse
+typedef struct {
+    size_t extra, preflight_nodes;
+    bool implied_group, implied_section, implied_row, void_element;
+} lxa_html_prepared_table_part_plan_t;
+
+/* Prepared actual table/section/row/colgroup insertion after earlier recovery. Reuse
  * virtual-context child geometry; reject names requiring further recovery.
  */
 lxa_status_t
 lxa_html_tree_prepared_table_part_plan(lxa_span_t top, lxa_span_t target,
-    lxa_html_virtual_table_start_plan_t *out);
+    lxa_html_prepared_table_part_plan_t *out);
 
 lxa_status_t
 lxa_html_tree_supported_container(lxa_span_t name, lxa_budget_t *budget,
