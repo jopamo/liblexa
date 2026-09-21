@@ -420,6 +420,20 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
     return *identity == 0 ? internal(LXA_ERROR_INTERNAL) : LXA_OK;
 }
 
+#define LXA_ROOT_TABLE_PART_CONTEXT_NAME control_stack_root_table_part_context_plan
+#define LXA_ROOT_TABLE_PART_CONTEXT_VIEW control_stack_view_t
+#define LXA_ROOT_TABLE_PART_CONTEXT_LENGTH(view) ((view)->length)
+#define LXA_ROOT_TABLE_PART_CONTEXT_BUDGET(view) ((view)->stack->budget)
+#define LXA_ROOT_TABLE_PART_CONTEXT_REASON(view) (&(view)->stack->limit_reason)
+#define LXA_ROOT_TABLE_PART_CONTEXT_READ control_stack_read
+#include "html/root_table_part_context_plan.inc"
+#undef LXA_ROOT_TABLE_PART_CONTEXT_NAME
+#undef LXA_ROOT_TABLE_PART_CONTEXT_VIEW
+#undef LXA_ROOT_TABLE_PART_CONTEXT_LENGTH
+#undef LXA_ROOT_TABLE_PART_CONTEXT_BUDGET
+#undef LXA_ROOT_TABLE_PART_CONTEXT_REASON
+#undef LXA_ROOT_TABLE_PART_CONTEXT_READ
+
 #define LXA_ROOT_TABLE_CLOSE_NAME control_stack_root_table_close_plan
 #define LXA_ROOT_TABLE_CLOSE_VIEW control_stack_view_t
 #define LXA_ROOT_TABLE_CLOSE_LENGTH(view) ((view)->length)
@@ -847,6 +861,20 @@ lxa_html_control_stack_prepared_table_part_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (entry.namespace_id != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
     return lxa_html_tree_prepared_table_part_plan(entry.name, target, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_root_table_part_context_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_span_t target, lxa_html_root_table_part_context_plan_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    if (view.length == 0 || out == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    status = read_element(stack, view.length - 1, &entry, NULL);
+    if (status != LXA_OK) return status;
+    return control_stack_root_table_part_context_plan(&view, boundary, entry.name, target, out);
 }
 
 lxa_status_t

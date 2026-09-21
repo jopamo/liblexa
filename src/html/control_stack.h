@@ -159,6 +159,14 @@ lxa_status_t lxa_html_control_stack_root_table_close_plan(lxa_html_control_stack
  */
 lxa_status_t lxa_html_control_stack_prepared_table_part_plan(lxa_html_control_stack_t *stack,
     lxa_span_t target, lxa_html_prepared_table_part_plan_t *out);
+/* Accepted non-table part after the engine's actual-table scope check. Borrow
+ * the current name without WORK, then charge one WORK per scanned entry above
+ * boundary. Publish retained length and pre-pop reservation only on success.
+ * No allocation/membership effects; engines own preflight, pops and cleanup.
+ */
+lxa_status_t lxa_html_control_stack_root_table_part_context_plan(
+    lxa_html_control_stack_t *stack, size_t boundary, lxa_span_t target,
+    lxa_html_root_table_part_context_plan_t *out);
 /* Same precharge/publication contract as borrowed missing-table recovery.
  * Leave HTML cells and entries before boundary open; the engine owns effects.
  */

@@ -115,6 +115,11 @@ typedef struct {
     bool implied_group, implied_section, implied_row, void_element;
 } lxa_html_prepared_table_part_plan_t;
 
+typedef struct {
+    size_t keep, extra, nodes_before_pop;
+    bool pop;
+} lxa_html_root_table_part_context_plan_t;
+
 /* Prepared actual table/section/row/colgroup insertion after earlier recovery. Reuse
  * virtual-context child geometry; reject names requiring further recovery.
  */
