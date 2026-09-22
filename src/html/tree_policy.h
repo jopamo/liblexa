@@ -15,6 +15,22 @@ typedef enum {
 } lxa_html_table_group_t;
 
 typedef enum {
+    LXA_HTML_ROOT_TABLE_TEMPLATE, LXA_HTML_ROOT_TABLE_TEXT_CURRENT,
+    LXA_HTML_ROOT_TABLE_PLAINTEXT, LXA_HTML_ROOT_TABLE_XMP,
+    LXA_HTML_ROOT_TABLE_TEXT_FOSTER, LXA_HTML_ROOT_TABLE_VOID,
+    LXA_HTML_ROOT_TABLE_SVG, LXA_HTML_ROOT_TABLE_MATH,
+    LXA_HTML_ROOT_TABLE_CONTAINER, LXA_HTML_ROOT_TABLE_UNSUPPORTED
+} lxa_html_root_table_start_action_t;
+
+/* Accepted non-part/non-form start at a root HTML table context, after earlier
+ * control/select/foreign routing. Special routes do no WORK; fallback uses
+ * supported-container policy. Publish only on success; engines own effects.
+ */
+lxa_status_t lxa_html_tree_root_table_start_action(lxa_span_t name,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_root_table_start_action_t *out);
+
+typedef enum {
     LXA_HTML_ROOT_ELEMENT_HTML, LXA_HTML_ROOT_ELEMENT_HEAD, LXA_HTML_ROOT_ELEMENT_BODY
 } lxa_html_root_element_t;
 

@@ -5129,14 +5129,16 @@ reprocess_body_start:
         if (status != LXA_OK) return status;
         if (lxa_html_tree_table_context(top) && !lxa_html_tree_table_part(token->name)
             && !named(token->name, "form")) {
-            bool container;
+            lxa_html_root_table_start_action_t action;
+            status = lxa_html_tree_root_table_start_action(token->name,
+                tree->nodes->budget, &tree->nodes->limit_reason, &action);
+            if (status != LXA_OK) return status;
             /* Table insertion modes process a template start using the
              * head rule, retaining its content fragment under this table
              * scope rather than fostering the element before the table. */
-            if (named(token->name, "template"))
+            if (action == LXA_HTML_ROOT_TABLE_TEMPLATE)
                 return begin_template(tree, token);
-            if (named(token->name, "style")
-                || named(token->name, "script")) {
+            if (action == LXA_HTML_ROOT_TABLE_TEXT_CURRENT) {
                 status = lxa_budget_check(tree->nodes->budget,
                     LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
                 if (status != LXA_OK) return status;
@@ -5147,15 +5149,11 @@ reprocess_body_start:
                 return begin_text_element(tree, tokenizer,
                     current_element(tree), token);
             }
-            if (named(token->name, "plaintext"))
+            if (action == LXA_HTML_ROOT_TABLE_PLAINTEXT)
                 return begin_root_plaintext(tree, tokenizer, token);
-            if (named(token->name, "xmp"))
+            if (action == LXA_HTML_ROOT_TABLE_XMP)
                 return begin_root_xmp(tree, tokenizer, token);
-            if (named(token->name, "textarea")
-                || named(token->name, "title")
-                || named(token->name, "iframe")
-                || named(token->name, "noembed")
-                || named(token->name, "noframes")) {
+            if (action == LXA_HTML_ROOT_TABLE_TEXT_FOSTER) {
                 lxa_dom_ref_t table, foster_parent, element;
                 bool in_colgroup = named(top, "colgroup");
                 bool textarea = named(token->name, "textarea");
@@ -5183,7 +5181,7 @@ reprocess_body_start:
                 }
                 return status;
             }
-            if (lxa_html_tree_head_void(token->name)) {
+            if (action == LXA_HTML_ROOT_TABLE_VOID) {
                 if (named(top, "colgroup")) {
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -5197,21 +5195,7 @@ reprocess_body_start:
                 }
                 return foster_element(tree, token, true);
             }
-            if (named(top, "colgroup") && lxa_html_tree_body_void(token->name)) {
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-                return foster_element(tree, token, true);
-            }
-            if (lxa_html_tree_body_void(token->name)) {
-                return foster_element(tree, token, true);
-            }
-            if (named(token->name, "svg") || named(token->name, "math")) {
+            if (action == LXA_HTML_ROOT_TABLE_SVG || action == LXA_HTML_ROOT_TABLE_MATH) {
                 if (named(top, "colgroup")) {
                     status = lxa_budget_check(tree->nodes->budget,
                         LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
@@ -5222,13 +5206,10 @@ reprocess_body_start:
                     if (status != LXA_OK) return status;
                 }
                 return foster_foreign(tree, token,
-                    named(token->name, "svg") ? LXA_DOM_NS_SVG
+                    action == LXA_HTML_ROOT_TABLE_SVG ? LXA_DOM_NS_SVG
                                               : LXA_DOM_NS_MATHML);
             }
-            status = lxa_html_tree_supported_container(token->name,
-                tree->nodes->budget, &tree->nodes->limit_reason, &container);
-            if (status != LXA_OK) return status;
-            if (container && named(top, "colgroup")) {
+            if (action == LXA_HTML_ROOT_TABLE_CONTAINER && named(top, "colgroup")) {
                 status = reserve_open_elements(tree, 0);
                 if (status == LXA_OK)
                     status = lxa_budget_check(tree->nodes->budget,
@@ -5240,7 +5221,7 @@ reprocess_body_start:
                 status = pop_element(tree);
                 if (status != LXA_OK) return status;
             }
-            if (container) return foster_element(tree, token, false);
+            if (action == LXA_HTML_ROOT_TABLE_CONTAINER) return foster_element(tree, token, false);
             assert(false);
             return LXA_ERROR_INTERNAL;
         }

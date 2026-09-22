@@ -8,6 +8,39 @@
 _Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
 
 lxa_status_t
+lxa_html_tree_root_table_start_action(lxa_span_t name, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, lxa_html_root_table_start_action_t *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || out == NULL || name.data == NULL || name.length == 0
+        || lxa_html_tree_table_part(name) || lxa_html_tree_name_equals(name, "form", 4))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_table_start_action_t action;
+    if (lxa_html_tree_name_equals(name, "template", 8)) action = LXA_HTML_ROOT_TABLE_TEMPLATE;
+    else if (lxa_html_tree_name_equals(name, "style", 5)
+        || lxa_html_tree_name_equals(name, "script", 6)) action = LXA_HTML_ROOT_TABLE_TEXT_CURRENT;
+    else if (lxa_html_tree_name_equals(name, "plaintext", 9)) action = LXA_HTML_ROOT_TABLE_PLAINTEXT;
+    else if (lxa_html_tree_name_equals(name, "xmp", 3)) action = LXA_HTML_ROOT_TABLE_XMP;
+    else if (lxa_html_tree_name_equals(name, "textarea", 8)
+        || lxa_html_tree_name_equals(name, "title", 5)
+        || lxa_html_tree_name_equals(name, "iframe", 6)
+        || lxa_html_tree_name_equals(name, "noembed", 7)
+        || lxa_html_tree_name_equals(name, "noframes", 8)) action = LXA_HTML_ROOT_TABLE_TEXT_FOSTER;
+    else if (lxa_html_tree_head_void(name) || lxa_html_tree_body_void(name))
+        action = LXA_HTML_ROOT_TABLE_VOID;
+    else if (lxa_html_tree_name_equals(name, "svg", 3)) action = LXA_HTML_ROOT_TABLE_SVG;
+    else if (lxa_html_tree_name_equals(name, "math", 4)) action = LXA_HTML_ROOT_TABLE_MATH;
+    else {
+        bool supported;
+        lxa_status_t status = lxa_html_tree_supported_container(name, budget, reason, &supported);
+        if (status != LXA_OK) return status;
+        action = supported ? LXA_HTML_ROOT_TABLE_CONTAINER : LXA_HTML_ROOT_TABLE_UNSUPPORTED;
+    }
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_leading_newline(bool *pending, lxa_html_token_kind_t kind,
     lxa_span_t data, lxa_span_t *out)
 {
