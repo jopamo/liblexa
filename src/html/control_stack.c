@@ -434,6 +434,20 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_ROOT_TABLE_PART_CONTEXT_REASON
 #undef LXA_ROOT_TABLE_PART_CONTEXT_READ
 
+#define LXA_ROOT_PART_CLOSE_NAME control_stack_root_table_part_close_plan
+#define LXA_ROOT_PART_CLOSE_VIEW control_stack_view_t
+#define LXA_ROOT_PART_CLOSE_LENGTH(view) ((view)->length)
+#define LXA_ROOT_PART_CLOSE_BUDGET(view) ((view)->stack->budget)
+#define LXA_ROOT_PART_CLOSE_REASON(view) (&(view)->stack->limit_reason)
+#define LXA_ROOT_PART_CLOSE_READ control_stack_read
+#include "html/root_table_part_close_plan.inc"
+#undef LXA_ROOT_PART_CLOSE_NAME
+#undef LXA_ROOT_PART_CLOSE_VIEW
+#undef LXA_ROOT_PART_CLOSE_LENGTH
+#undef LXA_ROOT_PART_CLOSE_BUDGET
+#undef LXA_ROOT_PART_CLOSE_REASON
+#undef LXA_ROOT_PART_CLOSE_READ
+
 #define LXA_ROOT_TABLE_CLOSE_NAME control_stack_root_table_close_plan
 #define LXA_ROOT_TABLE_CLOSE_VIEW control_stack_view_t
 #define LXA_ROOT_TABLE_CLOSE_LENGTH(view) ((view)->length)
@@ -836,6 +850,16 @@ lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t *stack,
     if (status != LXA_OK) return status;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     return control_stack_table_context_plan(&view, boundary, virtual_table, out);
+}
+
+lxa_status_t
+lxa_html_control_stack_root_table_part_close_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_table_group_t group, size_t *out)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, boundary, &view);
+    if (status != LXA_OK) return status;
+    return control_stack_root_table_part_close_plan(&view, boundary, group, out);
 }
 
 lxa_status_t

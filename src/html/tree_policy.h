@@ -11,6 +11,10 @@ typedef enum {
 } lxa_html_document_mode_t;
 
 typedef enum {
+    LXA_HTML_TABLE_CELL, LXA_HTML_TABLE_ROW, LXA_HTML_TABLE_SECTION
+} lxa_html_table_group_t;
+
+typedef enum {
     LXA_HTML_ROOT_ELEMENT_HTML, LXA_HTML_ROOT_ELEMENT_HEAD, LXA_HTML_ROOT_ELEMENT_BODY
 } lxa_html_root_element_t;
 

@@ -146,6 +146,12 @@ lxa_status_t lxa_html_control_stack_select_plan(lxa_html_control_stack_t *stack,
     lxa_html_select_plan_t *out);
 lxa_status_t lxa_html_control_stack_table_context_plan(lxa_html_control_stack_t *stack,
     size_t boundary, bool virtual_table, lxa_html_table_context_plan_t *out);
+/* Scan above boundary for the nearest HTML cell/row/section with canonical
+ * table-context stops. Return stack length when absent; one WORK per entry.
+ * Publish only on success, without changing membership or identities.
+ */
+lxa_status_t lxa_html_control_stack_root_table_part_close_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_table_group_t group, size_t *out);
 /* Accepted root table start after current-name classification. Skip lookup
  * when current_context is true; otherwise charge one WORK per entry above
  * boundary, stopping at an HTML table or cell/caption. Publish only on success.
