@@ -166,6 +166,15 @@ lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *con
 lxa_status_t lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode);
+/* Accepted table-context svg/math after earlier dispatch and colgroup recovery.
+ * Require BODY/IN_BODY and a nonempty stack. Reconstruct before OPEN reservation,
+ * then admit adjusted metadata and pop self-closing entries. No mode/frameset
+ * publication or NODE charge. Borrow a same-budget list; latch partial failure.
+ * Engines own foster placement; token storage must not alias owner storage.
+ */
+lxa_status_t lxa_html_root_context_foster_foreign(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t mode);
 /* Admit accepted object/marquee/applet roots after earlier routing.
  * Publish BODY/frameset effects and reserve an open slot before reconstruction;
  * then preflight depth and admit marker membership without attribute snapshots.

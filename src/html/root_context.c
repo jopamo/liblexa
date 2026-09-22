@@ -808,6 +808,41 @@ lxa_html_root_context_start_foreign(lxa_html_root_context_t *context,
     return finish(context, context_start_foreign(&view, token, mode));
 }
 
+#define LXA_ROOT_FOSTER_FOREIGN_NAME context_foster_foreign
+#define LXA_ROOT_FOSTER_FOREIGN_VIEW root_start_view_t
+#define LXA_ROOT_FOSTER_FOREIGN_RECONSTRUCT(view) \
+    lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
+#define LXA_ROOT_FOSTER_FOREIGN_RESERVE(view) reserve_open_slot((view)->context)
+#define LXA_ROOT_FOSTER_FOREIGN_INSERT context_foreign_insert
+#define LXA_ROOT_FOSTER_FOREIGN_POP(view) \
+    lxa_html_control_stack_pop_to((view)->context->stack, \
+        lxa_vector_length(&(view)->context->stack->elements) - 1)
+#include "html/root_foster_foreign.inc"
+#undef LXA_ROOT_FOSTER_FOREIGN_NAME
+#undef LXA_ROOT_FOSTER_FOREIGN_VIEW
+#undef LXA_ROOT_FOSTER_FOREIGN_RECONSTRUCT
+#undef LXA_ROOT_FOSTER_FOREIGN_RESERVE
+#undef LXA_ROOT_FOSTER_FOREIGN_INSERT
+#undef LXA_ROOT_FOSTER_FOREIGN_POP
+
+lxa_status_t
+lxa_html_root_context_foster_foreign(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY
+        || lxa_vector_length(&context->stack->elements) == 0
+        || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (!lxa_html_tree_name_equals(token->name, "svg", 3)
+            && !lxa_html_tree_name_equals(token->name, "math", 4))) return LXA_ERROR_ARGUMENT;
+    root_start_view_t view = {context, formatting};
+    return finish(context, context_foster_foreign(&view, token));
+}
+
 
 lxa_status_t
 lxa_html_root_context_end_scoped(lxa_html_root_context_t *context,

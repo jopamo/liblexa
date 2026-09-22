@@ -2293,34 +2293,35 @@ foster_element(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
-foster_foreign(lxa_html_tree_t *tree,
-               const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+tree_root_foreign_reserve(lxa_html_tree_t *tree)
 {
-    lxa_dom_ref_t table, parent, child;
-    lxa_span_t name = token->name;
-    lxa_status_t status = reconstruct_formatting(tree);
-    if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   1, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = root_insertion_location(tree, current_element(tree),
-                                          &parent, &table);
-    if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
-        status = lxa_html_svg_tag_name(name, &name);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_append_namespaced_element(tree->nodes,
-                                                          name, ns, &child);
-    if (status == LXA_OK) status = apply_attributes(tree, child, token);
-    if (status == LXA_OK)
-        status = insert_constructed(tree, parent, child, table);
-    if (status == LXA_OK) status = push_element(tree, child);
-    if (status == LXA_OK && token->self_closing) {
-        status = pop_element(tree);
-        if (status != LXA_OK) return status;
-    }
-    return status;
+    lxa_status_t status = reserve_open_elements(tree, 1);
+    return status == LXA_OK ? lxa_budget_check(tree->nodes->budget,
+        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason) : status;
 }
+
+static lxa_status_t
+tree_foster_foreign_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    lxa_dom_namespace_t ns)
+{
+    lxa_dom_ref_t parent, table;
+    lxa_status_t status = root_insertion_location(tree, current_element(tree), &parent, &table);
+    return status == LXA_OK ? open_container_at(tree, token, ns, parent, table) : status;
+}
+
+#define LXA_ROOT_FOSTER_FOREIGN_NAME foster_foreign
+#define LXA_ROOT_FOSTER_FOREIGN_VIEW lxa_html_tree_t
+#define LXA_ROOT_FOSTER_FOREIGN_RECONSTRUCT reconstruct_formatting
+#define LXA_ROOT_FOSTER_FOREIGN_RESERVE tree_root_foreign_reserve
+#define LXA_ROOT_FOSTER_FOREIGN_INSERT tree_foster_foreign_insert
+#define LXA_ROOT_FOSTER_FOREIGN_POP pop_element
+#include "html/root_foster_foreign.inc"
+#undef LXA_ROOT_FOSTER_FOREIGN_NAME
+#undef LXA_ROOT_FOSTER_FOREIGN_VIEW
+#undef LXA_ROOT_FOSTER_FOREIGN_RECONSTRUCT
+#undef LXA_ROOT_FOSTER_FOREIGN_RESERVE
+#undef LXA_ROOT_FOSTER_FOREIGN_INSERT
+#undef LXA_ROOT_FOSTER_FOREIGN_POP
 
 static lxa_status_t
 tree_root_part_close_plan(lxa_html_tree_t *tree, lxa_html_table_group_t group, size_t *index)
@@ -4018,14 +4019,6 @@ tree_root_formatting_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_FORMATTING_START_PREPARE
 #undef LXA_ROOT_FORMATTING_START_ADMIT
 
-static lxa_status_t
-tree_root_foreign_reserve(lxa_html_tree_t *tree)
-{
-    lxa_status_t status = reserve_open_elements(tree, 1);
-    return status == LXA_OK ? lxa_budget_check(tree->nodes->budget,
-        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason) : status;
-}
-
 #define LXA_ROOT_FOREIGN_START_NAME tree_start_root_foreign
 #define LXA_ROOT_FOREIGN_START_VIEW lxa_html_tree_t
 #define LXA_ROOT_FOREIGN_START_BODY ensure_body
@@ -5205,9 +5198,7 @@ reprocess_body_start:
                     if (status == LXA_OK) status = pop_element(tree);
                     if (status != LXA_OK) return status;
                 }
-                return foster_foreign(tree, token,
-                    action == LXA_HTML_ROOT_TABLE_SVG ? LXA_DOM_NS_SVG
-                                              : LXA_DOM_NS_MATHML);
+                return foster_foreign(tree, token);
             }
             if (action == LXA_HTML_ROOT_TABLE_CONTAINER && named(top, "colgroup")) {
                 status = reserve_open_elements(tree, 0);
