@@ -157,6 +157,17 @@ lxa_status_t lxa_html_root_context_start_void(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, uint64_t *identity);
+/* Accepted fostered HTML after earlier routing/colgroup recovery. Require
+ * BODY/IN_BODY and a nonempty stack; classify through table-start policy.
+ * Reuse formatting preparation/reconstruction and reserve markers before depth
+ * admission, without ordinary paragraph/frameset effects. Void starts retain
+ * no entry. Borrow a same-budget list; publish newline only on success and
+ * clear identity/latch failure while retaining completed effects.
+ * Token/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_foster_html(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    bool keep_open, lxa_html_root_mode_t mode, uint64_t *identity, bool *skip_newline);
 /* Admit accepted svg/math roots after earlier foreign/table routing.
  * Ensure BODY, reserve an open slot, reconstruct formatting, then publish
  * IN_BODY and admit effective metadata. Self-closing starts pop that entry.

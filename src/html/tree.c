@@ -2245,26 +2245,14 @@ observe_inserted_meta(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 }
 
 static lxa_status_t
-foster_element(lxa_html_tree_t *tree,
-               const lxa_html_token_t *token, bool is_void)
+tree_foster_html_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    bool keep_open, bool formatting, bool marker, size_t drop)
 {
     lxa_dom_ref_t table, parent, child;
-    bool formatting = lxa_html_tree_formatting_tag(token->name);
-    bool marker = lxa_html_tree_formatting_marker_tag(token->name);
-    size_t drop = SIZE_MAX;
-    lxa_status_t status = LXA_OK;
-    if (formatting) status = prepare_formatting_start(tree, token, &drop);
-    else if (!is_void && lxa_html_tree_container_reconstructs(token->name))
-        status = reconstruct_formatting(tree);
-    else if (is_void && !lxa_html_tree_head_void(token->name)
-             && lxa_html_tree_body_void_reconstructs(token->name))
-        status = reconstruct_formatting(tree);
-    if (status == LXA_OK && marker) status = reserve_formatting(tree, 1);
-    if (status == LXA_OK)
-        status = root_insertion_location(tree, current_element(tree),
+    lxa_status_t status = root_insertion_location(tree, current_element(tree),
                                           &parent, &table);
     if (status != LXA_OK) return status;
-    if (!is_void) {
+    if (keep_open) {
         status = reserve_open_elements(tree, 1);
         if (status != LXA_OK) return status;
     }
@@ -2279,16 +2267,36 @@ foster_element(lxa_html_tree_t *tree,
         status = lxa_dom_nodes_reset_option_select(tree->nodes, child);
     if (status == LXA_OK && named(token->name, "selectedcontent"))
         status = connect_selectedcontent(tree, child);
-    if (status == LXA_OK && !is_void) status = push_element(tree, child);
+    if (status == LXA_OK && keep_open) status = push_element(tree, child);
     if (status == LXA_OK && formatting) {
         if (drop != SIZE_MAX) status = remove_formatting(tree, drop);
         if (status == LXA_OK) status = append_formatting(tree, child, false);
     }
     if (status == LXA_OK && marker)
         status = append_formatting(tree, child, true);
-    if (status == LXA_OK
-        && (named(token->name, "pre") || named(token->name, "listing")))
-        tree->skip_pre_newline = true;
+    return status;
+}
+
+#define LXA_FOSTER_HTML_NAME tree_start_foster_html
+#define LXA_FOSTER_HTML_VIEW lxa_html_tree_t
+#define LXA_FOSTER_HTML_PREPARE prepare_formatting_start
+#define LXA_FOSTER_HTML_RECONSTRUCT reconstruct_formatting
+#define LXA_FOSTER_HTML_MARKER(view) reserve_formatting(view, 1)
+#define LXA_FOSTER_HTML_ADMIT tree_foster_html_admit
+#include "html/foster_html_start.inc"
+#undef LXA_FOSTER_HTML_NAME
+#undef LXA_FOSTER_HTML_VIEW
+#undef LXA_FOSTER_HTML_PREPARE
+#undef LXA_FOSTER_HTML_RECONSTRUCT
+#undef LXA_FOSTER_HTML_MARKER
+#undef LXA_FOSTER_HTML_ADMIT
+
+static lxa_status_t
+foster_element(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool is_void)
+{
+    bool newline;
+    lxa_status_t status = tree_start_foster_html(tree, token, !is_void, &newline);
+    if (status == LXA_OK && newline) tree->skip_pre_newline = true;
     return status;
 }
 
