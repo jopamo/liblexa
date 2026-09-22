@@ -708,6 +708,38 @@ root_start_identity(const root_start_view_t *view, size_t index, uint64_t *ident
 #undef LXA_FORMATTING_START_SCOPED
 #undef LXA_FORMATTING_START_PLAN
 
+typedef struct {
+    root_start_view_t recovery;
+    uint64_t *identity;
+} root_formatting_start_view_t;
+
+static lxa_status_t
+context_root_formatting_admit(root_formatting_start_view_t *view,
+    const lxa_html_token_t *token, size_t drop)
+{
+    lxa_html_root_context_t *context = view->recovery.context;
+    lxa_html_formatting_list_t *formatting = view->recovery.formatting;
+    lxa_status_t status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
+    if (status == LXA_OK)
+        status = lxa_html_formatting_list_admit_planned(formatting, context->stack,
+            token, drop, view->identity);
+    return status;
+}
+
+#define LXA_ROOT_FORMATTING_START_NAME context_start_root_formatting
+#define LXA_ROOT_FORMATTING_START_VIEW root_formatting_start_view_t
+#define LXA_ROOT_FORMATTING_START_BODY(view) context_ensure_body((view)->recovery.context)
+#define LXA_ROOT_FORMATTING_START_FRAMESET(view) ((view)->recovery.context->frameset_ok)
+#define LXA_ROOT_FORMATTING_START_PREPARE(view, token, drop) root_prepare_start(&(view)->recovery, token, drop)
+#define LXA_ROOT_FORMATTING_START_ADMIT context_root_formatting_admit
+#include "html/root_formatting_start.inc"
+#undef LXA_ROOT_FORMATTING_START_NAME
+#undef LXA_ROOT_FORMATTING_START_VIEW
+#undef LXA_ROOT_FORMATTING_START_BODY
+#undef LXA_ROOT_FORMATTING_START_FRAMESET
+#undef LXA_ROOT_FORMATTING_START_PREPARE
+#undef LXA_ROOT_FORMATTING_START_ADMIT
+
 lxa_status_t
 lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
@@ -721,20 +753,8 @@ lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
         return LXA_ERROR_ARGUMENT;
     status = lxa_html_formatting_list_start_intake(formatting, context->stack, 0, token);
     if (status == LXA_ERROR_ARGUMENT) return status;
-    if (status == LXA_OK) status = context_ensure_body(context);
-    size_t drop;
-    root_start_view_t view = {context, formatting};
-    if (status == LXA_OK) {
-        *mode = LXA_TREE_IN_BODY;
-        status = root_prepare_start(&view, token, &drop);
-    }
-    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
-        context->limit_reason = formatting->store->limit_reason;
-    if (status == LXA_OK)
-        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
-    if (status == LXA_OK)
-        status = lxa_html_formatting_list_admit_planned(formatting, context->stack,
-            token, drop, identity);
+    root_formatting_start_view_t view = {{context, formatting}, identity};
+    if (status == LXA_OK) status = context_start_root_formatting(&view, token, mode);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = formatting->store->limit_reason;
     if (status != LXA_OK) *identity = 0;

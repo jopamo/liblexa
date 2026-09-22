@@ -3984,6 +3984,41 @@ tree_root_container_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 #undef LXA_ROOT_CONTAINER_START_INSERT
 
 static lxa_status_t
+tree_root_formatting_prepare(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t *drop)
+{
+    lxa_status_t status = tree_prepare_root_container(tree, token->name, true);
+    return status == LXA_OK ? prepare_formatting_start(tree, token, drop) : status;
+}
+
+static lxa_status_t
+tree_root_formatting_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t drop)
+{
+    lxa_dom_ref_t parent, before;
+    lxa_status_t status = reserve_open_elements(tree, 1);
+    if (status == LXA_OK)
+        status = root_insertion_location(tree, current_element(tree), &parent, &before);
+    if (status == LXA_OK)
+        status = open_container_at(tree, token, LXA_DOM_NS_HTML, parent, before);
+    if (status == LXA_OK && drop != SIZE_MAX) status = remove_formatting(tree, drop);
+    if (status == LXA_OK) status = append_formatting(tree, current_element(tree), false);
+    return status;
+}
+
+#define LXA_ROOT_FORMATTING_START_NAME tree_start_root_formatting
+#define LXA_ROOT_FORMATTING_START_VIEW lxa_html_tree_t
+#define LXA_ROOT_FORMATTING_START_BODY ensure_body
+#define LXA_ROOT_FORMATTING_START_FRAMESET(view) ((view)->frameset_ok)
+#define LXA_ROOT_FORMATTING_START_PREPARE tree_root_formatting_prepare
+#define LXA_ROOT_FORMATTING_START_ADMIT tree_root_formatting_admit
+#include "html/root_formatting_start.inc"
+#undef LXA_ROOT_FORMATTING_START_NAME
+#undef LXA_ROOT_FORMATTING_START_VIEW
+#undef LXA_ROOT_FORMATTING_START_BODY
+#undef LXA_ROOT_FORMATTING_START_FRAMESET
+#undef LXA_ROOT_FORMATTING_START_PREPARE
+#undef LXA_ROOT_FORMATTING_START_ADMIT
+
+static lxa_status_t
 tree_root_foreign_reserve(lxa_html_tree_t *tree)
 {
     lxa_status_t status = reserve_open_elements(tree, 1);
@@ -5267,33 +5302,11 @@ reprocess_body_start:
             tree->nodes->budget, &tree->nodes->limit_reason, &container);
         if (status != LXA_OK) return status;
         if (container) {
-            lxa_dom_ref_t before;
-            bool formatting = lxa_html_tree_formatting_tag(token->name);
-            size_t drop = SIZE_MAX;
-            if (!formatting) {
-                bool newline;
-                status = tree_start_root_container(tree, token, &tree->mode, &newline);
-                if (status == LXA_OK && newline) tree->skip_pre_newline = true;
-                return status;
-            }
-            status = ensure_body(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_BODY;
-            if (tree->frameset_ok && lxa_html_tree_root_container_disables_frameset(token->name))
-                tree->frameset_ok = false;
-            status = tree_prepare_root_container(tree, token->name, formatting);
-            if (status != LXA_OK) return status;
-            status = prepare_formatting_start(tree, token, &drop);
-            if (status == LXA_OK) status = reserve_open_elements(tree, 1);
-            if (status != LXA_OK) return status;
-            status = root_insertion_location(tree, current_element(tree),
-                                              &parent, &before);
-            if (status == LXA_OK)
-                status = open_container_at(tree, token, LXA_DOM_NS_HTML,
-                                            parent, before);
-            if (status == LXA_OK && drop != SIZE_MAX) status = remove_formatting(tree, drop);
-            if (status == LXA_OK)
-                status = append_formatting(tree, current_element(tree), false);
+            if (lxa_html_tree_formatting_tag(token->name))
+                return tree_start_root_formatting(tree, token, &tree->mode);
+            bool newline;
+            status = tree_start_root_container(tree, token, &tree->mode, &newline);
+            if (status == LXA_OK && newline) tree->skip_pre_newline = true;
             return status;
         }
         assert(false);
