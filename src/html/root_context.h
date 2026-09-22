@@ -264,6 +264,15 @@ lxa_status_t lxa_html_root_context_recover_table_part_context(lxa_html_root_cont
 lxa_status_t lxa_html_root_context_recover_caption(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     lxa_html_root_mode_t mode);
+/* Accepted non-table part after select/foreign routing. Share root preparation,
+ * table-scope gating, caption/group/part recovery and prepared admission.
+ * Missing table ignores after root effects. Borrow a same-budget list, preserve
+ * completed effects and clear identity/latch failure without replay. COL
+ * reports zero identity. Mode/token/output must not alias owner storage.
+ */
+lxa_status_t lxa_html_root_context_start_table_part(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity);
 /* Accepted ordinary HTML container after earlier specialized start dispatch.
  * Share recovery/reservation order, then reconstruct when required and check
  * child depth before admission. Borrow a same-budget list only when needed.

@@ -1341,6 +1341,87 @@ lxa_html_root_context_recover_table_part_context(lxa_html_root_context_t *contex
     return finish(context, context_recover_table_part_context(&view, token, mode, in_scope));
 }
 
+static lxa_status_t
+context_part_close_pop(root_container_start_view_t *view, size_t keep)
+{
+    root_start_view_t recovery = {view->context, view->formatting};
+    return context_table_part_pop(&recovery, keep);
+}
+
+#define LXA_ROOT_PART_CLOSE_EXEC_NAME context_close_table_part
+#define LXA_ROOT_PART_CLOSE_EXEC_VIEW root_container_start_view_t
+#define LXA_ROOT_PART_CLOSE_EXEC_PLAN(view, group, index) \
+    lxa_html_control_stack_root_table_part_close_plan((view)->context->stack, 1, group, index)
+#define LXA_ROOT_PART_CLOSE_EXEC_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_ROOT_PART_CLOSE_EXEC_NODE(view) LXA_OK
+#define LXA_ROOT_PART_CLOSE_EXEC_POP context_part_close_pop
+#include "html/root_table_part_close.inc"
+#undef LXA_ROOT_PART_CLOSE_EXEC_NAME
+#undef LXA_ROOT_PART_CLOSE_EXEC_VIEW
+#undef LXA_ROOT_PART_CLOSE_EXEC_PLAN
+#undef LXA_ROOT_PART_CLOSE_EXEC_LENGTH
+#undef LXA_ROOT_PART_CLOSE_EXEC_NODE
+#undef LXA_ROOT_PART_CLOSE_EXEC_POP
+
+static lxa_status_t
+context_part_recover(root_container_start_view_t *view, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, bool *found)
+{
+    root_start_view_t recovery = {view->context, view->formatting};
+    return context_recover_table_part_context(&recovery, token, mode, found);
+}
+
+static lxa_status_t
+context_part_caption(root_container_start_view_t *view, lxa_span_t incoming)
+{
+    root_start_view_t recovery = {view->context, view->formatting};
+    return context_recover_caption(&recovery, incoming);
+}
+
+#define LXA_ROOT_PART_START_NAME context_start_table_part
+#define LXA_ROOT_PART_START_VIEW root_container_start_view_t
+#define LXA_ROOT_PART_START_CONTEXT context_part_recover
+#define LXA_ROOT_PART_START_CAPTION context_part_caption
+#define LXA_ROOT_PART_START_TOP context_table_top
+#define LXA_ROOT_PART_START_CLOSE context_close_table_part
+#define LXA_ROOT_PART_START_RESERVE(view, count) reserve_open_slots((view)->context, count)
+#define LXA_ROOT_PART_START_NODE(view, count) LXA_OK
+#define LXA_ROOT_PART_START_POP(view) \
+    lxa_html_control_stack_pop_to((view)->context->stack, \
+        lxa_vector_length(&(view)->context->stack->elements) - 1)
+#define LXA_ROOT_PART_START_ADMIT context_admit_table_part
+#include "html/root_table_part_start.inc"
+#undef LXA_ROOT_PART_START_NAME
+#undef LXA_ROOT_PART_START_VIEW
+#undef LXA_ROOT_PART_START_CONTEXT
+#undef LXA_ROOT_PART_START_CAPTION
+#undef LXA_ROOT_PART_START_TOP
+#undef LXA_ROOT_PART_START_CLOSE
+#undef LXA_ROOT_PART_START_RESERVE
+#undef LXA_ROOT_PART_START_NODE
+#undef LXA_ROOT_PART_START_POP
+#undef LXA_ROOT_PART_START_ADMIT
+
+lxa_status_t
+lxa_html_root_context_start_table_part(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, uint64_t *identity)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget
+        || !body_start_mode_valid(context, *mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_table_part(token->name)
+        || lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    root_container_start_view_t view = {context, formatting, identity, false};
+    status = context_start_table_part(&view, token, mode);
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
 typedef struct {
     lxa_html_root_context_t *context;
     bool implied;
