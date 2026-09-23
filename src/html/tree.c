@@ -2555,6 +2555,49 @@ enter_text_mode(lxa_html_tree_t *tree,
     return LXA_OK;
 }
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_dom_ref_t element;
+} tree_foster_text_view_t;
+
+static lxa_status_t
+tree_foster_text_insert(tree_foster_text_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_tree_t *tree = view->tree;
+    lxa_dom_ref_t table, parent;
+    lxa_status_t status = lxa_budget_check(tree->nodes->budget,
+        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = foster_location(tree, &parent, &table);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_append_parsed_html_element(tree->nodes, token->name, &view->element);
+    if (status == LXA_OK) status = apply_attributes(tree, view->element, token);
+    if (status == LXA_OK) status = insert_constructed(tree, parent, view->element, table);
+    return status;
+}
+
+#define LXA_ROOT_FOSTER_TEXT_NAME tree_start_foster_text
+#define LXA_ROOT_FOSTER_TEXT_VIEW tree_foster_text_view_t
+#define LXA_ROOT_FOSTER_TEXT_INSERT tree_foster_text_insert
+#define LXA_ROOT_FOSTER_TEXT_ENTER(view, token) \
+    enter_text_mode((view)->tree, (view)->tokenizer, token, (view)->element)
+#define LXA_ROOT_FOSTER_TEXT_POP(view) pop_element((view)->tree)
+#include "html/root_foster_text.inc"
+#undef LXA_ROOT_FOSTER_TEXT_NAME
+#undef LXA_ROOT_FOSTER_TEXT_VIEW
+#undef LXA_ROOT_FOSTER_TEXT_INSERT
+#undef LXA_ROOT_FOSTER_TEXT_ENTER
+#undef LXA_ROOT_FOSTER_TEXT_POP
+
+static lxa_status_t
+begin_root_foster_text(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, bool column_group)
+{
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    tree_foster_text_view_t view = {tree, tokenizer, {0}};
+    return tree_start_foster_text(&view, token, column_group, &tree->skip_pre_newline);
+}
+
 static lxa_status_t
 leave_text_mode(lxa_html_tree_t *tree, lxa_html_root_mode_t *mode)
 {
@@ -5154,34 +5197,8 @@ reprocess_body_start:
                 return begin_root_plaintext(tree, tokenizer, token);
             if (action == LXA_HTML_ROOT_TABLE_XMP)
                 return begin_root_xmp(tree, tokenizer, token);
-            if (action == LXA_HTML_ROOT_TABLE_TEXT_FOSTER) {
-                lxa_dom_ref_t table, foster_parent, element;
-                bool in_colgroup = named(top, "colgroup");
-                bool textarea = named(token->name, "textarea");
-                if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = foster_location(tree, &foster_parent, &table);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_append_parsed_html_element(tree->nodes,
-                        token->name, &element);
-                if (status == LXA_OK)
-                    status = apply_attributes(tree, element, token);
-                if (status == LXA_OK)
-                    status = insert_constructed(tree, foster_parent,
-                        element, table);
-                if (status == LXA_OK)
-                    status = enter_text_mode(tree, tokenizer, token, element);
-                if (status == LXA_OK) {
-                    if (textarea) tree->skip_pre_newline = true;
-                    if (in_colgroup) {
-                        status = pop_element(tree);
-                        if (status != LXA_OK) return status;
-                    }
-                }
-                return status;
-            }
+            if (action == LXA_HTML_ROOT_TABLE_TEXT_FOSTER)
+                return begin_root_foster_text(tree, tokenizer, token, named(top, "colgroup"));
             if (action == LXA_HTML_ROOT_TABLE_VOID) {
                 if (named(top, "colgroup")) {
                     status = lxa_budget_check(tree->nodes->budget,

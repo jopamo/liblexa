@@ -353,6 +353,63 @@ lxa_html_root_context_start_text(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_text_context_t *text;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_html_root_mode_t *mode;
+} root_foster_text_view_t;
+
+static lxa_status_t
+context_foster_text_enter(root_foster_text_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_status_t status = lxa_html_text_context_enter(view->text, view->tokenizer,
+        token->name, *view->mode, &view->context->limit_reason);
+    if (status == LXA_OK) *view->mode = LXA_TREE_TEXT;
+    return status;
+}
+
+#define LXA_ROOT_FOSTER_TEXT_NAME context_start_foster_text
+#define LXA_ROOT_FOSTER_TEXT_VIEW root_foster_text_view_t
+#define LXA_ROOT_FOSTER_TEXT_INSERT(view, token) LXA_OK
+#define LXA_ROOT_FOSTER_TEXT_ENTER context_foster_text_enter
+#define LXA_ROOT_FOSTER_TEXT_POP(view) \
+    lxa_html_control_stack_pop_to((view)->context->stack, \
+        lxa_vector_length(&(view)->context->stack->elements) - 1)
+#include "html/root_foster_text.inc"
+#undef LXA_ROOT_FOSTER_TEXT_NAME
+#undef LXA_ROOT_FOSTER_TEXT_VIEW
+#undef LXA_ROOT_FOSTER_TEXT_INSERT
+#undef LXA_ROOT_FOSTER_TEXT_ENTER
+#undef LXA_ROOT_FOSTER_TEXT_POP
+
+lxa_status_t
+lxa_html_root_context_foster_text(lxa_html_root_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *pending_newline)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || pending_newline == NULL || text == NULL || tokenizer == NULL
+        || !context->body || *mode != LXA_TREE_IN_BODY
+        || lxa_vector_length(&context->stack->elements) == 0
+        || text->plan.mode != LXA_HTML_DATA || text->plan.end_tag.data != NULL
+        || text->plan.end_tag.length != 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_returning_text_element(token->name)) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_table_start_action_t action;
+    status = lxa_html_tree_root_table_start_action(token->name, context->stack->budget,
+        &context->limit_reason, &action);
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status != LXA_OK) return finish(context, status);
+    if (action != LXA_HTML_ROOT_TABLE_TEXT_FOSTER) return LXA_ERROR_ARGUMENT;
+    bool column_group;
+    status = lxa_html_control_stack_column_group(context->stack, 0, &column_group);
+    root_foster_text_view_t view = {context, text, tokenizer, mode};
+    if (status == LXA_OK) status = context_start_foster_text(&view, token, column_group, pending_newline);
+    return finish(context, status);
+}
+
 lxa_status_t
 lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
