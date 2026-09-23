@@ -2668,6 +2668,28 @@ begin_text_element(lxa_html_tree_t *tree,
                                   token);
 }
 
+#define LXA_ROOT_TABLE_TEXT_NAME tree_start_table_text
+#define LXA_ROOT_TABLE_TEXT_VIEW tree_foster_text_view_t
+#define LXA_ROOT_TABLE_TEXT_PREPARE(view) \
+    lxa_budget_check((view)->tree->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->tree->nodes->limit_reason)
+#define LXA_ROOT_TABLE_TEXT_POP(view) pop_element((view)->tree)
+#define LXA_ROOT_TABLE_TEXT_ENTER(view, token) \
+    begin_text_element((view)->tree, (view)->tokenizer, current_element((view)->tree), token)
+#include "html/root_table_text_start.inc"
+#undef LXA_ROOT_TABLE_TEXT_NAME
+#undef LXA_ROOT_TABLE_TEXT_VIEW
+#undef LXA_ROOT_TABLE_TEXT_PREPARE
+#undef LXA_ROOT_TABLE_TEXT_POP
+#undef LXA_ROOT_TABLE_TEXT_ENTER
+
+static lxa_status_t
+begin_root_table_text(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, bool column_group)
+{
+    tree_foster_text_view_t view = {tree, tokenizer, {0}};
+    return tree_start_table_text(&view, token, column_group);
+}
+
 static lxa_status_t
 begin_root_xmp(lxa_html_tree_t *tree, lxa_html_tokenizer_t *tokenizer,
                 const lxa_html_token_t *token)
@@ -5182,17 +5204,8 @@ reprocess_body_start:
              * scope rather than fostering the element before the table. */
             if (action == LXA_HTML_ROOT_TABLE_TEMPLATE)
                 return begin_template(tree, token);
-            if (action == LXA_HTML_ROOT_TABLE_TEXT_CURRENT) {
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                if (named(top, "colgroup")) {
-                    status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                return begin_text_element(tree, tokenizer,
-                    current_element(tree), token);
-            }
+            if (action == LXA_HTML_ROOT_TABLE_TEXT_CURRENT)
+                return begin_root_table_text(tree, tokenizer, token, named(top, "colgroup"));
             if (action == LXA_HTML_ROOT_TABLE_PLAINTEXT)
                 return begin_root_plaintext(tree, tokenizer, token);
             if (action == LXA_HTML_ROOT_TABLE_XMP)

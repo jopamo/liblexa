@@ -104,6 +104,15 @@ lxa_status_t lxa_html_root_context_start_text(lxa_html_root_context_t *context,
 lxa_status_t lxa_html_root_context_foster_text(lxa_html_root_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode, bool *pending_newline);
+/* Accepted current-table script/style at BODY/IN_BODY. Recover a saved colgroup
+ * before text feedback; failed feedback retains that pop without publishing
+ * TEXT. Borrow inactive text/tokenizer/mode owners, retain no open text entry
+ * or NODE charge, and latch partial failure without replay. Engines own
+ * insertion; input/text/mode storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_start_table_text(lxa_html_root_context_t *context,
+    lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
 /* Apply accepted ordinary plaintext recovery after earlier routing.
  * Close paragraph, recover current colgroup, admit open metadata and publish
  * IN_BODY before feedback. Retain completed effects and clear identity on
