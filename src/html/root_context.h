@@ -195,6 +195,22 @@ lxa_status_t lxa_html_root_context_foster_html(lxa_html_root_context_t *context,
  */
 lxa_status_t lxa_html_root_context_recover_foster_group(lxa_html_root_context_t *context,
     lxa_html_root_table_start_action_t action, lxa_html_root_mode_t mode);
+/* Accepted non-part/non-form start at a current HTML table context, after
+ * control/select/hidden-input/foreign routing. Classify once, validate required
+ * borrowers before effects, then share table-text/foster/ordinary-text dispatch.
+ * Formatting is optional only for routes that do not use it; supplied lists
+ * must share the budget. Text owners are required only by their selected route.
+ * Template success reports template_start without effects; the engine must
+ * admit its frame before continuing. Publish that result only on success.
+ * Report identities for retained HTML starts, zero for void/returning-text/foreign/
+ * deferred-template routes. Borrow the pending newline flag; preserve partial
+ * publication/recovery on failure, clear identity and latch without replay.
+ * Token/mode/output/text storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_table_start_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
+    uint64_t *identity, bool *pending_newline, bool *template_start);
 /* Admit accepted svg/math roots after earlier foreign/table routing.
  * Ensure BODY, reserve an open slot, reconstruct formatting, then publish
  * IN_BODY and admit effective metadata. Self-closing starts pop that entry.

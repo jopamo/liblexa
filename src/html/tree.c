@@ -4124,6 +4124,31 @@ tree_root_formatting_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_FOREIGN_START_INSERT
 #undef LXA_ROOT_FOREIGN_START_POP
 
+#define LXA_ROOT_TABLE_EXEC_NAME tree_execute_table_start
+#define LXA_ROOT_TABLE_EXEC_VIEW tree_foster_text_view_t
+#define LXA_ROOT_TABLE_EXEC_TEMPLATE(view, token) begin_template((view)->tree, token)
+#define LXA_ROOT_TABLE_EXEC_TEXT(view, token, group) \
+    begin_root_table_text((view)->tree, (view)->tokenizer, token, group)
+#define LXA_ROOT_TABLE_EXEC_PLAINTEXT(view, token) \
+    begin_root_plaintext((view)->tree, (view)->tokenizer, token)
+#define LXA_ROOT_TABLE_EXEC_XMP(view, token) begin_root_xmp((view)->tree, (view)->tokenizer, token)
+#define LXA_ROOT_TABLE_EXEC_FOSTER_TEXT(view, token, group) \
+    begin_root_foster_text((view)->tree, (view)->tokenizer, token, group)
+#define LXA_ROOT_TABLE_EXEC_GROUP(view, container) tree_recover_foster_group((view)->tree, container)
+#define LXA_ROOT_TABLE_EXEC_FOREIGN(view, token) foster_foreign((view)->tree, token)
+#define LXA_ROOT_TABLE_EXEC_HTML(view, token, keep_open) foster_element((view)->tree, token, !(keep_open))
+#include "html/root_table_start_execute.inc"
+#undef LXA_ROOT_TABLE_EXEC_NAME
+#undef LXA_ROOT_TABLE_EXEC_VIEW
+#undef LXA_ROOT_TABLE_EXEC_TEMPLATE
+#undef LXA_ROOT_TABLE_EXEC_TEXT
+#undef LXA_ROOT_TABLE_EXEC_PLAINTEXT
+#undef LXA_ROOT_TABLE_EXEC_XMP
+#undef LXA_ROOT_TABLE_EXEC_FOSTER_TEXT
+#undef LXA_ROOT_TABLE_EXEC_GROUP
+#undef LXA_ROOT_TABLE_EXEC_FOREIGN
+#undef LXA_ROOT_TABLE_EXEC_HTML
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -5215,31 +5240,8 @@ reprocess_body_start:
             status = lxa_html_tree_root_table_start_action(token->name,
                 tree->nodes->budget, &tree->nodes->limit_reason, &action);
             if (status != LXA_OK) return status;
-            /* Table insertion modes process a template start using the
-             * head rule, retaining its content fragment under this table
-             * scope rather than fostering the element before the table. */
-            if (action == LXA_HTML_ROOT_TABLE_TEMPLATE)
-                return begin_template(tree, token);
-            if (action == LXA_HTML_ROOT_TABLE_TEXT_CURRENT)
-                return begin_root_table_text(tree, tokenizer, token, named(top, "colgroup"));
-            if (action == LXA_HTML_ROOT_TABLE_PLAINTEXT)
-                return begin_root_plaintext(tree, tokenizer, token);
-            if (action == LXA_HTML_ROOT_TABLE_XMP)
-                return begin_root_xmp(tree, tokenizer, token);
-            if (action == LXA_HTML_ROOT_TABLE_TEXT_FOSTER)
-                return begin_root_foster_text(tree, tokenizer, token, named(top, "colgroup"));
-            if (action == LXA_HTML_ROOT_TABLE_VOID || action == LXA_HTML_ROOT_TABLE_SVG
-                || action == LXA_HTML_ROOT_TABLE_MATH || action == LXA_HTML_ROOT_TABLE_CONTAINER) {
-                if (named(top, "colgroup")) {
-                    status = tree_recover_foster_group(tree, action == LXA_HTML_ROOT_TABLE_CONTAINER);
-                    if (status != LXA_OK) return status;
-                }
-                if (action == LXA_HTML_ROOT_TABLE_SVG || action == LXA_HTML_ROOT_TABLE_MATH)
-                    return foster_foreign(tree, token);
-                return foster_element(tree, token, action == LXA_HTML_ROOT_TABLE_VOID);
-            }
-            assert(false);
-            return LXA_ERROR_INTERNAL;
+            tree_foster_text_view_t table_start = {tree, tokenizer, {0}};
+            return tree_execute_table_start(&table_start, token, action, named(top, "colgroup"));
         }
     }
     if (token->kind == LXA_HTML_START_TAG) {
