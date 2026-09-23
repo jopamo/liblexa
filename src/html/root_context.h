@@ -187,6 +187,14 @@ lxa_status_t lxa_html_root_context_start_formatting(lxa_html_root_context_t *con
 lxa_status_t lxa_html_root_context_foster_html(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
     bool keep_open, lxa_html_root_mode_t mode, uint64_t *identity, bool *skip_newline);
+/* Prepared VOID/SVG/MATH/CONTAINER table-start action at BODY/IN_BODY. Recover
+ * only a current HTML colgroup, reserving zero OPEN growth first for containers.
+ * No NODE charge or DOM-insertion WORK preflight; the pop charges its own WORK.
+ * Later admission owns its quotas. Preserve mode/framesets/formatting and latch
+ * failed recovery without replay. The action belongs to this unchanged token.
+ */
+lxa_status_t lxa_html_root_context_recover_foster_group(lxa_html_root_context_t *context,
+    lxa_html_root_table_start_action_t action, lxa_html_root_mode_t mode);
 /* Admit accepted svg/math roots after earlier foreign/table routing.
  * Ensure BODY, reserve an open slot, reconstruct formatting, then publish
  * IN_BODY and admit effective metadata. Self-closing starts pop that entry.

@@ -858,6 +858,39 @@ lxa_html_root_context_start_formatting(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+#define LXA_ROOT_FOSTER_GROUP_NAME context_recover_foster_group
+#define LXA_ROOT_FOSTER_GROUP_VIEW lxa_html_root_context_t
+#define LXA_ROOT_FOSTER_GROUP_RESERVE(view) reserve_open_slots(view, 0)
+#define LXA_ROOT_FOSTER_GROUP_NODE(view) LXA_OK
+#define LXA_ROOT_FOSTER_GROUP_WORK(view) LXA_OK
+#define LXA_ROOT_FOSTER_GROUP_POP(view) \
+    lxa_html_control_stack_pop_to((view)->stack, lxa_vector_length(&(view)->stack->elements) - 1)
+#include "html/root_foster_group_recover.inc"
+#undef LXA_ROOT_FOSTER_GROUP_NAME
+#undef LXA_ROOT_FOSTER_GROUP_VIEW
+#undef LXA_ROOT_FOSTER_GROUP_RESERVE
+#undef LXA_ROOT_FOSTER_GROUP_NODE
+#undef LXA_ROOT_FOSTER_GROUP_WORK
+#undef LXA_ROOT_FOSTER_GROUP_POP
+
+lxa_status_t
+lxa_html_root_context_recover_foster_group(lxa_html_root_context_t *context,
+    lxa_html_root_table_start_action_t action, lxa_html_root_mode_t mode)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || mode != LXA_TREE_IN_BODY
+        || lxa_vector_length(&context->stack->elements) == 0
+        || (action != LXA_HTML_ROOT_TABLE_VOID && action != LXA_HTML_ROOT_TABLE_SVG
+            && action != LXA_HTML_ROOT_TABLE_MATH && action != LXA_HTML_ROOT_TABLE_CONTAINER))
+        return LXA_ERROR_ARGUMENT;
+    bool group;
+    status = lxa_html_control_stack_column_group(context->stack, 0, &group);
+    if (status == LXA_OK && group)
+        status = context_recover_foster_group(context, action == LXA_HTML_ROOT_TABLE_CONTAINER);
+    return finish(context, status);
+}
+
 static lxa_status_t
 context_foster_html_admit(root_formatting_start_view_t *view,
     const lxa_html_token_t *token, bool keep_open, bool formatting, bool marker, size_t drop)

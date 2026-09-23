@@ -2244,6 +2244,22 @@ observe_inserted_meta(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     return tree->on_meta(tree->meta_context, token);
 }
 
+#define LXA_ROOT_FOSTER_GROUP_NAME tree_recover_foster_group
+#define LXA_ROOT_FOSTER_GROUP_VIEW lxa_html_tree_t
+#define LXA_ROOT_FOSTER_GROUP_RESERVE(view) reserve_open_elements(view, 0)
+#define LXA_ROOT_FOSTER_GROUP_NODE(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_ROOT_FOSTER_GROUP_WORK(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_WORK, 2, &(view)->nodes->limit_reason)
+#define LXA_ROOT_FOSTER_GROUP_POP pop_element
+#include "html/root_foster_group_recover.inc"
+#undef LXA_ROOT_FOSTER_GROUP_NAME
+#undef LXA_ROOT_FOSTER_GROUP_VIEW
+#undef LXA_ROOT_FOSTER_GROUP_RESERVE
+#undef LXA_ROOT_FOSTER_GROUP_NODE
+#undef LXA_ROOT_FOSTER_GROUP_WORK
+#undef LXA_ROOT_FOSTER_GROUP_POP
+
 static lxa_status_t
 tree_foster_html_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     bool keep_open, bool formatting, bool marker, size_t drop)
@@ -5212,45 +5228,16 @@ reprocess_body_start:
                 return begin_root_xmp(tree, tokenizer, token);
             if (action == LXA_HTML_ROOT_TABLE_TEXT_FOSTER)
                 return begin_root_foster_text(tree, tokenizer, token, named(top, "colgroup"));
-            if (action == LXA_HTML_ROOT_TABLE_VOID) {
+            if (action == LXA_HTML_ROOT_TABLE_VOID || action == LXA_HTML_ROOT_TABLE_SVG
+                || action == LXA_HTML_ROOT_TABLE_MATH || action == LXA_HTML_ROOT_TABLE_CONTAINER) {
                 if (named(top, "colgroup")) {
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 2,
-                            &tree->nodes->limit_reason);
-                    if (status != LXA_OK) return status;
-                    status = pop_element(tree);
+                    status = tree_recover_foster_group(tree, action == LXA_HTML_ROOT_TABLE_CONTAINER);
                     if (status != LXA_OK) return status;
                 }
-                return foster_element(tree, token, true);
+                if (action == LXA_HTML_ROOT_TABLE_SVG || action == LXA_HTML_ROOT_TABLE_MATH)
+                    return foster_foreign(tree, token);
+                return foster_element(tree, token, action == LXA_HTML_ROOT_TABLE_VOID);
             }
-            if (action == LXA_HTML_ROOT_TABLE_SVG || action == LXA_HTML_ROOT_TABLE_MATH) {
-                if (named(top, "colgroup")) {
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                    if (status == LXA_OK)
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                    if (status == LXA_OK) status = pop_element(tree);
-                    if (status != LXA_OK) return status;
-                }
-                return foster_foreign(tree, token);
-            }
-            if (action == LXA_HTML_ROOT_TABLE_CONTAINER && named(top, "colgroup")) {
-                status = reserve_open_elements(tree, 0);
-                if (status == LXA_OK)
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_WORK, 2, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
-            if (action == LXA_HTML_ROOT_TABLE_CONTAINER) return foster_element(tree, token, false);
             assert(false);
             return LXA_ERROR_INTERNAL;
         }
