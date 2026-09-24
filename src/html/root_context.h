@@ -211,6 +211,19 @@ lxa_status_t lxa_html_root_context_table_start_token(lxa_html_root_context_t *co
     lxa_html_formatting_list_t *formatting, lxa_html_text_context_t *text,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
     uint64_t *identity, bool *pending_newline, bool *template_start);
+/* Accepted ordinary root start after root/control/select/table/text/form/template
+ * routing. Classify once and validate selected borrowers before admission.
+ * Borrow a same-budget list only where formatting, reconstruction or table
+ * cleanup requires it. Preserve HEAD_NOSCRIPT only for head void starts.
+ * Report retained HTML identity, zero for void/foreign routes, and set pending
+ * newline only after successful pre/listing admission. Retain partial effects,
+ * clear identity and latch failures without replay. Input/output storage must
+ * not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_ordinary_start_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
+    uint64_t *identity, bool *pending_newline);
 /* Admit accepted svg/math roots after earlier foreign/table routing.
  * Ensure BODY, reserve an open slot, reconstruct formatting, then publish
  * IN_BODY and admit effective metadata. Self-closing starts pop that entry.

@@ -1791,6 +1791,81 @@ lxa_html_root_context_start_table_part(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+lxa_status_t
+lxa_html_root_context_ordinary_start_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
+    uint64_t *identity, bool *pending_newline)
+{
+    if (identity != NULL) *identity = 0;
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || identity == NULL || pending_newline == NULL
+        || (unsigned) document_mode > LXA_HTML_QUIRKS
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (!body_start_mode_valid(context, *mode)
+            && !(*mode == LXA_TREE_HEAD_NOSCRIPT && context->head
+                && lxa_html_tree_head_void(token->name)))
+        || lxa_html_tree_body_control_start(token->name)
+        || lxa_html_tree_returning_text_element(token->name)
+        || lxa_html_tree_name_equals(token->name, "form", 4)
+        || lxa_html_tree_name_equals(token->name, "template", 8)
+        || lxa_html_tree_name_equals(token->name, "xmp", 3)
+        || lxa_html_tree_name_equals(token->name, "plaintext", 9)
+        || (lxa_html_tree_name_equals(token->name, "noscript", 8) && *mode < LXA_TREE_AFTER_HEAD)
+        || (formatting != NULL && (formatting->store == NULL
+            || formatting->store->budget != context->stack->budget)))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_ordinary_start_action_t action;
+    status = lxa_html_tree_root_ordinary_start_action(token->name,
+        context->stack->budget, &context->limit_reason, &action);
+    if (status != LXA_OK) return finish(context, status);
+    if (action == LXA_HTML_ROOT_ORDINARY_UNSUPPORTED) return LXA_ERROR_ARGUMENT;
+    bool marker = action == LXA_HTML_ROOT_ORDINARY_CONTAINER
+        && lxa_html_tree_template_marker_container(token->name);
+    bool needs_formatting = action == LXA_HTML_ROOT_ORDINARY_FORMATTING
+        || action == LXA_HTML_ROOT_ORDINARY_FOREIGN
+        || action == LXA_HTML_ROOT_ORDINARY_TABLE_PART || marker
+        || (action == LXA_HTML_ROOT_ORDINARY_CONTAINER
+            && lxa_html_tree_container_reconstructs(token->name))
+        || (action == LXA_HTML_ROOT_ORDINARY_BODY_VOID
+            && lxa_html_tree_body_void_reconstructs(token->name));
+    if (needs_formatting && formatting == NULL) return LXA_ERROR_ARGUMENT;
+    bool newline = false;
+    switch (action) {
+    case LXA_HTML_ROOT_ORDINARY_HEAD_VOID:
+    case LXA_HTML_ROOT_ORDINARY_BODY_VOID:
+        status = lxa_html_root_context_start_void(context, formatting, token, mode);
+        break;
+    case LXA_HTML_ROOT_ORDINARY_TABLE_PART:
+        status = lxa_html_tree_name_equals(token->name, "table", 5)
+            ? lxa_html_root_context_start_table(context, formatting, token, document_mode, mode, identity)
+            : lxa_html_root_context_start_table_part(context, formatting, token, mode, identity);
+        break;
+    case LXA_HTML_ROOT_ORDINARY_FOREIGN:
+        status = lxa_html_root_context_start_foreign(context, formatting, token, mode);
+        break;
+    case LXA_HTML_ROOT_ORDINARY_FORMATTING:
+        status = lxa_html_root_context_start_formatting(context, formatting, token, mode, identity);
+        break;
+    case LXA_HTML_ROOT_ORDINARY_CONTAINER: {
+        root_container_start_view_t view = {context, formatting, identity, marker};
+        status = context_start_container(&view, token, mode, &newline);
+        if (status == LXA_ERROR_LIMIT && marker && context->limit_reason == LXA_BUDGET_COUNT)
+            context->limit_reason = formatting->store->limit_reason;
+        break;
+    }
+    default:
+        assert(false);
+        status = LXA_ERROR_INTERNAL;
+        break;
+    }
+    if (status == LXA_OK && newline) *pending_newline = true;
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    if (status != LXA_OK) *identity = 0;
+    return finish(context, status);
+}
+
 typedef struct {
     lxa_html_root_context_t *context;
     bool implied;
