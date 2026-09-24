@@ -2446,3 +2446,97 @@ lxa_html_root_context_frameset_token(lxa_html_root_context_t *context,
     if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    const lxa_html_root_special_borrowers_t *borrowers;
+    lxa_html_root_mode_t *mode;
+    bool *pending_newline;
+    lxa_html_root_special_start_result_t *result;
+} root_special_execute_view_t;
+
+static lxa_status_t
+context_special_text(root_special_execute_view_t *view, const lxa_html_token_t *token)
+{
+    bool newline = false;
+    lxa_status_t status = lxa_html_root_context_start_text(view->context, view->borrowers->text,
+        view->borrowers->tokenizer, token, view->mode, &newline);
+    if (status == LXA_OK && newline) *view->pending_newline = true;
+    return status;
+}
+
+#define LXA_ROOT_SPECIAL_EXEC_NAME context_execute_special_start
+#define LXA_ROOT_SPECIAL_EXEC_VIEW root_special_execute_view_t
+#define LXA_ROOT_SPECIAL_EXEC_BODY(view) context_ensure_body((view)->context)
+#define LXA_ROOT_SPECIAL_EXEC_HEAD(view) context_ensure_head((view)->context)
+#define LXA_ROOT_SPECIAL_EXEC_MODE(view) (*(view)->mode)
+#define LXA_ROOT_SPECIAL_EXEC_TEMPLATE(view, token) ((void) (view), (void) (token), LXA_OK)
+#define LXA_ROOT_SPECIAL_EXEC_NOSCRIPT(view, token) \
+    lxa_html_root_context_start_head_noscript((view)->context, token, (view)->mode)
+#define LXA_ROOT_SPECIAL_EXEC_FORM(view, token) lxa_html_root_context_start_form((view)->context, \
+    token, (view)->borrowers->form_owner, (view)->mode, &(view)->result->form_action)
+#define LXA_ROOT_SPECIAL_EXEC_TEXT context_special_text
+#define LXA_ROOT_SPECIAL_EXEC_XMP(view, token) lxa_html_root_context_start_xmp((view)->context, \
+    (view)->borrowers->formatting, (view)->borrowers->text, (view)->borrowers->tokenizer, token, (view)->mode)
+#define LXA_ROOT_SPECIAL_EXEC_PLAINTEXT(view, token) lxa_html_root_context_start_plaintext((view)->context, \
+    (view)->borrowers->tokenizer, token, (view)->mode, &(view)->result->identity)
+#include "html/root_special_start_execute.inc"
+#undef LXA_ROOT_SPECIAL_EXEC_NAME
+#undef LXA_ROOT_SPECIAL_EXEC_VIEW
+#undef LXA_ROOT_SPECIAL_EXEC_BODY
+#undef LXA_ROOT_SPECIAL_EXEC_HEAD
+#undef LXA_ROOT_SPECIAL_EXEC_MODE
+#undef LXA_ROOT_SPECIAL_EXEC_TEMPLATE
+#undef LXA_ROOT_SPECIAL_EXEC_NOSCRIPT
+#undef LXA_ROOT_SPECIAL_EXEC_FORM
+#undef LXA_ROOT_SPECIAL_EXEC_TEXT
+#undef LXA_ROOT_SPECIAL_EXEC_XMP
+#undef LXA_ROOT_SPECIAL_EXEC_PLAINTEXT
+
+lxa_status_t
+lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
+    const lxa_html_root_special_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, bool *pending_newline,
+    lxa_html_root_special_start_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || pending_newline == NULL || result == NULL
+        || (!body_start_mode_valid(context, *mode)
+            && !(*mode == LXA_TREE_HEAD_NOSCRIPT && context->head))
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_root_special_borrowers_t empty = {0};
+    if (borrowers == NULL) borrowers = &empty;
+    lxa_html_formatting_list_t *formatting = borrowers->formatting;
+    if (formatting != NULL && (formatting->store == NULL
+        || formatting->store->budget != context->stack->budget)) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_special_start_action_t action;
+    status = lxa_html_tree_root_special_start_action(*mode, token->name, &action);
+    if (status != LXA_OK) return status;
+    if (action == LXA_HTML_ROOT_SPECIAL_ORDINARY) return LXA_ERROR_ARGUMENT;
+    if (*mode == LXA_TREE_HEAD_NOSCRIPT) {
+        lxa_html_head_noscript_plan_t plan;
+        status = lxa_html_tree_head_noscript_plan(token, context->stack->budget,
+            &context->limit_reason, &plan);
+        if (status != LXA_OK) return status;
+        if (plan.action != LXA_HTML_HEAD_NOSCRIPT_CONTINUE) return LXA_ERROR_ARGUMENT;
+    }
+    if ((action == LXA_HTML_ROOT_SPECIAL_TEXT || action == LXA_HTML_ROOT_SPECIAL_XMP)
+        && !text_start_owners_valid(borrowers->text, borrowers->tokenizer))
+        return LXA_ERROR_ARGUMENT;
+    if ((action == LXA_HTML_ROOT_SPECIAL_XMP && formatting == NULL)
+        || (action == LXA_HTML_ROOT_SPECIAL_PLAINTEXT && borrowers->tokenizer == NULL)
+        || (action == LXA_HTML_ROOT_SPECIAL_FORM && borrowers->form_owner == NULL))
+        return LXA_ERROR_ARGUMENT;
+    if ((action == LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD || action == LXA_HTML_ROOT_SPECIAL_TEMPLATE)
+        && (*mode == LXA_TREE_IN_BODY ? !context->body
+            : context->body || lxa_vector_length(&context->stack->elements) != 0))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_special_start_result_t out = {action, LXA_HTML_ROOT_FORM_IGNORE, 0};
+    root_special_execute_view_t view = {context, borrowers, mode, pending_newline, &out};
+    status = context_execute_special_start(&view, token, action);
+    if (status == LXA_OK) *result = out;
+    if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
+    return finish(context, status);
+}

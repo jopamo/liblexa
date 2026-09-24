@@ -4150,6 +4150,48 @@ tree_root_formatting_admit(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_TABLE_EXEC_HTML
 
 static lxa_status_t
+begin_root_text(tree_foster_text_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_tree_t *tree = view->tree;
+    lxa_html_root_text_plan_t plan;
+    lxa_status_t status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
+    if (status != LXA_OK) return status;
+    status = tree_prepare_root_text(tree, &plan, &tree->mode);
+    if (status != LXA_OK) return status;
+    lxa_dom_ref_t parent = plan.body ? current_element(tree)
+        : tree->mode == LXA_TREE_HEAD_NOSCRIPT ? tree->head_noscript : tree->head;
+    status = begin_text_element(tree, view->tokenizer, parent, token);
+    if (status == LXA_OK && plan.skip_newline) tree->skip_pre_newline = true;
+    return status;
+}
+
+#define LXA_ROOT_SPECIAL_EXEC_NAME tree_execute_special_start
+#define LXA_ROOT_SPECIAL_EXEC_VIEW tree_foster_text_view_t
+#define LXA_ROOT_SPECIAL_EXEC_BODY(view) ensure_body((view)->tree)
+#define LXA_ROOT_SPECIAL_EXEC_HEAD(view) ensure_head((view)->tree)
+#define LXA_ROOT_SPECIAL_EXEC_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_SPECIAL_EXEC_TEMPLATE(view, token) begin_template((view)->tree, token)
+#define LXA_ROOT_SPECIAL_EXEC_NOSCRIPT(view, token) tree_start_head_noscript((view)->tree, token)
+#define LXA_ROOT_SPECIAL_EXEC_FORM(view, token) \
+    tree_start_root_form((view)->tree, token, &(view)->tree->mode)
+#define LXA_ROOT_SPECIAL_EXEC_TEXT begin_root_text
+#define LXA_ROOT_SPECIAL_EXEC_XMP(view, token) begin_root_xmp((view)->tree, (view)->tokenizer, token)
+#define LXA_ROOT_SPECIAL_EXEC_PLAINTEXT(view, token) \
+    begin_root_plaintext((view)->tree, (view)->tokenizer, token)
+#include "html/root_special_start_execute.inc"
+#undef LXA_ROOT_SPECIAL_EXEC_NAME
+#undef LXA_ROOT_SPECIAL_EXEC_VIEW
+#undef LXA_ROOT_SPECIAL_EXEC_BODY
+#undef LXA_ROOT_SPECIAL_EXEC_HEAD
+#undef LXA_ROOT_SPECIAL_EXEC_MODE
+#undef LXA_ROOT_SPECIAL_EXEC_TEMPLATE
+#undef LXA_ROOT_SPECIAL_EXEC_NOSCRIPT
+#undef LXA_ROOT_SPECIAL_EXEC_FORM
+#undef LXA_ROOT_SPECIAL_EXEC_TEXT
+#undef LXA_ROOT_SPECIAL_EXEC_XMP
+#undef LXA_ROOT_SPECIAL_EXEC_PLAINTEXT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5248,43 +5290,9 @@ reprocess_body_start:
         lxa_html_root_special_start_action_t special;
         status = lxa_html_tree_root_special_start_action(tree->mode, token->name, &special);
         if (status != LXA_OK) return status;
-        if (special == LXA_HTML_ROOT_SPECIAL_FRAME) {
-            status = ensure_body(tree);
-            if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
-            return status;
-        }
-        if (special == LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD) {
-            status = ensure_head(tree);
-            if (status != LXA_OK) return status;
-            tree->mode = LXA_TREE_IN_HEAD;
-        }
-        if (special == LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD
-            || special == LXA_HTML_ROOT_SPECIAL_TEMPLATE)
-            return begin_template(tree, token);
-        /* This parser uses disabled scripting mode, including the distinct
-         * in-head noscript insertion mode. */
-        if (special == LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT) {
-            return tree_start_head_noscript(tree, token);
-        }
-        if (special == LXA_HTML_ROOT_SPECIAL_FORM)
-            return tree_start_root_form(tree, token, &tree->mode);
-        if (special == LXA_HTML_ROOT_SPECIAL_TEXT) {
-            lxa_html_root_text_plan_t plan;
-            status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
-            if (status != LXA_OK) return status;
-            status = tree_prepare_root_text(tree, &plan, &tree->mode);
-            if (status != LXA_OK) return status;
-            parent = plan.body ? current_element(tree)
-                : tree->mode == LXA_TREE_HEAD_NOSCRIPT ? tree->head_noscript : tree->head;
-            status = begin_text_element(tree, tokenizer, parent, token);
-            if (status == LXA_OK && plan.skip_newline) tree->skip_pre_newline = true;
-            return status;
-        }
-        if (special == LXA_HTML_ROOT_SPECIAL_XMP) {
-            return begin_root_xmp(tree, tokenizer, token);
-        }
-        if (special == LXA_HTML_ROOT_SPECIAL_PLAINTEXT) {
-            return begin_root_plaintext(tree, tokenizer, token);
+        if (special != LXA_HTML_ROOT_SPECIAL_ORDINARY) {
+            tree_foster_text_view_t view = {tree, tokenizer, {0}};
+            return tree_execute_special_start(&view, token, special);
         }
         lxa_html_root_ordinary_start_action_t action;
         status = lxa_html_tree_root_ordinary_start_action(token->name,

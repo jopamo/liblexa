@@ -298,6 +298,34 @@ typedef enum {
 lxa_status_t lxa_html_root_context_start_form(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, uint64_t *owner, lxa_html_root_mode_t *mode,
     lxa_html_root_form_action_t *action);
+
+typedef struct {
+    lxa_html_formatting_list_t *formatting;
+    lxa_html_text_context_t *text;
+    lxa_html_tokenizer_t *tokenizer;
+    uint64_t *form_owner;
+} lxa_html_root_special_borrowers_t;
+
+typedef struct {
+    lxa_html_root_special_start_action_t action;
+    lxa_html_root_form_action_t form_action;
+    uint64_t identity; /* retained plaintext entry, zero for other routes */
+} lxa_html_root_special_start_result_t;
+
+/* Accepted special start after root/control/select/table routing. Borrow only
+ * the selected route's owners; supplied formatting lists share the budget.
+ * Validate borrowers before effects, execute one saved action and publish the
+ * result only on success. Template success performs root/head preparation but
+ * defers frame admission and TEMPLATE_TEXT publication to the driver.
+ * Preserve pending newline except successful textarea admission. Retain partial
+ * effects and latch failure without replay. Borrowers/token/mode/flag/result
+ * storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
+    const lxa_html_root_special_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_root_mode_t *mode, bool *pending_newline,
+    lxa_html_root_special_start_result_t *result);
+
 /* Accepted root table start after earlier select/foreign/table routing. Borrow
  * a same-budget formatting list for table-marker cleanup and document mode for
  * paragraph recovery. Preserve completed roots/pops/marker cleanup on failure, clear
