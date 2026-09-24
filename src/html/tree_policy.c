@@ -8,6 +8,31 @@
 _Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
 
 lxa_status_t
+lxa_html_tree_root_ordinary_start_action(lxa_span_t name, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, lxa_html_root_ordinary_start_action_t *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || out == NULL || name.data == NULL || name.length == 0)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_ordinary_start_action_t action;
+    if (lxa_html_tree_head_void(name)) action = LXA_HTML_ROOT_ORDINARY_HEAD_VOID;
+    else if (lxa_html_tree_body_void(name)) action = LXA_HTML_ROOT_ORDINARY_BODY_VOID;
+    else if (lxa_html_tree_table_part(name)) action = LXA_HTML_ROOT_ORDINARY_TABLE_PART;
+    else if (lxa_html_tree_name_equals(name, "svg", 3)
+        || lxa_html_tree_name_equals(name, "math", 4)) action = LXA_HTML_ROOT_ORDINARY_FOREIGN;
+    else {
+        bool supported;
+        lxa_status_t status = lxa_html_tree_supported_container(name, budget, reason, &supported);
+        if (status != LXA_OK) return status;
+        action = !supported ? LXA_HTML_ROOT_ORDINARY_UNSUPPORTED
+            : lxa_html_tree_formatting_tag(name) ? LXA_HTML_ROOT_ORDINARY_FORMATTING
+            : LXA_HTML_ROOT_ORDINARY_CONTAINER;
+    }
+    *out = action;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_root_table_start_action(lxa_span_t name, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, lxa_html_root_table_start_action_t *out)
 {

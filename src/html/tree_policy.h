@@ -35,6 +35,21 @@ typedef enum {
 } lxa_html_root_element_t;
 
 typedef enum {
+    LXA_HTML_ROOT_ORDINARY_HEAD_VOID, LXA_HTML_ROOT_ORDINARY_BODY_VOID,
+    LXA_HTML_ROOT_ORDINARY_TABLE_PART, LXA_HTML_ROOT_ORDINARY_FOREIGN,
+    LXA_HTML_ROOT_ORDINARY_FORMATTING, LXA_HTML_ROOT_ORDINARY_CONTAINER,
+    LXA_HTML_ROOT_ORDINARY_UNSUPPORTED
+} lxa_html_root_ordinary_start_action_t;
+
+/* Accepted start after root/control/select/table and text/form/template routing.
+ * Special routes do no WORK; fallback performs one supported-container query.
+ * Publish only on success. Engines retain admission and mode effects.
+ */
+lxa_status_t lxa_html_tree_root_ordinary_start_action(lxa_span_t name,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_root_ordinary_start_action_t *out);
+
+typedef enum {
     LXA_TEMPLATE_INITIAL, LXA_TEMPLATE_TABLE, LXA_TEMPLATE_TABLE_BODY,
     LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;

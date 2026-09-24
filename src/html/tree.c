@@ -5245,7 +5245,6 @@ reprocess_body_start:
         }
     }
     if (token->kind == LXA_HTML_START_TAG) {
-        bool container;
         if (named(token->name, "frame")) {
             status = ensure_body(tree);
             if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
@@ -5288,21 +5287,22 @@ reprocess_body_start:
         if (named(token->name, "plaintext")) {
             return begin_root_plaintext(tree, tokenizer, token);
         }
-        if (lxa_html_tree_head_void(token->name))
+        lxa_html_root_ordinary_start_action_t action;
+        status = lxa_html_tree_root_ordinary_start_action(token->name,
+            tree->nodes->budget, &tree->nodes->limit_reason, &action);
+        if (status != LXA_OK) return status;
+        if (action == LXA_HTML_ROOT_ORDINARY_HEAD_VOID)
             return tree_start_root_void(tree, token, true, false, &tree->mode);
-        if (lxa_html_tree_body_void(token->name))
+        if (action == LXA_HTML_ROOT_ORDINARY_BODY_VOID)
             return tree_start_root_void(tree, token, false,
                 lxa_html_tree_body_void_reconstructs(token->name), &tree->mode);
-        if (lxa_html_tree_table_part(token->name))
+        if (action == LXA_HTML_ROOT_ORDINARY_TABLE_PART)
             return open_table_part(tree, token);
-        if (named(token->name, "svg") || named(token->name, "math"))
+        if (action == LXA_HTML_ROOT_ORDINARY_FOREIGN)
             return tree_start_root_foreign(tree, token, &tree->mode);
-        status = lxa_html_tree_supported_container(token->name,
-            tree->nodes->budget, &tree->nodes->limit_reason, &container);
-        if (status != LXA_OK) return status;
-        if (container) {
-            if (lxa_html_tree_formatting_tag(token->name))
-                return tree_start_root_formatting(tree, token, &tree->mode);
+        if (action == LXA_HTML_ROOT_ORDINARY_FORMATTING)
+            return tree_start_root_formatting(tree, token, &tree->mode);
+        if (action == LXA_HTML_ROOT_ORDINARY_CONTAINER) {
             bool newline;
             status = tree_start_root_container(tree, token, &tree->mode, &newline);
             if (status == LXA_OK && newline) tree->skip_pre_newline = true;
