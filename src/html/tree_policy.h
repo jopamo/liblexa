@@ -89,6 +89,21 @@ lxa_status_t lxa_html_tree_root_start_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_root_start_action_t *out);
 
 typedef enum {
+    LXA_HTML_ROOT_SPECIAL_ORDINARY, LXA_HTML_ROOT_SPECIAL_FRAME,
+    LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD, LXA_HTML_ROOT_SPECIAL_TEMPLATE,
+    LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT, LXA_HTML_ROOT_SPECIAL_FORM,
+    LXA_HTML_ROOT_SPECIAL_TEXT, LXA_HTML_ROOT_SPECIAL_XMP,
+    LXA_HTML_ROOT_SPECIAL_PLAINTEXT
+} lxa_html_root_special_start_action_t;
+
+/* After root/control/select/table routing. No WORK or effects; TEMPLATE_HEAD
+ * requires head admission and IN_HEAD publication before template admission.
+ * Disabled scripting selects head-noscript only through IN_HEAD.
+ */
+lxa_status_t lxa_html_tree_root_special_start_action(lxa_html_root_mode_t mode,
+    lxa_span_t name, lxa_html_root_special_start_action_t *out);
+
+typedef enum {
     LXA_HTML_ROOT_END_CONTINUE, LXA_HTML_ROOT_END_IGNORE, LXA_HTML_ROOT_END_BR_START
 } lxa_html_root_end_prelude_action_t;
 

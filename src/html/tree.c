@@ -5245,31 +5245,30 @@ reprocess_body_start:
         }
     }
     if (token->kind == LXA_HTML_START_TAG) {
-        if (named(token->name, "frame")) {
+        lxa_html_root_special_start_action_t special;
+        status = lxa_html_tree_root_special_start_action(tree->mode, token->name, &special);
+        if (status != LXA_OK) return status;
+        if (special == LXA_HTML_ROOT_SPECIAL_FRAME) {
             status = ensure_body(tree);
             if (status == LXA_OK) tree->mode = LXA_TREE_IN_BODY;
             return status;
         }
-        if (named(token->name, "template")
-            && tree->mode <= LXA_TREE_BEFORE_HEAD) {
+        if (special == LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD) {
             status = ensure_head(tree);
             if (status != LXA_OK) return status;
             tree->mode = LXA_TREE_IN_HEAD;
         }
-        if (named(token->name, "template")
-            && (tree->mode == LXA_TREE_IN_HEAD
-                || tree->mode == LXA_TREE_AFTER_HEAD
-                || tree->mode == LXA_TREE_IN_BODY))
+        if (special == LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD
+            || special == LXA_HTML_ROOT_SPECIAL_TEMPLATE)
             return begin_template(tree, token);
         /* This parser uses disabled scripting mode, including the distinct
          * in-head noscript insertion mode. */
-        if (named(token->name, "noscript")
-            && tree->mode <= LXA_TREE_IN_HEAD) {
+        if (special == LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT) {
             return tree_start_head_noscript(tree, token);
         }
-        if (named(token->name, "form"))
+        if (special == LXA_HTML_ROOT_SPECIAL_FORM)
             return tree_start_root_form(tree, token, &tree->mode);
-        if (lxa_html_tree_returning_text_element(token->name)) {
+        if (special == LXA_HTML_ROOT_SPECIAL_TEXT) {
             lxa_html_root_text_plan_t plan;
             status = lxa_html_tree_root_text_plan(tree->mode, token->name, &plan);
             if (status != LXA_OK) return status;
@@ -5281,10 +5280,10 @@ reprocess_body_start:
             if (status == LXA_OK && plan.skip_newline) tree->skip_pre_newline = true;
             return status;
         }
-        if (named(token->name, "xmp")) {
+        if (special == LXA_HTML_ROOT_SPECIAL_XMP) {
             return begin_root_xmp(tree, tokenizer, token);
         }
-        if (named(token->name, "plaintext")) {
+        if (special == LXA_HTML_ROOT_SPECIAL_PLAINTEXT) {
             return begin_root_plaintext(tree, tokenizer, token);
         }
         lxa_html_root_ordinary_start_action_t action;
