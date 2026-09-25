@@ -3203,49 +3203,55 @@ template_foster_element(lxa_html_tree_t *tree,
 }
 
 static lxa_status_t
+template_table_text_group(lxa_html_tree_t *tree, bool *group)
+{
+    *group = false;
+    if (lxa_vector_length(&tree->template_elements) == template_boundary(tree)) return LXA_OK;
+    lxa_span_t top;
+    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, template_parent(tree), &top);
+    if (status == LXA_OK) *group = named(top, "colgroup");
+    return status;
+}
+
+static lxa_status_t
+template_table_text_foster(lxa_html_tree_t *tree, lxa_span_t bytes)
+{
+    lxa_dom_ref_t parent, table = {0};
+    lxa_status_t status = template_insertion_location(tree, &parent, &table);
+    return status == LXA_OK ? insert_text(tree, parent, table, bytes) : status;
+}
+
+#define LXA_TABLE_TEXT_FLUSH_NAME tree_flush_template_table_text
+#define LXA_TABLE_TEXT_FLUSH_VIEW lxa_html_tree_t
+#define LXA_TABLE_TEXT_FLUSH_BUDGET(view) ((view)->nodes->budget)
+#define LXA_TABLE_TEXT_FLUSH_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_TABLE_TEXT_FLUSH_APPEND(view, bytes, prefix) \
+    ((void) (prefix), append_character(view, template_parent(view), LXA_DOM_KIND_TEXT, bytes))
+#define LXA_TABLE_TEXT_FLUSH_GROUP template_table_text_group
+#define LXA_TABLE_TEXT_FLUSH_PREFLIGHT(view) LXA_OK
+#define LXA_TABLE_TEXT_FLUSH_POP(view) \
+    template_pop_elements(view, lxa_vector_length(&(view)->template_elements) - 1)
+#define LXA_TABLE_TEXT_FLUSH_RECONSTRUCT reconstruct_formatting
+#define LXA_TABLE_TEXT_FLUSH_FOSTER template_table_text_foster
+#include "html/table_text_flush.inc"
+#undef LXA_TABLE_TEXT_FLUSH_NAME
+#undef LXA_TABLE_TEXT_FLUSH_VIEW
+#undef LXA_TABLE_TEXT_FLUSH_BUDGET
+#undef LXA_TABLE_TEXT_FLUSH_REASON
+#undef LXA_TABLE_TEXT_FLUSH_APPEND
+#undef LXA_TABLE_TEXT_FLUSH_GROUP
+#undef LXA_TABLE_TEXT_FLUSH_PREFLIGHT
+#undef LXA_TABLE_TEXT_FLUSH_POP
+#undef LXA_TABLE_TEXT_FLUSH_RECONSTRUCT
+#undef LXA_TABLE_TEXT_FLUSH_FOSTER
+
+static lxa_status_t
 flush_template_table_text(lxa_html_tree_t *tree)
 {
-    lxa_dom_ref_t table = {0}, parent;
-    lxa_span_t bytes = {tree->table_text.data, tree->table_text.length};
-    size_t i = lxa_vector_length(&tree->template_elements), prefix = 0;
-    bool colgroup = false;
-    lxa_status_t status;
-    if (bytes.length == 0) return LXA_OK;
-    if (i < template_boundary(tree)) return LXA_ERROR_INTERNAL;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                bytes.length, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    if (lxa_html_tree_null_or_space_only(bytes)) {
-        status = append_character(tree, template_parent(tree),
-                                   LXA_DOM_KIND_TEXT, bytes);
-    }
-    else {
-        if (i > template_boundary(tree)) {
-            lxa_span_t top;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                 template_parent(tree), &top);
-            if (status != LXA_OK) return status;
-            colgroup = named(top, "colgroup");
-        }
-        if (colgroup) prefix = lxa_html_tree_space_prefix(bytes);
-        if (prefix != 0) {
-            lxa_span_t spaces = {bytes.data, prefix};
-            status = append_character(tree, template_parent(tree),
-                                       LXA_DOM_KIND_TEXT, spaces);
-            if (status != LXA_OK) return status;
-        }
-        if (colgroup) {
-            status = template_pop_elements(tree,
-            lxa_vector_length(&tree->template_elements) - 1);
-            if (status != LXA_OK) return status;
-        }
-        bytes.data += prefix;
-        bytes.length -= prefix;
-        status = reconstruct_formatting(tree);
-        if (status == LXA_OK)
-            status = template_insertion_location(tree, &parent, &table);
-        if (status == LXA_OK) status = insert_text(tree, parent, table, bytes);
-    }
+    if (tree->table_text.length == 0) return LXA_OK;
+    if (lxa_vector_length(&tree->template_elements) < template_boundary(tree)) return LXA_ERROR_INTERNAL;
+    lxa_status_t status = tree_flush_template_table_text(tree,
+        (lxa_span_t){tree->table_text.data, tree->table_text.length});
     if (status == LXA_OK) lxa_buffer_clear(&tree->table_text);
     return status;
 }

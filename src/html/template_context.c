@@ -815,40 +815,79 @@ lxa_html_template_context_end_table(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    lxa_html_template_table_text_result_t *result;
+} template_table_text_view_t;
+
+static lxa_status_t
+context_table_text_group(template_table_text_view_t *view, bool *group)
+{
+    lxa_html_template_context_t *context = view->context;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t count = lxa_vector_length(&context->frames);
+    lxa_status_t status = lxa_html_control_stack_column_group(context->stack,
+        frames[count - 1].boundary, group);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    if (status == LXA_OK && *group) {
+        const lxa_html_control_element_t *entries =
+            (const lxa_html_control_element_t *) context->stack->elements.bytes.data;
+        view->result->column_group = entries[lxa_vector_length(&context->stack->elements) - 1].identity;
+    }
+    return status;
+}
+
+static lxa_status_t
+context_table_text_append(template_table_text_view_t *view, lxa_span_t bytes, bool prefix)
+{
+    if (prefix) view->result->space_prefix = bytes.length;
+    return LXA_OK;
+}
+
+static lxa_status_t
+context_table_text_foster(template_table_text_view_t *view, lxa_span_t bytes)
+{
+    (void) bytes;
+    view->result->foster = true;
+    return LXA_OK;
+}
+
+#define LXA_TABLE_TEXT_FLUSH_NAME context_flush_table_text
+#define LXA_TABLE_TEXT_FLUSH_VIEW template_table_text_view_t
+#define LXA_TABLE_TEXT_FLUSH_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_TABLE_TEXT_FLUSH_REASON(view) (&(view)->context->limit_reason)
+#define LXA_TABLE_TEXT_FLUSH_APPEND context_table_text_append
+#define LXA_TABLE_TEXT_FLUSH_GROUP context_table_text_group
+#define LXA_TABLE_TEXT_FLUSH_PREFLIGHT(view) LXA_OK
+#define LXA_TABLE_TEXT_FLUSH_POP(view) \
+    end_pop((view)->context, lxa_vector_length(&(view)->context->stack->elements) - 1)
+#define LXA_TABLE_TEXT_FLUSH_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TABLE_TEXT_FLUSH_FOSTER context_table_text_foster
+#include "html/table_text_flush.inc"
+#undef LXA_TABLE_TEXT_FLUSH_NAME
+#undef LXA_TABLE_TEXT_FLUSH_VIEW
+#undef LXA_TABLE_TEXT_FLUSH_BUDGET
+#undef LXA_TABLE_TEXT_FLUSH_REASON
+#undef LXA_TABLE_TEXT_FLUSH_APPEND
+#undef LXA_TABLE_TEXT_FLUSH_GROUP
+#undef LXA_TABLE_TEXT_FLUSH_PREFLIGHT
+#undef LXA_TABLE_TEXT_FLUSH_POP
+#undef LXA_TABLE_TEXT_FLUSH_RECONSTRUCT
+#undef LXA_TABLE_TEXT_FLUSH_FOSTER
+
 lxa_status_t
 lxa_html_template_context_table_text(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_html_template_table_text_result_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    size_t count = lxa_vector_length(&context->frames);
-    if (count == 0 || result == NULL
+    if (lxa_vector_length(&context->frames) == 0 || result == NULL
         || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
-    size_t prefix = 0;
-    uint64_t owner = 0;
-    bool mixed = false;
-    if (data.length != 0)
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
-            data.length, &context->limit_reason);
-    if (status == LXA_OK && data.length != 0)
-        mixed = !lxa_html_tree_null_or_space_only(data);
-    if (status == LXA_OK && mixed) {
-        const lxa_html_template_control_frame_t *frames =
-            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
-        bool group;
-        status = lxa_html_control_stack_column_group(context->stack, frames[count - 1].boundary, &group);
-        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-        if (status == LXA_OK && group) {
-            const lxa_html_control_element_t *entries =
-                (const lxa_html_control_element_t *) context->stack->elements.bytes.data;
-            owner = entries[lxa_vector_length(&context->stack->elements) - 1].identity;
-            prefix = lxa_html_tree_space_prefix(data);
-            status = end_pop(context, lxa_vector_length(&context->stack->elements) - 1);
-        }
-        if (status == LXA_OK) status = lxa_html_template_context_reconstruct(context);
-    }
-    if (status == LXA_OK)
-        *result = (lxa_html_template_table_text_result_t){prefix, owner, mixed};
+    lxa_html_template_table_text_result_t out = {0};
+    template_table_text_view_t view = {context, &out};
+    status = context_flush_table_text(&view, data);
+    if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
 
