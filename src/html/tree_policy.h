@@ -90,6 +90,11 @@ typedef enum {
     LXA_HTML_ROOT_START_HEAD, LXA_HTML_ROOT_START_BODY, LXA_HTML_ROOT_START_IGNORE_HEAD
 } lxa_html_root_start_action_t;
 
+typedef enum {
+    LXA_HTML_ROOT_PRELUDE_CONTINUE, LXA_HTML_ROOT_PRELUDE_IGNORE,
+    LXA_HTML_ROOT_PRELUDE_ROOT, LXA_HTML_ROOT_PRELUDE_FRAMESET
+} lxa_html_root_start_prelude_action_t;
+
 /* Root dispatch after template/text/frameset and after-body routing.
  * Classify normalized names without WORK or retained views.
  */

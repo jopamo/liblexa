@@ -4207,6 +4207,92 @@ tree_start_frameset_eligible(tree_foster_text_view_t *view, bool *eligible)
 #undef LXA_ROOT_START_PRELUDE_ROOT
 
 static lxa_status_t
+tree_execute_ordinary_start(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    lxa_status_t status;
+    lxa_html_root_ordinary_start_action_t action;
+    status = lxa_html_tree_root_ordinary_start_action(token->name,
+        tree->nodes->budget, &tree->nodes->limit_reason, &action);
+    if (status != LXA_OK) return status;
+    if (action == LXA_HTML_ROOT_ORDINARY_HEAD_VOID)
+        return tree_start_root_void(tree, token, true, false, &tree->mode);
+    if (action == LXA_HTML_ROOT_ORDINARY_BODY_VOID)
+        return tree_start_root_void(tree, token, false,
+            lxa_html_tree_body_void_reconstructs(token->name), &tree->mode);
+    if (action == LXA_HTML_ROOT_ORDINARY_TABLE_PART)
+        return open_table_part(tree, token);
+    if (action == LXA_HTML_ROOT_ORDINARY_FOREIGN)
+        return tree_start_root_foreign(tree, token, &tree->mode);
+    if (action == LXA_HTML_ROOT_ORDINARY_FORMATTING)
+        return tree_start_root_formatting(tree, token, &tree->mode);
+    if (action == LXA_HTML_ROOT_ORDINARY_CONTAINER) {
+        bool newline;
+        status = tree_start_root_container(tree, token, &tree->mode, &newline);
+        if (status == LXA_OK && newline) tree->skip_pre_newline = true;
+        return status;
+    }
+    assert(false);
+    return LXA_ERROR_INTERNAL;
+}
+
+static lxa_status_t
+tree_root_start_select(tree_foster_text_view_t *view, const lxa_html_token_t *token, bool *ignore)
+{
+    const lxa_html_tree_scope_view_t scope = {view->tree,
+        (const lxa_dom_ref_t *) view->tree->open_elements.bytes.data,
+        lxa_vector_length(&view->tree->open_elements)};
+    return tree_execute_root_select(&scope, token->kind, token->name, ignore);
+}
+
+static lxa_status_t
+tree_root_start_table_query(tree_foster_text_view_t *view, bool *table, bool *group)
+{
+    *table = *group = false;
+    lxa_html_tree_t *tree = view->tree;
+    if (lxa_vector_length(&tree->open_elements) <= 1) return LXA_OK;
+    lxa_span_t top;
+    lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &top);
+    if (status == LXA_OK) {
+        *table = lxa_html_tree_table_context(top);
+        *group = named(top, "colgroup");
+    }
+    return status;
+}
+
+static lxa_status_t
+tree_root_start_table(tree_foster_text_view_t *view, const lxa_html_token_t *token, bool group)
+{
+    lxa_html_root_table_start_action_t action;
+    lxa_status_t status = lxa_html_tree_root_table_start_action(token->name,
+        view->tree->nodes->budget, &view->tree->nodes->limit_reason, &action);
+    return status == LXA_OK ? tree_execute_table_start(view, token, action, group) : status;
+}
+
+#define LXA_ROOT_START_EXEC_NAME tree_execute_root_start
+#define LXA_ROOT_START_EXEC_VIEW tree_foster_text_view_t
+#define LXA_ROOT_START_EXEC_PRELUDE tree_start_prelude
+#define LXA_ROOT_START_EXEC_IGNORE(view) ((void) (view), LXA_OK)
+#define LXA_ROOT_START_EXEC_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_START_EXEC_HIDDEN(view, token, out) insert_hidden_table_input((view)->tree, token, out)
+#define LXA_ROOT_START_EXEC_SELECT tree_root_start_select
+#define LXA_ROOT_START_EXEC_TABLE_QUERY tree_root_start_table_query
+#define LXA_ROOT_START_EXEC_TABLE tree_root_start_table
+#define LXA_ROOT_START_EXEC_SPECIAL tree_execute_special_start
+#define LXA_ROOT_START_EXEC_ORDINARY(view, token) tree_execute_ordinary_start((view)->tree, token)
+#include "html/root_start_execute.inc"
+#undef LXA_ROOT_START_EXEC_NAME
+#undef LXA_ROOT_START_EXEC_VIEW
+#undef LXA_ROOT_START_EXEC_PRELUDE
+#undef LXA_ROOT_START_EXEC_IGNORE
+#undef LXA_ROOT_START_EXEC_MODE
+#undef LXA_ROOT_START_EXEC_HIDDEN
+#undef LXA_ROOT_START_EXEC_SELECT
+#undef LXA_ROOT_START_EXEC_TABLE_QUERY
+#undef LXA_ROOT_START_EXEC_TABLE
+#undef LXA_ROOT_START_EXEC_SPECIAL
+#undef LXA_ROOT_START_EXEC_ORDINARY
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5247,9 +5333,7 @@ reprocess_template_token:
 reprocess_body_start:
     if (token->kind == LXA_HTML_START_TAG) {
         tree_foster_text_view_t view = {tree, tokenizer, {0}};
-        bool handled;
-        status = tree_start_prelude(&view, token, &handled);
-        if (status != LXA_OK || handled) return status;
+        return tree_execute_root_start(&view, token);
     }
     if (tree->mode == LXA_TREE_IN_BODY) {
         bool ignore;
@@ -5265,54 +5349,6 @@ reprocess_body_start:
         status = tree_execute_root_select(&view, token->kind, token->name, &ignore);
         if (status != LXA_OK) return status;
         if (ignore) return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
-        && lxa_vector_length(&tree->open_elements) > 1) {
-        lxa_span_t top;
-        status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree),
-                                             &top);
-        if (status != LXA_OK) return status;
-        if (lxa_html_tree_table_context(top) && !lxa_html_tree_table_part(token->name)
-            && !named(token->name, "form")) {
-            lxa_html_root_table_start_action_t action;
-            status = lxa_html_tree_root_table_start_action(token->name,
-                tree->nodes->budget, &tree->nodes->limit_reason, &action);
-            if (status != LXA_OK) return status;
-            tree_foster_text_view_t table_start = {tree, tokenizer, {0}};
-            return tree_execute_table_start(&table_start, token, action, named(top, "colgroup"));
-        }
-    }
-    if (token->kind == LXA_HTML_START_TAG) {
-        lxa_html_root_special_start_action_t special;
-        status = lxa_html_tree_root_special_start_action(tree->mode, token->name, &special);
-        if (status != LXA_OK) return status;
-        if (special != LXA_HTML_ROOT_SPECIAL_ORDINARY) {
-            tree_foster_text_view_t view = {tree, tokenizer, {0}};
-            return tree_execute_special_start(&view, token, special);
-        }
-        lxa_html_root_ordinary_start_action_t action;
-        status = lxa_html_tree_root_ordinary_start_action(token->name,
-            tree->nodes->budget, &tree->nodes->limit_reason, &action);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_ROOT_ORDINARY_HEAD_VOID)
-            return tree_start_root_void(tree, token, true, false, &tree->mode);
-        if (action == LXA_HTML_ROOT_ORDINARY_BODY_VOID)
-            return tree_start_root_void(tree, token, false,
-                lxa_html_tree_body_void_reconstructs(token->name), &tree->mode);
-        if (action == LXA_HTML_ROOT_ORDINARY_TABLE_PART)
-            return open_table_part(tree, token);
-        if (action == LXA_HTML_ROOT_ORDINARY_FOREIGN)
-            return tree_start_root_foreign(tree, token, &tree->mode);
-        if (action == LXA_HTML_ROOT_ORDINARY_FORMATTING)
-            return tree_start_root_formatting(tree, token, &tree->mode);
-        if (action == LXA_HTML_ROOT_ORDINARY_CONTAINER) {
-            bool newline;
-            status = tree_start_root_container(tree, token, &tree->mode, &newline);
-            if (status == LXA_OK && newline) tree->skip_pre_newline = true;
-            return status;
-        }
-        assert(false);
-        return LXA_ERROR_INTERNAL;
     }
     if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD) {
         lxa_html_head_end_action_t action;

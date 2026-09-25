@@ -44,14 +44,15 @@ lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
 
 typedef struct {
-    bool handled;
+    lxa_html_root_start_prelude_action_t action;
     uint64_t identity; /* frameset replacement, zero for other routes */
 } lxa_html_root_start_prelude_result_t;
 
 /* Start prelude after earlier mode/foreign/image routing. Recover control-tag
  * colgroups before root classification, frameset eligibility or frame ignore.
  * Execute saved root/frameset admission without repeating their queries.
- * Success publishes handled=false for later hidden-input/select/start routing.
+ * CONTINUE selects later hidden-input/select/start routing; IGNORE is distinct
+ * from root/frameset admission.
  * Publish the result only on success; retain completed effects/mode changes and
  * latch failures without replay. Token/mode/result storage must not alias owners.
  */
@@ -341,7 +342,7 @@ typedef struct {
     lxa_html_text_context_t *text;
     lxa_html_tokenizer_t *tokenizer;
     uint64_t *form_owner;
-} lxa_html_root_special_borrowers_t;
+} lxa_html_root_start_borrowers_t;
 
 typedef struct {
     lxa_html_root_special_start_action_t action;
@@ -359,9 +360,34 @@ typedef struct {
  * storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
-    const lxa_html_root_special_borrowers_t *borrowers, const lxa_html_token_t *token,
+    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, bool *pending_newline,
     lxa_html_root_special_start_result_t *result);
+
+typedef enum {
+    LXA_HTML_ROOT_START_RESULT_ACCEPT, LXA_HTML_ROOT_START_RESULT_IGNORE,
+    LXA_HTML_ROOT_START_RESULT_TEMPLATE
+} lxa_html_root_start_result_action_t;
+typedef struct {
+    lxa_html_root_start_result_action_t action;
+    lxa_html_root_form_action_t form_action;
+    uint64_t identity; /* new HTML/form/frameset key, zero for other routes */
+} lxa_html_root_start_result_t;
+
+/* Accepted root HTML start after earlier mode/foreign/image and initial-frameset
+ * routing. Borrow a complete owner set: same-budget formatting, inactive text,
+ * tokenizer, form scalar and pending newline flag. Execute shared root/control,
+ * hidden-input, select, table, special and ordinary phases with one current-entry/
+ * fallback query.
+ * Distinguish ignores from acceptance and deferred template admission. The driver
+ * must admit a reported template frame before continuing. Publish the result only
+ * on success; retain completed effects/publication and latch failure without replay.
+ * Input/borrower/mode/flag/result storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_start_token(lxa_html_root_context_t *context,
+    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
+    bool *pending_newline, lxa_html_root_start_result_t *result);
 
 /* Accepted root table start after earlier select/foreign/table routing. Borrow
  * a same-budget formatting list for table-marker cleanup and document mode for

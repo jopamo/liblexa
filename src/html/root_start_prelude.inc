@@ -1,7 +1,7 @@
 /* Earlier foreign/mode routing has accepted an HTML root start. */
 static inline lxa_status_t
 LXA_ROOT_START_PRELUDE_NAME(LXA_ROOT_START_PRELUDE_VIEW *view,
-    const lxa_html_token_t *token, bool *handled)
+    const lxa_html_token_t *token, lxa_html_root_start_prelude_action_t *result)
 {
     lxa_status_t status = LXA_OK;
     lxa_html_root_mode_t mode = LXA_ROOT_START_PRELUDE_MODE(view);
@@ -18,19 +18,21 @@ LXA_ROOT_START_PRELUDE_NAME(LXA_ROOT_START_PRELUDE_VIEW *view,
             status = LXA_ROOT_START_PRELUDE_ELIGIBLE(view, &eligible);
             if (status == LXA_OK && eligible)
                 status = LXA_ROOT_START_PRELUDE_FRAMESET(view, token);
-            if (status == LXA_OK) *handled = true;
+            if (status == LXA_OK) *result = eligible
+                ? LXA_HTML_ROOT_PRELUDE_FRAMESET : LXA_HTML_ROOT_PRELUDE_IGNORE;
             return status;
         }
         if (lxa_html_tree_name_equals(token->name, "frame", 5)) {
-            *handled = true;
+            *result = LXA_HTML_ROOT_PRELUDE_IGNORE;
             return LXA_OK;
         }
     }
     if (action != LXA_HTML_ROOT_START_OTHER) {
         status = LXA_ROOT_START_PRELUDE_ROOT(view, action, token);
-        if (status == LXA_OK) *handled = true;
+        if (status == LXA_OK) *result = action == LXA_HTML_ROOT_START_IGNORE_HEAD
+            ? LXA_HTML_ROOT_PRELUDE_IGNORE : LXA_HTML_ROOT_PRELUDE_ROOT;
         return status;
     }
-    *handled = false;
+    *result = LXA_HTML_ROOT_PRELUDE_CONTINUE;
     return LXA_OK;
 }
