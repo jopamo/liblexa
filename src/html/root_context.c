@@ -2588,3 +2588,85 @@ lxa_html_root_context_start_prelude(lxa_html_root_context_t *context,
     if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
+
+typedef struct {
+    root_start_view_t recovery;
+    lxa_html_root_table_text_result_t *result;
+} root_table_text_view_t;
+
+static lxa_status_t
+context_table_text_group(root_table_text_view_t *view, bool *group)
+{
+    lxa_html_control_stack_t *stack = view->recovery.context->stack;
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_get(stack,
+        lxa_vector_length(&stack->elements) - 1, &entry, NULL);
+    if (status == LXA_OK) {
+        *group = entry.namespace_id == LXA_DOM_NS_HTML
+            && lxa_html_tree_name_equals(entry.name, "colgroup", 8);
+        if (*group) view->result->column_group = entry.identity;
+    }
+    return status;
+}
+
+static lxa_status_t
+context_table_text_append(root_table_text_view_t *view, lxa_span_t bytes, bool prefix)
+{
+    if (prefix) view->result->space_prefix = bytes.length;
+    return LXA_OK;
+}
+
+static lxa_status_t
+context_table_text_foster(root_table_text_view_t *view, lxa_span_t bytes)
+{
+    (void) bytes;
+    view->result->foster = true;
+    return LXA_OK;
+}
+
+#define LXA_TABLE_TEXT_FLUSH_NAME context_flush_table_text
+#define LXA_TABLE_TEXT_FLUSH_VIEW root_table_text_view_t
+#define LXA_TABLE_TEXT_FLUSH_BUDGET(view) ((view)->recovery.context->stack->budget)
+#define LXA_TABLE_TEXT_FLUSH_REASON(view) (&(view)->recovery.context->limit_reason)
+#define LXA_TABLE_TEXT_FLUSH_APPEND context_table_text_append
+#define LXA_TABLE_TEXT_FLUSH_GROUP context_table_text_group
+#define LXA_TABLE_TEXT_FLUSH_PREFLIGHT(view) LXA_OK
+#define LXA_TABLE_TEXT_FLUSH_POP(view) lxa_html_control_stack_pop_to((view)->recovery.context->stack, \
+    lxa_vector_length(&(view)->recovery.context->stack->elements) - 1)
+#define LXA_TABLE_TEXT_FLUSH_RECONSTRUCT(view) \
+    lxa_html_root_context_reconstruct((view)->recovery.context, (view)->recovery.formatting)
+#define LXA_TABLE_TEXT_FLUSH_FOSTER context_table_text_foster
+#include "html/table_text_flush.inc"
+#undef LXA_TABLE_TEXT_FLUSH_NAME
+#undef LXA_TABLE_TEXT_FLUSH_VIEW
+#undef LXA_TABLE_TEXT_FLUSH_BUDGET
+#undef LXA_TABLE_TEXT_FLUSH_REASON
+#undef LXA_TABLE_TEXT_FLUSH_APPEND
+#undef LXA_TABLE_TEXT_FLUSH_GROUP
+#undef LXA_TABLE_TEXT_FLUSH_PREFLIGHT
+#undef LXA_TABLE_TEXT_FLUSH_POP
+#undef LXA_TABLE_TEXT_FLUSH_RECONSTRUCT
+#undef LXA_TABLE_TEXT_FLUSH_FOSTER
+
+lxa_status_t
+lxa_html_root_context_table_text(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
+    lxa_span_t data, lxa_html_root_table_text_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || !context->body || result == NULL
+        || lxa_vector_length(&context->stack->elements) < 2
+        || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget
+        || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
+    lxa_dom_namespace_t ns;
+    status = lxa_html_control_stack_current_namespace(context->stack, 0, &ns);
+    if (status != LXA_OK) return finish(context, status);
+    if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_table_text_result_t out = {0};
+    root_table_text_view_t view = {{context, formatting}, &out};
+    status = context_flush_table_text(&view, data);
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
+}

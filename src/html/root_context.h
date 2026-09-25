@@ -59,6 +59,26 @@ lxa_status_t lxa_html_root_context_start_prelude(lxa_html_root_context_t *contex
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
     lxa_html_root_start_prelude_result_t *result);
 
+typedef struct {
+    size_t space_prefix;
+    uint64_t column_group;
+    bool foster;
+} lxa_html_root_table_text_result_t;
+
+/* Flush accepted pending table text at BODY/IN_BODY over a nonempty table slice.
+ * Borrow bytes and a same-budget formatting list; retain neither byte views nor
+ * a pending buffer. Precharge full byte WORK before scanning. Null/space-only
+ * text leaves metadata unchanged; mixed text closes the current HTML colgroup
+ * and reconstructs formatting. Publish leading spaces, removed colgroup identity
+ * and foster selection only on success. No DOM-insertion preflight or NODE charge.
+ * Retain completed effects and latch failure without replay. Engines emit text,
+ * bound pending storage and clear it only after success. Input/result storage
+ * must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_table_text(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
+    lxa_span_t data, lxa_html_root_table_text_result_t *result);
+
 /* In-body end dispatch after foreign/template/head/br routing. Apply select
  * recovery before the shared body/formatting/form/paragraph/scoped/fallback
  * dispatch. Borrow same-budget formatting for formatting/scoped ends and a form
