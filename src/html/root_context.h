@@ -42,6 +42,23 @@ lxa_status_t lxa_html_root_context_ensure_body(lxa_html_root_context_t *context)
  */
 lxa_status_t lxa_html_root_context_start_root(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
+
+typedef struct {
+    bool handled;
+    uint64_t identity; /* frameset replacement, zero for other routes */
+} lxa_html_root_start_prelude_result_t;
+
+/* Start prelude after earlier mode/foreign/image routing. Recover control-tag
+ * colgroups before root classification, frameset eligibility or frame ignore.
+ * Execute saved root/frameset admission without repeating their queries.
+ * Success publishes handled=false for later hidden-input/select/start routing.
+ * Publish the result only on success; retain completed effects/mode changes and
+ * latch failures without replay. Token/mode/result storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_start_prelude(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
+    lxa_html_root_start_prelude_result_t *result);
+
 /* In-body end dispatch after foreign/template/head/br routing. Apply select
  * recovery before the shared body/formatting/form/paragraph/scoped/fallback
  * dispatch. Borrow same-budget formatting for formatting/scoped ends and a form

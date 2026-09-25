@@ -2540,3 +2540,51 @@ lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
     if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
     return finish(context, status);
 }
+
+#define LXA_ROOT_START_PRELUDE_NAME context_start_prelude
+#define LXA_ROOT_START_PRELUDE_VIEW root_frameset_control_view_t
+#define LXA_ROOT_START_PRELUDE_MODE(view) (*(view)->mode)
+#define LXA_ROOT_START_PRELUDE_GROUP(view) recover_root_group((view)->context)
+#define LXA_ROOT_START_PRELUDE_ELIGIBLE(view, out) \
+    lxa_html_root_context_frameset_body((view)->context, *(view)->mode, out)
+#define LXA_ROOT_START_PRELUDE_FRAMESET root_start_frameset
+#define LXA_ROOT_START_PRELUDE_ROOT(view, action, token) \
+    context_dispatch_root_start((view)->context, action, token, (view)->mode)
+#include "html/root_start_prelude.inc"
+#undef LXA_ROOT_START_PRELUDE_NAME
+#undef LXA_ROOT_START_PRELUDE_VIEW
+#undef LXA_ROOT_START_PRELUDE_MODE
+#undef LXA_ROOT_START_PRELUDE_GROUP
+#undef LXA_ROOT_START_PRELUDE_ELIGIBLE
+#undef LXA_ROOT_START_PRELUDE_FRAMESET
+#undef LXA_ROOT_START_PRELUDE_ROOT
+
+lxa_status_t
+lxa_html_root_context_start_prelude(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
+    lxa_html_root_start_prelude_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || result == NULL || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG) return LXA_ERROR_ARGUMENT;
+    bool noscript = *mode == LXA_TREE_HEAD_NOSCRIPT && context->head && !context->body;
+    bool after_body = (*mode == LXA_TREE_AFTER_BODY || *mode == LXA_TREE_AFTER_HTML)
+        && context->body && lxa_html_tree_name_equals(token->name, "html", 4);
+    if ((!body_start_mode_valid(context, *mode) && !noscript && !after_body)
+        || (*mode == LXA_TREE_IN_BODY && !context->body)
+        || (!context->body && lxa_vector_length(&context->stack->elements) != 0))
+        return LXA_ERROR_ARGUMENT;
+    if (noscript) {
+        lxa_html_head_noscript_plan_t plan;
+        status = lxa_html_tree_head_noscript_plan(token, context->stack->budget,
+            &context->limit_reason, &plan);
+        if (status != LXA_OK) return status;
+        if (plan.action != LXA_HTML_HEAD_NOSCRIPT_CONTINUE) return LXA_ERROR_ARGUMENT;
+    }
+    lxa_html_root_start_prelude_result_t out = {false, 0};
+    root_frameset_control_view_t view = {context, mode, &out.identity, true};
+    status = context_start_prelude(&view, token, &out.handled);
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
+}

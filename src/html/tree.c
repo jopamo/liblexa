@@ -4192,6 +4192,34 @@ begin_root_text(tree_foster_text_view_t *view, const lxa_html_token_t *token)
 #undef LXA_ROOT_SPECIAL_EXEC_PLAINTEXT
 
 static lxa_status_t
+tree_start_frameset_eligible(tree_foster_text_view_t *view, bool *eligible)
+{
+    lxa_html_tree_t *tree = view->tree;
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
+    size_t length = lxa_vector_length(&tree->open_elements);
+    *eligible = lxa_html_tree_frameset_body_eligible(tree->frameset_ok,
+        tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : open[0].handle);
+    return LXA_OK;
+}
+
+#define LXA_ROOT_START_PRELUDE_NAME tree_start_prelude
+#define LXA_ROOT_START_PRELUDE_VIEW tree_foster_text_view_t
+#define LXA_ROOT_START_PRELUDE_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_START_PRELUDE_GROUP(view) tree_recover_root_group((view)->tree)
+#define LXA_ROOT_START_PRELUDE_ELIGIBLE tree_start_frameset_eligible
+#define LXA_ROOT_START_PRELUDE_FRAMESET(view, token) begin_root_frameset((view)->tree, token, true)
+#define LXA_ROOT_START_PRELUDE_ROOT(view, action, token) \
+    tree_dispatch_root_start((view)->tree, action, token, &(view)->tree->mode)
+#include "html/root_start_prelude.inc"
+#undef LXA_ROOT_START_PRELUDE_NAME
+#undef LXA_ROOT_START_PRELUDE_VIEW
+#undef LXA_ROOT_START_PRELUDE_MODE
+#undef LXA_ROOT_START_PRELUDE_GROUP
+#undef LXA_ROOT_START_PRELUDE_ELIGIBLE
+#undef LXA_ROOT_START_PRELUDE_FRAMESET
+#undef LXA_ROOT_START_PRELUDE_ROOT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -4199,7 +4227,6 @@ consume(lxa_html_tree_t *tree,
     lxa_html_token_t adjusted;
     lxa_dom_ref_t parent, child;
     bool template_ordinary;
-    lxa_html_root_start_action_t root_start = LXA_HTML_ROOT_START_OTHER;
     if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     if (tree->mode == LXA_TREE_INITIAL) {
         switch (lxa_html_tree_initial_action(token->kind, token->data)) {
@@ -5231,30 +5258,12 @@ reprocess_template_token:
         }
     }
 reprocess_body_start:
-    if (token->kind == LXA_HTML_START_TAG && tree->mode == LXA_TREE_IN_BODY
-        && lxa_html_tree_root_control_group(token->kind, token->name)) {
-        status = tree_recover_root_group(tree);
-        if (status != LXA_OK) return status;
-    }
     if (token->kind == LXA_HTML_START_TAG) {
-        status = lxa_html_tree_root_start_action(tree->mode, token->name, &root_start);
-        if (status != LXA_OK) return status;
+        tree_foster_text_view_t view = {tree, tokenizer, {0}};
+        bool handled;
+        status = tree_start_prelude(&view, token, &handled);
+        if (status != LXA_OK || handled) return status;
     }
-    if (token->kind == LXA_HTML_START_TAG
-        && tree->mode == LXA_TREE_IN_BODY) {
-        if (named(token->name, "frameset")) {
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->open_elements.bytes.data;
-            size_t length = lxa_vector_length(&tree->open_elements);
-            if (!lxa_html_tree_frameset_body_eligible(tree->frameset_ok,
-                tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : open[0].handle))
-                return LXA_OK;
-            return begin_root_frameset(tree, token, true);
-        }
-        if (named(token->name, "frame")) return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_START_TAG && root_start != LXA_HTML_ROOT_START_OTHER)
-        return tree_dispatch_root_start(tree, root_start, token, &tree->mode);
     if (tree->mode == LXA_TREE_IN_BODY) {
         bool ignore;
         {
