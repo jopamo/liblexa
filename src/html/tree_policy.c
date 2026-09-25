@@ -8,6 +8,39 @@
 _Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
 
 lxa_status_t
+lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
+    lxa_limit_reason_t *reason)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (pending == NULL || pending->budget == NULL
+        || pending->allocator.allocate == NULL || pending->allocator.resize == NULL
+        || pending->allocator.release == NULL || pending->length > pending->capacity
+        || (pending->capacity != 0 && pending->data == NULL)
+        || (bytes.length != 0 && bytes.data == NULL)) return LXA_ERROR_ARGUMENT;
+    size_t combined;
+    lxa_status_t status = lxa_size_add(pending->length, bytes.length, &combined);
+    if (status != LXA_OK) return status;
+    if (bytes.length != 0) {
+        uintptr_t source = (uintptr_t) bytes.data, base = (uintptr_t) pending;
+        if (source >= base ? source - base < sizeof(*pending) : base - source < bytes.length)
+            return LXA_ERROR_ARGUMENT;
+        if (pending->capacity != 0) {
+            base = (uintptr_t) pending->data;
+            if (source >= base ? source - base < pending->capacity : base - source < bytes.length)
+                return LXA_ERROR_ARGUMENT;
+        }
+    }
+    status = lxa_budget_check_item(pending->budget, LXA_BUDGET_TOKEN_BYTES, combined, reason);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(pending->budget, LXA_BUDGET_WORK, bytes.length, reason);
+    if (status == LXA_OK) {
+        status = lxa_buffer_append(pending, bytes);
+        if (status == LXA_ERROR_LIMIT && reason != NULL) *reason = LXA_BUDGET_MEMORY;
+    }
+    return status;
+}
+
+lxa_status_t
 lxa_html_tree_root_ordinary_start_action(lxa_span_t name, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, lxa_html_root_ordinary_start_action_t *out)
 {

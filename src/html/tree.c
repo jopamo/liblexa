@@ -1869,21 +1869,7 @@ flush_table_text(lxa_html_tree_t *tree)
 static lxa_status_t
 queue_table_text(lxa_html_tree_t *tree, lxa_span_t bytes)
 {
-    size_t combined;
-    lxa_status_t status = lxa_size_add(tree->table_text.length,
-                                       bytes.length, &combined);
-    if (status == LXA_OK)
-        status = lxa_budget_check_item(tree->nodes->budget,
-            LXA_BUDGET_TOKEN_BYTES, combined, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                                    bytes.length, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = lxa_buffer_append(&tree->table_text, bytes);
-    if (status == LXA_ERROR_LIMIT
-        && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
-        tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
-    return status;
+    return lxa_html_tree_queue_table_text(&tree->table_text, bytes, &tree->nodes->limit_reason);
 }
 
 static lxa_status_t flush_template_table_text(lxa_html_tree_t *tree);

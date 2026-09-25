@@ -30,6 +30,14 @@ lxa_status_t lxa_html_tree_root_table_start_action(lxa_span_t name,
     lxa_budget_t *budget, lxa_limit_reason_t *reason,
     lxa_html_root_table_start_action_t *out);
 
+/* Append accepted pending table bytes to an engine-owned budgeted buffer.
+ * Check combined TOKEN_BYTES before charging incoming WORK and growing storage.
+ * Failure preserves content/length; retained WORK and capacity belong to the
+ * engine. Input must not overlap the buffer object or its allocation.
+ */
+lxa_status_t lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
+    lxa_limit_reason_t *reason);
+
 typedef enum {
     LXA_HTML_ROOT_ELEMENT_HTML, LXA_HTML_ROOT_ELEMENT_HEAD, LXA_HTML_ROOT_ELEMENT_BODY
 } lxa_html_root_element_t;
