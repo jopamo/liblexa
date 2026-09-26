@@ -478,6 +478,16 @@ lxa_status_t lxa_html_root_context_end_paragraph(lxa_html_root_context_t *contex
 lxa_status_t lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_span_t data,
     lxa_html_root_mode_t *mode, lxa_html_root_data_action_t *action);
+/* First NUL in accepted root HTML table DATA, after queueing its preceding run.
+ * Flush whitespace WORK before popping current colgroup; pending nonspace waits
+ * for ordinary flush. No insertion/retained bytes. Publish removed group key
+ * (or zero) only on success; latch failure without replay. The engine owns
+ * whitespace emission under that key and pending-buffer clearing before reuse.
+ * Call once per DATA span; pending/output storage must not alias owners or
+ * each other.
+ */
+lxa_status_t lxa_html_root_context_table_data_null(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t pending, uint64_t *column_group);
 /* Accepted root select routing after foreign/hidden-table-input dispatch.
  * Consume one shared plan, pop its retained suffix, then publish ignore.
  * Latch failures without replay; modes, framesets and formatting are unchanged.

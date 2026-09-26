@@ -1874,6 +1874,21 @@ queue_table_text(lxa_html_tree_t *tree, lxa_span_t bytes)
 
 static lxa_status_t flush_template_table_text(lxa_html_tree_t *tree);
 
+#define LXA_TABLE_DATA_NULL_NAME tree_table_data_null
+#define LXA_TABLE_DATA_NULL_VIEW lxa_html_tree_t
+#define LXA_TABLE_DATA_NULL_GROUP(view, out) current_html_column_group(view, \
+    formatting_elements(view), formatting_boundary(view), out)
+#define LXA_TABLE_DATA_NULL_FLUSH(view, pending) \
+    ((view)->mode == LXA_TREE_TEMPLATE_TEXT ? flush_template_table_text(view) : flush_table_text(view))
+#define LXA_TABLE_DATA_NULL_POP(view) formatting_pop_elements(view, \
+    lxa_vector_length(formatting_elements(view)) - 1)
+#include "html/table_data_null.inc"
+#undef LXA_TABLE_DATA_NULL_NAME
+#undef LXA_TABLE_DATA_NULL_VIEW
+#undef LXA_TABLE_DATA_NULL_GROUP
+#undef LXA_TABLE_DATA_NULL_FLUSH
+#undef LXA_TABLE_DATA_NULL_POP
+
 /* DATA nulls have tree-context semantics. Scan bounded token spans so text
  * across nulls is retained without allocating or treating NUL as a terminator. */
 static lxa_status_t
@@ -1899,23 +1914,10 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
         }
         if (!run.nul) break;
         if (check_column_group) {
-            bool column_group;
             check_column_group = false;
-            status = current_html_column_group(tree, formatting_elements(tree),
-                formatting_boundary(tree), &column_group);
+            status = tree_table_data_null(tree,
+                (lxa_span_t){tree->table_text.data, tree->table_text.length});
             if (status != LXA_OK) return status;
-            /* Pending nonspace closes colgroup at flush. Otherwise preserve
-             * whitespace there and reprocess NUL after the pop. */
-            if (column_group && lxa_html_tree_space_only((lxa_span_t) {
-                    tree->table_text.data, tree->table_text.length
-                })) {
-                status = tree->mode == LXA_TREE_TEMPLATE_TEXT
-                    ? flush_template_table_text(tree) : flush_table_text(tree);
-                if (status == LXA_OK)
-                    status = formatting_pop_elements(tree,
-                        lxa_vector_length(formatting_elements(tree)) - 1);
-                if (status != LXA_OK) return status;
-            }
         }
         if (foreign) {
             lxa_span_t segment = {replacement, sizeof(replacement)};

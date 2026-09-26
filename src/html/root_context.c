@@ -2854,3 +2854,61 @@ lxa_html_root_context_misc_token(lxa_html_root_context_t *context,
     if (status == LXA_ERROR_ARGUMENT) return status;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    uint64_t column_group;
+} root_data_null_view_t;
+
+static lxa_status_t
+context_data_null_group(root_data_null_view_t *view, bool *group)
+{
+    lxa_status_t status = lxa_html_control_stack_column_group(view->context->stack, 0, group);
+    if (status == LXA_OK && *group) {
+        const lxa_html_control_element_t *entries =
+            (const lxa_html_control_element_t *) view->context->stack->elements.bytes.data;
+        view->column_group = entries[lxa_vector_length(&view->context->stack->elements) - 1].identity;
+    }
+    return status;
+}
+
+static lxa_status_t
+context_data_null_pop(root_data_null_view_t *view)
+{
+    return lxa_html_control_stack_pop_to(view->context->stack,
+        lxa_vector_length(&view->context->stack->elements) - 1);
+}
+
+#define LXA_TABLE_DATA_NULL_NAME context_table_data_null
+#define LXA_TABLE_DATA_NULL_VIEW root_data_null_view_t
+#define LXA_TABLE_DATA_NULL_GROUP context_data_null_group
+#define LXA_TABLE_DATA_NULL_FLUSH(view, pending) lxa_budget_charge((view)->context->stack->budget, \
+    LXA_BUDGET_WORK, (pending).length, &(view)->context->limit_reason)
+#define LXA_TABLE_DATA_NULL_POP context_data_null_pop
+#include "html/table_data_null.inc"
+#undef LXA_TABLE_DATA_NULL_NAME
+#undef LXA_TABLE_DATA_NULL_VIEW
+#undef LXA_TABLE_DATA_NULL_GROUP
+#undef LXA_TABLE_DATA_NULL_FLUSH
+#undef LXA_TABLE_DATA_NULL_POP
+
+lxa_status_t
+lxa_html_root_context_table_data_null(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t pending, uint64_t *column_group)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || !context->body || column_group == NULL
+        || lxa_vector_length(&context->stack->elements) < 2
+        || (pending.length != 0 && pending.data == NULL)) return LXA_ERROR_ARGUMENT;
+    lxa_dom_namespace_t ns;
+    status = lxa_html_control_stack_current_namespace(context->stack, 0, &ns);
+    if (status != LXA_OK) return finish(context, status);
+    if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    root_data_null_view_t view = {context, 0};
+    size_t length = lxa_vector_length(&context->stack->elements);
+    status = context_table_data_null(&view, pending);
+    if (status == LXA_OK)
+        *column_group = lxa_vector_length(&context->stack->elements) < length ? view.column_group : 0;
+    return finish(context, status);
+}
