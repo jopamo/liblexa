@@ -818,6 +818,9 @@ lxa_html_template_context_end_table(lxa_html_template_context_t *context,
 typedef struct {
     lxa_html_template_context_t *context;
     lxa_html_template_table_text_result_t *result;
+    lxa_buffer_t *pending;
+    lxa_html_table_data_emit_t emit;
+    void *user;
 } template_table_text_view_t;
 
 static lxa_status_t
@@ -885,17 +888,27 @@ lxa_html_template_context_table_text(lxa_html_template_context_t *context,
     if (lxa_vector_length(&context->frames) == 0 || result == NULL
         || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
     lxa_html_template_table_text_result_t out = {0};
-    template_table_text_view_t view = {context, &out};
+    template_table_text_view_t view = {.context = context, .result = &out};
     status = context_flush_table_text(&view, data);
     if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
 
+static lxa_status_t
+context_table_data_null_flush(template_table_text_view_t *view, lxa_span_t pending)
+{
+    lxa_status_t status = lxa_budget_charge(view->context->stack->budget,
+        LXA_BUDGET_WORK, pending.length, &view->context->limit_reason);
+    if (status == LXA_OK && pending.length != 0 && view->emit != NULL)
+        status = view->emit(view->user, pending, view->result->column_group);
+    if (status == LXA_OK && view->pending != NULL) lxa_buffer_clear(view->pending);
+    return status;
+}
+
 #define LXA_TABLE_DATA_NULL_NAME context_table_data_null
 #define LXA_TABLE_DATA_NULL_VIEW template_table_text_view_t
 #define LXA_TABLE_DATA_NULL_GROUP context_table_text_group
-#define LXA_TABLE_DATA_NULL_FLUSH(view, pending) lxa_budget_charge((view)->context->stack->budget, \
-    LXA_BUDGET_WORK, (pending).length, &(view)->context->limit_reason)
+#define LXA_TABLE_DATA_NULL_FLUSH context_table_data_null_flush
 #define LXA_TABLE_DATA_NULL_POP(view) \
     end_pop((view)->context, lxa_vector_length(&(view)->context->stack->elements) - 1)
 #include "html/table_data_null.inc"
@@ -922,11 +935,54 @@ lxa_html_template_context_table_data_null(lxa_html_template_context_t *context,
     if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
     size_t length = lxa_vector_length(&context->stack->elements);
     lxa_html_template_table_text_result_t out = {0};
-    template_table_text_view_t view = {context, &out};
+    template_table_text_view_t view = {.context = context, .result = &out};
     status = context_table_data_null(&view, pending);
     if (status == LXA_OK)
         *column_group = lxa_vector_length(&context->stack->elements) < length ? out.column_group : 0;
     return finish(context, status);
+}
+
+static lxa_status_t
+context_table_data_append(template_table_text_view_t *view, lxa_span_t bytes, bool table)
+{
+    if (!table) return internal();
+    return lxa_html_tree_queue_table_text(view->pending, bytes, &view->context->limit_reason);
+}
+
+#define LXA_DATA_EXECUTE_NAME context_execute_table_data
+#define LXA_DATA_EXECUTE_VIEW template_table_text_view_t
+#define LXA_DATA_EXECUTE_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_DATA_EXECUTE_REASON(view) (&(view)->context->limit_reason)
+#define LXA_DATA_EXECUTE_APPEND context_table_data_append
+#define LXA_DATA_EXECUTE_NULL(view) context_table_data_null(view, \
+    ((lxa_span_t){(view)->pending->data, (view)->pending->length}))
+#include "html/data_execute.inc"
+#undef LXA_DATA_EXECUTE_NAME
+#undef LXA_DATA_EXECUTE_VIEW
+#undef LXA_DATA_EXECUTE_BUDGET
+#undef LXA_DATA_EXECUTE_REASON
+#undef LXA_DATA_EXECUTE_APPEND
+#undef LXA_DATA_EXECUTE_NULL
+
+lxa_status_t
+lxa_html_template_context_table_data(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_table_data_emit_t emit, void *user)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || !lxa_html_tree_table_text_input_valid(pending, data)
+        || pending->budget != context->stack->budget) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_dom_namespace_t ns;
+    status = lxa_html_control_stack_current_namespace(context->stack, frames[count - 1].boundary, &ns);
+    if (status != LXA_OK) return finish(context, status);
+    if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    lxa_html_template_table_text_result_t out = {0};
+    template_table_text_view_t view = {.context = context, .result = &out,
+        .pending = pending, .emit = emit, .user = user};
+    return finish(context, context_execute_table_data(&view, data, false, true));
 }
 
 #define LXA_TEMPLATE_END_NAME context_end_effects

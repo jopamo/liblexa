@@ -291,6 +291,16 @@ lxa_status_t lxa_html_template_context_table_text(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_table_data_null(lxa_html_template_context_t *context,
     lxa_span_t pending, uint64_t *column_group);
+/* Execute accepted HTML table DATA within the active frame over same-budget
+ * pending storage. Share complete-input WORK, non-NUL queueing and first-NUL
+ * recovery. Emit whitespace before clearing/pop; NULL emit discards it.
+ * Callback views expire on return; do not retain them, reenter or mutate
+ * context/stack/list/pending. Callback/queue failures latch completed effects.
+ * Nonspace remains pending for later flush. Input must not alias storage or
+ * owners; engines retain earlier routing and later flush scheduling.
+ */
+lxa_status_t lxa_html_template_context_table_data(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_table_data_emit_t emit, void *user);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.
