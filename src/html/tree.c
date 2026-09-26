@@ -1889,44 +1889,39 @@ static lxa_status_t flush_template_table_text(lxa_html_tree_t *tree);
 #undef LXA_TABLE_DATA_NULL_FLUSH
 #undef LXA_TABLE_DATA_NULL_POP
 
-/* DATA nulls have tree-context semantics. Scan bounded token spans so text
- * across nulls is retained without allocating or treating NUL as a terminator. */
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_dom_ref_t parent;
+} tree_data_view_t;
+
+static lxa_status_t
+tree_data_append(tree_data_view_t *view, lxa_span_t bytes, bool table)
+{
+    return table ? queue_table_text(view->tree, bytes)
+        : append_character(view->tree, view->parent, LXA_DOM_KIND_TEXT, bytes);
+}
+
+#define LXA_DATA_EXECUTE_NAME tree_execute_data
+#define LXA_DATA_EXECUTE_VIEW tree_data_view_t
+#define LXA_DATA_EXECUTE_BUDGET(view) ((view)->tree->nodes->budget)
+#define LXA_DATA_EXECUTE_REASON(view) (&(view)->tree->nodes->limit_reason)
+#define LXA_DATA_EXECUTE_APPEND tree_data_append
+#define LXA_DATA_EXECUTE_NULL(view) tree_table_data_null((view)->tree, \
+    ((lxa_span_t){(view)->tree->table_text.data, (view)->tree->table_text.length}))
+#include "html/data_execute.inc"
+#undef LXA_DATA_EXECUTE_NAME
+#undef LXA_DATA_EXECUTE_VIEW
+#undef LXA_DATA_EXECUTE_BUDGET
+#undef LXA_DATA_EXECUTE_REASON
+#undef LXA_DATA_EXECUTE_APPEND
+#undef LXA_DATA_EXECUTE_NULL
+
 static lxa_status_t
 insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
-                 lxa_span_t bytes, bool foreign, bool table)
+    lxa_span_t bytes, bool foreign, bool table)
 {
-    static const uint8_t replacement[] = {0xef, 0xbf, 0xbd};
-    size_t offset = 0;
-    bool check_column_group = table && !foreign;
-    lxa_status_t status;
-    status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK,
-                               bytes.length, &tree->nodes->limit_reason);
-    if (status != LXA_OK) return status;
-    while (offset < bytes.length) {
-        lxa_html_data_run_t run;
-        status = lxa_html_tree_data_run(bytes, offset, &run);
-        if (status != LXA_OK) return status;
-        if (run.bytes.length != 0) {
-            status = table ? queue_table_text(tree, run.bytes)
-                           : append_character(tree, parent, LXA_DOM_KIND_TEXT,
-                                              run.bytes);
-            if (status != LXA_OK) return status;
-        }
-        if (!run.nul) break;
-        if (check_column_group) {
-            check_column_group = false;
-            status = tree_table_data_null(tree,
-                (lxa_span_t){tree->table_text.data, tree->table_text.length});
-            if (status != LXA_OK) return status;
-        }
-        if (foreign) {
-            lxa_span_t segment = {replacement, sizeof(replacement)};
-            status = append_character(tree, parent, LXA_DOM_KIND_TEXT, segment);
-            if (status != LXA_OK) return status;
-        }
-        offset = run.next;
-    }
-    return LXA_OK;
+    tree_data_view_t view = {tree, parent};
+    return tree_execute_data(&view, bytes, foreign, table);
 }
 
 static lxa_status_t

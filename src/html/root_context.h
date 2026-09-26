@@ -488,6 +488,18 @@ lxa_status_t lxa_html_root_context_prepare_data(lxa_html_root_context_t *context
  */
 lxa_status_t lxa_html_root_context_table_data_null(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_span_t pending, uint64_t *column_group);
+/* Execute accepted root HTML table DATA over a same-budget pending buffer.
+ * Charge complete input before scanning; queue non-NUL runs and recover only
+ * the first NUL. Emit pending whitespace before clearing and colgroup pop.
+ * NULL emit discards whitespace. Callback views expire on return; callback
+ * must not retain them, reenter or mutate context/stack/pending. Callback failures latch.
+ * Retain queued bytes, charged WORK and completed effects on failure.
+ * Nonspace stays pending for ordinary flush. Input must not alias storage or
+ * other owners. Engines own mode, earlier preparation and later flush scheduling.
+ */
+lxa_status_t lxa_html_root_context_table_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data, lxa_buffer_t *pending,
+    lxa_html_table_data_emit_t emit, void *user);
 /* Accepted root select routing after foreign/hidden-table-input dispatch.
  * Consume one shared plan, pop its retained suffix, then publish ignore.
  * Latch failures without replay; modes, framesets and formatting are unchanged.

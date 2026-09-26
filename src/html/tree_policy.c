@@ -31,24 +31,12 @@ lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     lxa_limit_reason_t *reason)
 {
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
-    if (pending == NULL || pending->budget == NULL
-        || pending->allocator.allocate == NULL || pending->allocator.resize == NULL
-        || pending->allocator.release == NULL || pending->length > pending->capacity
-        || (pending->capacity != 0 && pending->data == NULL)
+    if (!lxa_html_tree_table_text_buffer_valid(pending)
         || (bytes.length != 0 && bytes.data == NULL)) return LXA_ERROR_ARGUMENT;
     size_t combined;
     lxa_status_t status = lxa_size_add(pending->length, bytes.length, &combined);
     if (status != LXA_OK) return status;
-    if (bytes.length != 0) {
-        uintptr_t source = (uintptr_t) bytes.data, base = (uintptr_t) pending;
-        if (source >= base ? source - base < sizeof(*pending) : base - source < bytes.length)
-            return LXA_ERROR_ARGUMENT;
-        if (pending->capacity != 0) {
-            base = (uintptr_t) pending->data;
-            if (source >= base ? source - base < pending->capacity : base - source < bytes.length)
-                return LXA_ERROR_ARGUMENT;
-        }
-    }
+    if (!lxa_html_tree_table_text_input_valid(pending, bytes)) return LXA_ERROR_ARGUMENT;
     status = lxa_budget_check_item(pending->budget, LXA_BUDGET_TOKEN_BYTES, combined, reason);
     if (status == LXA_OK)
         status = lxa_budget_charge(pending->budget, LXA_BUDGET_WORK, bytes.length, reason);
@@ -57,6 +45,33 @@ lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
         if (status == LXA_ERROR_LIMIT && reason != NULL) *reason = LXA_BUDGET_MEMORY;
     }
     return status;
+}
+
+bool
+lxa_html_tree_table_text_buffer_valid(const lxa_buffer_t *pending)
+{
+    return pending != NULL && pending->budget != NULL
+        && pending->allocator.allocate != NULL && pending->allocator.resize != NULL
+        && pending->allocator.release != NULL && pending->length <= pending->capacity
+        && (pending->capacity == 0 || pending->data != NULL);
+}
+
+bool
+lxa_html_tree_table_text_input_valid(const lxa_buffer_t *pending, lxa_span_t bytes)
+{
+    if (!lxa_html_tree_table_text_buffer_valid(pending)
+        || (bytes.length != 0 && bytes.data == NULL)) return false;
+    if (bytes.length != 0) {
+        uintptr_t source = (uintptr_t) bytes.data, base = (uintptr_t) pending;
+        if (source >= base ? source - base < sizeof(*pending) : base - source < bytes.length)
+            return false;
+        if (pending->capacity != 0) {
+            base = (uintptr_t) pending->data;
+            if (source >= base ? source - base < pending->capacity : base - source < bytes.length)
+                return false;
+        }
+    }
+    return true;
 }
 
 lxa_status_t

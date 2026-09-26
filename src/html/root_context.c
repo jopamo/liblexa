@@ -2858,6 +2858,9 @@ lxa_html_root_context_misc_token(lxa_html_root_context_t *context,
 typedef struct {
     lxa_html_root_context_t *context;
     uint64_t column_group;
+    lxa_buffer_t *pending;
+    lxa_html_table_data_emit_t emit;
+    void *user;
 } root_data_null_view_t;
 
 static lxa_status_t
@@ -2879,11 +2882,21 @@ context_data_null_pop(root_data_null_view_t *view)
         lxa_vector_length(&view->context->stack->elements) - 1);
 }
 
+static lxa_status_t
+context_data_null_flush(root_data_null_view_t *view, lxa_span_t pending)
+{
+    lxa_status_t status = lxa_budget_charge(view->context->stack->budget,
+        LXA_BUDGET_WORK, pending.length, &view->context->limit_reason);
+    if (status == LXA_OK && pending.length != 0 && view->emit != NULL)
+        status = view->emit(view->user, pending, view->column_group);
+    if (status == LXA_OK && view->pending != NULL) lxa_buffer_clear(view->pending);
+    return status;
+}
+
 #define LXA_TABLE_DATA_NULL_NAME context_table_data_null
 #define LXA_TABLE_DATA_NULL_VIEW root_data_null_view_t
 #define LXA_TABLE_DATA_NULL_GROUP context_data_null_group
-#define LXA_TABLE_DATA_NULL_FLUSH(view, pending) lxa_budget_charge((view)->context->stack->budget, \
-    LXA_BUDGET_WORK, (pending).length, &(view)->context->limit_reason)
+#define LXA_TABLE_DATA_NULL_FLUSH context_data_null_flush
 #define LXA_TABLE_DATA_NULL_POP context_data_null_pop
 #include "html/table_data_null.inc"
 #undef LXA_TABLE_DATA_NULL_NAME
@@ -2905,10 +2918,54 @@ lxa_html_root_context_table_data_null(lxa_html_root_context_t *context,
     status = lxa_html_control_stack_current_namespace(context->stack, 0, &ns);
     if (status != LXA_OK) return finish(context, status);
     if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
-    root_data_null_view_t view = {context, 0};
+    root_data_null_view_t view = {.context = context};
     size_t length = lxa_vector_length(&context->stack->elements);
     status = context_table_data_null(&view, pending);
     if (status == LXA_OK)
         *column_group = lxa_vector_length(&context->stack->elements) < length ? view.column_group : 0;
     return finish(context, status);
+}
+
+static lxa_status_t
+context_table_data_append(root_data_null_view_t *view, lxa_span_t bytes, bool table)
+{
+    if (!table) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return lxa_html_tree_queue_table_text(view->pending, bytes, &view->context->limit_reason);
+}
+
+#define LXA_DATA_EXECUTE_NAME context_execute_table_data
+#define LXA_DATA_EXECUTE_VIEW root_data_null_view_t
+#define LXA_DATA_EXECUTE_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_DATA_EXECUTE_REASON(view) (&(view)->context->limit_reason)
+#define LXA_DATA_EXECUTE_APPEND context_table_data_append
+#define LXA_DATA_EXECUTE_NULL(view) context_table_data_null(view, \
+    ((lxa_span_t){(view)->pending->data, (view)->pending->length}))
+#include "html/data_execute.inc"
+#undef LXA_DATA_EXECUTE_NAME
+#undef LXA_DATA_EXECUTE_VIEW
+#undef LXA_DATA_EXECUTE_BUDGET
+#undef LXA_DATA_EXECUTE_REASON
+#undef LXA_DATA_EXECUTE_APPEND
+#undef LXA_DATA_EXECUTE_NULL
+
+lxa_status_t
+lxa_html_root_context_table_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data, lxa_buffer_t *pending,
+    lxa_html_table_data_emit_t emit, void *user)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode != LXA_TREE_IN_BODY || !context->body
+        || lxa_vector_length(&context->stack->elements) < 2
+        || !lxa_html_tree_table_text_input_valid(pending, data)
+        || pending->budget != context->stack->budget) return LXA_ERROR_ARGUMENT;
+    lxa_dom_namespace_t ns;
+    status = lxa_html_control_stack_current_namespace(context->stack, 0, &ns);
+    if (status != LXA_OK) return finish(context, status);
+    if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    root_data_null_view_t view = {.context = context, .pending = pending, .emit = emit, .user = user};
+    return finish(context, context_execute_table_data(&view, data, false, true));
 }

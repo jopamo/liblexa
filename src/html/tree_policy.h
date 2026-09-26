@@ -37,6 +37,14 @@ lxa_status_t lxa_html_tree_root_table_start_action(lxa_span_t name,
  */
 lxa_status_t lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     lxa_limit_reason_t *reason);
+/* Validate initialized pending storage and nonoverlapping borrowed DATA.
+ * No quota charges; callers retain combined-length admission ordering.
+ */
+bool lxa_html_tree_table_text_buffer_valid(const lxa_buffer_t *pending);
+bool lxa_html_tree_table_text_input_valid(const lxa_buffer_t *pending, lxa_span_t bytes);
+
+typedef lxa_status_t (*lxa_html_table_data_emit_t)(void *user, lxa_span_t bytes,
+    uint64_t column_group);
 
 typedef struct {
     lxa_span_t bytes;
