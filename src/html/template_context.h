@@ -282,6 +282,15 @@ typedef struct {
  */
 lxa_status_t lxa_html_template_context_table_text(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_html_template_table_text_result_t *result);
+/* First NUL in accepted HTML table DATA after queueing its preceding run.
+ * Flush whitespace WORK before current-colgroup pop, excluding entries below
+ * the active frame boundary. Pending nonspace waits for ordinary flush.
+ * Publish removed group key or zero only on success; latch partial failure.
+ * Engines own emission under that key and pending clearing before reuse.
+ * Call once per DATA span; input/output must not alias owners or each other.
+ */
+lxa_status_t lxa_html_template_context_table_data_null(lxa_html_template_context_t *context,
+    lxa_span_t pending, uint64_t *column_group);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

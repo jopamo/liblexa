@@ -891,6 +891,44 @@ lxa_html_template_context_table_text(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+#define LXA_TABLE_DATA_NULL_NAME context_table_data_null
+#define LXA_TABLE_DATA_NULL_VIEW template_table_text_view_t
+#define LXA_TABLE_DATA_NULL_GROUP context_table_text_group
+#define LXA_TABLE_DATA_NULL_FLUSH(view, pending) lxa_budget_charge((view)->context->stack->budget, \
+    LXA_BUDGET_WORK, (pending).length, &(view)->context->limit_reason)
+#define LXA_TABLE_DATA_NULL_POP(view) \
+    end_pop((view)->context, lxa_vector_length(&(view)->context->stack->elements) - 1)
+#include "html/table_data_null.inc"
+#undef LXA_TABLE_DATA_NULL_NAME
+#undef LXA_TABLE_DATA_NULL_VIEW
+#undef LXA_TABLE_DATA_NULL_GROUP
+#undef LXA_TABLE_DATA_NULL_FLUSH
+#undef LXA_TABLE_DATA_NULL_POP
+
+lxa_status_t
+lxa_html_template_context_table_data_null(lxa_html_template_context_t *context,
+    lxa_span_t pending, uint64_t *column_group)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || column_group == NULL || (pending.length != 0 && pending.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_dom_namespace_t ns;
+    status = lxa_html_control_stack_current_namespace(context->stack, frames[count - 1].boundary, &ns);
+    if (status != LXA_OK) return finish(context, status);
+    if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    lxa_html_template_table_text_result_t out = {0};
+    template_table_text_view_t view = {context, &out};
+    status = context_table_data_null(&view, pending);
+    if (status == LXA_OK)
+        *column_group = lxa_vector_length(&context->stack->elements) < length ? out.column_group : 0;
+    return finish(context, status);
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
