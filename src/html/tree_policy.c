@@ -8,6 +8,25 @@
 _Static_assert(LXA_HTML_DATA == 0, "zero text contexts must be inactive");
 
 lxa_status_t
+lxa_html_tree_data_run(lxa_span_t bytes, size_t offset, lxa_html_data_run_t *out)
+{
+    if (out == NULL || offset > bytes.length || (bytes.length != 0 && bytes.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_data_run_t run = {{NULL, 0}, offset, false};
+    if (offset < bytes.length) {
+        const uint8_t *start = bytes.data + offset;
+        const uint8_t *nul = memchr(start, 0, bytes.length - offset);
+        run.bytes = (lxa_span_t){start,
+            nul == NULL ? bytes.length - offset : (size_t)(nul - start)};
+        run.nul = nul != NULL;
+        run.next += run.bytes.length;
+        if (run.nul) ++run.next;
+    }
+    *out = run;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     lxa_limit_reason_t *reason)
 {

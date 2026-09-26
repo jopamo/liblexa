@@ -38,6 +38,20 @@ lxa_status_t lxa_html_tree_root_table_start_action(lxa_span_t name,
 lxa_status_t lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     lxa_limit_reason_t *reason);
 
+typedef struct {
+    lxa_span_t bytes;
+    size_t next;
+    bool nul;
+} lxa_html_data_run_t;
+
+/* Borrow the next non-NUL run and consume its optional following NUL.
+ * Offset may equal length. No allocation/WORK; engines charge the complete
+ * input before scanning and own context-specific NUL effects.
+ * Publish only on success; output must not overlap input storage.
+ */
+lxa_status_t lxa_html_tree_data_run(lxa_span_t bytes, size_t offset,
+    lxa_html_data_run_t *out);
+
 typedef enum {
     LXA_HTML_ROOT_ELEMENT_HTML, LXA_HTML_ROOT_ELEMENT_HEAD, LXA_HTML_ROOT_ELEMENT_BODY
 } lxa_html_root_element_t;

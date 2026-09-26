@@ -1888,18 +1888,16 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
                                bytes.length, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
     while (offset < bytes.length) {
-        const uint8_t *nul = memchr(bytes.data + offset, 0,
-                                    bytes.length - offset);
-        size_t run = nul == NULL ? bytes.length - offset
-                                : (size_t) (nul - (bytes.data + offset));
-        if (run != 0) {
-            lxa_span_t segment = {bytes.data + offset, run};
-            status = table ? queue_table_text(tree, segment)
+        lxa_html_data_run_t run;
+        status = lxa_html_tree_data_run(bytes, offset, &run);
+        if (status != LXA_OK) return status;
+        if (run.bytes.length != 0) {
+            status = table ? queue_table_text(tree, run.bytes)
                            : append_character(tree, parent, LXA_DOM_KIND_TEXT,
-                                              segment);
+                                              run.bytes);
             if (status != LXA_OK) return status;
         }
-        if (nul == NULL) break;
+        if (!run.nul) break;
         if (check_column_group) {
             bool column_group;
             check_column_group = false;
@@ -1924,7 +1922,7 @@ insert_data_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             status = append_character(tree, parent, LXA_DOM_KIND_TEXT, segment);
             if (status != LXA_OK) return status;
         }
-        offset += run + 1;
+        offset = run.next;
     }
     return LXA_OK;
 }
