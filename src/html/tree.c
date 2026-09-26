@@ -1423,30 +1423,21 @@ append_comment_or_pi(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 #undef LXA_ROOT_FINISH_BODY
 #undef LXA_ROOT_FINISH_POP
 
-static lxa_status_t
-prepare_prebody_text(lxa_html_tree_t *tree, lxa_span_t *bytes)
-{
-    lxa_html_prebody_text_plan_t plan;
-    lxa_status_t status = lxa_html_tree_prebody_text_plan(tree->mode, *bytes,
-        tree->nodes->budget, &tree->nodes->limit_reason, &plan);
-    if (status != LXA_OK) return status;
-    size_t prefix = plan.space_prefix;
-    if (plan.emit_prefix) {
-        status = append_character(tree,
-            tree->mode == LXA_TREE_IN_HEAD ? tree->head : tree->html,
-            LXA_DOM_KIND_TEXT, (lxa_span_t){bytes->data, prefix});
-        if (status != LXA_OK) return status;
-    }
-    if (prefix != 0) bytes->data += prefix;
-    bytes->length -= prefix;
-    if (bytes->length == 0) return LXA_OK;
-    if (plan.ensure_head) {
-        status = ensure_head(tree);
-        if (status != LXA_OK) return status;
-    }
-    tree->mode = LXA_TREE_AFTER_HEAD;
-    return LXA_OK;
-}
+#define LXA_PREBODY_TEXT_NAME prepare_prebody_text
+#define LXA_PREBODY_TEXT_VIEW lxa_html_tree_t
+#define LXA_PREBODY_TEXT_PLAN(view, bytes, out) lxa_html_tree_prebody_text_plan( \
+    (view)->mode, bytes, (view)->nodes->budget, &(view)->nodes->limit_reason, out)
+#define LXA_PREBODY_TEXT_EMIT(view, bytes) append_character(view, \
+    (view)->mode == LXA_TREE_IN_HEAD ? (view)->head : (view)->html, LXA_DOM_KIND_TEXT, bytes)
+#define LXA_PREBODY_TEXT_HEAD ensure_head
+#define LXA_PREBODY_TEXT_MODE(view) ((view)->mode)
+#include "html/prebody_text_execute.inc"
+#undef LXA_PREBODY_TEXT_NAME
+#undef LXA_PREBODY_TEXT_VIEW
+#undef LXA_PREBODY_TEXT_PLAN
+#undef LXA_PREBODY_TEXT_EMIT
+#undef LXA_PREBODY_TEXT_HEAD
+#undef LXA_PREBODY_TEXT_MODE
 
 static lxa_status_t
 foster_location_in(lxa_html_tree_t *tree, const lxa_vector_t *elements,

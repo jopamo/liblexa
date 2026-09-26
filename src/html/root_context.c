@@ -735,6 +735,35 @@ lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_prebody_text_result_t *result;
+} root_prebody_text_view_t;
+
+static lxa_status_t
+context_prebody_text_plan(root_prebody_text_view_t *view, lxa_span_t bytes,
+    lxa_html_prebody_text_plan_t *plan)
+{
+    lxa_status_t status = lxa_html_tree_prebody_text_plan(view->result->next_mode, bytes,
+        view->context->stack->budget, &view->context->limit_reason, plan);
+    if (status == LXA_OK) view->result->plan = *plan;
+    return status;
+}
+
+#define LXA_PREBODY_TEXT_NAME context_execute_prebody_text
+#define LXA_PREBODY_TEXT_VIEW root_prebody_text_view_t
+#define LXA_PREBODY_TEXT_PLAN context_prebody_text_plan
+#define LXA_PREBODY_TEXT_EMIT(view, bytes) ((void) (view), (void) (bytes), LXA_OK)
+#define LXA_PREBODY_TEXT_HEAD(view) context_ensure_head((view)->context)
+#define LXA_PREBODY_TEXT_MODE(view) ((view)->result->next_mode)
+#include "html/prebody_text_execute.inc"
+#undef LXA_PREBODY_TEXT_NAME
+#undef LXA_PREBODY_TEXT_VIEW
+#undef LXA_PREBODY_TEXT_PLAN
+#undef LXA_PREBODY_TEXT_EMIT
+#undef LXA_PREBODY_TEXT_HEAD
+#undef LXA_PREBODY_TEXT_MODE
+
 lxa_status_t
 lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_span_t data, lxa_html_root_prebody_text_result_t *result)
@@ -745,15 +774,11 @@ lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
         || (mode == LXA_TREE_BEFORE_HEAD && !context->html)
         || ((mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD) && !context->head))
         return LXA_ERROR_ARGUMENT;
-    lxa_html_root_prebody_text_result_t out;
-    status = lxa_html_tree_prebody_text_plan(mode, data, context->stack->budget,
-        &context->limit_reason, &out.plan);
+    lxa_html_root_prebody_text_result_t out = {.next_mode = mode};
+    root_prebody_text_view_t view = {context, &out};
+    status = context_execute_prebody_text(&view, &data);
     if (status == LXA_ERROR_ARGUMENT) return status;
-    if (status == LXA_OK && out.plan.ensure_head) status = context_ensure_head(context);
-    if (status == LXA_OK) {
-        out.next_mode = out.plan.space_prefix < data.length ? LXA_TREE_AFTER_HEAD : mode;
-        *result = out;
-    }
+    if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
 
