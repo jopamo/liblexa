@@ -43,8 +43,28 @@ lxa_status_t lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t by
 bool lxa_html_tree_table_text_buffer_valid(const lxa_buffer_t *pending);
 bool lxa_html_tree_table_text_input_valid(const lxa_buffer_t *pending, lxa_span_t bytes);
 
+/* Synchronous borrowed text views; callbacks must not retain or mutate bytes.
+ * Owners specify parent keys and terminal callback-failure handling.
+ */
 typedef lxa_status_t (*lxa_html_data_emit_t)(void *user, lxa_span_t bytes,
     uint64_t parent);
+typedef struct {
+    lxa_budget_t *budget;
+    lxa_limit_reason_t *reason;
+    uint64_t parent;
+    lxa_html_data_emit_t emit;
+    void *user;
+} lxa_html_data_emitter_t;
+
+/* Borrow a prepared non-table destination/sink for one DATA span.
+ * Charge complete-input WORK, suppress HTML NUL or emit foreign replacement;
+ * no insertion/NODE charges. NULL emit discards runs. Callback views expire
+ * on return; caller owns terminal failure and earlier routing/preparation.
+ * Descriptor/input stay live and immutable through the call and must not alias
+ * owners or each other.
+ */
+lxa_status_t lxa_html_tree_emit_data(const lxa_html_data_emitter_t *emitter,
+    lxa_span_t bytes, bool foreign);
 
 typedef struct {
     lxa_span_t bytes;

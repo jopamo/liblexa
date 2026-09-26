@@ -26,6 +26,38 @@ lxa_html_tree_data_run(lxa_span_t bytes, size_t offset, lxa_html_data_run_t *out
     return LXA_OK;
 }
 
+static lxa_status_t
+emit_data_append(const lxa_html_data_emitter_t *emitter, lxa_span_t bytes, bool table)
+{
+    if (table) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return emitter->emit == NULL ? LXA_OK : emitter->emit(emitter->user, bytes, emitter->parent);
+}
+
+#define LXA_DATA_EXECUTE_NAME execute_emit_data
+#define LXA_DATA_EXECUTE_VIEW const lxa_html_data_emitter_t
+#define LXA_DATA_EXECUTE_BUDGET(view) ((view)->budget)
+#define LXA_DATA_EXECUTE_REASON(view) ((view)->reason)
+#define LXA_DATA_EXECUTE_APPEND emit_data_append
+#define LXA_DATA_EXECUTE_NULL(view) LXA_ERROR_INTERNAL
+#include "html/data_execute.inc"
+#undef LXA_DATA_EXECUTE_NAME
+#undef LXA_DATA_EXECUTE_VIEW
+#undef LXA_DATA_EXECUTE_BUDGET
+#undef LXA_DATA_EXECUTE_REASON
+#undef LXA_DATA_EXECUTE_APPEND
+#undef LXA_DATA_EXECUTE_NULL
+
+lxa_status_t
+lxa_html_tree_emit_data(const lxa_html_data_emitter_t *emitter, lxa_span_t bytes, bool foreign)
+{
+    if (emitter == NULL || emitter->budget == NULL || (bytes.length != 0 && bytes.data == NULL))
+        return LXA_ERROR_ARGUMENT;
+    return execute_emit_data(emitter, bytes, foreign, false);
+}
+
 lxa_status_t
 lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     lxa_limit_reason_t *reason)

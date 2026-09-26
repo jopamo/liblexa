@@ -301,6 +301,17 @@ lxa_status_t lxa_html_template_context_table_data_null(lxa_html_template_context
  */
 lxa_status_t lxa_html_template_context_table_data(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_buffer_t *pending, lxa_html_data_emit_t emit, void *user);
+/* Emit accepted non-table DATA after earlier gating/reconstruction.
+ * Resolve suppression/replacement through the active entry's saved integration;
+ * key zero denotes the active frame's virtual content, never an entry below
+ * its boundary. Share complete-input WORK without insertion/NODE charges.
+ * NULL emit discards runs; callback views expire on return. Do not retain them,
+ * reenter or mutate context/stack/list. Input must not alias owners.
+ * Failures latch emitted prefixes; modes/membership remain unchanged.
+ * Engines retain earlier preparation, table routing and delivery.
+ */
+lxa_status_t lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_html_data_emit_t emit, void *user);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

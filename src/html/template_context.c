@@ -985,6 +985,31 @@ lxa_html_template_context_table_data(lxa_html_template_context_t *context,
     return finish(context, context_execute_table_data(&view, data, false, true));
 }
 
+lxa_status_t
+lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_html_data_emit_t emit, void *user)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_scope_entry_t entry;
+    lxa_html_foreign_context_t integration;
+    status = lxa_html_control_stack_current(context->stack, frames[count - 1].boundary, &entry, &integration);
+    if (status != LXA_OK) return finish(context, status);
+    if (entry.namespace_id == LXA_DOM_NS_HTML
+        && (lxa_html_tree_table_context(entry.name) || (entry.identity == 0
+            && lxa_html_tree_template_table_context(frames[count - 1].insertion_mode))))
+        return LXA_ERROR_ARGUMENT;
+    bool foreign = entry.namespace_id != LXA_DOM_NS_HTML && !lxa_html_foreign_integration(integration);
+    const lxa_html_data_emitter_t emitter = {
+        context->stack->budget, &context->limit_reason, entry.identity, emit, user
+    };
+    return finish(context, lxa_html_tree_emit_data(&emitter, data, foreign));
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
