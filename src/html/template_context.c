@@ -819,7 +819,7 @@ typedef struct {
     lxa_html_template_context_t *context;
     lxa_html_template_table_text_result_t *result;
     lxa_buffer_t *pending;
-    lxa_html_table_data_emit_t emit;
+    lxa_html_data_emit_t emit;
     void *user;
 } template_table_text_view_t;
 
@@ -966,7 +966,7 @@ context_table_data_append(template_table_text_view_t *view, lxa_span_t bytes, bo
 
 lxa_status_t
 lxa_html_template_context_table_data(lxa_html_template_context_t *context,
-    lxa_span_t data, lxa_buffer_t *pending, lxa_html_table_data_emit_t emit, void *user)
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_data_emit_t emit, void *user)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;

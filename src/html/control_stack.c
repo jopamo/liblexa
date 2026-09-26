@@ -392,6 +392,25 @@ lxa_html_control_stack_get(lxa_html_control_stack_t *stack, size_t index,
     return status;
 }
 
+lxa_status_t
+lxa_html_control_stack_current(lxa_html_control_stack_t *stack, size_t boundary,
+    lxa_html_scope_entry_t *entry, lxa_html_foreign_context_t *context)
+{
+    lxa_status_t status = begin(stack);
+    if (status != LXA_OK) return status;
+    size_t length = lxa_vector_length(&stack->elements);
+    if (entry == NULL || boundary > length) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t out = {{NULL, 0}, LXA_DOM_NS_HTML, 0};
+    bool annotation_html = false;
+    if (length > boundary) status = read_element(stack, length - 1, &out, &annotation_html);
+    if (status == LXA_OK) {
+        *entry = out;
+        if (context != NULL)
+            *context = lxa_html_foreign_context(out.namespace_id, out.name, annotation_html);
+    }
+    return status;
+}
+
 typedef struct {
     lxa_html_control_stack_t *stack;
     size_t length;

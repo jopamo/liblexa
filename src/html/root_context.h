@@ -499,7 +499,20 @@ lxa_status_t lxa_html_root_context_table_data_null(lxa_html_root_context_t *cont
  */
 lxa_status_t lxa_html_root_context_table_data(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_span_t data, lxa_buffer_t *pending,
-    lxa_html_table_data_emit_t emit, void *user);
+    lxa_html_data_emit_t emit, void *user);
+/* Emit accepted non-table root DATA after earlier preparation/foreign routing.
+ * Borrow current parent key, falling back to retained BODY when stack is empty.
+ * Share complete-input WORK, HTML NUL suppression and foreign replacement.
+ * Foreign nonspace disables framesets before scanning; retain that publication
+ * on WORK/callback failure. No DOM insertion WORK/NODE or text metadata.
+ * NULL emit discards runs; views expire on callback return. Do not retain them,
+ * reenter or mutate context/stack. Input must not alias owners. Failures latch.
+ * Resolve foreign DATA through the current entry's saved integration eligibility.
+ * Engines retain mode, ordinary preparation and delivery.
+ */
+lxa_status_t lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_html_data_emit_t emit, void *user);
 /* Accepted root select routing after foreign/hidden-table-input dispatch.
  * Consume one shared plan, pop its retained suffix, then publish ignore.
  * Latch failures without replay; modes, framesets and formatting are unchanged.

@@ -2113,8 +2113,7 @@ consume_foreign(lxa_html_tree_t *tree,
         return append_comment_or_pi(tree, current_element(tree), token);
     if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
     if (token->kind == LXA_HTML_TEXT) {
-        if (tree->frameset_ok && !lxa_html_tree_null_or_space_only(token->data))
-            tree->frameset_ok = false;
+        tree->frameset_ok = lxa_html_tree_foreign_data_frameset(tree->frameset_ok, token->data);
         return insert_data_text(tree, current_element(tree), token->data,
                                 true, false);
     }

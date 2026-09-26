@@ -43,8 +43,8 @@ lxa_status_t lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t by
 bool lxa_html_tree_table_text_buffer_valid(const lxa_buffer_t *pending);
 bool lxa_html_tree_table_text_input_valid(const lxa_buffer_t *pending, lxa_span_t bytes);
 
-typedef lxa_status_t (*lxa_html_table_data_emit_t)(void *user, lxa_span_t bytes,
-    uint64_t column_group);
+typedef lxa_status_t (*lxa_html_data_emit_t)(void *user, lxa_span_t bytes,
+    uint64_t parent);
 
 typedef struct {
     lxa_span_t bytes;
@@ -276,6 +276,12 @@ lxa_html_tree_null_or_space_only(lxa_span_t data)
             return false;
     }
     return true;
+}
+
+static inline bool
+lxa_html_tree_foreign_data_frameset(bool eligible, lxa_span_t data)
+{
+    return eligible && lxa_html_tree_null_or_space_only(data);
 }
 
 static inline bool

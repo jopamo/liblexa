@@ -80,6 +80,13 @@ lxa_status_t lxa_html_control_stack_move(lxa_html_control_stack_t *stack,
 lxa_status_t lxa_html_control_stack_get(lxa_html_control_stack_t *stack,
     size_t index, lxa_html_scope_entry_t *entry,
     lxa_html_foreign_context_t *context);
+/* Borrow the current active entry without WORK or mutation. Exhausted slices
+ * publish virtual HTML with empty name/key zero and no foreign integration.
+ * Validate through the same entry reader as get; publish only on success.
+ * Output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_control_stack_current(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_scope_entry_t *entry, lxa_html_foreign_context_t *context);
 /* Post-effect namespace feedback over the active slice. An exhausted slice
  * is virtual HTML, not the entry below its boundary. No WORK or allocation;
  * publish only on success. Integration eligibility does not change namespace.

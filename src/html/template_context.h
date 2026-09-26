@@ -300,7 +300,7 @@ lxa_status_t lxa_html_template_context_table_data_null(lxa_html_template_context
  * owners; engines retain earlier routing and later flush scheduling.
  */
 lxa_status_t lxa_html_template_context_table_data(lxa_html_template_context_t *context,
-    lxa_span_t data, lxa_buffer_t *pending, lxa_html_table_data_emit_t emit, void *user);
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_data_emit_t emit, void *user);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

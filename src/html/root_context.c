@@ -2859,7 +2859,7 @@ typedef struct {
     lxa_html_root_context_t *context;
     uint64_t column_group;
     lxa_buffer_t *pending;
-    lxa_html_table_data_emit_t emit;
+    lxa_html_data_emit_t emit;
     void *user;
 } root_data_null_view_t;
 
@@ -2954,7 +2954,7 @@ context_table_data_append(root_data_null_view_t *view, lxa_span_t bytes, bool ta
 lxa_status_t
 lxa_html_root_context_table_data(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_span_t data, lxa_buffer_t *pending,
-    lxa_html_table_data_emit_t emit, void *user)
+    lxa_html_data_emit_t emit, void *user)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
@@ -2968,4 +2968,63 @@ lxa_html_root_context_table_data(lxa_html_root_context_t *context,
     if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
     root_data_null_view_t view = {.context = context, .pending = pending, .emit = emit, .user = user};
     return finish(context, context_execute_table_data(&view, data, false, true));
+}
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    uint64_t parent;
+    lxa_html_data_emit_t emit;
+    void *user;
+} root_emit_data_view_t;
+
+static lxa_status_t
+context_emit_data_append(root_emit_data_view_t *view, lxa_span_t bytes, bool table)
+{
+    if (table) {
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return view->emit == NULL ? LXA_OK : view->emit(view->user, bytes, view->parent);
+}
+
+#define LXA_DATA_EXECUTE_NAME context_execute_emit_data
+#define LXA_DATA_EXECUTE_VIEW root_emit_data_view_t
+#define LXA_DATA_EXECUTE_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_DATA_EXECUTE_REASON(view) (&(view)->context->limit_reason)
+#define LXA_DATA_EXECUTE_APPEND context_emit_data_append
+#define LXA_DATA_EXECUTE_NULL(view) LXA_ERROR_INTERNAL
+#include "html/data_execute.inc"
+#undef LXA_DATA_EXECUTE_NAME
+#undef LXA_DATA_EXECUTE_VIEW
+#undef LXA_DATA_EXECUTE_BUDGET
+#undef LXA_DATA_EXECUTE_REASON
+#undef LXA_DATA_EXECUTE_APPEND
+#undef LXA_DATA_EXECUTE_NULL
+
+lxa_status_t
+lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_html_data_emit_t emit, void *user)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || (mode != LXA_TREE_IN_BODY && mode != LXA_TREE_AFTER_BODY
+            && mode != LXA_TREE_AFTER_HTML)
+        || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    lxa_html_foreign_context_t integration;
+    status = lxa_html_control_stack_current(context->stack, 0, &entry, &integration);
+    if (status != LXA_OK) return finish(context, status);
+    if (entry.namespace_id == LXA_DOM_NS_HTML && lxa_html_tree_table_context(entry.name))
+        return LXA_ERROR_ARGUMENT;
+    bool foreign = entry.namespace_id != LXA_DOM_NS_HTML && !lxa_html_foreign_integration(integration);
+    uint64_t parent = entry.identity == 0 ? context->body_identity : entry.identity;
+    if (parent == 0) {
+        assert(false);
+        return finish(context, LXA_ERROR_INTERNAL);
+    }
+    if (foreign)
+        context->frameset_ok = lxa_html_tree_foreign_data_frameset(context->frameset_ok, data);
+    root_emit_data_view_t view = {context, parent, emit, user};
+    return finish(context, context_execute_emit_data(&view, data, foreign, false));
 }
