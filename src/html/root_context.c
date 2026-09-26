@@ -390,6 +390,14 @@ text_start_owners_valid(const lxa_html_text_context_t *text, const lxa_html_toke
         && text->plan.end_tag.data == NULL && text->plan.end_tag.length == 0;
 }
 
+static bool
+root_token_borrowers_valid(const lxa_html_root_token_borrowers_t *borrowers, lxa_budget_t *budget)
+{
+    return borrowers != NULL && borrowers->formatting != NULL
+        && borrowers->formatting->store != NULL && borrowers->formatting->store->budget == budget
+        && borrowers->form_owner != NULL && text_start_owners_valid(borrowers->text, borrowers->tokenizer);
+}
+
 static lxa_status_t
 root_table_text_intake(lxa_html_root_context_t *context, lxa_html_text_context_t *text,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, lxa_html_root_mode_t *mode,
@@ -2460,7 +2468,7 @@ lxa_html_root_context_frameset_token(lxa_html_root_context_t *context,
 
 typedef struct {
     lxa_html_root_context_t *context;
-    const lxa_html_root_start_borrowers_t *borrowers;
+    const lxa_html_root_token_borrowers_t *borrowers;
     lxa_html_root_mode_t *mode;
     bool *pending_newline;
     lxa_html_root_special_start_result_t *result;
@@ -2506,7 +2514,7 @@ context_special_text(root_special_execute_view_t *view, const lxa_html_token_t *
 
 lxa_status_t
 lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
-    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, bool *pending_newline,
     lxa_html_root_special_start_result_t *result)
 {
@@ -2517,7 +2525,7 @@ lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
             && !(*mode == LXA_TREE_HEAD_NOSCRIPT && context->head))
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
         return LXA_ERROR_ARGUMENT;
-    const lxa_html_root_start_borrowers_t empty = {0};
+    const lxa_html_root_token_borrowers_t empty = {0};
     if (borrowers == NULL) borrowers = &empty;
     lxa_html_formatting_list_t *formatting = borrowers->formatting;
     if (formatting != NULL && (formatting->store == NULL
@@ -2729,7 +2737,7 @@ context_root_start_table_query(root_start_execute_view_t *view, bool *table, boo
 static lxa_status_t
 context_root_start_table(root_start_execute_view_t *view, const lxa_html_token_t *token, bool group)
 {
-    const lxa_html_root_start_borrowers_t *borrowers = view->special.borrowers;
+    const lxa_html_root_token_borrowers_t *borrowers = view->special.borrowers;
     bool template_start;
     lxa_status_t status = context_table_start_prepared(view->special.context, borrowers->formatting,
         borrowers->text, borrowers->tokenizer, token, view->special.mode, &view->result->identity,
@@ -2786,18 +2794,15 @@ context_root_start_special(root_start_execute_view_t *view, const lxa_html_token
 
 lxa_status_t
 lxa_html_root_context_start_token(lxa_html_root_context_t *context,
-    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
     lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
     bool *pending_newline, lxa_html_root_start_result_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    if (borrowers == NULL || mode == NULL || pending_newline == NULL || result == NULL
+    if (mode == NULL || pending_newline == NULL || result == NULL
         || (unsigned) document_mode > LXA_HTML_QUIRKS
-        || borrowers->formatting == NULL || borrowers->formatting->store == NULL
-        || borrowers->formatting->store->budget != context->stack->budget
-        || borrowers->form_owner == NULL
-        || !text_start_owners_valid(borrowers->text, borrowers->tokenizer)
+        || !root_token_borrowers_valid(borrowers, context->stack->budget)
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
         return LXA_ERROR_ARGUMENT;
     lxa_html_root_start_result_t out = {LXA_HTML_ROOT_START_RESULT_ACCEPT, LXA_HTML_ROOT_FORM_IGNORE, 0};
@@ -2806,6 +2811,84 @@ lxa_html_root_context_start_token(lxa_html_root_context_t *context,
     status = context_execute_root_start(&view, token);
     if (status == LXA_OK) *result = out;
     if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
+    return finish(context, status);
+}
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    const lxa_html_root_token_borrowers_t *borrowers;
+    lxa_html_document_mode_t document_mode;
+    lxa_html_root_mode_t *mode;
+    bool *pending_newline;
+    lxa_html_root_end_result_t *result;
+} root_end_execute_view_t;
+
+static lxa_status_t
+context_root_end_body(root_end_execute_view_t *view, const lxa_html_token_t *token)
+{
+    root_body_end_view_t body = {
+        view->context, view->borrowers->formatting, view->borrowers->form_owner, false
+    };
+    lxa_status_t status = context_body_end_token(&body, token->name,
+        lxa_html_tree_root_body_end_plan(token->name), view->mode);
+    if (status == LXA_OK) view->result->implied_paragraph = body.implied_paragraph;
+    return status;
+}
+
+static lxa_status_t
+context_root_end_start(root_end_execute_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_root_start_result_t result;
+    return lxa_html_root_context_start_token(view->context, view->borrowers, token,
+        view->document_mode, view->mode, view->pending_newline, &result);
+}
+
+#define LXA_ROOT_END_EXEC_NAME context_execute_root_end
+#define LXA_ROOT_END_EXEC_VIEW root_end_execute_view_t
+#define LXA_ROOT_END_EXEC_MODE(view) (*(view)->mode)
+#define LXA_ROOT_END_EXEC_PREBODY(view, action) context_prebody_end((view)->context, action, (view)->mode)
+#define LXA_ROOT_END_EXEC_PRELUDE(view, token, out) \
+    context_end_prelude((view)->context, *(view)->mode, (token)->name, out)
+#define LXA_ROOT_END_EXEC_SELECT(view, token, out) lxa_html_root_context_select_token( \
+    (view)->context, *(view)->mode, (token)->kind, (token)->name, out)
+#define LXA_ROOT_END_EXEC_HEAD(view, action) context_head_end((view)->context, action, (view)->mode)
+#define LXA_ROOT_END_EXEC_BODY context_root_end_body
+#define LXA_ROOT_END_EXEC_START context_root_end_start
+#define LXA_ROOT_END_EXEC_IGNORE(view) ((view)->result->action = LXA_HTML_ROOT_END_RESULT_IGNORE)
+#define LXA_ROOT_END_EXEC_BR(view) ((view)->result->action = LXA_HTML_ROOT_END_RESULT_BR)
+#include "html/root_end_execute.inc"
+#undef LXA_ROOT_END_EXEC_NAME
+#undef LXA_ROOT_END_EXEC_VIEW
+#undef LXA_ROOT_END_EXEC_MODE
+#undef LXA_ROOT_END_EXEC_PREBODY
+#undef LXA_ROOT_END_EXEC_PRELUDE
+#undef LXA_ROOT_END_EXEC_SELECT
+#undef LXA_ROOT_END_EXEC_HEAD
+#undef LXA_ROOT_END_EXEC_BODY
+#undef LXA_ROOT_END_EXEC_START
+#undef LXA_ROOT_END_EXEC_IGNORE
+#undef LXA_ROOT_END_EXEC_BR
+
+lxa_status_t
+lxa_html_root_context_end_token(lxa_html_root_context_t *context,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
+    bool *pending_newline, lxa_html_root_end_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || pending_newline == NULL || result == NULL
+        || (unsigned) document_mode > LXA_HTML_QUIRKS
+        || !root_token_borrowers_valid(borrowers, context->stack->budget)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG
+        || !body_start_mode_valid(context, *mode)
+        || (*mode == LXA_TREE_IN_BODY ? !context->body
+            : context->body || lxa_vector_length(&context->stack->elements) != 0))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_end_result_t out = {LXA_HTML_ROOT_END_RESULT_ACCEPT, false};
+    root_end_execute_view_t view = {context, borrowers, document_mode, mode, pending_newline, &out};
+    status = context_execute_root_end(&view, token);
+    if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
 

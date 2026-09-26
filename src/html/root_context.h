@@ -352,7 +352,7 @@ typedef struct {
     lxa_html_text_context_t *text;
     lxa_html_tokenizer_t *tokenizer;
     uint64_t *form_owner;
-} lxa_html_root_start_borrowers_t;
+} lxa_html_root_token_borrowers_t;
 
 typedef struct {
     lxa_html_root_special_start_action_t action;
@@ -370,7 +370,7 @@ typedef struct {
  * storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_special_start_token(lxa_html_root_context_t *context,
-    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
     lxa_html_root_mode_t *mode, bool *pending_newline,
     lxa_html_root_special_start_result_t *result);
 
@@ -395,9 +395,31 @@ typedef struct {
  * Input/borrower/mode/flag/result storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_start_token(lxa_html_root_context_t *context,
-    const lxa_html_root_start_borrowers_t *borrowers, const lxa_html_token_t *token,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
     lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
     bool *pending_newline, lxa_html_root_start_result_t *result);
+
+typedef enum {
+    LXA_HTML_ROOT_END_RESULT_ACCEPT, LXA_HTML_ROOT_END_RESULT_IGNORE,
+    LXA_HTML_ROOT_END_RESULT_BR
+} lxa_html_root_end_result_action_t;
+typedef struct {
+    lxa_html_root_end_result_action_t action;
+    bool implied_paragraph;
+} lxa_html_root_end_result_t;
+
+/* Accepted root end after earlier initial/text/template/frameset/foreign,
+ * head-noscript and after-body routing. Borrow the complete token owner set
+ * before effects. Share prebody recovery, prelude, select and head/body dispatch;
+ * BR ends reuse attribute-free start execution. Publish result only on success.
+ * Retain completed roots/pops/mode/form effects and latch failure without replay.
+ * Report a required closed paragraph insertion; engines own its DOM effects.
+ * Input/borrower/mode/flag/result storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_end_token(lxa_html_root_context_t *context,
+    const lxa_html_root_token_borrowers_t *borrowers, const lxa_html_token_t *token,
+    lxa_html_document_mode_t document_mode, lxa_html_root_mode_t *mode,
+    bool *pending_newline, lxa_html_root_end_result_t *result);
 
 /* Accepted root table start after earlier select/foreign/table routing. Borrow
  * a same-budget formatting list for table-marker cleanup and document mode for

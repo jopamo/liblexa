@@ -4230,7 +4230,7 @@ tree_execute_ordinary_start(lxa_html_tree_t *tree, const lxa_html_token_t *token
 }
 
 static lxa_status_t
-tree_root_start_select(tree_foster_text_view_t *view, const lxa_html_token_t *token, bool *ignore)
+tree_root_token_select(tree_foster_text_view_t *view, const lxa_html_token_t *token, bool *ignore)
 {
     const lxa_html_tree_scope_view_t scope = {view->tree,
         (const lxa_dom_ref_t *) view->tree->open_elements.bytes.data,
@@ -4268,7 +4268,7 @@ tree_root_start_table(tree_foster_text_view_t *view, const lxa_html_token_t *tok
 #define LXA_ROOT_START_EXEC_IGNORE(view) ((void) (view), LXA_OK)
 #define LXA_ROOT_START_EXEC_MODE(view) ((view)->tree->mode)
 #define LXA_ROOT_START_EXEC_HIDDEN(view, token, out) insert_hidden_table_input((view)->tree, token, out)
-#define LXA_ROOT_START_EXEC_SELECT tree_root_start_select
+#define LXA_ROOT_START_EXEC_SELECT tree_root_token_select
 #define LXA_ROOT_START_EXEC_TABLE_QUERY tree_root_start_table_query
 #define LXA_ROOT_START_EXEC_TABLE tree_root_start_table
 #define LXA_ROOT_START_EXEC_SPECIAL tree_execute_special_start
@@ -4314,6 +4314,32 @@ tree_root_misc_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_MISC_VIEW
 #undef LXA_ROOT_MISC_HTML
 #undef LXA_ROOT_MISC_INSERT
+
+#define LXA_ROOT_END_EXEC_NAME tree_execute_root_end
+#define LXA_ROOT_END_EXEC_VIEW tree_foster_text_view_t
+#define LXA_ROOT_END_EXEC_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_END_EXEC_PREBODY(view, action) tree_prebody_end((view)->tree, action, &(view)->tree->mode)
+#define LXA_ROOT_END_EXEC_PRELUDE(view, token, out) \
+    tree_end_prelude((view)->tree, (view)->tree->mode, (token)->name, out)
+#define LXA_ROOT_END_EXEC_SELECT tree_root_token_select
+#define LXA_ROOT_END_EXEC_HEAD(view, action) tree_head_end((view)->tree, action, &(view)->tree->mode)
+#define LXA_ROOT_END_EXEC_BODY(view, token) tree_body_end_token((view)->tree, (token)->name, \
+    lxa_html_tree_root_body_end_plan((token)->name), &(view)->tree->mode)
+#define LXA_ROOT_END_EXEC_START tree_execute_root_start
+#define LXA_ROOT_END_EXEC_IGNORE(view) ((void) (view))
+#define LXA_ROOT_END_EXEC_BR(view) ((void) (view))
+#include "html/root_end_execute.inc"
+#undef LXA_ROOT_END_EXEC_NAME
+#undef LXA_ROOT_END_EXEC_VIEW
+#undef LXA_ROOT_END_EXEC_MODE
+#undef LXA_ROOT_END_EXEC_PREBODY
+#undef LXA_ROOT_END_EXEC_PRELUDE
+#undef LXA_ROOT_END_EXEC_SELECT
+#undef LXA_ROOT_END_EXEC_HEAD
+#undef LXA_ROOT_END_EXEC_BODY
+#undef LXA_ROOT_END_EXEC_START
+#undef LXA_ROOT_END_EXEC_IGNORE
+#undef LXA_ROOT_END_EXEC_BR
 
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
@@ -5313,32 +5339,10 @@ reprocess_template_token:
                                     false, false);
         }
     }
-    if (token->kind == LXA_HTML_END_TAG
-        && (tree->mode == LXA_TREE_BEFORE_HTML
-            || tree->mode == LXA_TREE_BEFORE_HEAD
-            || tree->mode == LXA_TREE_AFTER_HEAD)) {
-        lxa_html_prebody_end_action_t action;
-        status = lxa_html_tree_prebody_end_action(tree->mode, token->name, &action);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_PREBODY_END_IGNORE) return LXA_OK;
-        status = tree_prebody_end(tree, action, &tree->mode);
-        if (status != LXA_OK) return status;
-    }
     if (token->kind == LXA_HTML_END_TAG) {
-        lxa_html_root_end_prelude_action_t action;
-        status = tree_end_prelude(tree, tree->mode, token->name, &action);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_ROOT_END_IGNORE) return LXA_OK;
-        if (action == LXA_HTML_ROOT_END_BR_START) {
-            adjusted = *token;
-            adjusted.kind = LXA_HTML_START_TAG;
-            adjusted.attributes = NULL;
-            adjusted.attribute_count = 0;
-            adjusted.self_closing = false;
-            token = &adjusted;
-        }
+        tree_foster_text_view_t view = {tree, tokenizer, {0}};
+        return tree_execute_root_end(&view, token);
     }
-reprocess_body_start:
     if (token->kind == LXA_HTML_START_TAG) {
         tree_foster_text_view_t view = {tree, tokenizer, {0}};
         return tree_execute_root_start(&view, token);
@@ -5358,26 +5362,6 @@ reprocess_body_start:
         if (status != LXA_OK) return status;
         if (ignore) return LXA_OK;
     }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_HEAD) {
-        lxa_html_head_end_action_t action;
-        status = lxa_html_tree_head_end_action(token->name, &action);
-        if (status == LXA_OK) status = tree_head_end(tree, action, &tree->mode);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_HEAD_END_BR) {
-            /* Reprocess through the in-body start-tag rule with no attributes. */
-            adjusted = *token;
-            adjusted.kind = LXA_HTML_START_TAG;
-            adjusted.attributes = NULL;
-            adjusted.attribute_count = 0;
-            adjusted.self_closing = false;
-            token = &adjusted;
-            goto reprocess_body_start;
-        }
-        return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG && tree->mode == LXA_TREE_IN_BODY)
-        return tree_body_end_token(tree, token->name,
-            lxa_html_tree_root_body_end_plan(token->name), &tree->mode);
     if (token->kind == LXA_HTML_TEXT) {
         if (tree->mode == LXA_TREE_BEFORE_HTML
             || tree->mode == LXA_TREE_BEFORE_HEAD
