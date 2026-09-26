@@ -4293,6 +4293,35 @@ tree_root_start_table(tree_foster_text_view_t *view, const lxa_html_token_t *tok
 #undef LXA_ROOT_START_EXEC_ORDINARY
 
 static lxa_status_t
+tree_root_misc_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    lxa_html_root_misc_destination_t destination)
+{
+    lxa_dom_ref_t parent;
+    switch (destination) {
+    case LXA_HTML_ROOT_MISC_IGNORE: return LXA_OK;
+    case LXA_HTML_ROOT_MISC_DOCUMENT: parent = tree->document; break;
+    case LXA_HTML_ROOT_MISC_HTML: parent = tree->html; break;
+    case LXA_HTML_ROOT_MISC_HEAD: parent = tree->head; break;
+    case LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT: parent = tree->head_noscript; break;
+    case LXA_HTML_ROOT_MISC_CURRENT: parent = current_element(tree); break;
+    default:
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    return append_comment_or_pi(tree, parent, token);
+}
+
+#define LXA_ROOT_MISC_NAME tree_execute_root_misc
+#define LXA_ROOT_MISC_VIEW lxa_html_tree_t
+#define LXA_ROOT_MISC_HTML ensure_html
+#define LXA_ROOT_MISC_INSERT tree_root_misc_insert
+#include "html/root_misc_execute.inc"
+#undef LXA_ROOT_MISC_NAME
+#undef LXA_ROOT_MISC_VIEW
+#undef LXA_ROOT_MISC_HTML
+#undef LXA_ROOT_MISC_INSERT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5276,24 +5305,9 @@ reprocess_template_token:
         }
         return status;
     }
-    if (token->kind == LXA_HTML_COMMENT
-        || token->kind == LXA_HTML_PROCESSING_INSTRUCTION) {
-        if (tree->mode == LXA_TREE_BEFORE_HTML) parent = tree->document;
-        else if (tree->mode == LXA_TREE_AFTER_HTML) parent = tree->document;
-        else if (tree->mode == LXA_TREE_AFTER_BODY) parent = tree->html;
-        else if (tree->mode == LXA_TREE_IN_BODY)
-            parent = current_element(tree);
-        else {
-            status = ensure_html(tree);
-            if (status != LXA_OK) return status;
-            parent = tree->mode == LXA_TREE_HEAD_NOSCRIPT
-                     ? tree->head_noscript
-                     : tree->mode == LXA_TREE_IN_HEAD
-                       ? tree->head : tree->html;
-        }
-        return append_comment_or_pi(tree, parent, token);
-    }
-    if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
+    if (token->kind == LXA_HTML_COMMENT || token->kind == LXA_HTML_PROCESSING_INSTRUCTION
+        || token->kind == LXA_HTML_DOCTYPE)
+        return tree_execute_root_misc(tree, token, tree->mode);
     if (tree->mode == LXA_TREE_AFTER_BODY
         || tree->mode == LXA_TREE_AFTER_HTML) {
         lxa_html_after_body_action_t action;

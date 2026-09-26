@@ -95,6 +95,21 @@ typedef enum {
     LXA_HTML_ROOT_PRELUDE_ROOT, LXA_HTML_ROOT_PRELUDE_FRAMESET
 } lxa_html_root_start_prelude_action_t;
 
+typedef enum {
+    LXA_HTML_ROOT_MISC_IGNORE, LXA_HTML_ROOT_MISC_DOCUMENT, LXA_HTML_ROOT_MISC_HTML,
+    LXA_HTML_ROOT_MISC_HEAD, LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT, LXA_HTML_ROOT_MISC_CURRENT
+} lxa_html_root_misc_destination_t;
+typedef struct {
+    lxa_html_root_misc_destination_t destination;
+    bool ensure_html;
+} lxa_html_root_misc_plan_t;
+
+/* Accepted comment/PI or late DOCTYPE after initial/template/text/frameset
+ * routing. No WORK or retained views; engines own root preparation/insertion.
+ */
+lxa_status_t lxa_html_tree_root_misc_plan(lxa_html_root_mode_t mode,
+    lxa_html_token_kind_t kind, lxa_html_root_misc_plan_t *out);
+
 /* Root dispatch after template/text/frameset and after-body routing.
  * Classify normalized names without WORK or retained views.
  */

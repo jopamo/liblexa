@@ -2808,3 +2808,49 @@ lxa_html_root_context_start_token(lxa_html_root_context_t *context,
     if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
     return finish(context, status);
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_misc_destination_t *destination;
+} root_misc_view_t;
+
+static lxa_status_t
+context_root_misc_insert(root_misc_view_t *view, const lxa_html_token_t *token,
+    lxa_html_root_misc_destination_t destination)
+{
+    (void) token;
+    *view->destination = destination;
+    return LXA_OK;
+}
+
+#define LXA_ROOT_MISC_NAME context_execute_root_misc
+#define LXA_ROOT_MISC_VIEW root_misc_view_t
+#define LXA_ROOT_MISC_HTML(view) context_ensure_html((view)->context)
+#define LXA_ROOT_MISC_INSERT context_root_misc_insert
+#include "html/root_misc_execute.inc"
+#undef LXA_ROOT_MISC_NAME
+#undef LXA_ROOT_MISC_VIEW
+#undef LXA_ROOT_MISC_HTML
+#undef LXA_ROOT_MISC_INSERT
+
+lxa_status_t
+lxa_html_root_context_misc_token(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t mode,
+    lxa_html_root_misc_destination_t *destination)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    bool noscript = mode == LXA_TREE_HEAD_NOSCRIPT && context->head && !context->body;
+    bool after_body = (mode == LXA_TREE_AFTER_BODY || mode == LXA_TREE_AFTER_HTML) && context->body;
+    if (destination == NULL || !lxa_html_tree_token_shape_valid(token)
+        || (!body_start_mode_valid(context, mode) && !noscript && !after_body)
+        || (mode == LXA_TREE_IN_BODY && !context->body)
+        || (!context->body && lxa_vector_length(&context->stack->elements) != 0))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_misc_destination_t out;
+    root_misc_view_t view = {context, &out};
+    status = context_execute_root_misc(&view, token, mode);
+    if (status == LXA_OK) *destination = out;
+    if (status == LXA_ERROR_ARGUMENT) return status;
+    return finish(context, status);
+}

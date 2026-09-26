@@ -396,6 +396,33 @@ lxa_html_tree_root_start_action(lxa_html_root_mode_t mode, lxa_span_t name,
 }
 
 lxa_status_t
+lxa_html_tree_root_misc_plan(lxa_html_root_mode_t mode, lxa_html_token_kind_t kind,
+    lxa_html_root_misc_plan_t *out)
+{
+    if (out == NULL || (kind != LXA_HTML_COMMENT && kind != LXA_HTML_PROCESSING_INSTRUCTION
+            && kind != LXA_HTML_DOCTYPE)
+        || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
+            && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_HEAD_NOSCRIPT
+            && mode != LXA_TREE_AFTER_HEAD && mode != LXA_TREE_IN_BODY
+            && mode != LXA_TREE_AFTER_BODY && mode != LXA_TREE_AFTER_HTML))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_misc_plan_t plan = {LXA_HTML_ROOT_MISC_IGNORE, false};
+    if (kind != LXA_HTML_DOCTYPE) {
+        if (mode == LXA_TREE_BEFORE_HTML || mode == LXA_TREE_AFTER_HTML)
+            plan.destination = LXA_HTML_ROOT_MISC_DOCUMENT;
+        else if (mode == LXA_TREE_AFTER_BODY) plan.destination = LXA_HTML_ROOT_MISC_HTML;
+        else if (mode == LXA_TREE_IN_BODY) plan.destination = LXA_HTML_ROOT_MISC_CURRENT;
+        else {
+            plan.ensure_html = true;
+            plan.destination = mode == LXA_TREE_HEAD_NOSCRIPT ? LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT
+                : mode == LXA_TREE_IN_HEAD ? LXA_HTML_ROOT_MISC_HEAD : LXA_HTML_ROOT_MISC_HTML;
+        }
+    }
+    *out = plan;
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_html_tree_root_special_start_action(lxa_html_root_mode_t mode, lxa_span_t name,
     lxa_html_root_special_start_action_t *out)
 {

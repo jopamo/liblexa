@@ -25,6 +25,16 @@ typedef struct {
 lxa_status_t lxa_html_root_context_init(lxa_html_root_context_t *context,
     lxa_html_control_stack_t *stack);
 void lxa_html_root_context_destroy(lxa_html_root_context_t *context);
+/* Accepted root comment/PI or late DOCTYPE after earlier mode/foreign routing.
+ * Share root preparation and destination selection without retaining token views
+ * or charging DOM insertion/NODE quotas. Preserve mode/framesets/membership;
+ * publish destination only on success and latch preparation failure.
+ * Token/result storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_misc_token(lxa_html_root_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_mode_t mode,
+    lxa_html_root_misc_destination_t *destination);
+
 /* Ensure virtual roots in canonical order. Check static-name/depth limits;
  * no DOM-node quota or HTML/head name storage. Retain completed virtual creation
  * on later failure and latch it. Successful existing roots perform no WORK.
