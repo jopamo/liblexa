@@ -312,6 +312,16 @@ lxa_status_t lxa_html_template_context_table_data(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_html_data_emit_t emit, void *user);
+/* Accepted HTML DATA after active-current/foreign routing, excluding actual
+ * table entries and nonintegrated foreign content handled by earlier dispatch.
+ * Borrow same-budget initialized pending storage before effects. Ignore empty/
+ * NUL-only input; queue virtual-table content, otherwise reconstruct then emit.
+ * Retain completed reconstruction/queue/emission effects on terminal failure.
+ * NULL emit discards ordinary runs. Callback spans expire on return; do not
+ * retain them, reenter or mutate owners. Input/storage must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_data_token(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_data_emit_t emit, void *user);
 /* Plan reconstruction once, preflight the entire closed suffix's depth, then
  * reopen it from immutable snapshots. No recapture or live formatting charge.
  * Failure latches completed effects; engines own reconstruction scheduling.

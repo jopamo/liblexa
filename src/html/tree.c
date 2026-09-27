@@ -4347,6 +4347,23 @@ tree_root_misc_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_DATA_EXEC_PREPARE
 #undef LXA_ROOT_DATA_EXEC_EMIT
 
+#define LXA_TEMPLATE_DATA_NAME tree_execute_template_data
+#define LXA_TEMPLATE_DATA_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_DATA_VALID(view) ((view)->template_fragment.handle == LXA_HANDLE_NONE \
+    ? LXA_ERROR_INTERNAL : LXA_OK)
+#define LXA_TEMPLATE_DATA_TABLE(view) (lxa_vector_length(&(view)->template_elements) \
+    == template_boundary(view) && lxa_html_tree_template_table_context((view)->template_insertion_mode))
+#define LXA_TEMPLATE_DATA_RECONSTRUCT reconstruct_formatting
+#define LXA_TEMPLATE_DATA_EMIT(view, bytes, table) insert_data_text( \
+    view, table ? (view)->template_fragment : template_parent(view), bytes, false, table)
+#include "html/template_data_execute.inc"
+#undef LXA_TEMPLATE_DATA_NAME
+#undef LXA_TEMPLATE_DATA_VIEW
+#undef LXA_TEMPLATE_DATA_VALID
+#undef LXA_TEMPLATE_DATA_TABLE
+#undef LXA_TEMPLATE_DATA_RECONSTRUCT
+#undef LXA_TEMPLATE_DATA_EMIT
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -4412,12 +4429,7 @@ reprocess_template_token:
                 if (!integrated)
                     return insert_data_text(tree, template_parent(tree),
                                             token->data, true, false);
-                if (lxa_html_tree_null_only(token->data))
-                    return LXA_OK;
-                status = reconstruct_formatting(tree);
-                return status == LXA_OK
-                    ? insert_data_text(tree, template_parent(tree),
-                                       token->data, false, false) : status;
+                return tree_execute_template_data(tree, token->data);
             }
             if (ns == LXA_DOM_NS_SVG) {
                 lxa_span_t current;
@@ -4976,21 +4988,8 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "template"))
             return begin_template(tree, token);
-        if (token->kind == LXA_HTML_TEXT) {
-            if (lxa_html_tree_null_only(token->data))
-                return LXA_OK;
-            if (tree->template_fragment.handle == LXA_HANDLE_NONE)
-                return LXA_ERROR_INTERNAL;
-            if (lxa_vector_length(&tree->template_elements)
-                == template_boundary(tree)
-                && lxa_html_tree_template_table_context(tree->template_insertion_mode))
-                return insert_data_text(tree, tree->template_fragment,
-                                         token->data, false, true);
-            status = reconstruct_formatting(tree);
-            if (status != LXA_OK) return status;
-            return insert_data_text(tree, template_parent(tree),
-                                    token->data, false, false);
-        }
+        if (token->kind == LXA_HTML_TEXT)
+            return tree_execute_template_data(tree, token->data);
         if (token->kind == LXA_HTML_START_TAG && lxa_html_tree_head_void(token->name))
             return append_void(tree, template_parent(tree), token);
         if (token->kind == LXA_HTML_START_TAG

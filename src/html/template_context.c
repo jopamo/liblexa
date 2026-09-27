@@ -1010,6 +1010,60 @@ lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
     return finish(context, lxa_html_tree_emit_data(&emitter, data, foreign));
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    lxa_buffer_t *pending;
+    lxa_html_data_emit_t emit;
+    void *user;
+    bool table;
+} template_data_execute_view_t;
+
+static lxa_status_t
+context_template_data_emit(template_data_execute_view_t *view, lxa_span_t bytes, bool table)
+{
+    return table
+        ? lxa_html_template_context_table_data(view->context, bytes, view->pending, view->emit, view->user)
+        : lxa_html_template_context_emit_data(view->context, bytes, view->emit, view->user);
+}
+
+#define LXA_TEMPLATE_DATA_NAME context_execute_template_data
+#define LXA_TEMPLATE_DATA_VIEW template_data_execute_view_t
+#define LXA_TEMPLATE_DATA_VALID(view) ((void) (view), LXA_OK)
+#define LXA_TEMPLATE_DATA_TABLE(view) ((view)->table)
+#define LXA_TEMPLATE_DATA_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TEMPLATE_DATA_EMIT context_template_data_emit
+#include "html/template_data_execute.inc"
+#undef LXA_TEMPLATE_DATA_NAME
+#undef LXA_TEMPLATE_DATA_VIEW
+#undef LXA_TEMPLATE_DATA_VALID
+#undef LXA_TEMPLATE_DATA_TABLE
+#undef LXA_TEMPLATE_DATA_RECONSTRUCT
+#undef LXA_TEMPLATE_DATA_EMIT
+
+lxa_status_t
+lxa_html_template_context_data_token(lxa_html_template_context_t *context,
+    lxa_span_t data, lxa_buffer_t *pending, lxa_html_data_emit_t emit, void *user)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (count == 0 || !lxa_html_tree_table_text_input_valid(pending, data)
+        || pending->budget != context->stack->budget) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_scope_entry_t entry;
+    lxa_html_foreign_context_t integration;
+    status = lxa_html_control_stack_current(context->stack, frames[count - 1].boundary, &entry, &integration);
+    if (status != LXA_OK) return finish(context, status);
+    if ((entry.namespace_id != LXA_DOM_NS_HTML && !lxa_html_foreign_integration(integration))
+        || (entry.namespace_id == LXA_DOM_NS_HTML && lxa_html_tree_table_context(entry.name)))
+        return LXA_ERROR_ARGUMENT;
+    bool table = entry.identity == 0
+        && lxa_html_tree_template_table_context(frames[count - 1].insertion_mode);
+    template_data_execute_view_t view = {context, pending, emit, user, table};
+    return finish(context, context_execute_template_data(&view, data));
+}
+
 #define LXA_TEMPLATE_END_NAME context_end_effects
 #define LXA_TEMPLATE_END_VIEW lxa_html_template_context_t
 #define LXA_TEMPLATE_END_PLAN end_plan
