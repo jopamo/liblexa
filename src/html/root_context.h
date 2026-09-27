@@ -53,6 +53,14 @@ typedef struct {
 lxa_status_t lxa_html_root_context_foreign_route(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, const lxa_html_token_t *token,
     lxa_html_root_foreign_route_t *result);
+/* Execute an accepted root breakout after route selection. Plan the retained
+ * HTML/integration prefix and paragraph scope before pops, without NODE charges.
+ * Preserve mode/framesets/formatting; latch failed scans/pops without replay.
+ * The engine reprocesses the token through HTML rules after success.
+ * Token storage must not alias owners.
+ */
+lxa_status_t lxa_html_root_context_foreign_breakout(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token);
 /* Accepted foreign descendants after integration/breakout routing. Require
  * BODY and a foreign current entry. Share misc/DOCTYPE/DATA/end/start execution;
  * DATA uses saved integration eligibility and foreign NUL replacement. Admit

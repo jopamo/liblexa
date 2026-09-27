@@ -2073,6 +2073,29 @@ plan_foreign_breakout(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 }
 
 static lxa_status_t
+root_breakout_paragraph(lxa_html_tree_t *tree, size_t keep, lxa_span_t name, size_t *index)
+{
+    lxa_vector_t view = tree->open_elements;
+    view.bytes.length = keep * sizeof(lxa_dom_ref_t);
+    return find_scoped_end_target(tree, &view, 0, name, LXA_HTML_SCOPE_BUTTON, index);
+}
+
+#define LXA_ROOT_BREAKOUT_NAME tree_execute_root_breakout
+#define LXA_ROOT_BREAKOUT_VIEW lxa_html_tree_t
+#define LXA_ROOT_BREAKOUT_PLAN(view, out) plan_foreign_breakout(view, &(view)->open_elements, 0, out)
+#define LXA_ROOT_BREAKOUT_PARAGRAPH root_breakout_paragraph
+#define LXA_ROOT_BREAKOUT_NODE(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_ROOT_BREAKOUT_POP(view, keep) pop_elements(view, &(view)->open_elements, keep)
+#include "html/root_foreign_breakout_execute.inc"
+#undef LXA_ROOT_BREAKOUT_NAME
+#undef LXA_ROOT_BREAKOUT_VIEW
+#undef LXA_ROOT_BREAKOUT_PLAN
+#undef LXA_ROOT_BREAKOUT_PARAGRAPH
+#undef LXA_ROOT_BREAKOUT_NODE
+#undef LXA_ROOT_BREAKOUT_POP
+
+static lxa_status_t
 plan_foreign_end(lxa_html_tree_t *tree, const lxa_vector_t *elements,
                  size_t boundary, lxa_span_t name, size_t *keep,
                  bool *reprocess)
@@ -5269,35 +5292,8 @@ reprocess_template_token:
             tree->nodes->budget, &tree->nodes->limit_reason, &route);
         if (status != LXA_OK) return status;
         if (route == LXA_HTML_FOREIGN_ROOT_BREAKOUT) {
-            /* An HTML breakout closes foreign open elements and reprocesses
-             * the token in body mode. Preflight the scan and node admission
-             * before popping. The body rule checks stack admission after
-             * foreign entries are released. */
-            size_t keep;
-            bool needs_node = !named(token->name, "head")
-                              && !named(token->name, "body");
-            status = plan_foreign_breakout(tree, &tree->open_elements, 0,
-                                           &keep);
+            status = tree_execute_root_breakout(tree, token);
             if (status != LXA_OK) return status;
-            if (keep == 0) return LXA_ERROR_INTERNAL;
-            if (token->kind == LXA_HTML_END_TAG && named(token->name, "p")) {
-                lxa_vector_t view = tree->open_elements;
-                size_t index;
-                view.bytes.length = keep * sizeof(lxa_dom_ref_t);
-                status = find_scoped_end_target(tree, &view, 0,
-                    token->name, LXA_HTML_SCOPE_BUTTON, &index);
-                if (status != LXA_OK) return status;
-                needs_node = index == keep;
-            }
-            if (needs_node) {
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-            }
-            while (lxa_vector_length(&tree->open_elements) > keep) {
-                status = pop_element(tree);
-                if (status != LXA_OK) return status;
-            }
         }
         else if (route == LXA_HTML_FOREIGN_ROOT_CONSUME)
         {

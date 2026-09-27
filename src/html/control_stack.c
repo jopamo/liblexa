@@ -689,6 +689,23 @@ lxa_html_control_stack_scope_find(lxa_html_control_stack_t *stack,
 }
 
 lxa_status_t
+lxa_html_control_stack_scope_prefix_find(lxa_html_control_stack_t *stack,
+    size_t length, lxa_span_t target, lxa_html_scope_kind_t scope, size_t *index)
+{
+    control_stack_view_t view;
+    lxa_status_t status = prepare_query(stack, 0, &view);
+    if (status != LXA_OK) return status;
+    if (length > view.length || index == NULL || target.data == NULL || target.length == 0
+        || !lxa_html_scope_kind_valid(scope))
+        return LXA_ERROR_ARGUMENT;
+    view.length = length;
+    size_t found;
+    status = control_stack_scope_search(&view, 0, target, scope, &found);
+    if (status == LXA_OK) *index = found;
+    return status;
+}
+
+lxa_status_t
 lxa_html_control_stack_ordinary_end_find(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_span_t target, size_t *index)
 {

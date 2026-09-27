@@ -3242,6 +3242,45 @@ typedef struct {
     lxa_html_root_foreign_result_t *result;
 } root_foreign_execute_view_t;
 
+#define LXA_ROOT_BREAKOUT_NAME context_execute_foreign_breakout
+#define LXA_ROOT_BREAKOUT_VIEW lxa_html_root_context_t
+#define LXA_ROOT_BREAKOUT_PLAN(view, out) \
+    lxa_html_control_stack_foreign_breakout_plan((view)->stack, 0, out)
+#define LXA_ROOT_BREAKOUT_PARAGRAPH(view, keep, name, out) \
+    lxa_html_control_stack_scope_prefix_find((view)->stack, keep, name, LXA_HTML_SCOPE_BUTTON, out)
+#define LXA_ROOT_BREAKOUT_NODE(view) LXA_OK
+#define LXA_ROOT_BREAKOUT_POP(view, keep) lxa_html_control_stack_pop_to((view)->stack, keep)
+#include "html/root_foreign_breakout_execute.inc"
+#undef LXA_ROOT_BREAKOUT_NAME
+#undef LXA_ROOT_BREAKOUT_VIEW
+#undef LXA_ROOT_BREAKOUT_PLAN
+#undef LXA_ROOT_BREAKOUT_PARAGRAPH
+#undef LXA_ROOT_BREAKOUT_NODE
+#undef LXA_ROOT_BREAKOUT_POP
+
+lxa_status_t
+lxa_html_root_context_foreign_breakout(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || (mode != LXA_TREE_IN_BODY && mode != LXA_TREE_AFTER_BODY && mode != LXA_TREE_AFTER_HTML)
+        || lxa_vector_length(&context->stack->elements) <= 1
+        || !lxa_html_tree_token_shape_valid(token)
+        || (token->kind == LXA_HTML_START_TAG
+            ? !lxa_html_foreign_html_start_breakout(token->name)
+                && !lxa_html_tree_name_equals(token->name, "font", 4)
+            : token->kind != LXA_HTML_END_TAG
+                || (!lxa_html_tree_name_equals(token->name, "br", 2)
+                    && !lxa_html_tree_name_equals(token->name, "p", 1))))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    status = lxa_html_control_stack_current(context->stack, 0, &entry, NULL);
+    if (status != LXA_OK) return finish(context, status);
+    if (entry.namespace_id == LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
+    return finish(context, context_execute_foreign_breakout(context, token));
+}
+
 static lxa_status_t
 context_foreign_data(root_foreign_execute_view_t *view, lxa_span_t bytes)
 {
