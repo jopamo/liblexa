@@ -2169,13 +2169,44 @@ foreign_start(tree_foreign_execute_view_t *view, const lxa_html_token_t *token)
 #undef LXA_FOREIGN_EXEC_LENGTH
 
 static lxa_status_t
-consume_foreign(lxa_html_tree_t *tree,
-                const lxa_html_token_t *token, lxa_dom_namespace_t ns,
-                bool *reprocess)
+root_foreign_route(tree_foreign_execute_view_t *view, const lxa_html_token_t *token,
+    lxa_html_foreign_root_route_t *route)
 {
-    tree_foreign_execute_view_t view = {tree, ns};
-    return tree_execute_foreign(&view, token, reprocess);
+    lxa_html_tree_t *tree = view->tree;
+    if ((tree->mode != LXA_TREE_IN_BODY && tree->mode != LXA_TREE_AFTER_BODY
+            && tree->mode != LXA_TREE_AFTER_HTML)
+        || lxa_vector_length(&tree->open_elements) <= 1) {
+        *route = LXA_HTML_FOREIGN_ROOT_HTML;
+        return LXA_OK;
+    }
+    lxa_status_t status = lxa_dom_nodes_element_namespace(tree->nodes,
+        current_element(tree), &view->namespace_id);
+    if (status != LXA_OK) return status;
+    lxa_html_foreign_context_t integration = LXA_HTML_FOREIGN_NONE;
+    if (view->namespace_id != LXA_DOM_NS_HTML
+        && (token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_TEXT)) {
+        lxa_span_t name;
+        status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &name);
+        if (status == LXA_OK)
+            status = element_foreign_context(tree, current_element(tree),
+                view->namespace_id, name, &integration);
+        if (status != LXA_OK) return status;
+    }
+    return lxa_html_foreign_root_plan(view->namespace_id, integration, token,
+        tree->nodes->budget, &tree->nodes->limit_reason, route);
 }
+
+#define LXA_ROOT_FOREIGN_DISPATCH_NAME tree_dispatch_root_foreign
+#define LXA_ROOT_FOREIGN_DISPATCH_VIEW tree_foreign_execute_view_t
+#define LXA_ROOT_FOREIGN_DISPATCH_ROUTE root_foreign_route
+#define LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT(view, token) tree_execute_root_breakout((view)->tree, token)
+#define LXA_ROOT_FOREIGN_DISPATCH_CONSUME tree_execute_foreign
+#include "html/root_foreign_dispatch.inc"
+#undef LXA_ROOT_FOREIGN_DISPATCH_NAME
+#undef LXA_ROOT_FOREIGN_DISPATCH_VIEW
+#undef LXA_ROOT_FOREIGN_DISPATCH_ROUTE
+#undef LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT
+#undef LXA_ROOT_FOREIGN_DISPATCH_CONSUME
 
 static lxa_status_t
 append_void(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
@@ -5266,42 +5297,10 @@ reprocess_template_token:
         && tree->body.handle == LXA_HANDLE_NONE) {
         return begin_root_frameset(tree, token, false);
     }
-    if ((tree->mode == LXA_TREE_IN_BODY
-         || tree->mode == LXA_TREE_AFTER_BODY
-         || tree->mode == LXA_TREE_AFTER_HTML)
-        && lxa_vector_length(&tree->open_elements) > 1) {
-        lxa_dom_namespace_t ns;
-        lxa_html_foreign_context_t integration = LXA_HTML_FOREIGN_NONE;
-        status = lxa_dom_nodes_element_namespace(tree->nodes,
-                                                  current_element(tree), &ns);
-        if (status != LXA_OK) return status;
-        if (ns != LXA_DOM_NS_HTML
-            && (token->kind == LXA_HTML_START_TAG
-                || token->kind == LXA_HTML_TEXT)) {
-            lxa_span_t current_name;
-            status = lxa_dom_nodes_element_name(tree->nodes,
-                                                current_element(tree),
-                                                &current_name);
-            if (status != LXA_OK) return status;
-            status = element_foreign_context(tree, current_element(tree),
-                                             ns, current_name, &integration);
-            if (status != LXA_OK) return status;
-        }
-        lxa_html_foreign_root_route_t route;
-        status = lxa_html_foreign_root_plan(ns, integration, token,
-            tree->nodes->budget, &tree->nodes->limit_reason, &route);
-        if (status != LXA_OK) return status;
-        if (route == LXA_HTML_FOREIGN_ROOT_BREAKOUT) {
-            status = tree_execute_root_breakout(tree, token);
-            if (status != LXA_OK) return status;
-        }
-        else if (route == LXA_HTML_FOREIGN_ROOT_CONSUME)
-        {
-            bool reprocess;
-            status = consume_foreign(tree, token, ns, &reprocess);
-            if (status != LXA_OK || !reprocess) return status;
-        }
-    }
+    tree_foreign_execute_view_t foreign_view = {tree, LXA_DOM_NS_HTML};
+    bool foreign_handled;
+    status = tree_dispatch_root_foreign(&foreign_view, token, &foreign_handled);
+    if (status != LXA_OK || foreign_handled) return status;
     if (token->kind == LXA_HTML_START_TAG && named(token->name, "image")) {
         /* HTML's image start tag is reprocessed as img. Keep the token's
          * borrowed attributes and normalize only its construction name. */

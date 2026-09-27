@@ -75,6 +75,22 @@ lxa_status_t lxa_html_root_context_foreign_token(lxa_html_root_context_t *contex
     lxa_html_root_mode_t mode, const lxa_html_token_t *token,
     lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_result_t *result);
 
+typedef struct {
+    bool handled;
+    uint64_t parent, identity;
+} lxa_html_root_foreign_dispatch_result_t;
+/* Root foreign dispatch after earlier text/template/frameset/head-noscript
+ * routing and before HTML image normalization or ordinary root rules.
+ * EOF remains driver-owned and is rejected here.
+ * Select once, then execute breakout or foreign intake. handled=false requests
+ * HTML processing; parent/identity are nonzero only for foreign intake.
+ * Publish only on success; preserve completed effects on terminal failure.
+ * DATA callbacks and token/result storage follow foreign_token's contract.
+ */
+lxa_status_t lxa_html_root_context_foreign_dispatch(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_dispatch_result_t *result);
+
 /* Ensure virtual roots in canonical order. Check static-name/depth limits;
  * no DOM-node quota or HTML/head name storage. Retain completed virtual creation
  * on later failure and latch it. Successful existing roots perform no WORK.

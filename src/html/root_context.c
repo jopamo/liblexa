@@ -3215,6 +3215,7 @@ lxa_html_root_context_foreign_route(lxa_html_root_context_t *context,
     bool body = mode == LXA_TREE_IN_BODY || mode == LXA_TREE_AFTER_BODY || mode == LXA_TREE_AFTER_HTML;
     size_t length = lxa_vector_length(&context->stack->elements);
     bool valid = body ? context->body : mode == LXA_TREE_INITIAL ? !context->html
+        : mode == LXA_TREE_HEAD_NOSCRIPT ? context->head && !context->body
         : body_start_mode_valid(context, mode) && !context->body;
     if (!valid || (!body && length != 0) || result == NULL
         || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
@@ -3359,4 +3360,65 @@ lxa_html_root_context_foreign_token(lxa_html_root_context_t *context,
         context->limit_reason = context->stack->limit_reason;
     if (status == LXA_OK) *result = out;
     return finish(context, status);
+}
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_mode_t mode;
+    lxa_html_data_emit_t emit;
+    void *user;
+    lxa_html_root_foreign_dispatch_result_t *result;
+} root_foreign_dispatch_view_t;
+
+static lxa_status_t
+context_foreign_route(root_foreign_dispatch_view_t *view, const lxa_html_token_t *token,
+    lxa_html_foreign_root_route_t *route)
+{
+    lxa_html_root_foreign_route_t plan;
+    lxa_status_t status = lxa_html_root_context_foreign_route(view->context, view->mode, token, &plan);
+    if (status == LXA_OK) *route = plan.action;
+    return status;
+}
+
+static lxa_status_t
+context_foreign_consume(root_foreign_dispatch_view_t *view, const lxa_html_token_t *token,
+    bool *reprocess)
+{
+    lxa_html_root_foreign_result_t result;
+    lxa_status_t status = lxa_html_root_context_foreign_token(view->context, view->mode, token,
+        view->emit, view->user, &result);
+    if (status == LXA_OK) {
+        view->result->parent = result.parent;
+        view->result->identity = result.identity;
+        *reprocess = result.reprocess;
+    }
+    return status;
+}
+
+#define LXA_ROOT_FOREIGN_DISPATCH_NAME context_dispatch_foreign
+#define LXA_ROOT_FOREIGN_DISPATCH_VIEW root_foreign_dispatch_view_t
+#define LXA_ROOT_FOREIGN_DISPATCH_ROUTE context_foreign_route
+#define LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT(view, token) \
+    lxa_html_root_context_foreign_breakout((view)->context, (view)->mode, token)
+#define LXA_ROOT_FOREIGN_DISPATCH_CONSUME context_foreign_consume
+#include "html/root_foreign_dispatch.inc"
+#undef LXA_ROOT_FOREIGN_DISPATCH_NAME
+#undef LXA_ROOT_FOREIGN_DISPATCH_VIEW
+#undef LXA_ROOT_FOREIGN_DISPATCH_ROUTE
+#undef LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT
+#undef LXA_ROOT_FOREIGN_DISPATCH_CONSUME
+
+lxa_status_t
+lxa_html_root_context_foreign_dispatch(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_dispatch_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (result == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_html_root_foreign_dispatch_result_t out = {false, 0, 0};
+    root_foreign_dispatch_view_t view = {context, mode, emit, user, &out};
+    status = context_dispatch_foreign(&view, token, &out.handled);
+    if (status == LXA_OK) *result = out;
+    return status;
 }
