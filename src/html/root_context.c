@@ -3191,3 +3191,91 @@ lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
     };
     return finish(context, lxa_html_tree_emit_data(&emitter, data, foreign));
 }
+
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_dom_namespace_t namespace_id;
+    lxa_html_data_emit_t emit;
+    void *user;
+    lxa_html_root_foreign_result_t *result;
+} root_foreign_execute_view_t;
+
+static lxa_status_t
+context_foreign_data(root_foreign_execute_view_t *view, lxa_span_t bytes)
+{
+    lxa_html_root_context_t *context = view->context;
+    context->frameset_ok = lxa_html_tree_foreign_data_frameset(context->frameset_ok, bytes);
+    const lxa_html_data_emitter_t emitter = {
+        context->stack->budget, &context->limit_reason, view->result->parent, view->emit, view->user
+    };
+    return lxa_html_tree_emit_data(&emitter, bytes, true);
+}
+
+static lxa_status_t
+context_foreign_end(root_foreign_execute_view_t *view, lxa_span_t name, size_t *keep, bool *reprocess)
+{
+    lxa_html_foreign_end_plan_t plan;
+    lxa_status_t status = lxa_html_control_stack_foreign_end_plan(view->context->stack, 0, name, &plan);
+    if (status == LXA_OK) {
+        *keep = plan.keep;
+        *reprocess = plan.reprocess;
+    }
+    return status;
+}
+
+static lxa_status_t
+context_foreign_start(root_foreign_execute_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_root_context_t *context = view->context;
+    lxa_status_t status = reserve_open_slot(context);
+    if (status == LXA_OK)
+        status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
+    if (status == LXA_OK)
+        status = lxa_html_control_stack_push_token(context->stack, token, view->namespace_id,
+            &view->result->identity);
+    return status;
+}
+
+#define LXA_FOREIGN_EXEC_NAME context_execute_foreign
+#define LXA_FOREIGN_EXEC_VIEW root_foreign_execute_view_t
+#define LXA_FOREIGN_EXEC_MISC(view, token) ((void) (view), (void) (token), LXA_OK)
+#define LXA_FOREIGN_EXEC_DATA context_foreign_data
+#define LXA_FOREIGN_EXEC_END context_foreign_end
+#define LXA_FOREIGN_EXEC_POP(view, keep) lxa_html_control_stack_pop_to((view)->context->stack, keep)
+#define LXA_FOREIGN_EXEC_START context_foreign_start
+#define LXA_FOREIGN_EXEC_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#include "html/foreign_execute.inc"
+#undef LXA_FOREIGN_EXEC_NAME
+#undef LXA_FOREIGN_EXEC_VIEW
+#undef LXA_FOREIGN_EXEC_MISC
+#undef LXA_FOREIGN_EXEC_DATA
+#undef LXA_FOREIGN_EXEC_END
+#undef LXA_FOREIGN_EXEC_POP
+#undef LXA_FOREIGN_EXEC_START
+#undef LXA_FOREIGN_EXEC_LENGTH
+
+lxa_status_t
+lxa_html_root_context_foreign_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (!context->body || (mode != LXA_TREE_IN_BODY && mode != LXA_TREE_AFTER_BODY && mode != LXA_TREE_AFTER_HTML)
+        || lxa_vector_length(&context->stack->elements) <= 1 || result == NULL
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_scope_entry_t entry;
+    lxa_html_foreign_context_t integration;
+    status = lxa_html_control_stack_current(context->stack, 0, &entry, &integration);
+    if (status != LXA_OK) return finish(context, status);
+    if (entry.namespace_id == LXA_DOM_NS_HTML || lxa_html_foreign_uses_html(integration, token))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_foreign_result_t out = {entry.identity, 0, false};
+    root_foreign_execute_view_t view = {context, entry.namespace_id, emit, user, &out};
+    status = context_execute_foreign(&view, token, &out.reprocess);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->stack->limit_reason;
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
+}

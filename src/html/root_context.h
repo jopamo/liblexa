@@ -35,6 +35,24 @@ lxa_status_t lxa_html_root_context_misc_token(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t mode,
     lxa_html_root_misc_destination_t *destination);
 
+typedef struct {
+    uint64_t parent, identity;
+    bool reprocess;
+} lxa_html_root_foreign_result_t;
+/* Accepted foreign descendants after integration/breakout routing. Require
+ * BODY and a foreign current entry. Share misc/DOCTYPE/DATA/end/start execution;
+ * DATA uses saved integration eligibility and foreign NUL replacement. Admit
+ * adjusted names in the current namespace, then pop self-closing starts.
+ * Publish parent/new identity/end reprocess only on success. Engines retain
+ * comment/PI insertion, earlier dispatch and post-effect tokenizer feedback.
+ * NULL emit discards DATA; callback spans expire on return. Do not retain them,
+ * reenter or mutate owners. Preserve completed effects on terminal failure.
+ * Token/result storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_foreign_token(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_result_t *result);
+
 /* Ensure virtual roots in canonical order. Check static-name/depth limits;
  * no DOM-node quota or HTML/head name storage. Retain completed virtual creation
  * on later failure and latch it. Successful existing roots perform no WORK.

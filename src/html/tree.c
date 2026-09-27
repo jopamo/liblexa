@@ -2092,48 +2092,66 @@ plan_foreign_end(lxa_html_tree_t *tree, const lxa_vector_t *elements,
 
 /* Foreign descendants retain their parent's namespace unless an integration
  * point dispatches the token through HTML construction instead. */
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_dom_namespace_t namespace_id;
+} tree_foreign_execute_view_t;
+
+static lxa_status_t
+foreign_data(tree_foreign_execute_view_t *view, lxa_span_t bytes)
+{
+    lxa_html_tree_t *tree = view->tree;
+    tree->frameset_ok = lxa_html_tree_foreign_data_frameset(tree->frameset_ok, bytes);
+    return insert_data_text(tree, current_element(tree), bytes, true, false);
+}
+
+static lxa_status_t
+foreign_pop(tree_foreign_execute_view_t *view, size_t keep)
+{
+    lxa_status_t status = LXA_OK;
+    while (status == LXA_OK && lxa_vector_length(&view->tree->open_elements) > keep)
+        status = pop_element(view->tree);
+    return status;
+}
+
+static lxa_status_t
+foreign_start(tree_foreign_execute_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_tree_t *tree = view->tree;
+    lxa_status_t status = reserve_open_elements(tree, 1);
+    if (status == LXA_OK)
+        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
+                                   1, &tree->nodes->limit_reason);
+    if (status == LXA_OK) status = open_container_ns(tree, token, view->namespace_id);
+    return status;
+}
+
+#define LXA_FOREIGN_EXEC_NAME tree_execute_foreign
+#define LXA_FOREIGN_EXEC_VIEW tree_foreign_execute_view_t
+#define LXA_FOREIGN_EXEC_MISC(view, token) append_comment_or_pi((view)->tree, current_element((view)->tree), token)
+#define LXA_FOREIGN_EXEC_DATA foreign_data
+#define LXA_FOREIGN_EXEC_END(view, name, keep, reprocess) \
+    plan_foreign_end((view)->tree, &(view)->tree->open_elements, 0, name, keep, reprocess)
+#define LXA_FOREIGN_EXEC_POP foreign_pop
+#define LXA_FOREIGN_EXEC_START foreign_start
+#define LXA_FOREIGN_EXEC_LENGTH(view) lxa_vector_length(&(view)->tree->open_elements)
+#include "html/foreign_execute.inc"
+#undef LXA_FOREIGN_EXEC_NAME
+#undef LXA_FOREIGN_EXEC_VIEW
+#undef LXA_FOREIGN_EXEC_MISC
+#undef LXA_FOREIGN_EXEC_DATA
+#undef LXA_FOREIGN_EXEC_END
+#undef LXA_FOREIGN_EXEC_POP
+#undef LXA_FOREIGN_EXEC_START
+#undef LXA_FOREIGN_EXEC_LENGTH
+
 static lxa_status_t
 consume_foreign(lxa_html_tree_t *tree,
                 const lxa_html_token_t *token, lxa_dom_namespace_t ns,
                 bool *reprocess)
 {
-    lxa_status_t status;
-    *reprocess = false;
-    if (token->kind == LXA_HTML_COMMENT
-        || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
-        return append_comment_or_pi(tree, current_element(tree), token);
-    if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
-    if (token->kind == LXA_HTML_TEXT) {
-        tree->frameset_ok = lxa_html_tree_foreign_data_frameset(tree->frameset_ok, token->data);
-        return insert_data_text(tree, current_element(tree), token->data,
-                                true, false);
-    }
-    if (token->kind == LXA_HTML_END_TAG) {
-        size_t keep;
-        status = plan_foreign_end(tree, &tree->open_elements, 0,
-                                  token->name, &keep, reprocess);
-        if (status != LXA_OK) return status;
-        while (lxa_vector_length(&tree->open_elements) > keep) {
-            status = pop_element(tree);
-            if (status != LXA_OK) return status;
-        }
-        return LXA_OK;
-    }
-    if (token->kind != LXA_HTML_START_TAG) {
-        assert(false);
-        return LXA_ERROR_INTERNAL;
-    }
-    status = reserve_open_elements(tree, 1);
-    if (status == LXA_OK)
-        status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                   1, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
-        status = open_container_ns(tree, token, ns);
-    if (status == LXA_OK && token->self_closing) {
-        status = pop_element(tree);
-        if (status != LXA_OK) return status;
-    }
-    return status;
+    tree_foreign_execute_view_t view = {tree, ns};
+    return tree_execute_foreign(&view, token, reprocess);
 }
 
 static lxa_status_t
