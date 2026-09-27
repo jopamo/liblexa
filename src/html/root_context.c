@@ -2171,20 +2171,43 @@ lxa_html_root_context_end_prelude(lxa_html_root_context_t *context,
     return finish(context, context_end_prelude(context, mode, token->name, action));
 }
 
+typedef struct {
+    root_data_view_t preparation;
+    lxa_html_data_emit_t emit;
+    void *user;
+} root_after_body_view_t;
+
+static lxa_status_t
+context_after_body_emit(root_after_body_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_root_context_t *context = view->preparation.context;
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_current(context->stack, 0, &entry, NULL);
+    if (status != LXA_OK) return status;
+    const lxa_html_data_emitter_t emitter = {
+        context->stack->budget, &context->limit_reason, entry.identity, view->emit, view->user
+    };
+    return lxa_html_tree_emit_data(&emitter, token->data, false);
+}
+
 #define LXA_AFTER_BODY_NAME root_execute_after_body
-#define LXA_AFTER_BODY_VIEW root_data_view_t
-#define LXA_AFTER_BODY_RECONSTRUCT(view) lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
-#define LXA_AFTER_BODY_MODE(view) (*(view)->mode)
+#define LXA_AFTER_BODY_VIEW root_after_body_view_t
+#define LXA_AFTER_BODY_RECONSTRUCT(view) lxa_html_root_context_reconstruct( \
+    (view)->preparation.context, (view)->preparation.formatting)
+#define LXA_AFTER_BODY_EMIT context_after_body_emit
+#define LXA_AFTER_BODY_MODE(view) (*(view)->preparation.mode)
 #include "html/after_body_execute.inc"
 #undef LXA_AFTER_BODY_NAME
 #undef LXA_AFTER_BODY_VIEW
 #undef LXA_AFTER_BODY_RECONSTRUCT
+#undef LXA_AFTER_BODY_EMIT
 #undef LXA_AFTER_BODY_MODE
 
 lxa_status_t
 lxa_html_root_context_after_body(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
-    lxa_html_root_mode_t *mode, lxa_html_after_body_action_t *action)
+    lxa_html_root_mode_t *mode, lxa_html_data_emit_t emit, void *user,
+    lxa_html_after_body_action_t *action)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
@@ -2204,8 +2227,8 @@ lxa_html_root_context_after_body(lxa_html_root_context_t *context,
     if (status == LXA_OK && out == LXA_HTML_AFTER_BODY_SPACE_TEXT
         && (formatting == NULL || lxa_vector_length(&context->stack->elements) == 0))
         return LXA_ERROR_ARGUMENT;
-    root_data_view_t view = {context, formatting, mode};
-    if (status == LXA_OK) status = root_execute_after_body(&view, out);
+    root_after_body_view_t view = {{context, formatting, mode}, emit, user};
+    if (status == LXA_OK) status = root_execute_after_body(&view, token, out);
     if (status == LXA_OK) *action = out;
     return finish(context, status);
 }

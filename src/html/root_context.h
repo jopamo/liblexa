@@ -607,15 +607,18 @@ lxa_status_t lxa_html_root_context_select_token(lxa_html_root_context_t *context
 lxa_status_t lxa_html_root_context_control_group(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_html_token_kind_t kind, lxa_span_t name);
 /* Accepted after-body/after-html token after earlier EOF/foreign/comment/
- * DOCTYPE dispatch. Preflight text scan WORK, share whitespace reconstruction
- * or in-body reprocessing publication; html starts preserve the current mode.
- * Borrow a same-budget list for whitespace, including empty text. Publish action
- * only on success and latch failed preparation. Engines retain text insertion
- * and subsequent dispatch. Input/output storage must not alias owners.
+ * DOCTYPE dispatch. Preflight text scan WORK, reconstruct and deliver whitespace
+ * under its current parent, or publish IN_BODY for reprocessing. HTML starts
+ * preserve the current mode. Borrow a same-budget list for whitespace, including
+ * empty text. NULL emit discards runs; callback views expire on return. Do not
+ * reenter or mutate owners. Publish action only on success and latch failed
+ * preparation/delivery without replay, retaining completed reconstruction.
+ * Engines retain subsequent dispatch. Input/output storage must not alias owners.
  */
 lxa_status_t lxa_html_root_context_after_body(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, const lxa_html_token_t *token,
-    lxa_html_root_mode_t *mode, lxa_html_after_body_action_t *action);
+    lxa_html_root_mode_t *mode, lxa_html_data_emit_t emit, void *user,
+    lxa_html_after_body_action_t *action);
 /* Root hidden-input table rule before select routing. Share budgeted attribute
  * classification and table planning, then remove the planned suffix. Closed
  * input retains no metadata/name/key or DOM-node quota; engines own insertion
