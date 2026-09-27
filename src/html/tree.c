@@ -2169,6 +2169,27 @@ foreign_start(tree_foreign_execute_view_t *view, const lxa_html_token_t *token)
 #undef LXA_FOREIGN_EXEC_LENGTH
 
 static lxa_status_t
+execute_head_noscript_spaces(lxa_html_tree_t *tree, lxa_span_t bytes)
+{
+    return append_character(tree, tree->head_noscript, LXA_DOM_KIND_TEXT, bytes);
+}
+
+#define LXA_HEAD_NOSCRIPT_EXEC_NAME tree_execute_head_noscript
+#define LXA_HEAD_NOSCRIPT_EXEC_VIEW lxa_html_tree_t
+#define LXA_HEAD_NOSCRIPT_EXEC_PLAN(view, token, out) \
+    lxa_html_tree_head_noscript_plan(token, (view)->nodes->budget, &(view)->nodes->limit_reason, out)
+#define LXA_HEAD_NOSCRIPT_EXEC_EMIT execute_head_noscript_spaces
+#define LXA_HEAD_NOSCRIPT_EXEC_MODE(view) ((view)->mode)
+#define LXA_HEAD_NOSCRIPT_EXEC_CLEAR(view) ((view)->head_noscript = (lxa_dom_ref_t){0})
+#include "html/head_noscript_execute.inc"
+#undef LXA_HEAD_NOSCRIPT_EXEC_NAME
+#undef LXA_HEAD_NOSCRIPT_EXEC_VIEW
+#undef LXA_HEAD_NOSCRIPT_EXEC_PLAN
+#undef LXA_HEAD_NOSCRIPT_EXEC_EMIT
+#undef LXA_HEAD_NOSCRIPT_EXEC_MODE
+#undef LXA_HEAD_NOSCRIPT_EXEC_CLEAR
+
+static lxa_status_t
 root_foreign_route(tree_foreign_execute_view_t *view, const lxa_html_token_t *token,
     lxa_html_foreign_root_route_t *route)
 {
@@ -5266,25 +5287,15 @@ reprocess_template_token:
         return tree_text_token(tree, token, &tree->mode, NULL);
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         lxa_html_head_noscript_plan_t plan;
-        status = lxa_html_tree_head_noscript_plan(token, tree->nodes->budget,
-            &tree->nodes->limit_reason, &plan);
+        status = tree_execute_head_noscript(tree, token, &plan);
         if (status != LXA_OK) return status;
+        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE
+            || plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE) return LXA_OK;
         if (plan.space_prefix != 0) {
-            status = append_character(tree, tree->head_noscript,
-                LXA_DOM_KIND_TEXT, (lxa_span_t){token->data.data, plan.space_prefix});
-            if (status != LXA_OK) return status;
-            if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE) return LXA_OK;
             adjusted = *token;
             adjusted.data.data += plan.space_prefix;
             adjusted.data.length -= plan.space_prefix;
             token = &adjusted;
-        }
-        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE) return LXA_OK;
-        lxa_html_root_mode_t next_mode = lxa_html_tree_head_noscript_next_mode(plan.action);
-        if (next_mode != tree->mode) {
-            tree->head_noscript = (lxa_dom_ref_t){0};
-            tree->mode = next_mode;
-            if (plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE) return LXA_OK;
         }
     }
     if (token->kind == LXA_HTML_START_TAG

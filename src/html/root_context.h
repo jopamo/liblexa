@@ -633,18 +633,19 @@ lxa_status_t lxa_html_root_context_hidden_table_input(lxa_html_root_context_t *c
  */
 lxa_status_t lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_mode_t *mode);
-typedef struct {
-    lxa_html_head_noscript_plan_t plan;
-    lxa_html_root_mode_t next_mode;
-} lxa_html_root_head_noscript_result_t;
-/* Prepare accepted HEAD_NOSCRIPT intake after EOF/text dispatch. Preflight the
- * shared prefix scan and publish a result only on success; latch failed WORK.
- * Engines emit the prefix before publishing next_mode and reprocessing suffix.
- * Retain no token views; token/output must not alias borrowed owners.
+typedef lxa_status_t (*lxa_html_root_prebody_emit_t)(void *user, lxa_span_t bytes,
+    lxa_html_root_misc_destination_t destination);
+/* Execute accepted HEAD_NOSCRIPT intake after EOF/text dispatch. Preflight the
+ * shared prefix scan, emit spaces under HEAD_NOSCRIPT, then publish mode/result.
+ * Ignore/close consumes the token; continue/reprocess leaves its suffix for the
+ * driver after skipping space_prefix. NULL emit discards spaces. Callback views
+ * expire on return; do not reenter or mutate owners. Latch scan/callback failures
+ * without replay, preserving completed emission and prior mode/output.
+ * Retain no token views; input/output storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_head_noscript_token(lxa_html_root_context_t *context,
-    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
-    lxa_html_root_head_noscript_result_t *result);
+    lxa_html_root_mode_t *mode, const lxa_html_token_t *token,
+    lxa_html_root_prebody_emit_t emit, void *user, lxa_html_head_noscript_plan_t *result);
 /* Plan accepted in-body frameset replacement against the admitted BODY key,
  * not merely a body-shaped entry. Read the root entry only when other gates
  * pass, publish eligible only on success and latch failed WORK.
@@ -720,8 +721,6 @@ lxa_status_t lxa_html_root_context_prebody_text(lxa_html_root_context_t *context
     lxa_html_root_mode_t mode, lxa_span_t data,
     lxa_html_root_prebody_text_result_t *result);
 
-typedef lxa_status_t (*lxa_html_root_prebody_emit_t)(void *user, lxa_span_t bytes,
-    lxa_html_root_misc_destination_t destination);
 typedef struct {
     lxa_buffer_t *pending;
     lxa_html_data_emit_t emit;

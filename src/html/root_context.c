@@ -2297,24 +2297,42 @@ lxa_html_root_context_start_head_noscript(lxa_html_root_context_t *context,
     return finish(context, root_start_head_noscript(&view, token));
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_mode_t *mode;
+    lxa_html_root_prebody_emit_t emit;
+    void *user;
+} root_head_noscript_execute_view_t;
+
+#define LXA_HEAD_NOSCRIPT_EXEC_NAME context_execute_head_noscript
+#define LXA_HEAD_NOSCRIPT_EXEC_VIEW root_head_noscript_execute_view_t
+#define LXA_HEAD_NOSCRIPT_EXEC_PLAN(view, token, out) \
+    lxa_html_tree_head_noscript_plan(token, (view)->context->stack->budget, &(view)->context->limit_reason, out)
+#define LXA_HEAD_NOSCRIPT_EXEC_EMIT(view, bytes) ((view)->emit == NULL ? LXA_OK \
+    : (view)->emit((view)->user, bytes, LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT))
+#define LXA_HEAD_NOSCRIPT_EXEC_MODE(view) (*(view)->mode)
+#define LXA_HEAD_NOSCRIPT_EXEC_CLEAR(view) ((void) (view))
+#include "html/head_noscript_execute.inc"
+#undef LXA_HEAD_NOSCRIPT_EXEC_NAME
+#undef LXA_HEAD_NOSCRIPT_EXEC_VIEW
+#undef LXA_HEAD_NOSCRIPT_EXEC_PLAN
+#undef LXA_HEAD_NOSCRIPT_EXEC_EMIT
+#undef LXA_HEAD_NOSCRIPT_EXEC_MODE
+#undef LXA_HEAD_NOSCRIPT_EXEC_CLEAR
+
 lxa_status_t
 lxa_html_root_context_head_noscript_token(lxa_html_root_context_t *context,
-    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
-    lxa_html_root_head_noscript_result_t *result)
+    lxa_html_root_mode_t *mode, const lxa_html_token_t *token,
+    lxa_html_root_prebody_emit_t emit, void *user, lxa_html_head_noscript_plan_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    if (mode != LXA_TREE_HEAD_NOSCRIPT || result == NULL || !context->head || context->body
+    if (mode == NULL || *mode != LXA_TREE_HEAD_NOSCRIPT || result == NULL || !context->head || context->body
         || lxa_vector_length(&context->stack->elements) != 0
         || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
         return LXA_ERROR_ARGUMENT;
-    lxa_html_root_head_noscript_result_t out;
-    status = lxa_html_tree_head_noscript_plan(token, context->stack->budget,
-        &context->limit_reason, &out.plan);
-    if (status == LXA_OK) {
-        out.next_mode = lxa_html_tree_head_noscript_next_mode(out.plan.action);
-        *result = out;
-    }
+    root_head_noscript_execute_view_t view = {context, mode, emit, user};
+    status = context_execute_head_noscript(&view, token, result);
     return finish(context, status);
 }
 
