@@ -4332,6 +4332,21 @@ tree_root_misc_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_END_EXEC_IGNORE
 #undef LXA_ROOT_END_EXEC_BR
 
+#define LXA_ROOT_DATA_EXEC_NAME tree_execute_root_data
+#define LXA_ROOT_DATA_EXEC_VIEW lxa_html_tree_t
+#define LXA_ROOT_DATA_EXEC_MODE(view) ((view)->mode)
+#define LXA_ROOT_DATA_EXEC_PREBODY prepare_prebody_text
+#define LXA_ROOT_DATA_EXEC_PREPARE tree_prepare_root_data
+#define LXA_ROOT_DATA_EXEC_EMIT(view, bytes, action) insert_data_text( \
+    view, current_element(view), bytes, false, action == LXA_HTML_ROOT_DATA_TABLE)
+#include "html/root_data_execute.inc"
+#undef LXA_ROOT_DATA_EXEC_NAME
+#undef LXA_ROOT_DATA_EXEC_VIEW
+#undef LXA_ROOT_DATA_EXEC_MODE
+#undef LXA_ROOT_DATA_EXEC_PREBODY
+#undef LXA_ROOT_DATA_EXEC_PREPARE
+#undef LXA_ROOT_DATA_EXEC_EMIT
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -5338,38 +5353,8 @@ reprocess_template_token:
         tree_foster_text_view_t view = {tree, tokenizer, {0}};
         return tree_execute_root_start(&view, token);
     }
-    if (tree->mode == LXA_TREE_IN_BODY) {
-        bool ignore;
-        {
-            bool handled;
-            status = insert_hidden_table_input(tree, token, &handled);
-            if (status != LXA_OK || handled) return status;
-        }
-        const lxa_html_tree_scope_view_t view = {
-            tree, (const lxa_dom_ref_t *) tree->open_elements.bytes.data,
-            lxa_vector_length(&tree->open_elements)
-        };
-        status = tree_execute_root_select(&view, token->kind, token->name, &ignore);
-        if (status != LXA_OK) return status;
-        if (ignore) return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_TEXT) {
-        if (tree->mode == LXA_TREE_BEFORE_HTML
-            || tree->mode == LXA_TREE_BEFORE_HEAD
-            || tree->mode == LXA_TREE_IN_HEAD
-            || tree->mode == LXA_TREE_AFTER_HEAD) {
-            adjusted = *token;
-            status = prepare_prebody_text(tree, &adjusted.data);
-            if (status != LXA_OK) return status;
-            token = &adjusted;
-        }
-        lxa_html_root_data_action_t action;
-        status = tree_prepare_root_data(tree, token->data, &action);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_ROOT_DATA_IGNORE) return LXA_OK;
-        return insert_data_text(tree, current_element(tree), token->data,
-                                false, action == LXA_HTML_ROOT_DATA_TABLE);
-    }
+    if (token->kind == LXA_HTML_TEXT)
+        return tree_execute_root_data(tree, token->data);
     assert(false);
     return LXA_ERROR_INTERNAL;
 }

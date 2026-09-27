@@ -738,6 +738,8 @@ lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
 typedef struct {
     lxa_html_root_context_t *context;
     lxa_html_root_prebody_text_result_t *result;
+    lxa_html_root_prebody_emit_t emit;
+    void *user;
 } root_prebody_text_view_t;
 
 static lxa_status_t
@@ -750,10 +752,18 @@ context_prebody_text_plan(root_prebody_text_view_t *view, lxa_span_t bytes,
     return status;
 }
 
+static lxa_status_t
+context_prebody_text_emit(root_prebody_text_view_t *view, lxa_span_t bytes)
+{
+    if (view->emit == NULL) return LXA_OK;
+    return view->emit(view->user, bytes, view->result->next_mode == LXA_TREE_IN_HEAD
+        ? LXA_HTML_ROOT_MISC_HEAD : LXA_HTML_ROOT_MISC_HTML);
+}
+
 #define LXA_PREBODY_TEXT_NAME context_execute_prebody_text
 #define LXA_PREBODY_TEXT_VIEW root_prebody_text_view_t
 #define LXA_PREBODY_TEXT_PLAN context_prebody_text_plan
-#define LXA_PREBODY_TEXT_EMIT(view, bytes) ((void) (view), (void) (bytes), LXA_OK)
+#define LXA_PREBODY_TEXT_EMIT context_prebody_text_emit
 #define LXA_PREBODY_TEXT_HEAD(view) context_ensure_head((view)->context)
 #define LXA_PREBODY_TEXT_MODE(view) ((view)->result->next_mode)
 #include "html/prebody_text_execute.inc"
@@ -775,12 +785,13 @@ lxa_html_root_context_prebody_text(lxa_html_root_context_t *context,
         || ((mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD) && !context->head))
         return LXA_ERROR_ARGUMENT;
     lxa_html_root_prebody_text_result_t out = {.next_mode = mode};
-    root_prebody_text_view_t view = {context, &out};
+    root_prebody_text_view_t view = {.context = context, .result = &out};
     status = context_execute_prebody_text(&view, &data);
     if (status == LXA_ERROR_ARGUMENT) return status;
     if (status == LXA_OK) *result = out;
     return finish(context, status);
 }
+
 
 typedef struct {
     lxa_html_root_context_t *context;
@@ -2018,6 +2029,79 @@ lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
     if (status == LXA_OK) status = root_prepare_data(&view, data, &out);
     if (status == LXA_OK) *action = out;
     return finish(context, status);
+}
+
+typedef struct {
+    root_data_view_t preparation;
+    const lxa_html_root_data_sink_t *sink;
+} root_data_execute_view_t;
+
+static lxa_status_t
+context_root_data_prebody(root_data_execute_view_t *view, lxa_span_t *bytes)
+{
+    lxa_html_root_prebody_text_result_t result = {.next_mode = *view->preparation.mode};
+    root_prebody_text_view_t prebody = {
+        view->preparation.context, &result, view->sink->prebody_emit, view->sink->user
+    };
+    lxa_status_t status = context_execute_prebody_text(&prebody, bytes);
+    if (status == LXA_OK) *view->preparation.mode = result.next_mode;
+    return status;
+}
+
+static lxa_status_t
+context_root_data_prepare(root_data_execute_view_t *view, lxa_span_t bytes,
+    lxa_html_root_data_action_t *action)
+{
+    if (bytes.length == 0) {
+        *action = LXA_HTML_ROOT_DATA_IGNORE;
+        return LXA_OK;
+    }
+    return lxa_html_root_context_prepare_data(view->preparation.context,
+        view->preparation.formatting, bytes, view->preparation.mode, action);
+}
+
+static lxa_status_t
+context_root_data_emit(root_data_execute_view_t *view, lxa_span_t bytes,
+    lxa_html_root_data_action_t action)
+{
+    if (action == LXA_HTML_ROOT_DATA_TABLE)
+        return lxa_html_root_context_table_data(view->preparation.context,
+            *view->preparation.mode, bytes, view->sink->pending, view->sink->emit, view->sink->user);
+    return lxa_html_root_context_emit_data(view->preparation.context,
+        *view->preparation.mode, bytes, view->sink->emit, view->sink->user);
+}
+
+#define LXA_ROOT_DATA_EXEC_NAME context_execute_root_data
+#define LXA_ROOT_DATA_EXEC_VIEW root_data_execute_view_t
+#define LXA_ROOT_DATA_EXEC_MODE(view) (*(view)->preparation.mode)
+#define LXA_ROOT_DATA_EXEC_PREBODY context_root_data_prebody
+#define LXA_ROOT_DATA_EXEC_PREPARE context_root_data_prepare
+#define LXA_ROOT_DATA_EXEC_EMIT context_root_data_emit
+#include "html/root_data_execute.inc"
+#undef LXA_ROOT_DATA_EXEC_NAME
+#undef LXA_ROOT_DATA_EXEC_VIEW
+#undef LXA_ROOT_DATA_EXEC_MODE
+#undef LXA_ROOT_DATA_EXEC_PREBODY
+#undef LXA_ROOT_DATA_EXEC_PREPARE
+#undef LXA_ROOT_DATA_EXEC_EMIT
+
+lxa_status_t
+lxa_html_root_context_data_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_span_t data,
+    lxa_html_root_mode_t *mode, const lxa_html_root_data_sink_t *sink)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (mode == NULL || sink == NULL || formatting == NULL || formatting->store == NULL
+        || formatting->store->budget != context->stack->budget
+        || !lxa_html_tree_table_text_input_valid(sink->pending, data)
+        || sink->pending->budget != context->stack->budget
+        || !body_start_mode_valid(context, *mode)
+        || (*mode == LXA_TREE_IN_BODY ? !context->body
+            : context->body || lxa_vector_length(&context->stack->elements) != 0))
+        return LXA_ERROR_ARGUMENT;
+    root_data_execute_view_t view = {{context, formatting, mode}, sink};
+    return finish(context, context_execute_root_data(&view, data));
 }
 
 typedef struct {

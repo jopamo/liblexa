@@ -664,4 +664,25 @@ lxa_status_t lxa_html_root_context_prebody_text(lxa_html_root_context_t *context
     lxa_html_root_mode_t mode, lxa_span_t data,
     lxa_html_root_prebody_text_result_t *result);
 
+typedef lxa_status_t (*lxa_html_root_prebody_emit_t)(void *user, lxa_span_t bytes,
+    lxa_html_root_misc_destination_t destination);
+typedef struct {
+    lxa_buffer_t *pending;
+    lxa_html_data_emit_t emit;
+    lxa_html_root_prebody_emit_t prebody_emit;
+    void *user;
+} lxa_html_root_data_sink_t;
+/* Complete accepted HTML root DATA after initial/text/template/frameset,
+ * head-noscript/after-body and foreign routing. Borrow a same-budget formatting
+ * list and initialized pending buffer before effects. Emit prebody whitespace
+ * under HTML/HEAD before head/mode publication, then prepare and deliver the
+ * suffix through table queueing or ordinary emission. NULL callbacks discard.
+ * Callback spans expire on return; do not retain, reenter or mutate owners.
+ * Retain completed emission/root/mode/formatting/queue effects on terminal
+ * failure. Input, sink, mode and owner storage must not alias each other.
+ */
+lxa_status_t lxa_html_root_context_data_token(lxa_html_root_context_t *context,
+    lxa_html_formatting_list_t *formatting, lxa_span_t data,
+    lxa_html_root_mode_t *mode, const lxa_html_root_data_sink_t *sink);
+
 #endif
