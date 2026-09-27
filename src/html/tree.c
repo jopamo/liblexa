@@ -5248,9 +5248,7 @@ reprocess_template_token:
          || tree->mode == LXA_TREE_AFTER_HTML)
         && lxa_vector_length(&tree->open_elements) > 1) {
         lxa_dom_namespace_t ns;
-        bool integration_owner = false;
-        bool html_integration_child = false;
-        bool breakout_font = false;
+        lxa_html_foreign_context_t integration = LXA_HTML_FOREIGN_NONE;
         status = lxa_dom_nodes_element_namespace(tree->nodes,
                                                   current_element(tree), &ns);
         if (status != LXA_OK) return status;
@@ -5258,31 +5256,19 @@ reprocess_template_token:
             && (token->kind == LXA_HTML_START_TAG
                 || token->kind == LXA_HTML_TEXT)) {
             lxa_span_t current_name;
-            lxa_html_foreign_context_t context;
             status = lxa_dom_nodes_element_name(tree->nodes,
                                                 current_element(tree),
                                                 &current_name);
             if (status != LXA_OK) return status;
             status = element_foreign_context(tree, current_element(tree),
-                                             ns, current_name, &context);
-            if (status != LXA_OK) return status;
-            integration_owner = lxa_html_foreign_integration(context);
-            html_integration_child = lxa_html_foreign_uses_html(context, token);
-        }
-        if (ns != LXA_DOM_NS_HTML && !integration_owner
-            && token->kind == LXA_HTML_START_TAG
-            && named(token->name, "font")) {
-            status = lxa_html_tree_font_breakout(token,
-                tree->nodes->budget, &tree->nodes->limit_reason, &breakout_font);
+                                             ns, current_name, &integration);
             if (status != LXA_OK) return status;
         }
-        if (ns != LXA_DOM_NS_HTML
-            && ((token->kind == LXA_HTML_END_TAG
-                 && (named(token->name, "br")
-                     || named(token->name, "p")))
-                || (!integration_owner && token->kind == LXA_HTML_START_TAG
-                    && (lxa_html_foreign_html_start_breakout(token->name)
-                        || breakout_font)))) {
+        lxa_html_foreign_root_route_t route;
+        status = lxa_html_foreign_root_plan(ns, integration, token,
+            tree->nodes->budget, &tree->nodes->limit_reason, &route);
+        if (status != LXA_OK) return status;
+        if (route == LXA_HTML_FOREIGN_ROOT_BREAKOUT) {
             /* An HTML breakout closes foreign open elements and reprocesses
              * the token in body mode. Preflight the scan and node admission
              * before popping. The body rule checks stack admission after
@@ -5313,8 +5299,7 @@ reprocess_template_token:
                 if (status != LXA_OK) return status;
             }
         }
-        else if (ns != LXA_DOM_NS_HTML
-            && !html_integration_child)
+        else if (route == LXA_HTML_FOREIGN_ROOT_CONSUME)
         {
             bool reprocess;
             status = consume_foreign(tree, token, ns, &reprocess);

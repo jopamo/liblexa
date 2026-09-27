@@ -175,4 +175,44 @@ lxa_html_foreign_uses_html(lxa_html_foreign_context_t context,
         || lxa_html_foreign_annotation_svg(context, token);
 }
 
+typedef enum {
+    LXA_HTML_FOREIGN_ROOT_HTML, LXA_HTML_FOREIGN_ROOT_CONSUME,
+    LXA_HTML_FOREIGN_ROOT_BREAKOUT
+} lxa_html_foreign_root_route_t;
+
+/* Validated root views. Read integration only for START/DATA; END br/p break out. */
+static inline lxa_status_t
+lxa_html_foreign_root_plan(lxa_dom_namespace_t ns, lxa_html_foreign_context_t context,
+    const lxa_html_token_t *token, lxa_budget_t *budget, lxa_limit_reason_t *reason,
+    lxa_html_foreign_root_route_t *out)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (out == NULL || budget == NULL || (unsigned) ns < LXA_DOM_NS_HTML
+        || (unsigned) ns > LXA_DOM_NS_SVG || (unsigned) context > LXA_HTML_FOREIGN_ANNOTATION_OTHER
+        || token == NULL || (unsigned) token->kind > LXA_HTML_PROCESSING_INSTRUCTION
+        || token->kind == LXA_HTML_EOF
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && (token->name.data == NULL || token->name.length == 0)))
+        return LXA_ERROR_ARGUMENT;
+    if (ns == LXA_DOM_NS_HTML) {
+        *out = LXA_HTML_FOREIGN_ROOT_HTML;
+        return LXA_OK;
+    }
+    bool current_integration = token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_TEXT;
+    bool owner = current_integration && lxa_html_foreign_integration(context);
+    bool html = current_integration && lxa_html_foreign_uses_html(context, token);
+    bool font = false;
+    if (!owner && token->kind == LXA_HTML_START_TAG && lxa_html_foreign_named(token->name, "font", 4)) {
+        lxa_status_t status = lxa_html_tree_font_breakout(token, budget, reason, &font);
+        if (status != LXA_OK) return status;
+    }
+    bool breakout = (token->kind == LXA_HTML_END_TAG
+        && (lxa_html_foreign_named(token->name, "br", 2) || lxa_html_foreign_named(token->name, "p", 1)))
+        || (!owner && token->kind == LXA_HTML_START_TAG
+            && (lxa_html_foreign_html_start_breakout(token->name) || font));
+    *out = breakout ? LXA_HTML_FOREIGN_ROOT_BREAKOUT
+        : html ? LXA_HTML_FOREIGN_ROOT_HTML : LXA_HTML_FOREIGN_ROOT_CONSUME;
+    return LXA_OK;
+}
+
 #endif

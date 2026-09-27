@@ -2036,6 +2036,10 @@ typedef struct {
     const lxa_html_root_data_sink_t *sink;
 } root_data_execute_view_t;
 
+static lxa_status_t context_emit_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_html_data_emit_t emit, void *user, bool resolve_foreign);
+
 static lxa_status_t
 context_root_data_prebody(root_data_execute_view_t *view, lxa_span_t *bytes)
 {
@@ -2067,8 +2071,8 @@ context_root_data_emit(root_data_execute_view_t *view, lxa_span_t bytes,
     if (action == LXA_HTML_ROOT_DATA_TABLE)
         return lxa_html_root_context_table_data(view->preparation.context,
             *view->preparation.mode, bytes, view->sink->pending, view->sink->emit, view->sink->user);
-    return lxa_html_root_context_emit_data(view->preparation.context,
-        *view->preparation.mode, bytes, view->sink->emit, view->sink->user);
+    return context_emit_data(view->preparation.context,
+        *view->preparation.mode, bytes, view->sink->emit, view->sink->user, false);
 }
 
 #define LXA_ROOT_DATA_EXEC_NAME context_execute_root_data
@@ -3162,10 +3166,10 @@ lxa_html_root_context_table_data(lxa_html_root_context_t *context,
     return finish(context, context_execute_table_data(&view, data, false, true));
 }
 
-lxa_status_t
-lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
+static lxa_status_t
+context_emit_data(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, lxa_span_t data,
-    lxa_html_data_emit_t emit, void *user)
+    lxa_html_data_emit_t emit, void *user, bool resolve_foreign)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
@@ -3178,7 +3182,8 @@ lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
     if (status != LXA_OK) return finish(context, status);
     if (entry.namespace_id == LXA_DOM_NS_HTML && lxa_html_tree_table_context(entry.name))
         return LXA_ERROR_ARGUMENT;
-    bool foreign = entry.namespace_id != LXA_DOM_NS_HTML && !lxa_html_foreign_integration(integration);
+    bool foreign = resolve_foreign && entry.namespace_id != LXA_DOM_NS_HTML
+        && !lxa_html_foreign_integration(integration);
     uint64_t parent = entry.identity == 0 ? context->body_identity : entry.identity;
     if (parent == 0) {
         assert(false);
@@ -3190,6 +3195,43 @@ lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
         context->stack->budget, &context->limit_reason, parent, emit, user
     };
     return finish(context, lxa_html_tree_emit_data(&emitter, data, foreign));
+}
+
+lxa_status_t
+lxa_html_root_context_emit_data(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, lxa_span_t data,
+    lxa_html_data_emit_t emit, void *user)
+{
+    return context_emit_data(context, mode, data, emit, user, true);
+}
+
+lxa_status_t
+lxa_html_root_context_foreign_route(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_root_foreign_route_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    bool body = mode == LXA_TREE_IN_BODY || mode == LXA_TREE_AFTER_BODY || mode == LXA_TREE_AFTER_HTML;
+    size_t length = lxa_vector_length(&context->stack->elements);
+    bool valid = body ? context->body : mode == LXA_TREE_INITIAL ? !context->html
+        : body_start_mode_valid(context, mode) && !context->body;
+    if (!valid || (!body && length != 0) || result == NULL
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_root_foreign_route_t out = {LXA_HTML_FOREIGN_ROOT_HTML, LXA_DOM_NS_HTML};
+    if (body && length > 1) {
+        lxa_html_scope_entry_t entry;
+        lxa_html_foreign_context_t integration;
+        status = lxa_html_control_stack_current(context->stack, 0, &entry, &integration);
+        if (status == LXA_OK) {
+            out.namespace_id = entry.namespace_id;
+            status = lxa_html_foreign_root_plan(entry.namespace_id, integration, token,
+                context->stack->budget, &context->limit_reason, &out.action);
+        }
+    }
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
 }
 
 typedef struct {

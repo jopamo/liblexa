@@ -39,6 +39,20 @@ typedef struct {
     uint64_t parent, identity;
     bool reprocess;
 } lxa_html_root_foreign_result_t;
+typedef struct {
+    lxa_html_foreign_root_route_t action;
+    lxa_dom_namespace_t namespace_id;
+} lxa_html_root_foreign_route_t;
+/* Select root HTML/foreign/breakout routing without membership effects.
+ * Read current metadata only in body-family modes with more than one entry;
+ * prebody/empty roots remain HTML. Share integration and conditional font
+ * attribute scanning, publishing only on success. Failed WORK scans latch.
+ * Engines execute breakout/foreign effects and subsequent HTML reprocessing.
+ * Token/output storage must not alias owners or each other.
+ */
+lxa_status_t lxa_html_root_context_foreign_route(lxa_html_root_context_t *context,
+    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
+    lxa_html_root_foreign_route_t *result);
 /* Accepted foreign descendants after integration/breakout routing. Require
  * BODY and a foreign current entry. Share misc/DOCTYPE/DATA/end/start execution;
  * DATA uses saved integration eligibility and foreign NUL replacement. Admit
