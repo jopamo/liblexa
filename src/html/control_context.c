@@ -54,6 +54,48 @@ state_valid(const lxa_html_control_context_t *context)
 }
 
 lxa_status_t
+lxa_html_control_context_start_root(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_root_start_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || has_patch || context->mode == LXA_TREE_INITIAL
+        || context->mode == LXA_TREE_DONE || context->mode == LXA_TREE_TEXT
+        || lxa_html_tree_frameset_mode(context->mode)
+        || context->templates.frames.bytes.length != 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    const lxa_html_root_token_borrowers_t borrowers = {
+        &context->formatting, &context->text, tokenizer, &context->form_owner
+    };
+    lxa_html_root_start_result_t out;
+    lxa_status_t status = lxa_html_root_context_start_token(&context->root, &borrowers, token,
+        context->document_mode, &context->mode, &context->pending_newline, &out);
+    lxa_limit_reason_t reason = context->root.limit_reason;
+    if (status == LXA_OK && out.action == LXA_HTML_ROOT_START_RESULT_TEMPLATE) {
+        status = lxa_html_template_context_enter(&context->templates, context->mode, false);
+        reason = context->templates.limit_reason;
+        if (status == LXA_OK) {
+            context->mode = LXA_TREE_TEMPLATE_TEXT;
+            context->root.frameset_ok = false;
+        }
+    }
+    if (status == LXA_OK) *result = out;
+    else {
+        context->failure = status;
+        context->limit_reason = reason;
+    }
+    return status;
+}
+
+lxa_status_t
 lxa_html_control_context_after_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, lxa_html_token_kind_t kind,
     lxa_status_t status, lxa_limit_reason_t reason)

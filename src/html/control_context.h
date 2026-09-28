@@ -29,6 +29,19 @@ typedef struct {
 lxa_status_t lxa_html_control_context_init(lxa_html_control_context_t *context,
     const lxa_allocator_t *allocator, lxa_budget_t *budget);
 void lxa_html_control_context_destroy(lxa_html_control_context_t *context);
+/* Execute an accepted root HTML start after initial/text/template/frameset,
+ * head-noscript/after-body, foreign and image routing. Borrow the tokenizer for
+ * text feedback and use the owned formatting, form, mode and newline state.
+ * Admit deferred unpatched templates before publishing TEMPLATE_TEXT and
+ * disabling framesets. Reject has_patch requests before effects, as the
+ * metadata template contract requires. Publish result only on success; latch
+ * execution failure without replay. Shape/context/patch argument rejection
+ * preserves state. Token/result must not alias owners. This phase does not
+ * finalize namespace feedback or observe encoding; the driver does that later.
+ */
+lxa_status_t lxa_html_control_context_start_root(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_root_start_result_t *result);
 /* Finalize accepted token effects with their status/reason. Latch the first
  * failure before feedback; retain completed state without replay. After success,
  * apply namespace feedback over the active template slice or root stack.
