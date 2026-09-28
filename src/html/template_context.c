@@ -509,30 +509,78 @@ end_pop(lxa_html_template_context_t *context, size_t keep)
     return status;
 }
 
-lxa_status_t
-lxa_html_template_context_column_group_token(lxa_html_template_context_t *context,
+static lxa_status_t
+context_column_group_plan(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_column_group_action_t *action)
 {
-    lxa_status_t status = begin(context);
-    if (status != LXA_OK) return status;
     size_t count = lxa_vector_length(&context->frames);
-    if (action == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token))
-        return LXA_ERROR_ARGUMENT;
     const lxa_html_template_control_frame_t *frames =
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     lxa_html_template_mode_t mode = frames[count - 1].insertion_mode;
     size_t length = lxa_vector_length(&context->stack->elements);
     bool group_open = false;
     if (mode == LXA_TEMPLATE_COLUMN_GROUP && length > frames[count - 1].boundary) {
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
+        lxa_status_t status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
             &context->limit_reason);
         if (status == LXA_OK)
             status = lxa_html_control_stack_column_group(context->stack,
                 frames[count - 1].boundary, &group_open);
-        if (status != LXA_OK) return finish(context, status);
+        if (status != LXA_OK) return status;
     }
-    status = lxa_html_tree_template_column_group(mode, group_open,
+    return lxa_html_tree_template_column_group(mode, group_open,
         token->kind, token->name, action);
+}
+
+typedef struct {
+    lxa_html_template_context_t *context;
+    lxa_buffer_t *spaces;
+    lxa_html_data_emit_t emit;
+    void *user;
+} template_column_group_view_t;
+
+static lxa_status_t
+context_column_group_emit(template_column_group_view_t *view, lxa_span_t bytes)
+{
+    lxa_html_template_context_t *context = view->context;
+    if (view->spaces == NULL || view->spaces->budget != context->stack->budget)
+        return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = lxa_html_tree_filter_spaces(bytes, view->spaces, &context->limit_reason);
+    if (status != LXA_OK || view->spaces->length == 0 || view->emit == NULL) return status;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_html_scope_entry_t entry;
+    lxa_html_foreign_context_t integration;
+    status = lxa_html_control_stack_current(context->stack,
+        frames[lxa_vector_length(&context->frames) - 1].boundary, &entry, &integration);
+    if (status == LXA_OK)
+        status = view->emit(view->user, (lxa_span_t){view->spaces->data, view->spaces->length},
+            entry.identity);
+    return finish(context, status);
+}
+
+#define LXA_TEMPLATE_COLUMN_GROUP_NAME context_execute_column_group
+#define LXA_TEMPLATE_COLUMN_GROUP_VIEW template_column_group_view_t
+#define LXA_TEMPLATE_COLUMN_GROUP_PLAN(view, token, out) \
+    context_column_group_plan((view)->context, token, out)
+#define LXA_TEMPLATE_COLUMN_GROUP_EMIT context_column_group_emit
+#include "html/template_column_group_execute.inc"
+#undef LXA_TEMPLATE_COLUMN_GROUP_NAME
+#undef LXA_TEMPLATE_COLUMN_GROUP_VIEW
+#undef LXA_TEMPLATE_COLUMN_GROUP_PLAN
+#undef LXA_TEMPLATE_COLUMN_GROUP_EMIT
+
+lxa_status_t
+lxa_html_template_context_column_group_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_buffer_t *spaces,
+    lxa_html_data_emit_t emit, void *user, lxa_html_column_group_action_t *action)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (action == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    template_column_group_view_t view = {context, spaces, emit, user};
+    status = context_execute_column_group(&view, token, action);
+    if (status == LXA_ERROR_ARGUMENT && context->failure == LXA_OK) return status;
     return finish(context, status);
 }
 

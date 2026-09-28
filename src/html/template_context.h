@@ -174,11 +174,18 @@ lxa_status_t lxa_html_template_context_start_control(lxa_html_template_context_t
     const lxa_html_token_t *token);
 /* Gate virtual column-group tokens after earlier foreign/end/table/control
  * dispatch. Read current content only in column-group mode, charging one WORK.
- * Publish continue/ignore/space-text only on success. Engines emit space text
- * and continue accepted-token dispatch. Views/output must not alias owners.
+ * For SPACE_TEXT, borrow an empty initialized same-budget spaces buffer, filter
+ * the full input, then emit nonempty spaces under the active parent (zero for
+ * virtual content). NULL emit discards; other actions permit NULL spaces.
+ * Publish action only after successful delivery. Callback views expire on
+ * return; do not retain, reenter or mutate owners. Latch scan/allocation/callback
+ * failures without replay; retain filtered bytes for caller cleanup. Borrower
+ * argument rejection may retain the current-entry WORK charge. Input/output/
+ * spaces must not alias owners or each other. Engines continue HTML dispatch.
  */
 lxa_status_t lxa_html_template_context_column_group_token(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token, lxa_html_column_group_action_t *action);
+    const lxa_html_token_t *token, lxa_buffer_t *spaces,
+    lxa_html_data_emit_t emit, void *user, lxa_html_column_group_action_t *action);
 /* Enter an accepted returning HTML text element after earlier dispatch. Borrow
  * an inactive text context and tokenizer using the same budget. Retain no
  * open metadata. Commit feedback/text context before template mode and newline

@@ -3683,6 +3683,38 @@ append_space_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent, lxa_span_t bytes,
 }
 
 static lxa_status_t
+tree_template_column_group_plan(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    lxa_html_column_group_action_t *action)
+{
+    bool group_open = false;
+    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
+            LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_namespace(tree->nodes, template_parent(tree), &ns);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_element_name(tree->nodes, template_parent(tree), &name);
+        if (status != LXA_OK) return status;
+        group_open = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
+    }
+    return lxa_html_tree_template_column_group(tree->template_insertion_mode, group_open,
+        token->kind, token->name, action);
+}
+
+#define LXA_TEMPLATE_COLUMN_GROUP_NAME tree_execute_template_column_group
+#define LXA_TEMPLATE_COLUMN_GROUP_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_COLUMN_GROUP_PLAN tree_template_column_group_plan
+#define LXA_TEMPLATE_COLUMN_GROUP_EMIT(view, bytes) \
+    append_space_text(view, template_parent(view), bytes, false)
+#include "html/template_column_group_execute.inc"
+#undef LXA_TEMPLATE_COLUMN_GROUP_NAME
+#undef LXA_TEMPLATE_COLUMN_GROUP_VIEW
+#undef LXA_TEMPLATE_COLUMN_GROUP_PLAN
+#undef LXA_TEMPLATE_COLUMN_GROUP_EMIT
+
+static lxa_status_t
 template_plan_paragraph_close(lxa_html_tree_t *tree, size_t *index)
 {
     return find_scoped_end_target(tree, &tree->template_elements,
@@ -4809,32 +4841,10 @@ reprocess_template_token:
                 return LXA_OK; /* No table in scope for in-body starts. */
         }
         if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP) {
-            bool group_open = false;
-            if (lxa_vector_length(&tree->template_elements)
-                > template_boundary(tree)) {
-                lxa_span_t name;
-                lxa_dom_namespace_t ns;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        template_parent(tree), &ns);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        template_parent(tree), &name);
-                if (status != LXA_OK) return status;
-                group_open = ns == LXA_DOM_NS_HTML && named(name, "colgroup");
-            }
             lxa_html_column_group_action_t action;
-            status = lxa_html_tree_template_column_group(
-                tree->template_insertion_mode, group_open,
-                token->kind, token->name, &action);
+            status = tree_execute_template_column_group(tree, token, &action);
             if (status != LXA_OK) return status;
-            if (action == LXA_HTML_COLUMN_GROUP_SPACE_TEXT)
-                return append_space_text(tree, template_parent(tree),
-                                         token->data, false);
-            if (action == LXA_HTML_COLUMN_GROUP_IGNORE)
-                return LXA_OK;
+            if (action != LXA_HTML_COLUMN_GROUP_CONTINUE) return LXA_OK;
         }
         {
             bool handled;
