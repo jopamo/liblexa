@@ -365,25 +365,21 @@ lxa_html_template_context_start_foreign(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
-lxa_status_t
-lxa_html_template_context_end_foreign(lxa_html_template_context_t *context,
+static lxa_status_t
+context_consume_foreign_end(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *reprocess)
 {
-    if (reprocess != NULL) *reprocess = false;
-    lxa_status_t status = begin(context);
-    if (status != LXA_OK) return status;
     size_t count = lxa_vector_length(&context->frames);
-    if (reprocess == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
-        || token->kind != LXA_HTML_END_TAG) return LXA_ERROR_ARGUMENT;
     const lxa_html_template_control_frame_t *frames =
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     lxa_html_foreign_end_plan_t plan;
-    status = lxa_html_control_stack_foreign_end_plan(context->stack,
+    lxa_status_t status = lxa_html_control_stack_foreign_end_plan(context->stack,
         frames[count - 1].boundary, token->name, &plan);
-    if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+    if (status == LXA_OK && !plan.reprocess)
+        status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
     if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
     if (status == LXA_OK) *reprocess = plan.reprocess;
-    return finish(context, status);
+    return status;
 }
 
 lxa_status_t
@@ -401,6 +397,48 @@ lxa_html_template_context_breakout(lxa_html_template_context_t *context)
     if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
     if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
     return finish(context, status);
+}
+
+static lxa_status_t
+context_foreign_end_route(lxa_html_template_context_t *context, const lxa_html_token_t *token,
+    lxa_html_foreign_root_route_t *route)
+{
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[lxa_vector_length(&context->frames) - 1].boundary;
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = lxa_html_control_stack_current_namespace(context->stack, boundary, &ns);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML) {
+        *route = LXA_HTML_FOREIGN_ROOT_HTML;
+        return LXA_OK;
+    }
+    return lxa_html_foreign_root_plan(ns, LXA_HTML_FOREIGN_NONE, token, context->stack->budget,
+        &context->limit_reason, route);
+}
+
+#define LXA_ROOT_FOREIGN_DISPATCH_NAME context_dispatch_template_foreign_end
+#define LXA_ROOT_FOREIGN_DISPATCH_VIEW lxa_html_template_context_t
+#define LXA_ROOT_FOREIGN_DISPATCH_ROUTE context_foreign_end_route
+#define LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT(view, token) lxa_html_template_context_breakout(view)
+#define LXA_ROOT_FOREIGN_DISPATCH_CONSUME context_consume_foreign_end
+#include "html/root_foreign_dispatch.inc"
+#undef LXA_ROOT_FOREIGN_DISPATCH_NAME
+#undef LXA_ROOT_FOREIGN_DISPATCH_VIEW
+#undef LXA_ROOT_FOREIGN_DISPATCH_ROUTE
+#undef LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT
+#undef LXA_ROOT_FOREIGN_DISPATCH_CONSUME
+
+lxa_status_t
+lxa_html_template_context_dispatch_foreign_end(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (handled == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, context_dispatch_template_foreign_end(context, token, handled));
 }
 
 static lxa_status_t

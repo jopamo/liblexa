@@ -4433,6 +4433,58 @@ tree_initial_doctype_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token
 #undef LXA_ROOT_INITIAL_DOCUMENT_MODE
 #undef LXA_ROOT_INITIAL_MODE
 
+static lxa_status_t
+tree_template_foreign_end_route(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    lxa_html_foreign_root_route_t *route)
+{
+    if (lxa_vector_length(&tree->template_elements) <= template_boundary(tree)) {
+        *route = LXA_HTML_FOREIGN_ROOT_HTML;
+        return LXA_OK;
+    }
+    lxa_dom_namespace_t ns;
+    lxa_status_t status = lxa_dom_nodes_element_namespace(tree->nodes, template_parent(tree), &ns);
+    if (status != LXA_OK) return status;
+    if (ns == LXA_DOM_NS_HTML) {
+        *route = LXA_HTML_FOREIGN_ROOT_HTML;
+        return LXA_OK;
+    }
+    return lxa_html_foreign_root_plan(ns, LXA_HTML_FOREIGN_NONE, token,
+        tree->nodes->budget, &tree->nodes->limit_reason, route);
+}
+
+static lxa_status_t
+tree_template_foreign_end_breakout(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    (void) token;
+    size_t keep;
+    lxa_status_t status = plan_foreign_breakout(tree, &tree->template_elements,
+        template_boundary(tree), &keep);
+    return status == LXA_OK ? template_pop_elements(tree, keep) : status;
+}
+
+static lxa_status_t
+tree_template_foreign_end_consume(lxa_html_tree_t *tree, const lxa_html_token_t *token,
+    bool *reprocess)
+{
+    size_t keep;
+    lxa_status_t status = plan_foreign_end(tree, &tree->template_elements,
+        template_boundary(tree), token->name, &keep, reprocess);
+    if (status == LXA_OK && !*reprocess) status = template_pop_elements(tree, keep);
+    return status;
+}
+
+#define LXA_ROOT_FOREIGN_DISPATCH_NAME tree_dispatch_template_foreign_end
+#define LXA_ROOT_FOREIGN_DISPATCH_VIEW lxa_html_tree_t
+#define LXA_ROOT_FOREIGN_DISPATCH_ROUTE tree_template_foreign_end_route
+#define LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT tree_template_foreign_end_breakout
+#define LXA_ROOT_FOREIGN_DISPATCH_CONSUME tree_template_foreign_end_consume
+#include "html/root_foreign_dispatch.inc"
+#undef LXA_ROOT_FOREIGN_DISPATCH_NAME
+#undef LXA_ROOT_FOREIGN_DISPATCH_VIEW
+#undef LXA_ROOT_FOREIGN_DISPATCH_ROUTE
+#undef LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT
+#undef LXA_ROOT_FOREIGN_DISPATCH_CONSUME
+
 #define LXA_ROOT_END_EXEC_NAME tree_execute_root_end
 #define LXA_ROOT_END_EXEC_VIEW tree_foster_text_view_t
 #define LXA_ROOT_END_EXEC_MODE(view) ((view)->tree->mode)
@@ -4693,35 +4745,10 @@ reprocess_template_token:
                     return template_open_foreign(tree, token, ns);
             }
         }
-        if (token->kind == LXA_HTML_END_TAG
-            && lxa_vector_length(&tree->template_elements)
-               > template_boundary(tree)) {
-            lxa_dom_namespace_t ns;
-            status = lxa_dom_nodes_element_namespace(tree->nodes,
-                template_parent(tree), &ns);
-            if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML) {
-                size_t keep;
-                bool reprocess;
-                if (named(token->name, "br") || named(token->name, "p")) {
-                    status = plan_foreign_breakout(tree,
-                        &tree->template_elements, template_boundary(tree),
-                        &keep);
-                    if (status != LXA_OK) return status;
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                }
-                else {
-                    status = plan_foreign_end(tree, &tree->template_elements,
-                        template_boundary(tree), token->name, &keep, &reprocess);
-                    if (status != LXA_OK) return status;
-                    if (!reprocess) {
-                        status = template_pop_elements(tree, keep);
-                        if (status != LXA_OK) return status;
-                        return LXA_OK;
-                    }
-                }
-            }
+        if (token->kind == LXA_HTML_END_TAG) {
+            bool handled;
+            status = tree_dispatch_template_foreign_end(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_END_TAG && named(token->name, "br")
             && lxa_html_tree_template_end_br_start(tree->template_insertion_mode,
