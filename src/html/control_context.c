@@ -53,25 +53,11 @@ state_valid(const lxa_html_control_context_t *context)
         && (context->mode != LXA_TREE_TEXT || lxa_html_text_context_valid(&context->text));
 }
 
-lxa_status_t
-lxa_html_control_context_start_root(lxa_html_control_context_t *context,
+static lxa_status_t
+control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
-    bool has_patch, lxa_html_root_start_result_t *result)
+    lxa_html_root_start_result_t *result)
 {
-    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
-    if (context->failure != LXA_OK) return context->failure;
-    if (result == NULL || has_patch || context->mode == LXA_TREE_INITIAL
-        || context->mode == LXA_TREE_DONE || context->mode == LXA_TREE_TEXT
-        || lxa_html_tree_frameset_mode(context->mode)
-        || context->templates.frames.bytes.length != 0
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG)
-        return LXA_ERROR_ARGUMENT;
-    if (!state_valid(context)) {
-        assert(false);
-        context->failure = LXA_ERROR_INTERNAL;
-        context->limit_reason = LXA_BUDGET_COUNT;
-        return context->failure;
-    }
     const lxa_html_root_token_borrowers_t borrowers = {
         &context->formatting, &context->text, tokenizer, &context->form_owner
     };
@@ -91,6 +77,91 @@ lxa_html_control_context_start_root(lxa_html_control_context_t *context,
     else {
         context->failure = status;
         context->limit_reason = reason;
+    }
+    return status;
+}
+
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_tokenizer_t *tokenizer;
+    const lxa_html_control_root_sink_t *sink;
+    lxa_html_control_root_result_t *result;
+} control_root_view_t;
+
+static lxa_status_t
+control_end_root(control_root_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_control_context_t *context = view->context;
+    const lxa_html_root_token_borrowers_t borrowers = {
+        &context->formatting, &context->text, view->tokenizer, &context->form_owner
+    };
+    return lxa_html_root_context_end_token(&context->root, &borrowers, token,
+        context->document_mode, &context->mode, &context->pending_newline, &view->result->value.end);
+}
+
+static lxa_status_t
+control_root_data(control_root_view_t *view, lxa_span_t data)
+{
+    lxa_html_control_context_t *context = view->context;
+    const lxa_html_root_data_sink_t sink = {
+        &context->pending_table_text, view->sink->emit, view->sink->prebody_emit, view->sink->user
+    };
+    return lxa_html_root_context_data_token(&context->root, &context->formatting,
+        data, &context->mode, &sink);
+}
+
+#define LXA_ROOT_TOKEN_NAME control_execute_root_token
+#define LXA_ROOT_TOKEN_VIEW control_root_view_t
+#define LXA_ROOT_TOKEN_MODE(view) ((view)->context->mode)
+#define LXA_ROOT_TOKEN_MISC(view, token) lxa_html_root_context_misc_token( \
+    &(view)->context->root, token, (view)->context->mode, &(view)->result->value.destination)
+#define LXA_ROOT_TOKEN_AFTER_BODY(view, token, out) lxa_html_root_context_after_body( \
+    &(view)->context->root, &(view)->context->formatting, token, &(view)->context->mode, \
+    (view)->sink->emit, (view)->sink->user, out)
+#define LXA_ROOT_TOKEN_END control_end_root
+#define LXA_ROOT_TOKEN_START(view, token) control_start_root( \
+    (view)->context, (view)->tokenizer, token, &(view)->result->value.start)
+#define LXA_ROOT_TOKEN_DATA control_root_data
+#include "html/root_token_execute.inc"
+#undef LXA_ROOT_TOKEN_NAME
+#undef LXA_ROOT_TOKEN_VIEW
+#undef LXA_ROOT_TOKEN_MODE
+#undef LXA_ROOT_TOKEN_MISC
+#undef LXA_ROOT_TOKEN_AFTER_BODY
+#undef LXA_ROOT_TOKEN_END
+#undef LXA_ROOT_TOKEN_START
+#undef LXA_ROOT_TOKEN_DATA
+
+lxa_status_t
+lxa_html_control_context_root_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, const lxa_html_control_root_sink_t *sink,
+    lxa_html_control_root_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || has_patch || context->mode == LXA_TREE_INITIAL
+        || context->mode == LXA_TREE_DONE || context->mode == LXA_TREE_TEXT
+        || lxa_html_tree_frameset_mode(context->mode)
+        || context->templates.frames.bytes.length != 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF
+        || ((token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_END_TAG)
+            && tokenizer == NULL))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    const lxa_html_control_root_sink_t discard = {0};
+    lxa_html_control_root_result_t out = {.kind = token->kind};
+    control_root_view_t view = {context, tokenizer, sink == NULL ? &discard : sink, &out};
+    lxa_status_t status = control_execute_root_token(&view, token);
+    if (status == LXA_OK) *result = out;
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->root.limit_reason;
     }
     return status;
 }

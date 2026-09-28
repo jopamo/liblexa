@@ -29,19 +29,38 @@ typedef struct {
 lxa_status_t lxa_html_control_context_init(lxa_html_control_context_t *context,
     const lxa_allocator_t *allocator, lxa_budget_t *budget);
 void lxa_html_control_context_destroy(lxa_html_control_context_t *context);
-/* Execute an accepted root HTML start after initial/text/template/frameset,
- * head-noscript/after-body, foreign and image routing. Borrow the tokenizer for
- * text feedback and use the owned formatting, form, mode and newline state.
+typedef struct {
+    lxa_html_data_emit_t emit;
+    lxa_html_root_prebody_emit_t prebody_emit;
+    void *user;
+} lxa_html_control_root_sink_t;
+typedef struct {
+    lxa_html_token_kind_t kind;
+    union {
+        lxa_html_root_start_result_t start;
+        lxa_html_root_end_result_t end;
+        lxa_html_root_misc_destination_t destination;
+    } value;
+} lxa_html_control_root_result_t;
+/* Execute accepted HTML root intake after initial/text/template/frameset,
+ * head-noscript, foreign and image routing. Share misc/after-body/end/start/DATA
+ * ordering; use the owned formatting, form, mode, newline and pending text.
+ * Start/end intake requires a borrowed tokenizer for the complete owner set.
+ * NULL sink/callbacks discard DATA. Borrow callback spans only until return;
+ * callbacks must not retain spans, reenter or mutate owners/sink.
  * Admit deferred unpatched templates before publishing TEMPLATE_TEXT and
  * disabling framesets. Reject has_patch requests before effects, as the
  * metadata template contract requires. Publish result only on success; latch
  * execution failure without replay. Shape/context/patch argument rejection
- * preserves state. Token/result must not alias owners. This phase does not
- * finalize namespace feedback or observe encoding; the driver does that later.
+ * preserves state. The result kind selects start/end/destination; TEXT has no
+ * value. Token/sink/result must not alias owners. Earlier non-DATA intake must
+ * flush pending table text. This phase does not finalize namespace feedback or
+ * observe encoding; the driver does that later. EOF remains driver-owned.
  */
-lxa_status_t lxa_html_control_context_start_root(lxa_html_control_context_t *context,
+lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
-    bool has_patch, lxa_html_root_start_result_t *result);
+    bool has_patch, const lxa_html_control_root_sink_t *sink,
+    lxa_html_control_root_result_t *result);
 /* Finalize accepted token effects with their status/reason. Latch the first
  * failure before feedback; retain completed state without replay. After success,
  * apply namespace feedback over the active template slice or root stack.

@@ -4576,6 +4576,33 @@ tree_template_foreign_end_consume(lxa_html_tree_t *tree, const lxa_html_token_t 
 #undef LXA_TEMPLATE_DATA_EMIT
 
 static lxa_status_t
+tree_root_token_after_body(tree_foster_text_view_t *view,
+    const lxa_html_token_t *token, lxa_html_after_body_action_t *action)
+{
+    lxa_status_t status = lxa_html_tree_after_body_action(token, action);
+    if (status == LXA_OK) status = tree_execute_after_body(view->tree, token, *action);
+    return status;
+}
+
+#define LXA_ROOT_TOKEN_NAME tree_execute_root_token
+#define LXA_ROOT_TOKEN_VIEW tree_foster_text_view_t
+#define LXA_ROOT_TOKEN_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_TOKEN_MISC(view, token) tree_execute_root_misc((view)->tree, token, (view)->tree->mode)
+#define LXA_ROOT_TOKEN_AFTER_BODY tree_root_token_after_body
+#define LXA_ROOT_TOKEN_END tree_execute_root_end
+#define LXA_ROOT_TOKEN_START tree_execute_root_start
+#define LXA_ROOT_TOKEN_DATA(view, bytes) tree_execute_root_data((view)->tree, bytes)
+#include "html/root_token_execute.inc"
+#undef LXA_ROOT_TOKEN_NAME
+#undef LXA_ROOT_TOKEN_VIEW
+#undef LXA_ROOT_TOKEN_MODE
+#undef LXA_ROOT_TOKEN_MISC
+#undef LXA_ROOT_TOKEN_AFTER_BODY
+#undef LXA_ROOT_TOKEN_END
+#undef LXA_ROOT_TOKEN_START
+#undef LXA_ROOT_TOKEN_DATA
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5393,29 +5420,8 @@ reprocess_template_token:
     if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
         return tree_execute_initial(tree, token, LXA_HTML_INITIAL_DOCTYPE);
     }
-    if (token->kind == LXA_HTML_COMMENT || token->kind == LXA_HTML_PROCESSING_INSTRUCTION
-        || token->kind == LXA_HTML_DOCTYPE)
-        return tree_execute_root_misc(tree, token, tree->mode);
-    if (tree->mode == LXA_TREE_AFTER_BODY
-        || tree->mode == LXA_TREE_AFTER_HTML) {
-        lxa_html_after_body_action_t action;
-        status = lxa_html_tree_after_body_action(token, &action);
-        if (status == LXA_OK) status = tree_execute_after_body(tree, token, action);
-        if (status != LXA_OK) return status;
-        if (action == LXA_HTML_AFTER_BODY_SPACE_TEXT) return LXA_OK;
-    }
-    if (token->kind == LXA_HTML_END_TAG) {
-        tree_foster_text_view_t view = {tree, tokenizer, {0}};
-        return tree_execute_root_end(&view, token);
-    }
-    if (token->kind == LXA_HTML_START_TAG) {
-        tree_foster_text_view_t view = {tree, tokenizer, {0}};
-        return tree_execute_root_start(&view, token);
-    }
-    if (token->kind == LXA_HTML_TEXT)
-        return tree_execute_root_data(tree, token->data);
-    assert(false);
-    return LXA_ERROR_INTERNAL;
+    tree_foster_text_view_t view = {tree, tokenizer, {0}};
+    return tree_execute_root_token(&view, token);
 }
 
 lxa_status_t
