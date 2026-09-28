@@ -713,25 +713,44 @@ lxa_html_root_context_prebody_end(lxa_html_root_context_t *context,
     return finish(context, context_prebody_end(context, action, mode));
 }
 
+typedef struct {
+    lxa_html_root_context_t *context;
+    lxa_html_root_mode_t *mode;
+    lxa_html_document_mode_t *document_mode;
+} root_initial_view_t;
+
+#define LXA_ROOT_INITIAL_NAME context_execute_initial
+#define LXA_ROOT_INITIAL_VIEW root_initial_view_t
+#define LXA_ROOT_INITIAL_RESOLVE(view, token, result) \
+    lxa_html_tree_doctype_mode(token, (view)->context->stack->budget, \
+        &(view)->context->limit_reason, result)
+#define LXA_ROOT_INITIAL_INSERT(view, token) LXA_OK
+#define LXA_ROOT_INITIAL_DOCUMENT_MODE(view) (*(view)->document_mode)
+#define LXA_ROOT_INITIAL_MODE(view) (*(view)->mode)
+#include "html/root_initial_execute.inc"
+#undef LXA_ROOT_INITIAL_NAME
+#undef LXA_ROOT_INITIAL_VIEW
+#undef LXA_ROOT_INITIAL_RESOLVE
+#undef LXA_ROOT_INITIAL_INSERT
+#undef LXA_ROOT_INITIAL_DOCUMENT_MODE
+#undef LXA_ROOT_INITIAL_MODE
+
 lxa_status_t
 lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
-    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
-    lxa_html_root_initial_result_t *result)
+    lxa_html_root_mode_t *mode, const lxa_html_token_t *token,
+    lxa_html_document_mode_t *document_mode, lxa_html_initial_action_t *action)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    if (mode != LXA_TREE_INITIAL || result == NULL || context->html || context->head || context->body
+    if (mode == NULL || *mode != LXA_TREE_INITIAL || document_mode == NULL
+        || (unsigned) *document_mode > LXA_HTML_QUIRKS || action == NULL
+        || context->html || context->head || context->body
         || lxa_vector_length(&context->stack->elements) != 0
         || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
-    lxa_html_root_initial_result_t out = {
-        lxa_html_tree_initial_action(token->kind, token->data), LXA_HTML_NO_QUIRKS
-    };
-    if (out.action == LXA_HTML_INITIAL_DOCTYPE)
-        status = lxa_html_tree_doctype_mode(token, context->stack->budget,
-            &context->limit_reason, &out.document_mode);
-    else if (out.action == LXA_HTML_INITIAL_QUIRKS_REPROCESS)
-        out.document_mode = LXA_HTML_QUIRKS;
-    if (status == LXA_OK) *result = out;
+    root_initial_view_t view = {context, mode, document_mode};
+    lxa_html_initial_action_t out = lxa_html_tree_initial_action(token->kind, token->data);
+    status = context_execute_initial(&view, token, out);
+    if (status == LXA_OK) *action = out;
     return finish(context, status);
 }
 

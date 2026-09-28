@@ -4402,6 +4402,37 @@ tree_root_misc_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token,
 #undef LXA_ROOT_MISC_HTML
 #undef LXA_ROOT_MISC_INSERT
 
+static lxa_status_t
+tree_initial_doctype_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    const lxa_dom_doctype_data_t declaration = {
+        .name = token->name, .public_id = token->public_id, .system_id = token->system_id,
+        .has_public_id = token->has_public_id, .has_system_id = token->has_system_id,
+        .force_quirks = token->force_quirks
+    };
+    lxa_dom_ref_t child;
+    lxa_status_t status = lxa_dom_nodes_append_doctype(tree->nodes, declaration, &child);
+    if (status == LXA_OK)
+        status = insert_constructed(tree, tree->document, child, (lxa_dom_ref_t){0});
+    return status;
+}
+
+#define LXA_ROOT_INITIAL_NAME tree_execute_initial
+#define LXA_ROOT_INITIAL_VIEW lxa_html_tree_t
+#define LXA_ROOT_INITIAL_RESOLVE(view, token, result) \
+    lxa_html_tree_doctype_mode(token, (view)->nodes->budget, \
+        &(view)->nodes->limit_reason, result)
+#define LXA_ROOT_INITIAL_INSERT tree_initial_doctype_insert
+#define LXA_ROOT_INITIAL_DOCUMENT_MODE(view) ((view)->document_mode)
+#define LXA_ROOT_INITIAL_MODE(view) ((view)->mode)
+#include "html/root_initial_execute.inc"
+#undef LXA_ROOT_INITIAL_NAME
+#undef LXA_ROOT_INITIAL_VIEW
+#undef LXA_ROOT_INITIAL_RESOLVE
+#undef LXA_ROOT_INITIAL_INSERT
+#undef LXA_ROOT_INITIAL_DOCUMENT_MODE
+#undef LXA_ROOT_INITIAL_MODE
+
 #define LXA_ROOT_END_EXEC_NAME tree_execute_root_end
 #define LXA_ROOT_END_EXEC_VIEW tree_foster_text_view_t
 #define LXA_ROOT_END_EXEC_MODE(view) ((view)->tree->mode)
@@ -4476,8 +4507,8 @@ consume(lxa_html_tree_t *tree,
             case LXA_HTML_INITIAL_IGNORE: return LXA_OK;
             case LXA_HTML_INITIAL_DOCTYPE: break;
             case LXA_HTML_INITIAL_QUIRKS_REPROCESS:
-                tree->document_mode = LXA_HTML_QUIRKS;
-                tree->mode = LXA_TREE_BEFORE_HTML;
+                status = tree_execute_initial(tree, token, LXA_HTML_INITIAL_QUIRKS_REPROCESS);
+                if (status != LXA_OK) return status;
                 break;
         }
     }
@@ -5323,24 +5354,7 @@ reprocess_template_token:
         token = &adjusted;
     }
     if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
-        const lxa_dom_doctype_data_t declaration = {
-            .name = token->name, .public_id = token->public_id, .system_id = token->system_id,
-            .has_public_id = token->has_public_id, .has_system_id = token->has_system_id,
-            .force_quirks = token->force_quirks
-        };
-        lxa_html_document_mode_t document_mode;
-        status = lxa_html_tree_doctype_mode(token, tree->nodes->budget,
-            &tree->nodes->limit_reason, &document_mode);
-        if (status != LXA_OK) return status;
-        status = lxa_dom_nodes_append_doctype(tree->nodes, declaration, &child);
-        if (status == LXA_OK)
-            status = insert_constructed(tree, tree->document,
-                child, (lxa_dom_ref_t){0});
-        if (status == LXA_OK) {
-            tree->document_mode = document_mode;
-            tree->mode = LXA_TREE_BEFORE_HTML;
-        }
-        return status;
+        return tree_execute_initial(tree, token, LXA_HTML_INITIAL_DOCTYPE);
     }
     if (token->kind == LXA_HTML_COMMENT || token->kind == LXA_HTML_PROCESSING_INSTRUCTION
         || token->kind == LXA_HTML_DOCTYPE)

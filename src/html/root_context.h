@@ -697,19 +697,16 @@ lxa_status_t lxa_html_root_context_frameset_token(lxa_html_root_context_t *conte
  */
 lxa_status_t lxa_html_root_context_end_frameset(lxa_html_root_context_t *context,
     lxa_span_t name, lxa_html_root_mode_t *mode);
-typedef struct {
-    lxa_html_initial_action_t action;
-    lxa_html_document_mode_t document_mode; /* only DOCTYPE/QUIRKS_REPROCESS */
-} lxa_html_root_initial_result_t;
 /* Process accepted INITIAL intake before virtual roots/open entries exist.
- * Share classification and budgeted DOCTYPE resolution without retained views.
- * Publish only on success; latch resolver failure. Engines emit comments and
- * publish BEFORE_HTML/document mode for DOCTYPE or QUIRKS_REPROCESS, then rerun
- * the latter through remaining dispatch. Token/output must not alias owners.
+ * Resolve DOCTYPE before publishing document mode/BEFORE_HTML; quirks fallback
+ * publishes both without construction. Comments/whitespace preserve both.
+ * Publish action only on success; latch resolver failure. Engines emit comments
+ * and rerun QUIRKS_REPROCESS through remaining dispatch, including EOF cleanup.
+ * Token/mode/document_mode/action storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_initial_token(lxa_html_root_context_t *context,
-    lxa_html_root_mode_t mode, const lxa_html_token_t *token,
-    lxa_html_root_initial_result_t *result);
+    lxa_html_root_mode_t *mode, const lxa_html_token_t *token,
+    lxa_html_document_mode_t *document_mode, lxa_html_initial_action_t *action);
 typedef struct {
     lxa_html_prebody_text_plan_t plan;
     lxa_html_root_mode_t next_mode;
