@@ -88,6 +88,22 @@ lxa_html_template_context_destroy(lxa_html_template_context_t *context)
     context->limit_reason = LXA_BUDGET_COUNT;
 }
 
+lxa_status_t
+lxa_html_template_context_namespace_feedback(lxa_html_template_context_t *context,
+    lxa_html_tokenizer_t *tokenizer)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
+    size_t count = lxa_vector_length(&context->frames), boundary = 0;
+    if (count != 0) {
+        const lxa_html_template_control_frame_t *frames =
+            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+        boundary = frames[count - 1].boundary;
+    }
+    return finish(context, lxa_html_control_stack_namespace_feedback(context->stack, boundary, tokenizer));
+}
+
 static lxa_status_t
 check_depth_at(lxa_html_template_context_t *context, size_t length, size_t root,
     lxa_html_root_mode_t returning, size_t templates, size_t extra)

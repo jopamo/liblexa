@@ -28,6 +28,13 @@ typedef struct {
 lxa_status_t lxa_html_template_context_init(lxa_html_template_context_t *context,
     lxa_html_control_stack_t *stack, lxa_html_formatting_list_t *formatting);
 void lxa_html_template_context_destroy(lxa_html_template_context_t *context);
+/* Publish post-effect CDATA feedback over active content, or the root stack
+ * when no frame is active. Exhausted slices resolve to virtual HTML without
+ * reading enclosing entries. No WORK/allocation/membership effects. Latch
+ * feedback failure; engines retain EOF exclusion and whole-token finalization.
+ */
+lxa_status_t lxa_html_template_context_namespace_feedback(lxa_html_template_context_t *context,
+    lxa_html_tokenizer_t *tokenizer);
 
 /* Admit an accepted template after namespace/recovery dispatch. Patched
  * contexts are unsupported and rejected before effects. Reserve frames before
