@@ -86,6 +86,17 @@ lxa_status_t lxa_html_control_context_frameset_token(lxa_html_control_context_t 
 lxa_status_t lxa_html_control_context_template_column_group_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
     lxa_html_column_group_action_t *result);
+/* Execute accepted template HTML DATA after earlier foreign/column-group/select
+ * routing. Consume one current-entry plan, then use owned pending storage for
+ * actual/virtual table DATA or reconstruct/deliver ordinary DATA. NULL emit
+ * discards ordinary runs, not required table buffering. Input cannot alias
+ * owners or pending storage. Callback spans expire on return; do not retain,
+ * reenter or mutate owners. Latch failure without replay, retaining completed
+ * queue/delivery/pop/reconstruction effects for later destruction. The driver
+ * still flushes pending text and finalizes namespace feedback.
+ */
+lxa_status_t lxa_html_control_context_template_data_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

@@ -241,6 +241,46 @@ lxa_html_control_context_template_column_group_token(lxa_html_control_context_t 
     return status;
 }
 
+lxa_status_t
+lxa_html_control_context_template_data_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (context->mode != LXA_TREE_TEMPLATE_TEXT || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_TEXT
+        || !lxa_html_tree_table_text_input_valid(&context->pending_table_text, token->data))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_template_current_route_t route;
+    lxa_status_t status = lxa_html_template_context_current_token(&context->templates, token, &route);
+    if (status == LXA_OK) {
+        switch (route.action) {
+        case LXA_HTML_TEMPLATE_CURRENT_TABLE:
+            status = lxa_html_template_context_table_data(&context->templates, token->data,
+                &context->pending_table_text, emit, user);
+            break;
+        case LXA_HTML_TEMPLATE_CURRENT_CONTINUE:
+            status = lxa_html_template_context_data_token(&context->templates, token->data,
+                &context->pending_table_text, emit, user);
+            break;
+        default:
+            assert(false);
+            status = LXA_ERROR_INTERNAL;
+        }
+    }
+    if (status != LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
