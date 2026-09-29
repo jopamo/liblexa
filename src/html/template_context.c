@@ -923,7 +923,22 @@ typedef struct {
     lxa_buffer_t *pending;
     lxa_html_data_emit_t emit;
     void *user;
+    lxa_html_table_text_emit_t table_emit;
 } template_table_text_view_t;
+
+static lxa_status_t
+context_table_text_emit(template_table_text_view_t *view, lxa_span_t bytes, bool foster)
+{
+    if (bytes.length == 0 || view->table_emit == NULL) return LXA_OK;
+    lxa_html_template_context_t *context = view->context;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t count = lxa_vector_length(&context->frames);
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_current(context->stack,
+        frames[count - 1].boundary, &entry, NULL);
+    return status == LXA_OK ? view->table_emit(view->user, bytes, entry.identity, foster) : status;
+}
 
 static lxa_status_t
 context_table_text_group(template_table_text_view_t *view, bool *group)
@@ -947,15 +962,14 @@ static lxa_status_t
 context_table_text_append(template_table_text_view_t *view, lxa_span_t bytes, bool prefix)
 {
     if (prefix) view->result->space_prefix = bytes.length;
-    return LXA_OK;
+    return context_table_text_emit(view, bytes, false);
 }
 
 static lxa_status_t
 context_table_text_foster(template_table_text_view_t *view, lxa_span_t bytes)
 {
-    (void) bytes;
     view->result->foster = true;
-    return LXA_OK;
+    return context_table_text_emit(view, bytes, true);
 }
 
 #define LXA_TABLE_TEXT_FLUSH_NAME context_flush_table_text
@@ -983,14 +997,16 @@ context_table_text_foster(template_table_text_view_t *view, lxa_span_t bytes)
 
 lxa_status_t
 lxa_html_template_context_table_text(lxa_html_template_context_t *context,
-    lxa_span_t data, lxa_html_template_table_text_result_t *result)
+    lxa_span_t data, lxa_html_table_text_emit_t emit, void *user,
+    lxa_html_template_table_text_result_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
     if (lxa_vector_length(&context->frames) == 0 || result == NULL
         || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
     lxa_html_template_table_text_result_t out = {0};
-    template_table_text_view_t view = {.context = context, .result = &out};
+    template_table_text_view_t view = {.context = context, .result = &out,
+        .user = user, .table_emit = emit};
     status = context_flush_table_text(&view, data);
     if (status == LXA_OK) *result = out;
     return finish(context, status);

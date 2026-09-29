@@ -297,11 +297,15 @@ typedef struct {
  * HTML colgroup and reconstructs formatting; report its leading space prefix
  * and removed owner identity plus foster rule only on success. Failures latch
  * completed effects.
- * Engines emit text and clear their pending buffer only after success.
+ * Deliver space text/prefixes before pops, then mixed text after reconstruction
+ * through the borrowed callback. NULL emit discards. Views expire on return;
+ * do not retain them, reenter or mutate owners. Callback failures latch without
+ * result publication or replay. Engines clear pending storage only after success.
  * Input/output storage must not alias owners or each other.
  */
 lxa_status_t lxa_html_template_context_table_text(lxa_html_template_context_t *context,
-    lxa_span_t data, lxa_html_template_table_text_result_t *result);
+    lxa_span_t data, lxa_html_table_text_emit_t emit, void *user,
+    lxa_html_template_table_text_result_t *result);
 /* First NUL in accepted HTML table DATA after queueing its preceding run.
  * Flush whitespace WORK before current-colgroup pop, excluding entries below
  * the active frame boundary. Pending nonspace waits for ordinary flush.

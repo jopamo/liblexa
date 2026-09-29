@@ -2784,7 +2784,18 @@ lxa_html_root_context_start_prelude(lxa_html_root_context_t *context,
 typedef struct {
     root_start_view_t recovery;
     lxa_html_root_table_text_result_t *result;
+    lxa_html_table_text_emit_t emit;
+    void *user;
 } root_table_text_view_t;
+
+static lxa_status_t
+context_table_text_emit(root_table_text_view_t *view, lxa_span_t bytes, bool foster)
+{
+    if (bytes.length == 0 || view->emit == NULL) return LXA_OK;
+    lxa_html_scope_entry_t entry;
+    lxa_status_t status = lxa_html_control_stack_current(view->recovery.context->stack, 0, &entry, NULL);
+    return status == LXA_OK ? view->emit(view->user, bytes, entry.identity, foster) : status;
+}
 
 static lxa_status_t
 context_table_text_group(root_table_text_view_t *view, bool *group)
@@ -2805,15 +2816,14 @@ static lxa_status_t
 context_table_text_append(root_table_text_view_t *view, lxa_span_t bytes, bool prefix)
 {
     if (prefix) view->result->space_prefix = bytes.length;
-    return LXA_OK;
+    return context_table_text_emit(view, bytes, false);
 }
 
 static lxa_status_t
 context_table_text_foster(root_table_text_view_t *view, lxa_span_t bytes)
 {
-    (void) bytes;
     view->result->foster = true;
-    return LXA_OK;
+    return context_table_text_emit(view, bytes, true);
 }
 
 #define LXA_TABLE_TEXT_FLUSH_NAME context_flush_table_text
@@ -2843,7 +2853,8 @@ context_table_text_foster(root_table_text_view_t *view, lxa_span_t bytes)
 lxa_status_t
 lxa_html_root_context_table_text(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
-    lxa_span_t data, lxa_html_root_table_text_result_t *result)
+    lxa_span_t data, lxa_html_table_text_emit_t emit, void *user,
+    lxa_html_root_table_text_result_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
@@ -2857,7 +2868,7 @@ lxa_html_root_context_table_text(lxa_html_root_context_t *context,
     if (status != LXA_OK) return finish(context, status);
     if (ns != LXA_DOM_NS_HTML) return LXA_ERROR_ARGUMENT;
     lxa_html_root_table_text_result_t out = {0};
-    root_table_text_view_t view = {{context, formatting}, &out};
+    root_table_text_view_t view = {{context, formatting}, &out, emit, user};
     status = context_flush_table_text(&view, data);
     if (status == LXA_OK) *result = out;
     return finish(context, status);

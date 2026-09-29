@@ -138,13 +138,17 @@ typedef struct {
  * text leaves metadata unchanged; mixed text closes the current HTML colgroup
  * and reconstructs formatting. Publish leading spaces, removed colgroup identity
  * and foster selection only on success. No DOM-insertion preflight or NODE charge.
- * Retain completed effects and latch failure without replay. Engines emit text,
+ * Deliver space text/prefixes before colgroup pops, then mixed text after
+ * reconstruction through the borrowed callback. NULL emit discards. Views expire
+ * on return; do not retain them, reenter or mutate owners. Retain completed
+ * effects on terminal failure without result publication or replay. Engines
  * bound pending storage and clear it only after success. Input/result storage
  * must not alias owners or each other.
  */
 lxa_status_t lxa_html_root_context_table_text(lxa_html_root_context_t *context,
     lxa_html_formatting_list_t *formatting, lxa_html_root_mode_t mode,
-    lxa_span_t data, lxa_html_root_table_text_result_t *result);
+    lxa_span_t data, lxa_html_table_text_emit_t emit, void *user,
+    lxa_html_root_table_text_result_t *result);
 
 /* In-body end dispatch after foreign/template/head/br routing. Apply select
  * recovery before the shared body/formatting/form/paragraph/scoped/fallback

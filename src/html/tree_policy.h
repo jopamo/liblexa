@@ -48,6 +48,12 @@ bool lxa_html_tree_table_text_input_valid(const lxa_buffer_t *pending, lxa_span_
  */
 typedef lxa_status_t (*lxa_html_data_emit_t)(void *user, lxa_span_t bytes,
     uint64_t parent);
+/* Pending-table delivery at the current control identity, not a recovered DOM
+ * parent. foster selects the mixed-text placement rule; the engine resolves
+ * actual insertion. Zero identifies a virtual template content boundary.
+ */
+typedef lxa_status_t (*lxa_html_table_text_emit_t)(void *user, lxa_span_t bytes,
+    uint64_t current, bool foster);
 typedef struct {
     lxa_budget_t *budget;
     lxa_limit_reason_t *reason;

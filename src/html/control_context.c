@@ -167,6 +167,41 @@ lxa_html_control_context_root_token(lxa_html_control_context_t *context,
 }
 
 lxa_status_t
+lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
+    lxa_html_table_text_emit_t emit, void *user)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    if (context->pending_table_text.length == 0) return LXA_OK;
+    const lxa_span_t pending = {context->pending_table_text.data, context->pending_table_text.length};
+    lxa_status_t status;
+    lxa_limit_reason_t reason;
+    if (context->mode == LXA_TREE_TEMPLATE_TEXT) {
+        lxa_html_template_table_text_result_t result;
+        status = lxa_html_template_context_table_text(&context->templates, pending, emit, user, &result);
+        reason = context->templates.limit_reason;
+    }
+    else {
+        lxa_html_root_table_text_result_t result;
+        status = lxa_html_root_context_table_text(&context->root, &context->formatting,
+            context->mode, pending, emit, user, &result);
+        reason = context->root.limit_reason;
+    }
+    if (status == LXA_OK) lxa_buffer_clear(&context->pending_table_text);
+    else {
+        context->failure = status;
+        context->limit_reason = reason;
+    }
+    return status;
+}
+
+lxa_status_t
 lxa_html_control_context_after_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, lxa_html_token_kind_t kind,
     lxa_status_t status, lxa_limit_reason_t reason)

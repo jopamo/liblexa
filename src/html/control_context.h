@@ -61,6 +61,15 @@ lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *con
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool has_patch, const lxa_html_control_root_sink_t *sink,
     lxa_html_control_root_result_t *result);
+/* Flush owned pending table text before non-DATA intake, after any EOF TEXT
+ * restoration. Select the active template slice or root ledger. NULL emit
+ * discards; callback views expire on return and cannot mutate/reenter owners.
+ * Clear bytes only after successful delivery/recovery. Retain completed callback,
+ * pop and reconstruction effects on terminal failure, leaving bytes for teardown,
+ * not retry. An empty buffer applies no grammar WORK or allocation.
+ */
+lxa_status_t lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
+    lxa_html_table_text_emit_t emit, void *user);
 /* Finalize accepted token effects with their status/reason. Latch the first
  * failure before feedback; retain completed state without replay. After success,
  * apply namespace feedback over the active template slice or root stack.
