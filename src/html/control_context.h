@@ -74,6 +74,18 @@ lxa_status_t lxa_html_control_context_head_noscript_token(lxa_html_control_conte
 lxa_status_t lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     lxa_html_text_emit_t emit, void *user, lxa_html_root_frameset_result_t *result);
+/* Gate active-template column-group intake after earlier foreign/end/control/
+ * table routing. Other insertion modes continue without WORK. Use owned scratch
+ * for filtered spaces; clear it only after successful delivery/discard. Key zero
+ * denotes active virtual content, never an enclosing entry. NULL emit discards.
+ * Callback spans expire on return; do not retain, reenter or mutate owners.
+ * Token/result must not alias owners or scratch. Publish action only on success;
+ * latch failure and retain scratch/effects for destruction without replay.
+ * This phase neither admits continuing starts nor finalizes tokenizer feedback.
+ */
+lxa_status_t lxa_html_control_context_template_column_group_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
+    lxa_html_column_group_action_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

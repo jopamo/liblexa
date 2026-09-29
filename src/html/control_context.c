@@ -212,6 +212,35 @@ lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
     return status;
 }
 
+lxa_status_t
+lxa_html_control_context_template_column_group_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
+    lxa_html_column_group_action_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_column_group_action_t out;
+    lxa_status_t status = lxa_html_template_context_column_group_token(&context->templates,
+        token, &context->spaces, emit, user, &out);
+    if (status == LXA_OK) {
+        if (out == LXA_HTML_COLUMN_GROUP_SPACE_TEXT) lxa_buffer_clear(&context->spaces);
+        *result = out;
+    }
+    else {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
