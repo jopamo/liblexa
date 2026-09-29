@@ -30,6 +30,29 @@ lxa_status_t lxa_html_control_context_init(lxa_html_control_context_t *context,
     const lxa_allocator_t *allocator, lxa_budget_t *budget);
 void lxa_html_control_context_destroy(lxa_html_control_context_t *context);
 typedef struct {
+    lxa_html_text_emit_t text_emit;
+    lxa_html_table_text_emit_t table_emit;
+    void *user;
+} lxa_html_control_intake_sink_t;
+typedef struct {
+    bool handled;
+    lxa_html_token_t token;
+} lxa_html_control_intake_result_t;
+/* Run initial/TEXT/flush/newline intake before template/frameset/foreign routing.
+ * Initial comments/whitespace consume without metadata. Defer initial DOCTYPE
+ * effects to their late dispatch point; publish quirks fallback before continuing.
+ * EOF restores TEXT before flushing and continues for later completion. Other
+ * TEXT tokens consume after flushing/newline handling. Strip one pending LF from
+ * the borrowed DATA view, never from caller bytes. NULL sinks discard delivery.
+ * Publish handled and the borrowed adjusted token only after success. Callback
+ * views and result token views expire with caller input; do not retain, reenter
+ * or mutate owners/sink. Token/sink/result must not alias owners. Latch failure
+ * without replay, retaining completed restoration/flush/newline effects.
+ */
+lxa_status_t lxa_html_control_context_intake(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, const lxa_html_control_intake_sink_t *sink,
+    lxa_html_control_intake_result_t *result);
+typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
     void *user;

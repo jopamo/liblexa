@@ -4602,6 +4602,25 @@ tree_root_token_after_body(tree_foster_text_view_t *view,
 #undef LXA_ROOT_TOKEN_START
 #undef LXA_ROOT_TOKEN_DATA
 
+#define LXA_TOKEN_INTAKE_NAME tree_execute_intake
+#define LXA_TOKEN_INTAKE_VIEW lxa_html_tree_t
+#define LXA_TOKEN_INTAKE_MODE(view) ((view)->mode)
+#define LXA_TOKEN_INTAKE_COMMENT(view, token) append_comment_or_pi(view, (view)->document, token)
+#define LXA_TOKEN_INTAKE_QUIRKS(view, token) tree_execute_initial(view, token, LXA_HTML_INITIAL_QUIRKS_REPROCESS)
+#define LXA_TOKEN_INTAKE_TEXT(view, token) tree_text_token(view, token, &(view)->mode, NULL)
+#define LXA_TOKEN_INTAKE_FLUSH(view) ((view)->mode == LXA_TREE_TEMPLATE_TEXT \
+    ? flush_template_table_text(view) : flush_table_text(view))
+#define LXA_TOKEN_INTAKE_NEWLINE(view) ((view)->skip_pre_newline)
+#include "html/token_intake_execute.inc"
+#undef LXA_TOKEN_INTAKE_NAME
+#undef LXA_TOKEN_INTAKE_VIEW
+#undef LXA_TOKEN_INTAKE_MODE
+#undef LXA_TOKEN_INTAKE_COMMENT
+#undef LXA_TOKEN_INTAKE_QUIRKS
+#undef LXA_TOKEN_INTAKE_TEXT
+#undef LXA_TOKEN_INTAKE_FLUSH
+#undef LXA_TOKEN_INTAKE_NEWLINE
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -4611,37 +4630,9 @@ consume(lxa_html_tree_t *tree,
     lxa_dom_ref_t parent, child;
     bool template_ordinary;
     if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
-    if (tree->mode == LXA_TREE_INITIAL) {
-        switch (lxa_html_tree_initial_action(token->kind, token->data)) {
-            case LXA_HTML_INITIAL_COMMENT:
-                return append_comment_or_pi(tree, tree->document, token);
-            case LXA_HTML_INITIAL_IGNORE: return LXA_OK;
-            case LXA_HTML_INITIAL_DOCTYPE: break;
-            case LXA_HTML_INITIAL_QUIRKS_REPROCESS:
-                status = tree_execute_initial(tree, token, LXA_HTML_INITIAL_QUIRKS_REPROCESS);
-                if (status != LXA_OK) return status;
-                break;
-        }
-    }
-    if (token->kind == LXA_HTML_EOF && tree->mode == LXA_TREE_TEXT) {
-        status = tree_text_token(tree, token, &tree->mode, NULL);
-        if (status != LXA_OK) return status;
-    }
-    if (token->kind != LXA_HTML_TEXT) {
-        status = tree->mode == LXA_TREE_TEMPLATE_TEXT
-                 ? flush_template_table_text(tree) : flush_table_text(tree);
-        if (status != LXA_OK) return status;
-    }
-    if (tree->skip_pre_newline) {
-        adjusted = *token;
-        status = lxa_html_tree_leading_newline(&tree->skip_pre_newline,
-            token->kind, token->data, &adjusted.data);
-        if (status != LXA_OK) return status;
-        if (token->kind == LXA_HTML_TEXT && adjusted.data.length != token->data.length) {
-            if (adjusted.data.length == 0) return LXA_OK;
-            token = &adjusted;
-        }
-    }
+    bool intake_handled;
+    status = tree_execute_intake(tree, &token, &adjusted, &intake_handled);
+    if (status != LXA_OK || intake_handled) return status;
     if (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
 reprocess_template_token:
         if (token->kind == LXA_HTML_DOCTYPE) return LXA_OK;
@@ -5381,8 +5372,6 @@ reprocess_template_token:
     if (token->kind == LXA_HTML_EOF) {
         return tree_finish_root(tree, &tree->mode);
     }
-    if (tree->mode == LXA_TREE_TEXT)
-        return tree_text_token(tree, token, &tree->mode, NULL);
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         lxa_html_head_noscript_plan_t plan;
         status = tree_execute_head_noscript(tree, token, &plan);

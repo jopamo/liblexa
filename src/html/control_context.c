@@ -53,6 +53,75 @@ state_valid(const lxa_html_control_context_t *context)
         && (context->mode != LXA_TREE_TEXT || lxa_html_text_context_valid(&context->text));
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    const lxa_html_control_intake_sink_t *sink;
+} control_intake_view_t;
+
+static lxa_status_t
+control_intake_quirks(control_intake_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_control_context_t *context = view->context;
+    lxa_html_initial_action_t action;
+    return lxa_html_root_context_initial_token(&context->root, &context->mode, token,
+        &context->document_mode, &action);
+}
+
+static lxa_status_t
+control_intake_text(control_intake_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_text_action_t action;
+    return lxa_html_text_context_token(&view->context->text, token, &view->context->mode,
+        view->sink->text_emit, view->sink->user, &action);
+}
+
+#define LXA_TOKEN_INTAKE_NAME control_execute_intake
+#define LXA_TOKEN_INTAKE_VIEW control_intake_view_t
+#define LXA_TOKEN_INTAKE_MODE(view) ((view)->context->mode)
+#define LXA_TOKEN_INTAKE_COMMENT(view, token) LXA_OK
+#define LXA_TOKEN_INTAKE_QUIRKS control_intake_quirks
+#define LXA_TOKEN_INTAKE_TEXT control_intake_text
+#define LXA_TOKEN_INTAKE_FLUSH(view) lxa_html_control_context_flush_table_text( \
+    (view)->context, (view)->sink->table_emit, (view)->sink->user)
+#define LXA_TOKEN_INTAKE_NEWLINE(view) ((view)->context->pending_newline)
+#include "html/token_intake_execute.inc"
+#undef LXA_TOKEN_INTAKE_NAME
+#undef LXA_TOKEN_INTAKE_VIEW
+#undef LXA_TOKEN_INTAKE_MODE
+#undef LXA_TOKEN_INTAKE_COMMENT
+#undef LXA_TOKEN_INTAKE_QUIRKS
+#undef LXA_TOKEN_INTAKE_TEXT
+#undef LXA_TOKEN_INTAKE_FLUSH
+#undef LXA_TOKEN_INTAKE_NEWLINE
+
+lxa_status_t
+lxa_html_control_context_intake(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, const lxa_html_control_intake_sink_t *sink,
+    lxa_html_control_intake_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode == LXA_TREE_DONE
+        || !lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    const lxa_html_control_intake_sink_t discard = {0};
+    control_intake_view_t view = {context, sink == NULL ? &discard : sink};
+    lxa_html_token_t adjusted;
+    bool handled;
+    lxa_status_t status = control_execute_intake(&view, &token, &adjusted, &handled);
+    if (status == LXA_OK) *result = (lxa_html_control_intake_result_t){handled, *token};
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->root.failure == status ? context->root.limit_reason : LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
