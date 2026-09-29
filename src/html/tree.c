@@ -4612,6 +4612,41 @@ tree_root_token_after_body(tree_foster_text_view_t *view,
 #undef LXA_ROOT_TOKEN_START
 #undef LXA_ROOT_TOKEN_DATA
 
+static lxa_status_t
+tree_root_noscript_dispatch(tree_foster_text_view_t *view,
+    const lxa_html_token_t **token, lxa_html_token_t *adjusted, bool *handled)
+{
+    return tree_dispatch_head_noscript(view->tree, token, adjusted, handled);
+}
+
+static lxa_status_t
+tree_root_foreign_dispatch(tree_foster_text_view_t *view,
+    const lxa_html_token_t *token, bool *handled)
+{
+    tree_foreign_execute_view_t foreign_view = {view->tree, LXA_DOM_NS_HTML};
+    return tree_dispatch_root_foreign(&foreign_view, token, handled);
+}
+
+#define LXA_ROOT_DISPATCH_NAME tree_dispatch_root
+#define LXA_ROOT_DISPATCH_VIEW tree_foster_text_view_t
+#define LXA_ROOT_DISPATCH_MODE(view) ((view)->tree->mode)
+#define LXA_ROOT_DISPATCH_HAS_BODY(view) ((view)->tree->body.handle != LXA_HANDLE_NONE)
+#define LXA_ROOT_DISPATCH_NOSCRIPT tree_root_noscript_dispatch
+#define LXA_ROOT_DISPATCH_FRAMESET(view, token) begin_root_frameset((view)->tree, token, false)
+#define LXA_ROOT_DISPATCH_FOREIGN tree_root_foreign_dispatch
+#define LXA_ROOT_DISPATCH_INITIAL(view, token) tree_execute_initial((view)->tree, token, LXA_HTML_INITIAL_DOCTYPE)
+#define LXA_ROOT_DISPATCH_HTML tree_execute_root_token
+#include "html/root_dispatch.inc"
+#undef LXA_ROOT_DISPATCH_NAME
+#undef LXA_ROOT_DISPATCH_VIEW
+#undef LXA_ROOT_DISPATCH_MODE
+#undef LXA_ROOT_DISPATCH_HAS_BODY
+#undef LXA_ROOT_DISPATCH_NOSCRIPT
+#undef LXA_ROOT_DISPATCH_FRAMESET
+#undef LXA_ROOT_DISPATCH_FOREIGN
+#undef LXA_ROOT_DISPATCH_INITIAL
+#undef LXA_ROOT_DISPATCH_HTML
+
 #define LXA_TOKEN_INTAKE_NAME tree_execute_intake
 #define LXA_TOKEN_INTAKE_VIEW lxa_html_tree_t
 #define LXA_TOKEN_INTAKE_MODE(view) ((view)->mode)
@@ -5395,35 +5430,8 @@ reprocess_template_token:
         tree_frameset_execute_view_t view = {tree, tokenizer};
         return tree_execute_frameset(&view, token, action);
     }
-    bool noscript_handled;
-    status = tree_dispatch_head_noscript(tree, &token, &adjusted, &noscript_handled);
-    if (status != LXA_OK || noscript_handled) return status;
-    if (token->kind == LXA_HTML_START_TAG
-        && named(token->name, "frameset")
-        && (tree->mode == LXA_TREE_INITIAL
-            || tree->mode == LXA_TREE_BEFORE_HTML
-            || tree->mode == LXA_TREE_BEFORE_HEAD
-            || tree->mode == LXA_TREE_IN_HEAD
-            || tree->mode == LXA_TREE_AFTER_HEAD)
-        && tree->body.handle == LXA_HANDLE_NONE) {
-        return begin_root_frameset(tree, token, false);
-    }
-    tree_foreign_execute_view_t foreign_view = {tree, LXA_DOM_NS_HTML};
-    bool foreign_handled;
-    status = tree_dispatch_root_foreign(&foreign_view, token, &foreign_handled);
-    if (status != LXA_OK || foreign_handled) return status;
-    if (token->kind == LXA_HTML_START_TAG && named(token->name, "image")) {
-        /* HTML's image start tag is reprocessed as img. Keep the token's
-         * borrowed attributes and normalize only its construction name. */
-        adjusted = *token;
-        adjusted.name = literal("img");
-        token = &adjusted;
-    }
-    if (token->kind == LXA_HTML_DOCTYPE && tree->mode == LXA_TREE_INITIAL) {
-        return tree_execute_initial(tree, token, LXA_HTML_INITIAL_DOCTYPE);
-    }
     tree_foster_text_view_t view = {tree, tokenizer, {0}};
-    return tree_execute_root_token(&view, token);
+    return tree_dispatch_root(&view, &token, &adjusted);
 }
 
 lxa_status_t

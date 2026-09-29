@@ -106,6 +106,34 @@ lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *con
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool has_patch, const lxa_html_control_root_sink_t *sink,
     lxa_html_control_root_result_t *result);
+typedef enum {
+    LXA_HTML_CONTROL_ROOT_NOSCRIPT, LXA_HTML_CONTROL_ROOT_FRAMESET,
+    LXA_HTML_CONTROL_ROOT_FOREIGN, LXA_HTML_CONTROL_ROOT_INITIAL,
+    LXA_HTML_CONTROL_ROOT_HTML
+} lxa_html_control_root_dispatch_action_t;
+typedef struct {
+    lxa_html_control_root_dispatch_action_t action;
+    lxa_html_token_t token;
+    union {
+        uint64_t frameset_identity;
+        lxa_html_root_foreign_dispatch_result_t foreign;
+        lxa_html_control_root_result_t html;
+    } value;
+} lxa_html_control_root_dispatch_result_t;
+/* Schedule late root intake after early/template/EOF/frameset-family routing.
+ * Order head-noscript, prebody frameset, foreign, HTML image normalization,
+ * initial DOCTYPE and accepted HTML execution as in the canonical driver.
+ * Require a tokenizer for tags; reject patches and unrouted initial tokens.
+ * Result token/attributes remain borrowed; only the HTML image name changes.
+ * Token/sink/result must not alias owners or owned storage.
+ * Sink callbacks follow root_token's lifetime/reentry contract. Publish the
+ * selected action/token/value only on success; latch effects without replay.
+ * The driver still observes encoding and finalizes namespace feedback.
+ */
+lxa_status_t lxa_html_control_context_root_dispatch(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, const lxa_html_control_root_sink_t *sink,
+    lxa_html_control_root_dispatch_result_t *result);
 /* Flush owned pending table text before non-DATA intake, after any EOF TEXT
  * restoration. Select the active template slice or root ledger. NULL emit
  * discards; callback views expire on return and cannot mutate/reenter owners.
