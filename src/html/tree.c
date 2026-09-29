@@ -4622,6 +4622,35 @@ tree_root_token_after_body(tree_foster_text_view_t *view,
 #undef LXA_TOKEN_INTAKE_NEWLINE
 
 static lxa_status_t
+tree_finish_templates(lxa_html_tree_t *tree)
+{
+    size_t work;
+    lxa_status_t status = lxa_size_add(lxa_vector_length(&tree->template_stack),
+        lxa_vector_length(&tree->template_elements), &work);
+    if (status == LXA_OK) status = lxa_size_add(work, 1, &work);
+    if (status == LXA_OK)
+        status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
+    if (status != LXA_OK) return status;
+    while (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
+        status = close_template(tree, false);
+        if (status != LXA_OK) return status;
+    }
+    return LXA_OK;
+}
+
+#define LXA_EOF_EXEC_NAME tree_execute_eof
+#define LXA_EOF_EXEC_VIEW lxa_html_tree_t
+#define LXA_EOF_EXEC_MODE(view) ((view)->mode)
+#define LXA_EOF_EXEC_TEMPLATES tree_finish_templates
+#define LXA_EOF_EXEC_ROOT(view) tree_finish_root(view, &(view)->mode)
+#include "html/eof_execute.inc"
+#undef LXA_EOF_EXEC_NAME
+#undef LXA_EOF_EXEC_VIEW
+#undef LXA_EOF_EXEC_MODE
+#undef LXA_EOF_EXEC_TEMPLATES
+#undef LXA_EOF_EXEC_ROOT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5345,22 +5374,9 @@ reprocess_template_token:
             assert(false);
             return LXA_ERROR_INTERNAL;
         }
-        if (token->kind == LXA_HTML_EOF) {
-            size_t work;
-            status = lxa_size_add(lxa_vector_length(&tree->template_stack),
-                                   lxa_vector_length(&tree->template_elements),
-                                   &work);
-            if (status == LXA_OK) status = lxa_size_add(work, 1, &work);
-            if (status == LXA_OK)
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
-            if (status != LXA_OK) return status;
-            while (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
-                status = close_template(tree, false);
-                if (status != LXA_OK) return status;
-            }
-        }
+        return tree_execute_eof(tree);
     }
+    if (token->kind == LXA_HTML_EOF) return tree_execute_eof(tree);
     if (lxa_html_tree_frameset_mode(tree->mode)) {
         lxa_html_frameset_action_t action;
         status = lxa_html_tree_frameset_action(tree->mode, token->kind,
@@ -5368,9 +5384,6 @@ reprocess_template_token:
         if (status != LXA_OK) return status;
         tree_frameset_execute_view_t view = {tree, tokenizer};
         return tree_execute_frameset(&view, token, action);
-    }
-    if (token->kind == LXA_HTML_EOF) {
-        return tree_finish_root(tree, &tree->mode);
     }
     if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
         lxa_html_head_noscript_plan_t plan;

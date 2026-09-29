@@ -93,6 +93,15 @@ lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *con
  */
 lxa_status_t lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
     lxa_html_table_text_emit_t emit, void *user);
+/* Complete accepted EOF after intake has restored TEXT/flushed pending bytes
+ * and template gating permits completion. Unwind active templates before root
+ * completion; ensure ordinary BODY but never resurrect it for framesets. Publish
+ * DONE only after cleanup succeeds. Retain partial cleanup on terminal failure
+ * without replay; remaining root formatting/form state belongs to this owner
+ * until destruction. Premature INITIAL/TEXT/pending bytes/newline or repeated
+ * DONE requests reject before effects. No encoding or namespace feedback here.
+ */
+lxa_status_t lxa_html_control_context_finish(lxa_html_control_context_t *context);
 /* Finalize accepted token effects with their status/reason. Latch the first
  * failure before feedback; retain completed state without replay. After success,
  * apply namespace feedback over the active template slice or root stack.

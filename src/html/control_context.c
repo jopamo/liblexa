@@ -270,6 +270,42 @@ lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
     return status;
 }
 
+#define LXA_EOF_EXEC_NAME control_execute_eof
+#define LXA_EOF_EXEC_VIEW lxa_html_control_context_t
+#define LXA_EOF_EXEC_MODE(view) ((view)->mode)
+#define LXA_EOF_EXEC_TEMPLATES(view) lxa_html_template_context_finish(&(view)->templates, &(view)->mode)
+#define LXA_EOF_EXEC_ROOT(view) lxa_html_root_context_finish(&(view)->root, &(view)->mode)
+#include "html/eof_execute.inc"
+#undef LXA_EOF_EXEC_NAME
+#undef LXA_EOF_EXEC_VIEW
+#undef LXA_EOF_EXEC_MODE
+#undef LXA_EOF_EXEC_TEMPLATES
+#undef LXA_EOF_EXEC_ROOT
+
+lxa_status_t
+lxa_html_control_context_finish(lxa_html_control_context_t *context)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (context->mode == LXA_TREE_INITIAL || context->mode == LXA_TREE_TEXT
+        || context->mode == LXA_TREE_DONE || context->pending_table_text.length != 0
+        || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_status_t status = control_execute_eof(context);
+    if (status != LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.failure != LXA_OK
+            ? context->templates.limit_reason : context->root.limit_reason;
+    }
+    return status;
+}
+
 lxa_status_t
 lxa_html_control_context_after_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, lxa_html_token_kind_t kind,
