@@ -97,6 +97,18 @@ lxa_status_t lxa_html_control_context_template_column_group_token(lxa_html_contr
  */
 lxa_status_t lxa_html_control_context_template_data_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user);
+/* Execute an accepted template HTML text start after earlier routing. Foster
+ * selects the saved table route, not a second current-entry query. Publish TEXT
+ * only after returning-text feedback succeeds; plaintext keeps TEMPLATE_TEXT
+ * and admitted metadata. Set pending newline only for successful textarea.
+ * Identity is zero for returning text, otherwise the admitted plaintext key.
+ * Publish identity only on success. Latch feedback/admission failure, retaining
+ * completed recovery for teardown without replay. Tokenizer shares the budget;
+ * token/output must not alias owners. Intake handles later text/end/EOF.
+ */
+lxa_status_t lxa_html_control_context_template_text_start(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool foster, uint64_t *identity);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
