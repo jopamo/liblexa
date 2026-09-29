@@ -52,6 +52,17 @@ typedef struct {
 lxa_status_t lxa_html_control_context_intake(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, const lxa_html_control_intake_sink_t *sink,
     lxa_html_control_intake_result_t *result);
+/* Run head-noscript scheduling after early intake/template/EOF/frameset routing.
+ * Other accepted root modes pass through without WORK. Emit spaces before mode
+ * closure; consume ignored/closed tokens and borrow any remaining DATA suffix.
+ * NULL emit discards spaces. Callback/result views expire with caller input;
+ * do not retain, reenter or mutate owners. Token/result must not alias owners.
+ * Publish handled/token only on success; latch execution failure without replay.
+ * This phase does not execute the remaining root rules or namespace feedback.
+ */
+lxa_status_t lxa_html_control_context_head_noscript_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_prebody_emit_t emit, void *user,
+    lxa_html_control_intake_result_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

@@ -2192,6 +2192,16 @@ execute_head_noscript_spaces(lxa_html_tree_t *tree, lxa_span_t bytes)
 #undef LXA_HEAD_NOSCRIPT_EXEC_MODE
 #undef LXA_HEAD_NOSCRIPT_EXEC_CLEAR
 
+#define LXA_HEAD_NOSCRIPT_DISPATCH_NAME tree_dispatch_head_noscript
+#define LXA_HEAD_NOSCRIPT_DISPATCH_VIEW lxa_html_tree_t
+#define LXA_HEAD_NOSCRIPT_DISPATCH_MODE(view) ((view)->mode)
+#define LXA_HEAD_NOSCRIPT_DISPATCH_EXEC tree_execute_head_noscript
+#include "html/head_noscript_dispatch.inc"
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_NAME
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_VIEW
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_MODE
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_EXEC
+
 static lxa_status_t
 root_foreign_route(tree_foreign_execute_view_t *view, const lxa_html_token_t *token,
     lxa_html_foreign_root_route_t *route)
@@ -5385,19 +5395,9 @@ reprocess_template_token:
         tree_frameset_execute_view_t view = {tree, tokenizer};
         return tree_execute_frameset(&view, token, action);
     }
-    if (tree->mode == LXA_TREE_HEAD_NOSCRIPT) {
-        lxa_html_head_noscript_plan_t plan;
-        status = tree_execute_head_noscript(tree, token, &plan);
-        if (status != LXA_OK) return status;
-        if (plan.action == LXA_HTML_HEAD_NOSCRIPT_IGNORE
-            || plan.action == LXA_HTML_HEAD_NOSCRIPT_CLOSE) return LXA_OK;
-        if (plan.space_prefix != 0) {
-            adjusted = *token;
-            adjusted.data.data += plan.space_prefix;
-            adjusted.data.length -= plan.space_prefix;
-            token = &adjusted;
-        }
-    }
+    bool noscript_handled;
+    status = tree_dispatch_head_noscript(tree, &token, &adjusted, &noscript_handled);
+    if (status != LXA_OK || noscript_handled) return status;
     if (token->kind == LXA_HTML_START_TAG
         && named(token->name, "frameset")
         && (tree->mode == LXA_TREE_INITIAL

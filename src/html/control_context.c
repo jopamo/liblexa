@@ -122,6 +122,54 @@ lxa_html_control_context_intake(lxa_html_control_context_t *context,
     return status;
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_root_prebody_emit_t emit;
+    void *user;
+} control_head_noscript_view_t;
+
+#define LXA_HEAD_NOSCRIPT_DISPATCH_NAME control_dispatch_head_noscript
+#define LXA_HEAD_NOSCRIPT_DISPATCH_VIEW control_head_noscript_view_t
+#define LXA_HEAD_NOSCRIPT_DISPATCH_MODE(view) ((view)->context->mode)
+#define LXA_HEAD_NOSCRIPT_DISPATCH_EXEC(view, token, out) lxa_html_root_context_head_noscript_token( \
+    &(view)->context->root, &(view)->context->mode, token, (view)->emit, (view)->user, out)
+#include "html/head_noscript_dispatch.inc"
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_NAME
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_VIEW
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_MODE
+#undef LXA_HEAD_NOSCRIPT_DISPATCH_EXEC
+
+lxa_status_t
+lxa_html_control_context_head_noscript_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_root_prebody_emit_t emit, void *user,
+    lxa_html_control_intake_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode == LXA_TREE_INITIAL
+        || context->mode == LXA_TREE_DONE || context->mode == LXA_TREE_TEXT
+        || lxa_html_tree_frameset_mode(context->mode)
+        || context->templates.frames.bytes.length != 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    control_head_noscript_view_t view = {context, emit, user};
+    lxa_html_token_t adjusted;
+    bool handled;
+    lxa_status_t status = control_dispatch_head_noscript(&view, &token, &adjusted, &handled);
+    if (status == LXA_OK) *result = (lxa_html_control_intake_result_t){handled, *token};
+    else {
+        context->failure = status;
+        context->limit_reason = context->root.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
