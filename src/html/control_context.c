@@ -170,6 +170,48 @@ lxa_html_control_context_head_noscript_token(lxa_html_control_context_t *context
     return status;
 }
 
+lxa_status_t
+lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_text_emit_t emit, void *user, lxa_html_root_frameset_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || !lxa_html_tree_frameset_mode(context->mode)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF
+        || (token->kind == LXA_HTML_START_TAG
+            && lxa_html_tree_name_equals(token->name, "noframes", 8) && tokenizer == NULL))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    const lxa_html_root_frameset_borrowers_t borrowers = {
+        &context->formatting, &context->text, tokenizer, &context->spaces
+    };
+    lxa_html_root_frameset_result_t out;
+    lxa_status_t status = lxa_html_root_context_frameset_token(&context->root,
+        &borrowers, token, &context->mode, &out);
+    if (status == LXA_OK && out.action == LXA_HTML_FRAMESET_TEXT) {
+        if (context->spaces.length != 0 && emit != NULL)
+            status = emit(user, (lxa_span_t){context->spaces.data, context->spaces.length});
+        if (status == LXA_OK) lxa_buffer_clear(&context->spaces);
+    }
+    if (status == LXA_OK) {
+        if (out.action == LXA_HTML_FRAMESET_NOFRAMES_START)
+            context->pending_newline = out.skip_newline;
+        *result = out;
+    }
+    else {
+        context->failure = status;
+        context->limit_reason = context->root.failure == status
+            ? context->root.limit_reason : LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,

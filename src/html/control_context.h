@@ -63,6 +63,17 @@ lxa_status_t lxa_html_control_context_intake(lxa_html_control_context_t *context
 lxa_status_t lxa_html_control_context_head_noscript_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_root_prebody_emit_t emit, void *user,
     lxa_html_control_intake_result_t *result);
+/* Consume non-EOF frameset-family intake after early TEXT/flush/newline handling.
+ * Use owned formatting/text/scratch; require a tokenizer only for noframes.
+ * Deliver nonempty filtered spaces after reconstruction, then clear scratch
+ * only on success. NULL emit discards. Callback spans expire on return; do not
+ * retain, reenter or mutate owners. Token/result must not alias owned storage.
+ * Publish results only on success; latch failures and retain completed effects/
+ * scratch for destruction without replay. EOF uses the separate finish phase.
+ */
+lxa_status_t lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_text_emit_t emit, void *user, lxa_html_root_frameset_result_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
