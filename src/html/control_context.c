@@ -352,13 +352,14 @@ control_template_end_br(lxa_html_control_context_t *context)
 #undef LXA_TEMPLATE_END_DISPATCH_BOUNDARY
 
 lxa_status_t
-lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_intake_result_t *result)
+lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result)
 {
     if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
     if (context->failure != LXA_OK) return context->failure;
     if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG
+        || context->pending_table_text.length != 0 || context->pending_newline)
         return LXA_ERROR_ARGUMENT;
     if (!state_valid(context)) {
         assert(false);
@@ -366,10 +367,56 @@ lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *conte
         context->limit_reason = LXA_BUDGET_COUNT;
         return context->failure;
     }
-    lxa_html_token_t adjusted;
-    bool handled;
-    lxa_status_t status = control_dispatch_template_end(context, &token, &adjusted, &handled);
-    if (status == LXA_OK) *result = (lxa_html_control_intake_result_t){handled, *token};
+    lxa_html_control_template_end_result_t out = {.token = *token, .handled = true};
+    lxa_status_t status;
+    for (;;) {
+        size_t length = lxa_vector_length(&context->stack.elements);
+        lxa_html_token_t adjusted;
+        bool handled;
+        status = control_dispatch_template_end(context, &token, &adjusted, &handled);
+        if (status != LXA_OK || handled) break;
+        if (token->kind == LXA_HTML_START_TAG) {
+            out.handled = false;
+            out.token = *token;
+            break;
+        }
+        lxa_html_column_group_action_t group;
+        status = lxa_html_template_context_column_group_token(&context->templates,
+            token, NULL, NULL, NULL, &group);
+        if (status != LXA_OK || group != LXA_HTML_COLUMN_GROUP_CONTINUE) break;
+        bool ignore;
+        status = lxa_html_template_context_select_token(&context->templates, token, &ignore);
+        if (status != LXA_OK || ignore) break;
+        lxa_html_template_table_end_result_t table;
+        status = lxa_html_template_context_end_table(&context->templates, token, &table);
+        if (status != LXA_OK) break;
+        switch (table) {
+        case LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS:
+            if (lxa_vector_length(&context->stack.elements) >= length) {
+                assert(false);
+                context->failure = LXA_ERROR_INTERNAL;
+                context->limit_reason = LXA_BUDGET_COUNT;
+                return context->failure;
+            }
+            continue;
+        case LXA_HTML_TEMPLATE_TABLE_RESULT_PARAGRAPH:
+            out.implied_paragraph = true;
+            out.foster = true;
+            break;
+        case LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE:
+            status = lxa_html_template_context_end_body(&context->templates, token, &out.implied_paragraph);
+            break;
+        case LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE:
+            break;
+        default:
+            assert(false);
+            context->failure = LXA_ERROR_INTERNAL;
+            context->limit_reason = LXA_BUDGET_COUNT;
+            return context->failure;
+        }
+        break;
+    }
+    if (status == LXA_OK) *result = out;
     else {
         context->failure = status;
         context->limit_reason = context->templates.limit_reason;
@@ -531,29 +578,6 @@ lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *con
         *result = out;
     }
     else if (context->templates.failure != LXA_OK) {
-        context->failure = status;
-        context->limit_reason = context->templates.limit_reason;
-    }
-    return status;
-}
-
-lxa_status_t
-lxa_html_control_context_template_body_end(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, bool *implied_paragraph)
-{
-    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
-    if (context->failure != LXA_OK) return context->failure;
-    if (implied_paragraph == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
-        return LXA_ERROR_ARGUMENT;
-    if (!state_valid(context)) {
-        assert(false);
-        context->failure = LXA_ERROR_INTERNAL;
-        context->limit_reason = LXA_BUDGET_COUNT;
-        return context->failure;
-    }
-    lxa_status_t status = lxa_html_template_context_end_body(&context->templates, token, implied_paragraph);
-    if (status != LXA_OK) {
         context->failure = status;
         context->limit_reason = context->templates.limit_reason;
     }

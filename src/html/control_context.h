@@ -109,16 +109,22 @@ lxa_status_t lxa_html_control_context_template_data_token(lxa_html_control_conte
 lxa_status_t lxa_html_control_context_template_text_start(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool foster, uint64_t *identity);
-/* Route accepted template ends through foreign handling, BR conversion,
- * explicit template closure and table/marker boundaries in canonical order.
- * Continuing tokens retain borrowed views; converted BR clears start-only
- * attributes/self-closing state. Publish handled/token only on success and
- * latch completed effects on failure without replay. Token/result cannot alias
- * owners. Earlier intake flushes pending text; later select/current/body/start
- * execution and namespace feedback remain separate.
+typedef struct {
+    lxa_html_token_t token;
+    bool handled, implied_paragraph, foster;
+} lxa_html_control_template_end_result_t;
+/* Coordinate accepted template END after intake has flushed pending text and
+ * cleared newline state. Order foreign/BR/closure/boundary, column group,
+ * select and current-table/body recovery as in the canonical driver. Bound
+ * reprocessing by completed content pops. Only converted BR continues as START;
+ * its views remain borrowed and attributes/self-closing state are cleared.
+ * Report closed implied-paragraph insertion and foster placement without NODE
+ * charges or retained paragraph metadata. Publish only on success; latch
+ * completed effects on failure without replay. Token/result cannot alias
+ * owners. Later START execution, insertion and namespace feedback are separate.
  */
-lxa_status_t lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_intake_result_t *result);
+lxa_status_t lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result);
 /* Bind accepted MathML integration-point table-part execution to this owner.
  * Earlier routing establishes integration/nonempty content and flushes pending
  * text. Publish handled/inserted only on success; latch failures without replay.
@@ -156,15 +162,6 @@ typedef struct {
  */
 lxa_status_t lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result);
-/* Execute final accepted template body ends after earlier foreign/select/table/
- * group/closure routing. Use owned scoped/ordinary recovery and formatting
- * adoption; report closed implied-paragraph insertion without retaining nodes.
- * Publish only on success and latch completed effects without replay. Token/
- * output cannot alias owners. Earlier intake flushes pending text; later
- * insertion and namespace feedback remain driver-owned.
- */
-lxa_status_t lxa_html_control_context_template_body_end(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, bool *implied_paragraph);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
