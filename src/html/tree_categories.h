@@ -62,6 +62,12 @@ typedef struct {
     bool group_open, ordinary_above;
 } lxa_html_template_table_scan_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_MATHML_TABLE_CONTINUE,
+    LXA_HTML_TEMPLATE_MATHML_TABLE_PART,
+    LXA_HTML_TEMPLATE_MATHML_TABLE_POP_IGNORE
+} lxa_html_template_mathml_table_action_t;
+
 typedef struct {
     size_t keep, extra;
     bool implied_section, implied_row;

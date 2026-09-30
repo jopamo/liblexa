@@ -119,6 +119,15 @@ lxa_status_t lxa_html_control_context_template_text_start(lxa_html_control_conte
  */
 lxa_status_t lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_intake_result_t *result);
+/* Bind accepted MathML integration-point table-part execution to this owner.
+ * Earlier routing establishes integration/nonempty content and flushes pending
+ * text. Publish handled/inserted only on success; latch failures without replay.
+ * Shape/empty-content argument rejection preserves state.
+ * Token/result cannot alias owners. Continuing HTML dispatch and namespace
+ * feedback remain separate.
+ */
+lxa_status_t lxa_html_control_context_template_mathml_table_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

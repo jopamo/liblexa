@@ -67,6 +67,14 @@ lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
 }
 
 static inline lxa_status_t
+lxa_html_control_scope_name(const lxa_html_control_scope_view_t *view,
+    size_t index, lxa_span_t *name)
+{
+    *name = view->entries[index].name;
+    return name->data == NULL || name->length == 0 ? LXA_ERROR_ARGUMENT : LXA_OK;
+}
+
+static inline lxa_status_t
 lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
                                 size_t index, uint64_t *identity)
 {
@@ -88,6 +96,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME lxa_html_control_template_missing_table_search
 #define LXA_TEMPLATE_END_PLAN_NAME lxa_html_control_template_end_search
 #define LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME lxa_html_control_template_table_search
+#define LXA_TEMPLATE_MATHML_TABLE_PLAN_NAME lxa_html_control_template_mathml_table_search
 #define LXA_FOSTERED_SUFFIX_CHECK_NAME lxa_html_control_fostered_suffix_search
 #define LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME lxa_html_control_virtual_table_suffix_search
 #define LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME lxa_html_control_virtual_table_item_search
@@ -104,8 +113,10 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_SCOPE_BUDGET(view) ((view)->budget)
 #define LXA_SCOPE_REASON(view) ((view)->reason)
 #define LXA_SCOPE_READ lxa_html_control_scope_read
+#define LXA_SCOPE_READ_NAME lxa_html_control_scope_name
 #include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
+#undef LXA_SCOPE_READ_NAME
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET
 #undef LXA_SCOPE_LENGTH
@@ -124,6 +135,7 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME
 #undef LXA_TEMPLATE_END_PLAN_NAME
 #undef LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME
+#undef LXA_TEMPLATE_MATHML_TABLE_PLAN_NAME
 #undef LXA_FOSTERED_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME
 #undef LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME
@@ -380,6 +392,23 @@ lxa_html_control_virtual_table_item_plan(const lxa_html_scope_entry_t *entries,
         boundary, budget, reason, out == NULL ? NULL : &index, &view);
     if (status != LXA_OK) return status;
     return lxa_html_control_virtual_table_item_search(&view, boundary, mode, target, out);
+}
+
+/* Route accepted MathML integration-point table-part starts. Borrow only the
+ * active slice; preserve name, table-namespace and virtual-root WORK charges.
+ * Publish only on success; engines apply table-part admission or ordinary pops.
+ */
+static inline lxa_status_t
+lxa_html_control_template_mathml_table_plan(const lxa_html_scope_entry_t *entries,
+    size_t length, size_t boundary, lxa_html_template_mode_t mode, lxa_span_t target,
+    lxa_budget_t *budget, lxa_limit_reason_t *reason, lxa_html_template_mathml_table_action_t *out)
+{
+    lxa_html_control_scope_view_t view;
+    size_t index;
+    lxa_status_t status = lxa_html_control_scope_view_init(entries, length,
+        boundary, budget, reason, out == NULL ? NULL : &index, &view);
+    if (status != LXA_OK) return status;
+    return lxa_html_control_template_mathml_table_search(&view, boundary, mode, target, out);
 }
 
 /* Plan accepted template table-part starts after earlier token dispatch.

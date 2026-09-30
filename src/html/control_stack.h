@@ -198,6 +198,12 @@ lxa_status_t lxa_html_control_stack_template_end_plan(lxa_html_control_stack_t *
     lxa_html_template_end_plan_t *out);
 lxa_status_t lxa_html_control_stack_template_table_scan(lxa_html_control_stack_t *stack,
     size_t boundary, lxa_html_template_table_scan_t *out);
+/* Accepted MathML integration-point table-part routing over nonempty content.
+ * Share the borrowed planner's WORK and success-only publication contract.
+ */
+lxa_status_t lxa_html_control_stack_template_mathml_table_plan(lxa_html_control_stack_t *stack,
+    size_t boundary, lxa_html_template_mode_t mode, lxa_span_t target,
+    lxa_html_template_mathml_table_action_t *out);
 lxa_status_t lxa_html_control_stack_fostered_suffix_check(lxa_html_control_stack_t *stack,
     size_t start, bool first_cell);
 lxa_status_t lxa_html_control_stack_virtual_table_suffix_check(lxa_html_control_stack_t *stack,

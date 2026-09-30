@@ -1,8 +1,8 @@
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,NAMESPACE,PLAN_NAME,IDENTITY},
+ * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
- * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN}_PLAN_NAME,
+ * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN,MATHML_TABLE}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
  * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
  * LXA_TEMPLATE_CLOSE_PLAN_NAME, LXA_COLUMN_START_PLAN_NAME, LXA_FORM_END_PLAN_NAME,
@@ -253,6 +253,57 @@ LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         }
     }
     *out = plan;
+    return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_TEMPLATE_MATHML_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
+    lxa_html_template_mode_t mode, lxa_span_t target,
+    lxa_html_template_mathml_table_action_t *out)
+{
+    size_t length = LXA_SCOPE_LENGTH(view);
+    if (boundary >= length || (unsigned) mode > LXA_TEMPLATE_BODY
+        || target.data == NULL || target.length == 0
+        || !lxa_html_tree_table_part(target) || lxa_html_tree_name_equals(target, "table", 5))
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_template_mathml_table_action_t action = LXA_HTML_TEMPLATE_MATHML_TABLE_CONTINUE;
+    for (size_t i = length; i > boundary;) {
+        lxa_span_t name;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ_NAME(view, --i, &name);
+        if (status != LXA_OK) return status;
+        if (lxa_html_tree_name_equals(name, "table", 5)) {
+            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            if (status == LXA_OK) status = LXA_SCOPE_NAMESPACE(view, i, &ns);
+            if (status != LXA_OK) return status;
+            if (ns == LXA_DOM_NS_HTML) {
+                *out = LXA_HTML_TEMPLATE_MATHML_TABLE_PART;
+                return LXA_OK;
+            }
+        }
+    }
+    if (mode == LXA_TEMPLATE_TABLE || mode == LXA_TEMPLATE_TABLE_BODY) {
+        lxa_span_t root;
+        lxa_dom_namespace_t ns;
+        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
+            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        if (status == LXA_OK) status = LXA_SCOPE_READ_NAME(view, boundary, &root);
+        if (status == LXA_OK) status = LXA_SCOPE_NAMESPACE(view, boundary, &ns);
+        if (status != LXA_OK) return status;
+        if (ns == LXA_DOM_NS_HTML) {
+            if (mode == LXA_TEMPLATE_TABLE && lxa_html_tree_table_section(root))
+                action = LXA_HTML_TEMPLATE_MATHML_TABLE_PART;
+            else if (mode == LXA_TEMPLATE_TABLE_BODY && lxa_html_tree_name_equals(root, "tr", 2))
+                action = lxa_html_tree_name_equals(target, "tr", 2)
+                    || lxa_html_tree_name_equals(target, "td", 2)
+                    || lxa_html_tree_name_equals(target, "th", 2)
+                    ? LXA_HTML_TEMPLATE_MATHML_TABLE_PART : LXA_HTML_TEMPLATE_MATHML_TABLE_POP_IGNORE;
+        }
+    }
+    *out = action;
     return LXA_OK;
 }
 

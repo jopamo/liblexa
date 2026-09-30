@@ -1377,6 +1377,48 @@ lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_mathml_table_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (result == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG || !lxa_html_tree_table_part(token->name)
+        || lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    size_t boundary = frames[count - 1].boundary;
+    if (boundary >= lxa_vector_length(&context->stack->elements)) return LXA_ERROR_ARGUMENT;
+    lxa_html_template_mathml_table_action_t action;
+    status = lxa_html_control_stack_template_mathml_table_plan(context->stack,
+        boundary, frames[count - 1].insertion_mode, token->name, &action);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    lxa_html_template_mathml_table_result_t out = {false, false};
+    if (status == LXA_OK) {
+        switch (action) {
+        case LXA_HTML_TEMPLATE_MATHML_TABLE_CONTINUE:
+            break;
+        case LXA_HTML_TEMPLATE_MATHML_TABLE_PART:
+            status = lxa_html_tree_name_equals(token->name, "col", 3)
+                ? lxa_html_template_context_start_column(context, token, &out.inserted)
+                : lxa_html_template_context_start_table_part(context, token, &out.inserted);
+            out.handled = true;
+            break;
+        case LXA_HTML_TEMPLATE_MATHML_TABLE_POP_IGNORE:
+            status = lxa_html_control_stack_pop_to(context->stack, boundary);
+            if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+            out.handled = true;
+            break;
+        default:
+            status = internal();
+        }
+    }
+    if (status == LXA_OK) *result = out;
+    return finish(context, status);
+}
+
+lxa_status_t
 lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted)
 {

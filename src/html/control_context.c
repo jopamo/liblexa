@@ -377,6 +377,30 @@ lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *conte
     return status;
 }
 
+lxa_status_t
+lxa_html_control_context_template_mathml_table_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_table_part(token->name) || lxa_html_tree_name_equals(token->name, "table", 5))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_status_t status = lxa_html_template_context_mathml_table_token(&context->templates, token, result);
+    if (status != LXA_OK && context->templates.failure != LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,

@@ -146,6 +146,18 @@ lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_contex
  */
 lxa_status_t lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
+typedef struct {
+    bool handled, inserted;
+} lxa_html_template_mathml_table_result_t;
+/* Execute accepted MathML integration-point table-part routing before ordinary
+ * HTML dispatch. Plan over nonempty active content, then delegate column/part
+ * admission or pop a direct virtual row without table-marker cleanup. CONTINUE
+ * changes no membership/mode. Publish only on success; latch completed effects
+ * on failure without replay. Earlier dispatch establishes integration; token/
+ * result cannot alias owners. No DOM-node charge or enclosing-frame access.
+ */
+lxa_status_t lxa_html_template_context_mathml_table_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result);
 /* Apply an already accepted SVG/MathML start, including self-closing pops.
  * Publish initial-template mode only after successful effects.
  * Breakout retains the nearest HTML/integration entry in the active slice.
