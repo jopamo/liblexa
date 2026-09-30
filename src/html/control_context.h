@@ -155,6 +155,15 @@ typedef struct {
  */
 lxa_status_t lxa_html_control_context_template_container_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_container_result_t *result);
+/* Execute final accepted template body ends after earlier foreign/select/table/
+ * group/closure routing. Use owned scoped/ordinary recovery and formatting
+ * adoption; report closed implied-paragraph insertion without retaining nodes.
+ * Publish only on success and latch completed effects without replay. Token/
+ * output cannot alias owners. Earlier intake flushes pending text; later
+ * insertion and namespace feedback remain driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_body_end(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *implied_paragraph);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

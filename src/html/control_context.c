@@ -519,6 +519,29 @@ lxa_html_control_context_template_container_start(lxa_html_control_context_t *co
     return status;
 }
 
+lxa_status_t
+lxa_html_control_context_template_body_end(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *implied_paragraph)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (implied_paragraph == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_status_t status = lxa_html_template_context_end_body(&context->templates, token, implied_paragraph);
+    if (status != LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
