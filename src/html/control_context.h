@@ -144,17 +144,18 @@ lxa_status_t lxa_html_control_context_template_foreign_dispatch(lxa_html_control
 typedef struct {
     uint64_t identity;
     bool foster;
-} lxa_html_control_template_container_result_t;
-/* Admit an accepted ordinary template HTML container after earlier foreign/
- * select/table/text routing. Formatting, marker and text starts use separate
- * coordinators. Bind quirks recovery to document_mode; arm pre/listing newline
- * only after successful non-foster admission. Publish identity/foster only on
- * success and latch completed recovery on failure without replay. Unsupported
- * accepted-container arguments preserve state but may charge classification
- * WORK. Token/result cannot alias owners. Later feedback remains driver-owned.
+} lxa_html_control_template_start_result_t;
+/* Admit an accepted ordinary template HTML start after earlier foreign/select/
+ * table/text routing. Dispatch formatting and object-family markers through
+ * owned membership coordinators; publish initial formatting mode after admission.
+ * Containers bind quirks recovery to document_mode. Arm pre/listing newline only
+ * after successful non-foster admission. Publish identity/foster only on success
+ * and latch completed recovery on failure without replay. Unsupported arguments
+ * preserve state but may charge classification WORK. Token/result cannot alias
+ * owners. Text starts and later feedback remain separate.
  */
-lxa_status_t lxa_html_control_context_template_container_start(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_template_container_result_t *result);
+lxa_status_t lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result);
 /* Execute final accepted template body ends after earlier foreign/select/table/
  * group/closure routing. Use owned scoped/ordinary recovery and formatting
  * adoption; report closed implied-paragraph insertion without retaining nodes.

@@ -487,14 +487,13 @@ lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *c
 }
 
 lxa_status_t
-lxa_html_control_context_template_container_start(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_template_container_result_t *result)
+lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result)
 {
     if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
     if (context->failure != LXA_OK) return context->failure;
     if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
-        || lxa_html_tree_formatting_tag(token->name) || lxa_html_tree_formatting_marker_tag(token->name)
         || lxa_html_tree_template_html_text_element(token->name))
         return LXA_ERROR_ARGUMENT;
     if (!state_valid(context)) {
@@ -503,10 +502,29 @@ lxa_html_control_context_template_container_start(lxa_html_control_context_t *co
         context->limit_reason = LXA_BUDGET_COUNT;
         return context->failure;
     }
-    lxa_html_control_template_container_result_t out;
-    lxa_status_t status = lxa_html_template_context_start_container(&context->templates, token,
-        context->document_mode == LXA_HTML_QUIRKS, &out.identity, &out.foster);
+    lxa_html_control_template_start_result_t out = {0};
+    bool formatting = lxa_html_tree_formatting_tag(token->name);
+    lxa_status_t status;
+    if (formatting)
+        status = lxa_html_template_context_start_formatting(&context->templates, token, &out.identity);
+    else if (lxa_html_tree_formatting_marker_tag(token->name))
+        status = lxa_html_template_context_start_marker(&context->templates, token, &out.identity);
+    else
+        status = lxa_html_template_context_start_container(&context->templates, token,
+            context->document_mode == LXA_HTML_QUIRKS, &out.identity, &out.foster);
     if (status == LXA_OK) {
+        if (formatting) {
+            lxa_html_template_control_frame_t *frames =
+                (lxa_html_template_control_frame_t *) context->templates.frames.bytes.data;
+            size_t count = lxa_vector_length(&context->templates.frames);
+            if (lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
+                token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode) != LXA_OK) {
+                assert(false);
+                context->failure = LXA_ERROR_INTERNAL;
+                context->limit_reason = LXA_BUDGET_COUNT;
+                return context->failure;
+            }
+        }
         if (!out.foster && (lxa_html_tree_name_equals(token->name, "pre", 3)
             || lxa_html_tree_name_equals(token->name, "listing", 7)))
             context->pending_newline = true;
