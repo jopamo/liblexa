@@ -323,6 +323,60 @@ lxa_html_control_context_template_text_start(lxa_html_control_context_t *context
     return status;
 }
 
+static bool
+control_template_end_br(lxa_html_control_context_t *context)
+{
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->templates.frames.bytes.data;
+    const lxa_html_template_control_frame_t *frame =
+        &frames[lxa_vector_length(&context->templates.frames) - 1];
+    return lxa_html_tree_template_end_br_start(frame->insertion_mode,
+        lxa_vector_length(&context->stack.elements) > frame->boundary);
+}
+
+#define LXA_TEMPLATE_END_DISPATCH_NAME control_dispatch_template_end
+#define LXA_TEMPLATE_END_DISPATCH_VIEW lxa_html_control_context_t
+#define LXA_TEMPLATE_END_DISPATCH_FOREIGN(view, token, handled) \
+    lxa_html_template_context_dispatch_foreign_end(&(view)->templates, token, handled)
+#define LXA_TEMPLATE_END_DISPATCH_BR control_template_end_br
+#define LXA_TEMPLATE_END_DISPATCH_CLOSE(view) \
+    lxa_html_template_context_leave(&(view)->templates, true, &(view)->mode)
+#define LXA_TEMPLATE_END_DISPATCH_BOUNDARY(view, token, handled) \
+    lxa_html_template_context_end_boundary(&(view)->templates, token, handled)
+#include "html/template_end_dispatch.inc"
+#undef LXA_TEMPLATE_END_DISPATCH_NAME
+#undef LXA_TEMPLATE_END_DISPATCH_VIEW
+#undef LXA_TEMPLATE_END_DISPATCH_FOREIGN
+#undef LXA_TEMPLATE_END_DISPATCH_BR
+#undef LXA_TEMPLATE_END_DISPATCH_CLOSE
+#undef LXA_TEMPLATE_END_DISPATCH_BOUNDARY
+
+lxa_status_t
+lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_intake_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_token_t adjusted;
+    bool handled;
+    lxa_status_t status = control_dispatch_template_end(context, &token, &adjusted, &handled);
+    if (status == LXA_OK) *result = (lxa_html_control_intake_result_t){handled, *token};
+    else {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,

@@ -109,6 +109,16 @@ lxa_status_t lxa_html_control_context_template_data_token(lxa_html_control_conte
 lxa_status_t lxa_html_control_context_template_text_start(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool foster, uint64_t *identity);
+/* Route accepted template ends through foreign handling, BR conversion,
+ * explicit template closure and table/marker boundaries in canonical order.
+ * Continuing tokens retain borrowed views; converted BR clears start-only
+ * attributes/self-closing state. Publish handled/token only on success and
+ * latch completed effects on failure without replay. Token/result cannot alias
+ * owners. Earlier intake flushes pending text; later select/current/body/start
+ * execution and namespace feedback remain separate.
+ */
+lxa_status_t lxa_html_control_context_template_end_dispatch(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_intake_result_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

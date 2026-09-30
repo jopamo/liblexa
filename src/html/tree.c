@@ -4527,6 +4527,22 @@ tree_template_foreign_end_consume(lxa_html_tree_t *tree, const lxa_html_token_t 
 #undef LXA_ROOT_FOREIGN_DISPATCH_BREAKOUT
 #undef LXA_ROOT_FOREIGN_DISPATCH_CONSUME
 
+#define LXA_TEMPLATE_END_DISPATCH_NAME tree_dispatch_template_end
+#define LXA_TEMPLATE_END_DISPATCH_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_END_DISPATCH_FOREIGN tree_dispatch_template_foreign_end
+#define LXA_TEMPLATE_END_DISPATCH_BR(view) lxa_html_tree_template_end_br_start( \
+    (view)->template_insertion_mode, \
+    lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+#define LXA_TEMPLATE_END_DISPATCH_CLOSE(view) close_template(view, true)
+#define LXA_TEMPLATE_END_DISPATCH_BOUNDARY template_end_formatting_boundary
+#include "html/template_end_dispatch.inc"
+#undef LXA_TEMPLATE_END_DISPATCH_NAME
+#undef LXA_TEMPLATE_END_DISPATCH_VIEW
+#undef LXA_TEMPLATE_END_DISPATCH_FOREIGN
+#undef LXA_TEMPLATE_END_DISPATCH_BR
+#undef LXA_TEMPLATE_END_DISPATCH_CLOSE
+#undef LXA_TEMPLATE_END_DISPATCH_BOUNDARY
+
 #define LXA_ROOT_END_EXEC_NAME tree_execute_root_end
 #define LXA_ROOT_END_EXEC_VIEW tree_foster_text_view_t
 #define LXA_ROOT_END_EXEC_MODE(view) ((view)->tree->mode)
@@ -4869,28 +4885,9 @@ reprocess_template_token:
                     return template_open_foreign(tree, token, ns);
             }
         }
-        if (token->kind == LXA_HTML_END_TAG) {
-            bool handled;
-            status = tree_dispatch_template_foreign_end(tree, token, &handled);
-            if (status != LXA_OK || handled) return status;
-        }
-        if (token->kind == LXA_HTML_END_TAG && named(token->name, "br")
-            && lxa_html_tree_template_end_br_start(tree->template_insertion_mode,
-                lxa_vector_length(&tree->template_elements) > template_boundary(tree))) {
-            adjusted = *token;
-            adjusted.kind = LXA_HTML_START_TAG;
-            adjusted.attributes = NULL;
-            adjusted.attribute_count = 0;
-            adjusted.self_closing = false;
-            token = &adjusted;
-        }
-        if (token->kind == LXA_HTML_END_TAG
-            && named(token->name, "template")) {
-            return close_template(tree, true);
-        }
         {
             bool handled;
-            status = template_end_formatting_boundary(tree, token, &handled);
+            status = tree_dispatch_template_end(tree, &token, &adjusted, &handled);
             if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG
