@@ -35,6 +35,13 @@ void lxa_html_template_context_destroy(lxa_html_template_context_t *context);
  */
 lxa_status_t lxa_html_template_context_namespace_feedback(lxa_html_template_context_t *context,
     lxa_html_tokenizer_t *tokenizer);
+/* Borrow the current active entry/integration after owner validation. Empty
+ * content publishes virtual HTML, excluding enclosing entries. No WORK or
+ * membership effects. Publish only on success; names expire on mutation.
+ * Outputs cannot alias owners or each other.
+ */
+lxa_status_t lxa_html_template_context_current(lxa_html_template_context_t *context,
+    lxa_html_scope_entry_t *entry, lxa_html_foreign_context_t *integration);
 
 /* Admit an accepted template after namespace/recovery dispatch. Patched
  * contexts are unsupported and rejected before effects. Reserve frames before

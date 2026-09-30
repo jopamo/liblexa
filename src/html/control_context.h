@@ -128,6 +128,19 @@ lxa_status_t lxa_html_control_context_template_end_dispatch(lxa_html_control_con
  */
 lxa_status_t lxa_html_control_context_template_mathml_table_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result);
+/* Route template START/DATA after early intake/misc handling. Exhausted active
+ * slices continue as virtual HTML. Use saved integration for DATA, annotation
+ * SVG and MathML text exceptions, table parts and conditional font breakout.
+ * REPROCESS follows completed breakout pops; reroute the unchanged token.
+ * NULL emit discards ordinary runs, not required table buffering. Callback
+ * spans expire on return; do not retain, reenter or mutate owners. Token/output
+ * cannot alias owners/pending storage. Publish action only on success; latch
+ * failed scans/admission/delivery without replay. Later HTML/end dispatch,
+ * namespace feedback and encoding observation remain driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
+    lxa_html_template_foreign_action_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;

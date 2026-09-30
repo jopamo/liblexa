@@ -110,6 +110,12 @@ typedef enum {
     LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_FOREIGN_CONTINUE,
+    LXA_HTML_TEMPLATE_FOREIGN_CONSUMED,
+    LXA_HTML_TEMPLATE_FOREIGN_REPROCESS
+} lxa_html_template_foreign_action_t;
+
 static inline bool
 lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
 {

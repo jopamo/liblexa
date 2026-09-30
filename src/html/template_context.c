@@ -1103,6 +1103,27 @@ lxa_html_template_context_table_data(lxa_html_template_context_t *context,
     return finish(context, context_execute_table_data(&view, data, false, true));
 }
 
+static lxa_status_t
+current_entry(lxa_html_template_context_t *context, lxa_html_scope_entry_t *entry,
+    lxa_html_foreign_context_t *integration)
+{
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    return lxa_html_control_stack_current(context->stack,
+        frames[lxa_vector_length(&context->frames) - 1].boundary, entry, integration);
+}
+
+lxa_status_t
+lxa_html_template_context_current(lxa_html_template_context_t *context,
+    lxa_html_scope_entry_t *entry, lxa_html_foreign_context_t *integration)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (entry == NULL || integration == NULL || lxa_vector_length(&context->frames) == 0)
+        return LXA_ERROR_ARGUMENT;
+    return finish(context, current_entry(context, entry, integration));
+}
+
 lxa_status_t
 lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_html_data_emit_t emit, void *user)
@@ -1115,7 +1136,7 @@ lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     lxa_html_scope_entry_t entry;
     lxa_html_foreign_context_t integration;
-    status = lxa_html_control_stack_current(context->stack, frames[count - 1].boundary, &entry, &integration);
+    status = current_entry(context, &entry, &integration);
     if (status != LXA_OK) return finish(context, status);
     if (entry.namespace_id == LXA_DOM_NS_HTML
         && (lxa_html_tree_table_context(entry.name) || (entry.identity == 0

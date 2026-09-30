@@ -4717,6 +4717,77 @@ tree_finish_templates(lxa_html_tree_t *tree)
 #undef LXA_EOF_EXEC_ROOT
 
 static lxa_status_t
+tree_template_foreign_namespace(lxa_html_tree_t *tree, lxa_dom_namespace_t *ns)
+{
+    if (lxa_vector_length(&tree->template_elements) <= template_boundary(tree)) {
+        *ns = LXA_DOM_NS_HTML;
+        return LXA_OK;
+    }
+    return lxa_dom_nodes_element_namespace(tree->nodes, template_parent(tree), ns);
+}
+
+static lxa_status_t
+tree_template_foreign_data(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool integrated)
+{
+    return integrated ? tree_execute_template_data(tree, token->data)
+        : insert_data_text(tree, template_parent(tree), token->data, true, false);
+}
+
+static lxa_status_t
+tree_template_foreign_table(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool *handled)
+{
+    const lxa_html_tree_scope_view_t view = {
+        tree, (const lxa_dom_ref_t *) tree->template_elements.bytes.data,
+        lxa_vector_length(&tree->template_elements)
+    };
+    lxa_html_template_mathml_table_action_t action;
+    lxa_status_t status = tree_template_mathml_table_plan(&view, template_boundary(tree),
+        tree->template_insertion_mode, token->name, &action);
+    if (status != LXA_OK) return status;
+    switch (action) {
+    case LXA_HTML_TEMPLATE_MATHML_TABLE_CONTINUE:
+        break;
+    case LXA_HTML_TEMPLATE_MATHML_TABLE_PART:
+        status = named(token->name, "col") ? template_open_column(tree, token)
+                                         : template_open_table_part(tree, token);
+        break;
+    case LXA_HTML_TEMPLATE_MATHML_TABLE_POP_IGNORE:
+        status = template_pop_elements(tree, template_boundary(tree));
+        break;
+    default:
+        assert(false);
+        return LXA_ERROR_INTERNAL;
+    }
+    if (status == LXA_OK) *handled = action != LXA_HTML_TEMPLATE_MATHML_TABLE_CONTINUE;
+    return status;
+}
+
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_NAME tree_dispatch_template_foreign
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_NAMESPACE tree_template_foreign_namespace
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_CURRENT_NAME(view, out) \
+    lxa_dom_nodes_element_name((view)->nodes, template_parent(view), out)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_CONTEXT(view, ns, name, out) \
+    element_foreign_context(view, template_parent(view), ns, name, out)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_START template_open_foreign
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_DATA tree_template_foreign_data
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_TABLE tree_template_foreign_table
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_FONT(view, token, font) \
+    lxa_html_tree_font_breakout(token, (view)->nodes->budget, &(view)->nodes->limit_reason, font)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_BREAKOUT tree_template_foreign_end_breakout
+#include "html/template_foreign_dispatch.inc"
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_NAME
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_VIEW
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_NAMESPACE
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_CURRENT_NAME
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_CONTEXT
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_START
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_DATA
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_TABLE
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_FONT
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_BREAKOUT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -4734,108 +4805,11 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_COMMENT
             || token->kind == LXA_HTML_PROCESSING_INSTRUCTION)
             return append_comment_or_pi(tree, template_parent(tree), token);
-        if (lxa_vector_length(&tree->template_elements)
-            > template_boundary(tree)
-            && (token->kind == LXA_HTML_START_TAG
-                || token->kind == LXA_HTML_TEXT)) {
-            const lxa_dom_ref_t *open =
-                (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
-            lxa_dom_namespace_t ns;
-            size_t length = lxa_vector_length(&tree->template_elements);
-            status = lxa_dom_nodes_element_namespace(tree->nodes,
-                open[length - 1], &ns);
-            if (status != LXA_OK) return status;
-            if (ns != LXA_DOM_NS_HTML && token->kind == LXA_HTML_TEXT) {
-                bool integrated;
-                status = foreign_breakout_boundary(tree, open[length - 1],
-                                                     &integrated);
-                if (status != LXA_OK) return status;
-                if (!integrated)
-                    return insert_data_text(tree, template_parent(tree),
-                                            token->data, true, false);
-                return tree_execute_template_data(tree, token->data);
-            }
-            if (ns == LXA_DOM_NS_SVG) {
-                lxa_span_t current;
-                lxa_html_foreign_context_t context;
-                bool font = false;
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[length - 1], &current);
-                if (status != LXA_OK) return status;
-                status = element_foreign_context(tree, open[length - 1],
-                                                 ns, current, &context);
-                if (status != LXA_OK) return status;
-                if (named(token->name, "font")) {
-                    status = lxa_html_tree_font_breakout(token,
-                        tree->nodes->budget, &tree->nodes->limit_reason, &font);
-                    if (status != LXA_OK) return status;
-                }
-                if (!lxa_html_foreign_integration(context)
-                    && (lxa_html_foreign_html_start_breakout(token->name) || font)) {
-                    size_t keep;
-                    status = plan_foreign_breakout(tree,
-                        &tree->template_elements, template_boundary(tree),
-                        &keep);
-                    if (status != LXA_OK) return status;
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                    goto reprocess_template_token;
-                }
-                /* Integration-point starts continue through the HTML consumers. */
-                if (!lxa_html_foreign_uses_html(context, token)) {
-                    return template_open_foreign(tree, token, ns);
-                }
-            }
-            if (ns == LXA_DOM_NS_MATHML) {
-                lxa_span_t current;
-                lxa_html_foreign_context_t context;
-                bool integrated, font = false;
-                status = lxa_dom_nodes_element_name(tree->nodes,
-                    open[length - 1], &current);
-                if (status != LXA_OK) return status;
-                context = lxa_html_foreign_context(ns, current, false);
-                if (lxa_html_foreign_annotation_svg(context, token))
-                    return template_open_foreign(tree, token, LXA_DOM_NS_SVG);
-                status = element_foreign_context(tree, open[length - 1],
-                                                 ns, current, &context);
-                if (status != LXA_OK) return status;
-                if (lxa_html_foreign_integration(context)
-                    && !lxa_html_foreign_uses_html(context, token))
-                    return template_open_foreign(tree, token,
-                                                 LXA_DOM_NS_MATHML);
-                integrated = lxa_html_foreign_integration(context);
-                if (integrated && lxa_html_tree_table_part(token->name)
-                    && !named(token->name, "table")) {
-                    const lxa_html_tree_scope_view_t view = {tree, open, length};
-                    lxa_html_template_mathml_table_action_t action;
-                    status = tree_template_mathml_table_plan(&view, template_boundary(tree),
-                        tree->template_insertion_mode, token->name, &action);
-                    if (status != LXA_OK) return status;
-                    if (action == LXA_HTML_TEMPLATE_MATHML_TABLE_PART)
-                        return named(token->name, "col") ? template_open_column(tree, token)
-                                                       : template_open_table_part(tree, token);
-                    if (action == LXA_HTML_TEMPLATE_MATHML_TABLE_POP_IGNORE)
-                        return template_pop_elements(tree, template_boundary(tree));
-                }
-                if (!integrated && named(token->name, "font")) {
-                    status = lxa_html_tree_font_breakout(token,
-                        tree->nodes->budget, &tree->nodes->limit_reason, &font);
-                    if (status != LXA_OK) return status;
-                }
-                if (!integrated
-                    && (lxa_html_foreign_html_start_breakout(token->name) || font)) {
-                    size_t keep;
-                    status = plan_foreign_breakout(tree,
-                        &tree->template_elements, template_boundary(tree),
-                        &keep);
-                    if (status != LXA_OK) return status;
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                    goto reprocess_template_token;
-                }
-                if (!integrated)
-                    return template_open_foreign(tree, token, ns);
-            }
+        if (token->kind == LXA_HTML_START_TAG || token->kind == LXA_HTML_TEXT) {
+            lxa_html_template_foreign_action_t action;
+            status = tree_dispatch_template_foreign(tree, token, &action);
+            if (status != LXA_OK || action == LXA_HTML_TEMPLATE_FOREIGN_CONSUMED) return status;
+            if (action == LXA_HTML_TEMPLATE_FOREIGN_REPROCESS) goto reprocess_template_token;
         }
         {
             bool handled;

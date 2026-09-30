@@ -401,6 +401,91 @@ lxa_html_control_context_template_mathml_table_token(lxa_html_control_context_t 
     return status;
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_scope_entry_t current;
+    lxa_html_foreign_context_t integration;
+    lxa_html_data_emit_t emit;
+    void *user;
+} control_template_foreign_view_t;
+
+static lxa_status_t
+control_template_foreign_data(control_template_foreign_view_t *view,
+    const lxa_html_token_t *token, bool integrated)
+{
+    return integrated
+        ? lxa_html_control_context_template_data_token(view->context, token, view->emit, view->user)
+        : lxa_html_template_context_emit_data(&view->context->templates,
+            token->data, view->emit, view->user);
+}
+
+static lxa_status_t
+control_template_foreign_table(control_template_foreign_view_t *view,
+    const lxa_html_token_t *token, bool *handled)
+{
+    lxa_html_template_mathml_table_result_t out;
+    lxa_status_t status = lxa_html_template_context_mathml_table_token(
+        &view->context->templates, token, &out);
+    if (status == LXA_OK) *handled = out.handled;
+    return status;
+}
+
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_NAME control_dispatch_template_foreign
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_VIEW control_template_foreign_view_t
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_NAMESPACE(view, out) (*(out) = (view)->current.namespace_id, LXA_OK)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_CURRENT_NAME(view, out) (*(out) = (view)->current.name, LXA_OK)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_CONTEXT(view, ns, name, out) (*(out) = (view)->integration, LXA_OK)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_START(view, token, ns) \
+    lxa_html_template_context_start_foreign(&(view)->context->templates, token, ns)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_DATA control_template_foreign_data
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_TABLE control_template_foreign_table
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_FONT(view, token, font) lxa_html_tree_font_breakout( \
+    token, (view)->context->stack.budget, &(view)->context->limit_reason, font)
+#define LXA_TEMPLATE_FOREIGN_DISPATCH_BREAKOUT(view, token) \
+    lxa_html_template_context_breakout(&(view)->context->templates)
+#include "html/template_foreign_dispatch.inc"
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_NAME
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_VIEW
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_NAMESPACE
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_CURRENT_NAME
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_CONTEXT
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_START
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_DATA
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_TABLE
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_FONT
+#undef LXA_TEMPLATE_FOREIGN_DISPATCH_BREAKOUT
+
+lxa_status_t
+lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
+    lxa_html_template_foreign_action_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token)
+        || (token->kind != LXA_HTML_START_TAG && token->kind != LXA_HTML_TEXT)
+        || (token->kind == LXA_HTML_TEXT
+            && !lxa_html_tree_table_text_input_valid(&context->pending_table_text, token->data)))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    control_template_foreign_view_t view = {.context = context, .emit = emit, .user = user};
+    lxa_status_t status = lxa_html_template_context_current(&context->templates,
+        &view.current, &view.integration);
+    context->limit_reason = status == LXA_ERROR_LIMIT ? context->stack.limit_reason : LXA_BUDGET_COUNT;
+    if (status == LXA_OK) status = control_dispatch_template_foreign(&view, token, result);
+    if (status != LXA_OK) {
+        context->failure = status;
+        if (context->templates.failure == status) context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
