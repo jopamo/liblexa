@@ -142,6 +142,20 @@ lxa_status_t lxa_html_control_context_template_foreign_dispatch(lxa_html_control
     const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
     lxa_html_template_foreign_action_t *result);
 typedef struct {
+    uint64_t identity;
+    bool foster;
+} lxa_html_control_template_container_result_t;
+/* Admit an accepted ordinary template HTML container after earlier foreign/
+ * select/table/text routing. Formatting, marker and text starts use separate
+ * coordinators. Bind quirks recovery to document_mode; arm pre/listing newline
+ * only after successful non-foster admission. Publish identity/foster only on
+ * success and latch completed recovery on failure without replay. Unsupported
+ * accepted-container arguments preserve state but may charge classification
+ * WORK. Token/result cannot alias owners. Later feedback remains driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_container_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_control_template_container_result_t *result);
+typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
     void *user;
