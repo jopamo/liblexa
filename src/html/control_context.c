@@ -378,15 +378,16 @@ control_template_hidden_plan(lxa_html_control_context_t *context, lxa_html_table
 #undef LXA_TEMPLATE_HTML_PRELUDE_HIDDEN
 #undef LXA_TEMPLATE_HTML_PRELUDE_SELECT
 
-lxa_status_t
-lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, bool *handled)
+static lxa_status_t
+control_template_start_route(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled, bool form)
 {
     if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
     if (context->failure != LXA_OK) return context->failure;
     if (handled == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
-        || context->pending_table_text.length != 0 || context->pending_newline)
+        || context->pending_table_text.length != 0 || context->pending_newline
+        || (form && !lxa_html_tree_name_equals(token->name, "form", 4)))
         return LXA_ERROR_ARGUMENT;
     if (!state_valid(context)) {
         assert(false);
@@ -395,7 +396,9 @@ lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *cont
         return context->failure;
     }
     bool out;
-    lxa_status_t status = control_execute_template_html_prelude(context, token, &out);
+    lxa_status_t status = form
+        ? lxa_html_template_context_form_token(&context->templates, token, &out)
+        : control_execute_template_html_prelude(context, token, &out);
     if (status == LXA_OK) *handled = out;
     else {
         context->failure = status;
@@ -403,6 +406,20 @@ lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *cont
         else if (status != LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_COUNT;
     }
     return status;
+}
+
+lxa_status_t
+lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    return control_template_start_route(context, token, handled, false);
+}
+
+lxa_status_t
+lxa_html_control_context_template_form_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    return control_template_start_route(context, token, handled, true);
 }
 
 static bool

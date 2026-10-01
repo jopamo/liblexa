@@ -3933,6 +3933,18 @@ hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t
 #undef LXA_HIDDEN_TABLE_INSERT
 #undef LXA_HIDDEN_TABLE_POP
 
+#define LXA_TEMPLATE_FORM_NAME tree_template_form_token
+#define LXA_TEMPLATE_FORM_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_FORM_PLAN hidden_table_plan
+#define LXA_TEMPLATE_FORM_INSERT hidden_table_insert
+#define LXA_TEMPLATE_FORM_POP template_pop_elements
+#include "html/template_form_token.inc"
+#undef LXA_TEMPLATE_FORM_NAME
+#undef LXA_TEMPLATE_FORM_VIEW
+#undef LXA_TEMPLATE_FORM_PLAN
+#undef LXA_TEMPLATE_FORM_INSERT
+#undef LXA_TEMPLATE_FORM_POP
+
 static lxa_status_t
 admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 {
@@ -4905,7 +4917,7 @@ consume(lxa_html_tree_t *tree,
 {
     lxa_status_t status;
     lxa_html_token_t adjusted;
-    lxa_dom_ref_t parent, child;
+    lxa_dom_ref_t child;
     bool template_ordinary;
     if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     bool intake_handled;
@@ -4934,25 +4946,9 @@ reprocess_template_token:
             if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG && named(token->name, "form")) {
-            size_t keep, boundary = template_boundary(tree);
-            bool in_table;
-            bool virtual_table = lxa_html_tree_template_table_context(
-                tree->template_insertion_mode);
-            status = plan_table_context(tree, &tree->template_elements,
-                boundary, virtual_table, &keep, &in_table);
-            if (status != LXA_OK) return status;
-            if (in_table) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                parent = keep == boundary ? tree->template_fragment
-                                          : open[keep - 1];
-                status = append_void(tree, parent, token);
-                if (status == LXA_OK) {
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                }
-                return status;
-            }
+            bool handled;
+            status = tree_template_form_token(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "svg") || named(token->name, "math"))) {

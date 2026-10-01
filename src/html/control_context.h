@@ -136,6 +136,13 @@ lxa_status_t lxa_html_control_context_template_end_token(lxa_html_control_contex
  */
 lxa_status_t lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, bool *handled);
+/* Route an accepted form after START prelude. Closed table forms retain no
+ * metadata/NODE charge; ordinary forms continue through later current-element
+ * routing before admission. Prior intake clears pending bytes/newline state.
+ * Publish handled only on success; latch failure without replay.
+ */
+lxa_status_t lxa_html_control_context_template_form_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 typedef enum {
     LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE,
     LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED,

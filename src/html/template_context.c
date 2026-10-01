@@ -738,34 +738,41 @@ lxa_html_template_context_start_void(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
-lxa_status_t
-lxa_html_template_context_start_form(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token, uint64_t *identity, bool *closed)
+static lxa_status_t
+context_form_plan(lxa_html_template_context_t *context, lxa_html_table_context_plan_t *plan)
 {
-    if (identity != NULL) *identity = 0;
-    lxa_status_t status = begin(context);
-    if (status != LXA_OK) return status;
     size_t count = lxa_vector_length(&context->frames);
-    if (identity == NULL || closed == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
-        || token->kind != LXA_HTML_START_TAG
-        || !lxa_html_tree_name_equals(token->name, "form", 4)) return LXA_ERROR_ARGUMENT;
     const lxa_html_template_control_frame_t *frames =
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
-    lxa_html_table_context_plan_t plan;
-    status = lxa_html_control_stack_table_context_plan(context->stack,
+    lxa_status_t status = lxa_html_control_stack_table_context_plan(context->stack,
         frames[count - 1].boundary,
-        lxa_html_tree_template_table_context(frames[count - 1].insertion_mode), &plan);
-    if (status == LXA_OK && plan.in_table)
-        status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
+        lxa_html_tree_template_table_context(frames[count - 1].insertion_mode), plan);
     if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-    if (status == LXA_OK && !plan.in_table) {
-        bool foster;
-        status = lxa_html_template_context_start_container(context, token, false, identity, &foster);
-        if (status == LXA_OK && foster) status = internal();
-    }
-    if (status == LXA_OK) *closed = plan.in_table;
-    else *identity = 0;
-    return finish(context, status);
+    return status;
+}
+
+#define LXA_TEMPLATE_FORM_NAME context_form_token
+#define LXA_TEMPLATE_FORM_VIEW lxa_html_template_context_t
+#define LXA_TEMPLATE_FORM_PLAN context_form_plan
+#define LXA_TEMPLATE_FORM_INSERT(view, token, keep) ((void) (token), LXA_OK)
+#define LXA_TEMPLATE_FORM_POP end_pop
+#include "html/template_form_token.inc"
+#undef LXA_TEMPLATE_FORM_NAME
+#undef LXA_TEMPLATE_FORM_VIEW
+#undef LXA_TEMPLATE_FORM_PLAN
+#undef LXA_TEMPLATE_FORM_INSERT
+#undef LXA_TEMPLATE_FORM_POP
+
+lxa_status_t
+lxa_html_template_context_form_token(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    if (handled == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "form", 4)) return LXA_ERROR_ARGUMENT;
+    return finish(context, context_form_token(context, token, handled));
 }
 
 lxa_status_t
