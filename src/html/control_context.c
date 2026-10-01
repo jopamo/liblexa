@@ -533,6 +533,148 @@ lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *c
     return status;
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_html_control_template_table_start_result_t *out;
+} control_template_table_start_view_t;
+
+static lxa_status_t
+control_template_table_pop(control_template_table_start_view_t *view)
+{
+    lxa_status_t status = lxa_html_control_stack_pop_to(&view->context->stack,
+        lxa_vector_length(&view->context->stack.elements) - 1);
+    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->context->stack.limit_reason;
+    return status;
+}
+
+static lxa_status_t
+control_template_table_part(control_template_table_start_view_t *view,
+    const lxa_html_token_t *token)
+{
+    bool inserted;
+    lxa_status_t status = lxa_html_template_context_start_table_part_prepared(
+        &view->context->templates, token, &inserted);
+    if (status == LXA_OK && inserted) {
+        lxa_html_scope_entry_t entry;
+        lxa_html_foreign_context_t integration;
+        status = lxa_html_template_context_current(&view->context->templates, &entry, &integration);
+        if (status == LXA_OK) view->out->identity = entry.identity;
+    }
+    return status;
+}
+
+static lxa_status_t
+control_template_table_column(control_template_table_start_view_t *view,
+    const lxa_html_token_t *token)
+{
+    bool inserted;
+    return lxa_html_template_context_start_column_prepared(&view->context->templates, token, &inserted);
+}
+
+static lxa_status_t
+control_template_table_foster(control_template_table_start_view_t *view,
+    const lxa_html_token_t *token, bool keep, lxa_dom_namespace_t ns)
+{
+    lxa_status_t status = lxa_html_template_context_foster_token(&view->context->templates,
+        token, ns, keep, &view->out->identity);
+    if (status == LXA_OK) {
+        view->out->token = *token;
+        view->out->foster = true;
+    }
+    return status;
+}
+
+static lxa_status_t
+control_template_table_text_start(control_template_table_start_view_t *view,
+    const lxa_html_token_t *token, bool foster)
+{
+    lxa_status_t status = lxa_html_control_context_template_text_start(view->context,
+        view->tokenizer, token, foster, &view->out->identity);
+    if (status == LXA_OK) view->out->foster = foster;
+    return status;
+}
+
+#define LXA_TEMPLATE_TABLE_START_NAME control_execute_template_table_start
+#define LXA_TEMPLATE_TABLE_START_VIEW control_template_table_start_view_t
+#define LXA_TEMPLATE_TABLE_START_POP control_template_table_pop
+#define LXA_TEMPLATE_TABLE_START_COLUMN control_template_table_column
+#define LXA_TEMPLATE_TABLE_START_PART control_template_table_part
+#define LXA_TEMPLATE_TABLE_START_FOSTER control_template_table_foster
+#define LXA_TEMPLATE_TABLE_START_TEXT_CHECK(view) \
+    ((view)->tokenizer == NULL ? LXA_ERROR_ARGUMENT : LXA_OK)
+#define LXA_TEMPLATE_TABLE_START_TEXT control_template_table_text_start
+#define LXA_TEMPLATE_TABLE_START_VOID_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_TABLE_START_NEWLINE(view) ((view)->context->pending_newline)
+#define LXA_TEMPLATE_TABLE_START_SUPPORTED(view, name, out) lxa_html_tree_supported_container(name, \
+    (view)->context->stack.budget, &(view)->context->limit_reason, out)
+#include "html/template_table_start_execute.inc"
+#undef LXA_TEMPLATE_TABLE_START_NAME
+#undef LXA_TEMPLATE_TABLE_START_VIEW
+#undef LXA_TEMPLATE_TABLE_START_POP
+#undef LXA_TEMPLATE_TABLE_START_COLUMN
+#undef LXA_TEMPLATE_TABLE_START_PART
+#undef LXA_TEMPLATE_TABLE_START_FOSTER
+#undef LXA_TEMPLATE_TABLE_START_TEXT_CHECK
+#undef LXA_TEMPLATE_TABLE_START_TEXT
+#undef LXA_TEMPLATE_TABLE_START_VOID_PREFLIGHT
+#undef LXA_TEMPLATE_TABLE_START_NEWLINE
+#undef LXA_TEMPLATE_TABLE_START_SUPPORTED
+
+lxa_status_t
+lxa_html_control_context_template_table_start(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_control_template_table_start_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_control_template_table_start_result_t out = {
+        .action = LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE, .token = *token
+    };
+    lxa_html_template_current_route_t route;
+    lxa_status_t status = lxa_html_template_context_current_token(&context->templates, token, &route);
+    control_template_table_start_view_t view = {context, tokenizer, &out};
+    if (status == LXA_OK) {
+        switch (route.action) {
+        case LXA_HTML_TEMPLATE_CURRENT_CONTINUE:
+            break;
+        case LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START:
+            if (tokenizer == NULL && lxa_html_tree_template_html_text_element(token->name))
+                status = LXA_ERROR_ARGUMENT;
+            else status = control_template_table_pop(&view);
+            out.action = LXA_HTML_CONTROL_TEMPLATE_START_REPROCESS;
+            break;
+        case LXA_HTML_TEMPLATE_CURRENT_TABLE: {
+            bool handled;
+            status = control_execute_template_table_start(&view, token, route.column_group, &handled);
+            if (status == LXA_OK && handled) out.action = LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED;
+            break;
+        }
+        default:
+            assert(false);
+            status = LXA_ERROR_INTERNAL;
+            break;
+        }
+    }
+    if (status == LXA_OK) *result = out;
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        if (context->templates.failure == status) context->limit_reason = context->templates.limit_reason;
+        else if (status != LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 lxa_status_t
 lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result)

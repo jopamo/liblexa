@@ -1319,6 +1319,9 @@ push_table_part(lxa_html_template_context_t *context, const lxa_html_token_t *to
         : lxa_html_template_context_push_token(context, token, LXA_DOM_NS_HTML, &identity);
 }
 
+static lxa_status_t start_column(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted, bool prepared);
+
 static lxa_status_t
 start_table_part(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted, bool prepared)
@@ -1340,7 +1343,7 @@ start_table_part(lxa_html_template_context_t *context,
     size_t boundary = frames[count - 1].boundary;
     lxa_html_template_mode_t mode = frames[count - 1].insertion_mode;
     if (mode == LXA_TEMPLATE_COLUMN_GROUP && lxa_html_tree_name_equals(token->name, "col", 3))
-        return lxa_html_template_context_start_column(context, token, inserted);
+        return start_column(context, token, inserted, true);
     lxa_html_control_stack_t *stack = context->stack;
     lxa_html_template_table_start_plan_t plan;
     for (;;) {
@@ -1398,6 +1401,13 @@ lxa_html_template_context_start_table_part(lxa_html_template_context_t *context,
 }
 
 lxa_status_t
+lxa_html_template_context_start_table_part_prepared(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted)
+{
+    return start_table_part(context, token, inserted, true);
+}
+
+lxa_status_t
 lxa_html_template_context_mathml_table_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_mathml_table_result_t *result)
 {
@@ -1439,9 +1449,9 @@ lxa_html_template_context_mathml_table_token(lxa_html_template_context_t *contex
     return finish(context, status);
 }
 
-lxa_status_t
-lxa_html_template_context_start_column(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token, bool *inserted)
+static lxa_status_t
+start_column(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted, bool prepared)
 {
     if (inserted != NULL) *inserted = false;
     lxa_status_t status = begin(context);
@@ -1450,9 +1460,11 @@ lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     if (inserted == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
         || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_name_equals(token->name, "col", 3)) return LXA_ERROR_ARGUMENT;
-    bool ignore;
-    status = prepare_table_start(context, token->name, &ignore);
-    if (status != LXA_OK || ignore) return status;
+    if (!prepared) {
+        bool ignore;
+        status = prepare_table_start(context, token->name, &ignore);
+        if (status != LXA_OK || ignore) return status;
+    }
     const lxa_html_template_control_frame_t *frames =
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     size_t boundary = frames[count - 1].boundary;
@@ -1506,6 +1518,20 @@ lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->stack->limit_reason;
     return finish(context, status);
+}
+
+lxa_status_t
+lxa_html_template_context_start_column(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted)
+{
+    return start_column(context, token, inserted, false);
+}
+
+lxa_status_t
+lxa_html_template_context_start_column_prepared(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted)
+{
+    return start_column(context, token, inserted, true);
 }
 
 lxa_status_t

@@ -125,6 +125,30 @@ typedef struct {
  */
 lxa_status_t lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result);
+typedef enum {
+    LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE,
+    LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED,
+    LXA_HTML_CONTROL_TEMPLATE_START_REPROCESS
+} lxa_html_control_template_start_action_t;
+typedef struct {
+    lxa_html_control_template_start_action_t action;
+    lxa_html_token_t token;
+    uint64_t identity;
+    bool foster;
+} lxa_html_control_template_table_start_result_t;
+/* Execute current-template HTML table START after earlier foreign/control/
+ * initial-mode/BODY-scope/group/select/form/nested-table routing and intake.
+ * Read current content once; publish CONTINUE or completed colgroup REPROCESS
+ * when selected. Table rules share canonical effect ordering, including text
+ * feedback, foster starts, image normalization and prepared part/column admission.
+ * Require a same-budget tokenizer only for selected text routes. Publish output
+ * only on success; latch failed effects without replay. Borrow token views until
+ * caller input expires; token/result cannot alias owners. Later continuing HTML
+ * execution and namespace feedback remain separate.
+ */
+lxa_status_t lxa_html_control_context_template_table_start(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    lxa_html_control_template_table_start_result_t *result);
 /* Bind accepted MathML integration-point table-part execution to this owner.
  * Earlier routing establishes integration/nonempty content and flushes pending
  * text. Publish handled/inserted only on success; latch failures without replay.

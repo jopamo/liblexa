@@ -4787,6 +4787,63 @@ tree_template_foreign_table(lxa_html_tree_t *tree, const lxa_html_token_t *token
 #undef LXA_TEMPLATE_FOREIGN_DISPATCH_FONT
 #undef LXA_TEMPLATE_FOREIGN_DISPATCH_BREAKOUT
 
+typedef struct {
+    lxa_html_tree_t *tree;
+    lxa_html_tokenizer_t *tokenizer;
+} tree_template_table_start_view_t;
+
+static lxa_status_t
+tree_template_table_void_preflight(tree_template_table_start_view_t *view)
+{
+    lxa_status_t status = lxa_budget_check(view->tree->nodes->budget, LXA_BUDGET_NODES,
+        1, &view->tree->nodes->limit_reason);
+    return status == LXA_OK ? lxa_budget_check(view->tree->nodes->budget, LXA_BUDGET_WORK,
+        2, &view->tree->nodes->limit_reason) : status;
+}
+
+static lxa_status_t
+tree_template_table_text_start(tree_template_table_start_view_t *view,
+    const lxa_html_token_t *token, bool foster)
+{
+    if (!foster) return begin_template_xmp(view->tree, view->tokenizer, token);
+    bool plaintext = named(token->name, "plaintext");
+    lxa_dom_ref_t child;
+    lxa_status_t status = template_foster_element(view->tree, token, plaintext, &child, LXA_DOM_NS_HTML);
+    if (status == LXA_OK)
+        status = plaintext ? set_tokenizer_text_mode(view->tree, view->tokenizer, token)
+                           : enter_text_mode(view->tree, view->tokenizer, token, child);
+    if (status == LXA_OK && named(token->name, "textarea")) view->tree->skip_pre_newline = true;
+    return status;
+}
+
+#define LXA_TEMPLATE_TABLE_START_NAME tree_execute_template_table_start
+#define LXA_TEMPLATE_TABLE_START_VIEW tree_template_table_start_view_t
+#define LXA_TEMPLATE_TABLE_START_POP(view) template_pop_elements((view)->tree, \
+    lxa_vector_length(&(view)->tree->template_elements) - 1)
+#define LXA_TEMPLATE_TABLE_START_COLUMN(view, token) template_open_column((view)->tree, token)
+#define LXA_TEMPLATE_TABLE_START_PART(view, token) template_open_table_part((view)->tree, token)
+#define LXA_TEMPLATE_TABLE_START_FOSTER(view, token, keep, ns) \
+    template_foster_element((view)->tree, token, keep, NULL, ns)
+#define LXA_TEMPLATE_TABLE_START_TEXT_CHECK(view) \
+    ((view)->tokenizer == NULL ? LXA_ERROR_ARGUMENT : LXA_OK)
+#define LXA_TEMPLATE_TABLE_START_TEXT tree_template_table_text_start
+#define LXA_TEMPLATE_TABLE_START_VOID_PREFLIGHT tree_template_table_void_preflight
+#define LXA_TEMPLATE_TABLE_START_NEWLINE(view) ((view)->tree->skip_pre_newline)
+#define LXA_TEMPLATE_TABLE_START_SUPPORTED(view, name, out) lxa_html_tree_supported_container(name, \
+    (view)->tree->nodes->budget, &(view)->tree->nodes->limit_reason, out)
+#include "html/template_table_start_execute.inc"
+#undef LXA_TEMPLATE_TABLE_START_NAME
+#undef LXA_TEMPLATE_TABLE_START_VIEW
+#undef LXA_TEMPLATE_TABLE_START_POP
+#undef LXA_TEMPLATE_TABLE_START_COLUMN
+#undef LXA_TEMPLATE_TABLE_START_PART
+#undef LXA_TEMPLATE_TABLE_START_FOSTER
+#undef LXA_TEMPLATE_TABLE_START_TEXT_CHECK
+#undef LXA_TEMPLATE_TABLE_START_TEXT
+#undef LXA_TEMPLATE_TABLE_START_VOID_PREFLIGHT
+#undef LXA_TEMPLATE_TABLE_START_NEWLINE
+#undef LXA_TEMPLATE_TABLE_START_SUPPORTED
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -5002,108 +5059,11 @@ reprocess_template_token:
                     return insert_data_text(tree, template_parent(tree),
                                             token->data, false, true);
                 }
-                lxa_html_template_table_start_action_t start_action = token->kind == LXA_HTML_START_TAG
-                    ? lxa_html_tree_template_table_start_action(token->name, named(top, "colgroup"))
-                    : LXA_HTML_TEMPLATE_TABLE_START_CONTINUE;
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_COLUMN)
-                    return template_open_column(tree, token);
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_FOREIGN) {
-                    lxa_dom_namespace_t ns = named(token->name, "svg")
-                        ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return template_foster_element(tree, token,
-                        !token->self_closing, NULL, ns);
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_HEAD_VOID) {
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return template_foster_element(tree, token, false, NULL,
-                                                    LXA_DOM_NS_HTML);
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_TEXT) {
-                    bool textarea = named(token->name, "textarea");
-                    bool plaintext = named(token->name, "plaintext");
-                    if (tokenizer == NULL) return LXA_ERROR_ARGUMENT;
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    status = template_foster_element(tree, token, plaintext,
-                                                      &child, LXA_DOM_NS_HTML);
-                    if (status == LXA_OK && plaintext)
-                        status = set_tokenizer_text_mode(tree, tokenizer, token);
-                    else if (status == LXA_OK)
-                        status = enter_text_mode(tree, tokenizer, token, child);
-                    if (status == LXA_OK && textarea)
-                        tree->skip_pre_newline = true;
-                    return status;
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_POP_GROUP) {
-                    /* Column-group mode closes before reprocessing these
-                     * through the head-compatible text-mode rule. */
-                    status = template_pop_elements(tree, last);
-                    if (status != LXA_OK) return status;
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_XMP)
-                    return begin_template_xmp(tree, tokenizer, token);
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_VOID) {
-                    bool in_colgroup = named(top, "colgroup");
-                    if (in_colgroup) {
-                        status = lxa_budget_check(tree->nodes->budget,
-                            LXA_BUDGET_NODES, 1,
-                            &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = lxa_budget_check(tree->nodes->budget,
-                                LXA_BUDGET_WORK, 2,
-                                &tree->nodes->limit_reason);
-                        if (status == LXA_OK)
-                            status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    if (named(token->name, "image")) {
-                        adjusted = *token;
-                        adjusted.name = literal("img");
-                        token = &adjusted;
-                    }
-                    status = template_foster_element(tree, token, false, NULL,
-                                                     LXA_DOM_NS_HTML);
-                    return status;
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_OPEN) {
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    status = template_foster_element(tree, token, true, NULL,
-                                                     LXA_DOM_NS_HTML);
-                    if (status == LXA_OK
-                        && (named(token->name, "pre")
-                            || named(token->name, "listing")))
-                        tree->skip_pre_newline = true;
-                    return status;
-                }
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_PART)
-                    return template_open_table_part(tree, token);
-                if (start_action == LXA_HTML_TEMPLATE_TABLE_START_FALLBACK) {
-                    bool ordinary;
-                    status = lxa_html_tree_supported_container(token->name,
-                        tree->nodes->budget, &tree->nodes->limit_reason, &ordinary);
-                    if (status != LXA_OK) return status;
-                    if (!ordinary) {
-                        assert(false);
-                        return LXA_ERROR_INTERNAL;
-                    }
-                    if (named(top, "colgroup")) {
-                        status = template_pop_elements(tree, last);
-                        if (status != LXA_OK) return status;
-                    }
-                    return template_foster_element(tree, token, true, NULL,
-                                                   LXA_DOM_NS_HTML);
+                if (token->kind == LXA_HTML_START_TAG) {
+                    tree_template_table_start_view_t view = {tree, tokenizer};
+                    bool handled;
+                    status = tree_execute_template_table_start(&view, token, named(top, "colgroup"), &handled);
+                    if (status != LXA_OK || handled) return status;
                 }
                 if (token->kind == LXA_HTML_END_TAG) {
                     switch (lxa_html_tree_template_table_end_action(token->name,

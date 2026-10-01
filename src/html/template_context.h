@@ -153,6 +153,15 @@ lxa_status_t lxa_html_template_context_start_table_part(lxa_html_template_contex
  */
 lxa_status_t lxa_html_template_context_start_column(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *inserted);
+/* Admit after earlier initial-mode/BODY table-scope preparation and routing.
+ * Do not repeat preparation or its scope WORK. Otherwise use the same column/
+ * table-part admission, output and terminal-failure contracts as above.
+ * Serialized callers must preserve the prepared phase, not replay it.
+ */
+lxa_status_t lxa_html_template_context_start_table_part_prepared(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted);
+lxa_status_t lxa_html_template_context_start_column_prepared(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *inserted);
 typedef struct {
     bool handled, inserted;
 } lxa_html_template_mathml_table_result_t;
