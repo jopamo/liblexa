@@ -3702,7 +3702,8 @@ tree_template_column_group_plan(lxa_html_tree_t *tree, const lxa_html_token_t *t
     lxa_html_column_group_action_t *action)
 {
     bool group_open = false;
-    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+    if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP
+        && lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
@@ -4845,6 +4846,60 @@ tree_template_table_text_start(tree_template_table_start_view_t *view,
 #undef LXA_TEMPLATE_TABLE_START_SUPPORTED
 
 static lxa_status_t
+tree_template_prepare_name(lxa_html_tree_t *tree, lxa_span_t *name)
+{
+    size_t length = lxa_vector_length(&tree->template_elements);
+    const lxa_dom_ref_t *open = (const lxa_dom_ref_t *) tree->template_elements.bytes.data;
+    lxa_status_t status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
+        &tree->nodes->limit_reason);
+    return status == LXA_OK ? lxa_dom_nodes_element_name(tree->nodes, open[length - 1], name) : status;
+}
+
+#define LXA_TEMPLATE_PREPARE_START_NAME tree_prepare_template_start
+#define LXA_TEMPLATE_PREPARE_START_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_PREPARE_START_CURRENT(view) \
+    (lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+#define LXA_TEMPLATE_PREPARE_START_NAME_READ tree_template_prepare_name
+#define LXA_TEMPLATE_PREPARE_START_POP(view) \
+    template_pop_elements(view, lxa_vector_length(&(view)->template_elements) - 1)
+#define LXA_TEMPLATE_PREPARE_START_MODE(view, token) template_start_mode(view, token, LXA_DOM_NS_HTML)
+#define LXA_TEMPLATE_PREPARE_START_MODE_GET(view) ((view)->template_insertion_mode)
+#define LXA_TEMPLATE_PREPARE_START_TABLE(view, found) \
+    table_in_scope(view, &(view)->template_elements, template_boundary(view), found)
+#include "html/template_prepare_start.inc"
+#undef LXA_TEMPLATE_PREPARE_START_NAME
+#undef LXA_TEMPLATE_PREPARE_START_VIEW
+#undef LXA_TEMPLATE_PREPARE_START_CURRENT
+#undef LXA_TEMPLATE_PREPARE_START_NAME_READ
+#undef LXA_TEMPLATE_PREPARE_START_POP
+#undef LXA_TEMPLATE_PREPARE_START_MODE
+#undef LXA_TEMPLATE_PREPARE_START_MODE_GET
+#undef LXA_TEMPLATE_PREPARE_START_TABLE
+
+static lxa_status_t
+tree_template_select(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool *ignore)
+{
+    size_t keep;
+    lxa_status_t status = plan_select_token(tree, &tree->template_elements,
+        template_boundary(tree), token, &keep, ignore);
+    return status == LXA_OK ? template_pop_elements(tree, keep) : status;
+}
+
+#define LXA_TEMPLATE_HTML_PRELUDE_NAME tree_execute_template_html_prelude
+#define LXA_TEMPLATE_HTML_PRELUDE_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_HTML_PRELUDE_PREPARE tree_prepare_template_start
+#define LXA_TEMPLATE_HTML_PRELUDE_GROUP tree_execute_template_column_group
+#define LXA_TEMPLATE_HTML_PRELUDE_HIDDEN insert_hidden_table_input
+#define LXA_TEMPLATE_HTML_PRELUDE_SELECT tree_template_select
+#include "html/template_html_prelude.inc"
+#undef LXA_TEMPLATE_HTML_PRELUDE_NAME
+#undef LXA_TEMPLATE_HTML_PRELUDE_VIEW
+#undef LXA_TEMPLATE_HTML_PRELUDE_PREPARE
+#undef LXA_TEMPLATE_HTML_PRELUDE_GROUP
+#undef LXA_TEMPLATE_HTML_PRELUDE_HIDDEN
+#undef LXA_TEMPLATE_HTML_PRELUDE_SELECT
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -4873,65 +4928,10 @@ reprocess_template_token:
             status = tree_dispatch_template_end(tree, &token, &adjusted, &handled);
             if (status != LXA_OK || handled) return status;
         }
-        if (token->kind == LXA_HTML_START_TAG
-            && lxa_html_tree_body_control_start(token->name))
-        {
-            size_t length = lxa_vector_length(&tree->template_elements);
-            if (length > template_boundary(tree)
-                && !named(token->name, "html")) {
-                const lxa_dom_ref_t *open = (const lxa_dom_ref_t *)
-                    tree->template_elements.bytes.data;
-                lxa_span_t top;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        open[length - 1], &top);
-                if (status != LXA_OK) return status;
-                if (named(top, "colgroup")) {
-                    status = template_pop_elements(tree, length - 1);
-                    if (status != LXA_OK) return status;
-                }
-            }
-            /* None can enter a template fragment. */
-            return template_start_mode(tree, token, LXA_DOM_NS_HTML);
-        }
-        if (tree->template_insertion_mode == LXA_TEMPLATE_INITIAL
-            && token->kind == LXA_HTML_START_TAG
-            && lxa_html_tree_table_part(token->name) && !named(token->name, "table")) {
-            status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
-            if (status != LXA_OK) return status;
-        }
-        if (tree->template_insertion_mode == LXA_TEMPLATE_BODY
-            && token->kind == LXA_HTML_START_TAG
-            && lxa_html_tree_table_part(token->name) && !named(token->name, "table")) {
-            bool table_found = false;
-            status = table_in_scope(tree, &tree->template_elements,
-                                     template_boundary(tree), &table_found);
-            if (status != LXA_OK) return status;
-            if (!table_found)
-                return LXA_OK; /* No table in scope for in-body starts. */
-        }
-        if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP) {
-            lxa_html_column_group_action_t action;
-            status = tree_execute_template_column_group(tree, token, &action);
-            if (status != LXA_OK) return status;
-            if (action != LXA_HTML_COLUMN_GROUP_CONTINUE) return LXA_OK;
-        }
         {
             bool handled;
-            status = insert_hidden_table_input(tree, token, &handled);
+            status = tree_execute_template_html_prelude(tree, token, &handled);
             if (status != LXA_OK || handled) return status;
-        }
-        {
-            size_t keep;
-            bool ignore;
-            status = plan_select_token(tree, &tree->template_elements,
-                template_boundary(tree), token, &keep, &ignore);
-            if (status != LXA_OK) return status;
-            status = template_pop_elements(tree, keep);
-            if (status != LXA_OK) return status;
-            if (ignore) return LXA_OK;
         }
         if (token->kind == LXA_HTML_START_TAG && named(token->name, "form")) {
             size_t keep, boundary = template_boundary(tree);

@@ -323,6 +323,88 @@ lxa_html_control_context_template_text_start(lxa_html_control_context_t *context
     return status;
 }
 
+static lxa_status_t
+control_template_pop(lxa_html_control_context_t *context, size_t keep)
+{
+    lxa_status_t status = lxa_html_control_stack_pop_to(&context->stack, keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack.limit_reason;
+    return status;
+}
+
+static lxa_status_t
+control_template_hidden_plan(lxa_html_control_context_t *context, lxa_html_table_context_plan_t *out)
+{
+    /* Column-group intake validates these frames before hidden-input planning. */
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->templates.frames.bytes.data;
+    const lxa_html_template_control_frame_t *frame =
+        &frames[lxa_vector_length(&context->templates.frames) - 1];
+    lxa_status_t status = lxa_html_control_stack_table_context_plan(&context->stack, frame->boundary,
+        lxa_html_tree_template_table_context(frame->insertion_mode), out);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack.limit_reason;
+    return status;
+}
+
+#define LXA_HIDDEN_TABLE_NAME control_template_hidden_input
+#define LXA_HIDDEN_TABLE_VIEW lxa_html_control_context_t
+#define LXA_HIDDEN_TABLE_BUDGET(view) ((view)->stack.budget)
+#define LXA_HIDDEN_TABLE_REASON(view) (&(view)->limit_reason)
+#define LXA_HIDDEN_TABLE_PLAN control_template_hidden_plan
+#define LXA_HIDDEN_TABLE_INSERT(view, token, keep) LXA_OK
+#define LXA_HIDDEN_TABLE_POP control_template_pop
+#include "html/hidden_table_input.inc"
+#undef LXA_HIDDEN_TABLE_NAME
+#undef LXA_HIDDEN_TABLE_VIEW
+#undef LXA_HIDDEN_TABLE_BUDGET
+#undef LXA_HIDDEN_TABLE_REASON
+#undef LXA_HIDDEN_TABLE_PLAN
+#undef LXA_HIDDEN_TABLE_INSERT
+#undef LXA_HIDDEN_TABLE_POP
+
+#define LXA_TEMPLATE_HTML_PRELUDE_NAME control_execute_template_html_prelude
+#define LXA_TEMPLATE_HTML_PRELUDE_VIEW lxa_html_control_context_t
+#define LXA_TEMPLATE_HTML_PRELUDE_PREPARE(view, token, handled) \
+    lxa_html_template_context_prepare_start(&(view)->templates, token, handled)
+#define LXA_TEMPLATE_HTML_PRELUDE_GROUP(view, token, action) \
+    lxa_html_template_context_column_group_token(&(view)->templates, token, NULL, NULL, NULL, action)
+#define LXA_TEMPLATE_HTML_PRELUDE_HIDDEN control_template_hidden_input
+#define LXA_TEMPLATE_HTML_PRELUDE_SELECT(view, token, handled) \
+    lxa_html_template_context_select_token(&(view)->templates, token, handled)
+#include "html/template_html_prelude.inc"
+#undef LXA_TEMPLATE_HTML_PRELUDE_NAME
+#undef LXA_TEMPLATE_HTML_PRELUDE_VIEW
+#undef LXA_TEMPLATE_HTML_PRELUDE_PREPARE
+#undef LXA_TEMPLATE_HTML_PRELUDE_GROUP
+#undef LXA_TEMPLATE_HTML_PRELUDE_HIDDEN
+#undef LXA_TEMPLATE_HTML_PRELUDE_SELECT
+
+lxa_status_t
+lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (handled == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    bool out;
+    lxa_status_t status = control_execute_template_html_prelude(context, token, &out);
+    if (status == LXA_OK) *handled = out;
+    else {
+        context->failure = status;
+        if (context->templates.failure == status) context->limit_reason = context->templates.limit_reason;
+        else if (status != LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 static bool
 control_template_end_br(lxa_html_control_context_t *context)
 {
@@ -380,13 +462,8 @@ lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
             out.token = *token;
             break;
         }
-        lxa_html_column_group_action_t group;
-        status = lxa_html_template_context_column_group_token(&context->templates,
-            token, NULL, NULL, NULL, &group);
-        if (status != LXA_OK || group != LXA_HTML_COLUMN_GROUP_CONTINUE) break;
-        bool ignore;
-        status = lxa_html_template_context_select_token(&context->templates, token, &ignore);
-        if (status != LXA_OK || ignore) break;
+        status = control_execute_template_html_prelude(context, token, &handled);
+        if (status != LXA_OK || handled) break;
         lxa_html_template_table_end_result_t table;
         status = lxa_html_template_context_end_table(&context->templates, token, &table);
         if (status != LXA_OK) break;
@@ -542,10 +619,7 @@ typedef struct {
 static lxa_status_t
 control_template_table_pop(control_template_table_start_view_t *view)
 {
-    lxa_status_t status = lxa_html_control_stack_pop_to(&view->context->stack,
-        lxa_vector_length(&view->context->stack.elements) - 1);
-    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->context->stack.limit_reason;
-    return status;
+    return control_template_pop(view->context, lxa_vector_length(&view->context->stack.elements) - 1);
 }
 
 static lxa_status_t
@@ -1019,10 +1093,9 @@ lxa_html_control_context_finish(lxa_html_control_context_t *context)
     lxa_status_t status = LXA_OK;
     if (context->mode == LXA_TREE_TEMPLATE_TEXT) {
         const lxa_html_token_t token = {.kind = LXA_HTML_EOF};
-        lxa_html_column_group_action_t group;
-        status = lxa_html_template_context_column_group_token(&context->templates,
-            &token, NULL, NULL, NULL, &group);
-        if (status == LXA_OK && group != LXA_HTML_COLUMN_GROUP_CONTINUE) {
+        bool handled;
+        status = control_execute_template_html_prelude(context, &token, &handled);
+        if (status == LXA_OK && handled) {
             assert(false);
             context->failure = LXA_ERROR_INTERNAL;
             context->limit_reason = LXA_BUDGET_COUNT;

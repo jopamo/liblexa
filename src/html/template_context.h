@@ -200,13 +200,15 @@ lxa_status_t lxa_html_template_context_dispatch_foreign_end(lxa_html_template_co
  */
 lxa_status_t lxa_html_template_context_select_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *ignore);
-/* Ignore an accepted html/head/body/frameset/frame start after foreign/end
- * dispatch. Non-html starts first pop a current colgroup. Publish template
- * mode only after successful effects; failures latch completed pops. Retain
- * no token views and admit no metadata. Views must not alias borrowed owners.
+/* Prepare accepted HTML starts after foreign/end dispatch. Ignore body-control
+ * starts after non-html current-colgroup recovery and successful mode publication.
+ * Publish initial table-part mode before BODY table-scope gating; ignore BODY
+ * parts without a table in scope. Other starts continue without reads/effects.
+ * Publish handled only on success; latch completed effects without replay.
+ * Retain no token views or new metadata. Views/output cannot alias owners.
  */
-lxa_status_t lxa_html_template_context_start_control(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token);
+lxa_status_t lxa_html_template_context_prepare_start(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 /* Gate virtual column-group tokens after earlier foreign/end/table/control
  * dispatch. Read current content only in column-group mode, charging one WORK.
  * For SPACE_TEXT, borrow an empty initialized same-budget spaces buffer, filter

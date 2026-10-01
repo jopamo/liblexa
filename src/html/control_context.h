@@ -125,6 +125,17 @@ typedef struct {
  */
 lxa_status_t lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result);
+/* Prepare template HTML START after misc/foreign/end routing and intake.
+ * Order body-control/initial-part/BODY-scope preparation, column-group gating,
+ * hidden table input and select recovery as in the canonical driver. Hidden
+ * inputs retain no metadata/NODE charge. Publish handled only after success;
+ * retain completed mode/pops and latch failure without replay. Prior intake
+ * flushes pending bytes and clears newline state. Token/output cannot alias
+ * owners. Continuing form/foreign/table/current/ordinary execution is separate;
+ * subsequent part/column execution consumes this prepared phase exactly once.
+ */
+lxa_status_t lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 typedef enum {
     LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE,
     LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED,
