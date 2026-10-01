@@ -231,8 +231,10 @@ lxa_status_t lxa_html_control_context_root_dispatch(lxa_html_control_context_t *
  */
 lxa_status_t lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
     lxa_html_table_text_emit_t emit, void *user);
-/* Complete accepted EOF after intake has restored TEXT/flushed pending bytes
- * and template gating permits completion. Unwind active templates before root
+/* Complete accepted EOF after intake has restored TEXT/flushed pending bytes.
+ * Run template column-group/current reads before cleanup, preserving canonical
+ * WORK and excluding enclosing content at empty virtual slices.
+ * Unwind active templates before root
  * completion; ensure ordinary BODY but never resurrect it for framesets. Publish
  * DONE only after cleanup succeeds. Retain partial cleanup on terminal failure
  * without replay; remaining root formatting/form state belongs to this owner

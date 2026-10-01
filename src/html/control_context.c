@@ -874,7 +874,24 @@ lxa_html_control_context_finish(lxa_html_control_context_t *context)
         context->limit_reason = LXA_BUDGET_COUNT;
         return context->failure;
     }
-    lxa_status_t status = control_execute_eof(context);
+    lxa_status_t status = LXA_OK;
+    if (context->mode == LXA_TREE_TEMPLATE_TEXT) {
+        const lxa_html_token_t token = {.kind = LXA_HTML_EOF};
+        lxa_html_column_group_action_t group;
+        status = lxa_html_template_context_column_group_token(&context->templates,
+            &token, NULL, NULL, NULL, &group);
+        if (status == LXA_OK && group != LXA_HTML_COLUMN_GROUP_CONTINUE) {
+            assert(false);
+            context->failure = LXA_ERROR_INTERNAL;
+            context->limit_reason = LXA_BUDGET_COUNT;
+            return context->failure;
+        }
+        /* EOF pays the canonical current-entry read before unwind. */
+        lxa_html_template_current_route_t route;
+        if (status == LXA_OK)
+            status = lxa_html_template_context_current_token(&context->templates, &token, &route);
+    }
+    if (status == LXA_OK) status = control_execute_eof(context);
     if (status != LXA_OK) {
         context->failure = status;
         context->limit_reason = context->templates.failure != LXA_OK
