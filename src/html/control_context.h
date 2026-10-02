@@ -150,6 +150,14 @@ lxa_status_t lxa_html_control_context_template_form_token(lxa_html_control_conte
  */
 lxa_status_t lxa_html_control_context_template_html_foreign_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, bool *handled);
+/* Recover table START after prelude/form/ordinary-foreign/empty-column routing.
+ * Virtual tables ignore; actual table cleanup requests full token reprocessing
+ * and strictly reduces active length. Retain no new metadata/NODE charge.
+ * Prior intake clears pending bytes/newline state. Publish action only on
+ * success; latch retained cleanup on failure without replay.
+ */
+lxa_status_t lxa_html_control_context_template_table_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_table_action_t *action);
 typedef enum {
     LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE,
     LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED,

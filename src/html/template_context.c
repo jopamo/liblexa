@@ -739,7 +739,7 @@ lxa_html_template_context_start_void(lxa_html_template_context_t *context,
 }
 
 static lxa_status_t
-context_form_plan(lxa_html_template_context_t *context, lxa_html_table_context_plan_t *plan)
+context_table_plan(lxa_html_template_context_t *context, lxa_html_table_context_plan_t *plan)
 {
     size_t count = lxa_vector_length(&context->frames);
     const lxa_html_template_control_frame_t *frames =
@@ -753,7 +753,7 @@ context_form_plan(lxa_html_template_context_t *context, lxa_html_table_context_p
 
 #define LXA_TEMPLATE_FORM_NAME context_form_token
 #define LXA_TEMPLATE_FORM_VIEW lxa_html_template_context_t
-#define LXA_TEMPLATE_FORM_PLAN context_form_plan
+#define LXA_TEMPLATE_FORM_PLAN context_table_plan
 #define LXA_TEMPLATE_FORM_INSERT(view, token, keep) ((void) (token), LXA_OK)
 #define LXA_TEMPLATE_FORM_POP end_pop
 #include "html/template_form_token.inc"
@@ -775,42 +775,46 @@ lxa_html_template_context_form_token(lxa_html_template_context_t *context,
     return finish(context, context_form_token(context, token, handled));
 }
 
+static lxa_status_t
+context_table_scope(lxa_html_template_context_t *context, size_t *index)
+{
+    size_t count = lxa_vector_length(&context->frames);
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    lxa_status_t status = lxa_html_control_stack_scope_find(context->stack, frames[count - 1].boundary,
+        (lxa_span_t){(const uint8_t *) "table", 5}, LXA_HTML_SCOPE_TABLE, index);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    return status;
+}
+
+#define LXA_TEMPLATE_TABLE_TOKEN_NAME context_table_token
+#define LXA_TEMPLATE_TABLE_TOKEN_VIEW lxa_html_template_context_t
+#define LXA_TEMPLATE_TABLE_TOKEN_PLAN context_table_plan
+#define LXA_TEMPLATE_TABLE_TOKEN_SCOPE context_table_scope
+#define LXA_TEMPLATE_TABLE_TOKEN_LENGTH(view) lxa_vector_length(&(view)->stack->elements)
+#define LXA_TEMPLATE_TABLE_TOKEN_POP end_pop
+#define LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE lxa_html_template_context_pop_table
+#include "html/template_table_token.inc"
+#undef LXA_TEMPLATE_TABLE_TOKEN_NAME
+#undef LXA_TEMPLATE_TABLE_TOKEN_VIEW
+#undef LXA_TEMPLATE_TABLE_TOKEN_PLAN
+#undef LXA_TEMPLATE_TABLE_TOKEN_SCOPE
+#undef LXA_TEMPLATE_TABLE_TOKEN_LENGTH
+#undef LXA_TEMPLATE_TABLE_TOKEN_POP
+#undef LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT
+#undef LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE
+
 lxa_status_t
 lxa_html_template_context_table_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_table_action_t *action)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
-    size_t count = lxa_vector_length(&context->frames);
-    if (action == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
-        || token->kind != LXA_HTML_START_TAG
+    if (action == NULL || lxa_vector_length(&context->frames) == 0
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_name_equals(token->name, "table", 5)) return LXA_ERROR_ARGUMENT;
-    const lxa_html_template_control_frame_t *frames =
-        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
-    size_t boundary = frames[count - 1].boundary;
-    lxa_html_table_context_plan_t plan;
-    status = lxa_html_control_stack_table_context_plan(context->stack, boundary,
-        lxa_html_tree_template_table_context(frames[count - 1].insertion_mode), &plan);
-    size_t index = lxa_vector_length(&context->stack->elements);
-    if (status == LXA_OK && plan.in_table)
-        status = lxa_html_control_stack_scope_find(context->stack, boundary,
-            token->name, LXA_HTML_SCOPE_TABLE, &index);
-    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-    if (status != LXA_OK) return finish(context, status);
-    lxa_html_template_table_action_t result = LXA_HTML_TEMPLATE_TABLE_CONTINUE;
-    if (plan.in_table) {
-        if (index == lxa_vector_length(&context->stack->elements)) {
-            status = lxa_html_control_stack_pop_to(context->stack, plan.keep);
-            if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-            result = LXA_HTML_TEMPLATE_TABLE_IGNORE;
-        }
-        else {
-            status = lxa_html_template_context_pop_table(context, index);
-            result = LXA_HTML_TEMPLATE_TABLE_REPROCESS;
-        }
-    }
-    if (status == LXA_OK) *action = result;
-    return finish(context, status);
+    return finish(context, context_table_token(context, action));
 }
 
 lxa_status_t

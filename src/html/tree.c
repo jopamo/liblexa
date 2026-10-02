@@ -3972,6 +3972,32 @@ hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t
 #undef LXA_TEMPLATE_HTML_FOREIGN_START
 
 static lxa_status_t
+tree_template_table_scope(lxa_html_tree_t *tree, size_t *index)
+{
+    return find_scoped_end_target(tree, &tree->template_elements, template_boundary(tree),
+        literal("table"), LXA_HTML_SCOPE_TABLE, index);
+}
+
+#define LXA_TEMPLATE_TABLE_TOKEN_NAME tree_template_table_token
+#define LXA_TEMPLATE_TABLE_TOKEN_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_TABLE_TOKEN_PLAN hidden_table_plan
+#define LXA_TEMPLATE_TABLE_TOKEN_SCOPE tree_template_table_scope
+#define LXA_TEMPLATE_TABLE_TOKEN_LENGTH(view) lxa_vector_length(&(view)->template_elements)
+#define LXA_TEMPLATE_TABLE_TOKEN_POP template_pop_elements
+#define LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE template_pop_table_elements
+#include "html/template_table_token.inc"
+#undef LXA_TEMPLATE_TABLE_TOKEN_NAME
+#undef LXA_TEMPLATE_TABLE_TOKEN_VIEW
+#undef LXA_TEMPLATE_TABLE_TOKEN_PLAN
+#undef LXA_TEMPLATE_TABLE_TOKEN_SCOPE
+#undef LXA_TEMPLATE_TABLE_TOKEN_LENGTH
+#undef LXA_TEMPLATE_TABLE_TOKEN_POP
+#undef LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT
+#undef LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE
+
+static lxa_status_t
 admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 {
     lxa_dom_ref_t child;
@@ -4989,31 +5015,11 @@ reprocess_template_token:
             return template_open_column(tree, token);
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "table")) {
-            size_t keep, index, boundary = template_boundary(tree);
-            size_t length = lxa_vector_length(&tree->template_elements);
-            bool in_table;
-            bool virtual_table = lxa_html_tree_template_table_context(
-                tree->template_insertion_mode);
-            status = plan_table_context(tree, &tree->template_elements,
-                boundary, virtual_table, &keep, &in_table);
-            if (status == LXA_OK && in_table)
-                status = find_scoped_end_target(tree, &tree->template_elements,
-                    boundary, literal("table"), LXA_HTML_SCOPE_TABLE, &index);
+            lxa_html_template_table_action_t action;
+            status = tree_template_table_token(tree, &action);
             if (status != LXA_OK) return status;
-            if (in_table) {
-                if (index == length) {
-                    /* A virtual table mode has no table to close and reprocess. */
-                    status = template_pop_elements(tree, keep);
-                    if (status != LXA_OK) return status;
-                    return LXA_OK;
-                }
-                status = lxa_budget_check(tree->nodes->budget, LXA_BUDGET_NODES,
-                                           1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = template_pop_table_elements(tree, index);
-                if (status != LXA_OK) return status;
-                goto reprocess_template_token;
-            }
+            if (action == LXA_HTML_TEMPLATE_TABLE_IGNORE) return LXA_OK;
+            if (action == LXA_HTML_TEMPLATE_TABLE_REPROCESS) goto reprocess_template_token;
         }
         if (lxa_vector_length(&tree->template_elements)
             > template_boundary(tree)) {

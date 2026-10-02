@@ -266,11 +266,6 @@ lxa_status_t lxa_html_template_context_start_void(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_form_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool *handled);
-typedef enum {
-    LXA_HTML_TEMPLATE_TABLE_CONTINUE,
-    LXA_HTML_TEMPLATE_TABLE_IGNORE,
-    LXA_HTML_TEMPLATE_TABLE_REPROCESS
-} lxa_html_template_table_action_t;
 /* Recover an accepted table start after select/form/foreign routing. Virtual
  * tables apply ordinary retained-length pops and ignore; actual tables apply
  * table-pop effects and request full token reprocessing. Otherwise continue

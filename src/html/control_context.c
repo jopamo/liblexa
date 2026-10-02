@@ -451,6 +451,33 @@ lxa_html_control_context_template_html_foreign_start(lxa_html_control_context_t 
     return control_template_start_route(context, token, handled, CONTROL_TEMPLATE_START_HTML_FOREIGN);
 }
 
+lxa_status_t
+lxa_html_control_context_template_table_token(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_table_action_t *action)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (action == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || !lxa_html_tree_name_equals(token->name, "table", 5)
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_template_table_action_t out;
+    lxa_status_t status = lxa_html_template_context_table_token(&context->templates, token, &out);
+    if (status == LXA_OK) *action = out;
+    else {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static bool
 control_template_end_br(lxa_html_control_context_t *context)
 {
