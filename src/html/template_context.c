@@ -708,34 +708,60 @@ lxa_html_template_context_start_plaintext(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    lxa_html_template_control_frame_t *frame;
+    lxa_html_token_t *result;
+} template_void_view_t;
+
+static lxa_status_t
+context_void_paragraph(template_void_view_t *view, size_t *keep)
+{
+    lxa_status_t status = lxa_html_control_stack_scope_find(view->context->stack, view->frame->boundary,
+        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep);
+    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->context->stack->limit_reason;
+    return status;
+}
+
+#define LXA_TEMPLATE_VOID_NAME context_void_start
+#define LXA_TEMPLATE_VOID_VIEW template_void_view_t
+#define LXA_TEMPLATE_VOID_HEAD(view, token) LXA_OK
+#define LXA_TEMPLATE_VOID_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TEMPLATE_VOID_PARAGRAPH context_void_paragraph
+#define LXA_TEMPLATE_VOID_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_VOID_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_TEMPLATE_VOID_POP(view, keep) end_pop((view)->context, keep)
+#define LXA_TEMPLATE_VOID_INSERT(view, token) LXA_OK
+#define LXA_TEMPLATE_VOID_MODE(view, token) lxa_html_tree_template_start_mode( \
+    (view)->frame->insertion_mode, (token)->name, LXA_DOM_NS_HTML, &(view)->frame->insertion_mode)
+#define LXA_TEMPLATE_VOID_RESULT(view, token) (*(view)->result = *(token))
+#include "html/template_void_start.inc"
+#undef LXA_TEMPLATE_VOID_NAME
+#undef LXA_TEMPLATE_VOID_VIEW
+#undef LXA_TEMPLATE_VOID_HEAD
+#undef LXA_TEMPLATE_VOID_RECONSTRUCT
+#undef LXA_TEMPLATE_VOID_PARAGRAPH
+#undef LXA_TEMPLATE_VOID_PREFLIGHT
+#undef LXA_TEMPLATE_VOID_LENGTH
+#undef LXA_TEMPLATE_VOID_POP
+#undef LXA_TEMPLATE_VOID_INSERT
+#undef LXA_TEMPLATE_VOID_MODE
+#undef LXA_TEMPLATE_VOID_RESULT
+
 lxa_status_t
 lxa_html_template_context_start_void(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token)
+    const lxa_html_token_t *token, lxa_html_token_t *result)
 {
     lxa_status_t status = begin(context);
     if (status != LXA_OK) return status;
     size_t count = lxa_vector_length(&context->frames);
-    if (count == 0 || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+    if (result == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || (!lxa_html_tree_head_void(token->name) && !lxa_html_tree_body_void(token->name)
             && !lxa_html_tree_name_equals(token->name, "image", 5))) return LXA_ERROR_ARGUMENT;
-    if (lxa_html_tree_head_void(token->name)) return LXA_OK;
-    if (lxa_html_tree_body_void_reconstructs(token->name)) {
-        status = lxa_html_template_context_reconstruct(context);
-        if (status != LXA_OK) return status;
-    }
     lxa_html_template_control_frame_t *frames =
         (lxa_html_template_control_frame_t *) context->frames.bytes.data;
-    if (lxa_html_tree_name_equals(token->name, "hr", 2)) {
-        size_t keep;
-        status = lxa_html_control_stack_scope_find(context->stack, frames[count - 1].boundary,
-            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
-        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
-        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-        if (status != LXA_OK) return finish(context, status);
-    }
-    status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
-        token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
-    return finish(context, status);
+    template_void_view_t view = {context, &frames[count - 1], result};
+    return finish(context, context_void_start(&view, token));
 }
 
 static lxa_status_t

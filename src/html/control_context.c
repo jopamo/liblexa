@@ -877,6 +877,32 @@ lxa_html_control_context_template_table_start(lxa_html_control_context_t *contex
 }
 
 lxa_status_t
+lxa_html_control_context_template_void_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_token_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (!lxa_html_tree_head_void(token->name) && !lxa_html_tree_body_void(token->name)
+            && !lxa_html_tree_name_equals(token->name, "image", 5))
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_status_t status = lxa_html_template_context_start_void(&context->templates, token, result);
+    if (status != LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
+lxa_status_t
 lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result)
 {

@@ -3998,6 +3998,39 @@ tree_template_table_scope(lxa_html_tree_t *tree, size_t *index)
 #undef LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE
 
 static lxa_status_t
+tree_template_void_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token)
+{
+    lxa_dom_ref_t parent, before;
+    lxa_status_t status = template_insertion_location(tree, &parent, &before);
+    return status == LXA_OK ? append_closed_element_at(tree, parent, before, token, NULL) : status;
+}
+
+#define LXA_TEMPLATE_VOID_NAME tree_template_void_start
+#define LXA_TEMPLATE_VOID_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_VOID_HEAD(view, token) append_void(view, template_parent(view), token)
+#define LXA_TEMPLATE_VOID_RECONSTRUCT reconstruct_formatting
+#define LXA_TEMPLATE_VOID_PARAGRAPH template_plan_paragraph_close
+#define LXA_TEMPLATE_VOID_PREFLIGHT(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_TEMPLATE_VOID_LENGTH(view) lxa_vector_length(&(view)->template_elements)
+#define LXA_TEMPLATE_VOID_POP template_pop_elements
+#define LXA_TEMPLATE_VOID_INSERT tree_template_void_insert
+#define LXA_TEMPLATE_VOID_MODE(view, token) template_start_mode(view, token, LXA_DOM_NS_HTML)
+#define LXA_TEMPLATE_VOID_RESULT(view, token) ((void) 0)
+#include "html/template_void_start.inc"
+#undef LXA_TEMPLATE_VOID_NAME
+#undef LXA_TEMPLATE_VOID_VIEW
+#undef LXA_TEMPLATE_VOID_HEAD
+#undef LXA_TEMPLATE_VOID_RECONSTRUCT
+#undef LXA_TEMPLATE_VOID_PARAGRAPH
+#undef LXA_TEMPLATE_VOID_PREFLIGHT
+#undef LXA_TEMPLATE_VOID_LENGTH
+#undef LXA_TEMPLATE_VOID_POP
+#undef LXA_TEMPLATE_VOID_INSERT
+#undef LXA_TEMPLATE_VOID_MODE
+#undef LXA_TEMPLATE_VOID_RESULT
+
+static lxa_status_t
 admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 {
     lxa_dom_ref_t child;
@@ -5132,42 +5165,10 @@ reprocess_template_token:
             return begin_template(tree, token);
         if (token->kind == LXA_HTML_TEXT)
             return tree_execute_template_data(tree, token->data);
-        if (token->kind == LXA_HTML_START_TAG && lxa_html_tree_head_void(token->name))
-            return append_void(tree, template_parent(tree), token);
         if (token->kind == LXA_HTML_START_TAG
-            && (lxa_html_tree_body_void(token->name) || named(token->name, "image"))) {
-            if (lxa_html_tree_body_void_reconstructs(token->name)) {
-                status = reconstruct_formatting(tree);
-                if (status != LXA_OK) return status;
-            }
-            if (named(token->name, "hr")) {
-                size_t paragraph;
-                status = template_plan_paragraph_close(tree, &paragraph);
-                if (status == LXA_OK)
-                    status = lxa_budget_check(tree->nodes->budget,
-                        LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-                if (status != LXA_OK) return status;
-                if (paragraph != lxa_vector_length(&tree->template_elements)) {
-                    status = template_pop_elements(tree, paragraph);
-                    if (status != LXA_OK) return status;
-                }
-            }
-            if (named(token->name, "image")) {
-                adjusted = *token;
-                adjusted.name = literal("img");
-                token = &adjusted;
-            }
-            {
-                lxa_dom_ref_t parent, before;
-                status = template_insertion_location(tree, &parent, &before);
-                if (status == LXA_OK)
-                    status = append_closed_element_at(tree, parent, before,
-                                                       token, NULL);
-            }
-            if (status == LXA_OK)
-                status = template_start_mode(tree, token, LXA_DOM_NS_HTML);
-            return status;
-        }
+            && (lxa_html_tree_head_void(token->name) || lxa_html_tree_body_void(token->name)
+                || named(token->name, "image")))
+            return tree_template_void_start(tree, token);
         if (token->kind == LXA_HTML_START_TAG
             && lxa_html_tree_returning_text_element(token->name)
             && !named(token->name, "textarea")) {

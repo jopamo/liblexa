@@ -252,12 +252,13 @@ lxa_status_t lxa_html_template_context_start_plaintext(lxa_html_template_context
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, uint64_t *identity);
 /* Apply an accepted HTML void/image start after earlier dispatch. Share
  * reconstruction exclusions and hr paragraph recovery, retain no new open
- * metadata, and publish initial mode after effects. Failures latch completed
- * recovery. Engines own insertion, image normalization and meta observation.
- * Token views must not alias owners.
+ * metadata, normalize image to img, and publish initial mode after effects.
+ * Publish the borrowed adjusted token only on success; failures latch completed
+ * recovery. Engines own insertion and meta observation.
+ * Token/result must not alias owners or each other; borrowed views expire with input.
  */
 lxa_status_t lxa_html_template_context_start_void(lxa_html_template_context_t *context,
-    const lxa_html_token_t *token);
+    const lxa_html_token_t *token, lxa_html_token_t *result);
 /* Route an accepted HTML form start after select recovery. Table-context forms
  * report a closed insertion after ordinary colgroup pops, with no new metadata
  * or mode publication. Other forms continue without admission. Publish handled

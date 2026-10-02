@@ -209,6 +209,15 @@ lxa_status_t lxa_html_control_context_template_mathml_table_token(lxa_html_contr
 lxa_status_t lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
     lxa_html_template_foreign_action_t *result);
+/* Execute accepted ordinary head/body void or image START after earlier routing.
+ * Share reconstruction, hr recovery and image normalization without retained
+ * closed metadata/NODE charge. Publish borrowed adjusted token only on success;
+ * latch failed effects without replay. Prior intake clears pending bytes/newline
+ * state. Token/result must not alias owners or each other; views expire with input.
+ * Encoding observation and namespace feedback remain driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_void_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_token_t *result);
 typedef struct {
     uint64_t identity;
     bool foster;
