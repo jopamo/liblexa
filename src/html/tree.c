@@ -3945,6 +3945,32 @@ hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t
 #undef LXA_TEMPLATE_FORM_INSERT
 #undef LXA_TEMPLATE_FORM_POP
 
+#define LXA_TEMPLATE_HTML_FOREIGN_NAME tree_template_html_foreign_start
+#define LXA_TEMPLATE_HTML_FOREIGN_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_HTML_FOREIGN_CURRENT(view) \
+    (lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+#define LXA_TEMPLATE_HTML_FOREIGN_BUDGET(view) ((view)->nodes->budget)
+#define LXA_TEMPLATE_HTML_FOREIGN_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_TEMPLATE_HTML_FOREIGN_NAMESPACE(view, out) \
+    lxa_dom_nodes_element_namespace((view)->nodes, template_parent(view), out)
+#define LXA_TEMPLATE_HTML_FOREIGN_CURRENT_NAME(view, out) \
+    lxa_dom_nodes_element_name((view)->nodes, template_parent(view), out)
+#define LXA_TEMPLATE_HTML_FOREIGN_INTEGRATION(view, out) \
+    foreign_breakout_boundary(view, template_parent(view), out)
+#define LXA_TEMPLATE_HTML_FOREIGN_RECONSTRUCT reconstruct_formatting
+#define LXA_TEMPLATE_HTML_FOREIGN_START template_open_foreign
+#include "html/template_html_foreign_start.inc"
+#undef LXA_TEMPLATE_HTML_FOREIGN_NAME
+#undef LXA_TEMPLATE_HTML_FOREIGN_VIEW
+#undef LXA_TEMPLATE_HTML_FOREIGN_CURRENT
+#undef LXA_TEMPLATE_HTML_FOREIGN_BUDGET
+#undef LXA_TEMPLATE_HTML_FOREIGN_REASON
+#undef LXA_TEMPLATE_HTML_FOREIGN_NAMESPACE
+#undef LXA_TEMPLATE_HTML_FOREIGN_CURRENT_NAME
+#undef LXA_TEMPLATE_HTML_FOREIGN_INTEGRATION
+#undef LXA_TEMPLATE_HTML_FOREIGN_RECONSTRUCT
+#undef LXA_TEMPLATE_HTML_FOREIGN_START
+
 static lxa_status_t
 admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 {
@@ -4952,36 +4978,9 @@ reprocess_template_token:
         }
         if (token->kind == LXA_HTML_START_TAG
             && (named(token->name, "svg") || named(token->name, "math"))) {
-            bool html_parent =
-                lxa_vector_length(&tree->template_elements)
-                == template_boundary(tree);
-            if (!html_parent) {
-                lxa_dom_namespace_t parent_ns;
-                lxa_span_t parent_name;
-                status = lxa_budget_charge(tree->nodes->budget,
-                    LXA_BUDGET_WORK, 1, &tree->nodes->limit_reason);
-                if (status == LXA_OK)
-                    status = lxa_dom_nodes_element_namespace(tree->nodes,
-                        template_parent(tree), &parent_ns);
-                if (status == LXA_OK && parent_ns == LXA_DOM_NS_HTML)
-                    status = lxa_dom_nodes_element_name(tree->nodes,
-                        template_parent(tree), &parent_name);
-                if (status != LXA_OK) return status;
-                html_parent = parent_ns == LXA_DOM_NS_HTML
-                    && !lxa_html_tree_table_context(parent_name);
-                if (parent_ns != LXA_DOM_NS_HTML) {
-                    status = foreign_breakout_boundary(tree,
-                        template_parent(tree), &html_parent);
-                    if (status != LXA_OK) return status;
-                }
-            }
-            if (html_parent) {
-                status = reconstruct_formatting(tree);
-                if (status != LXA_OK) return status;
-                return template_open_foreign(tree, token,
-                    named(token->name, "svg") ? LXA_DOM_NS_SVG
-                                               : LXA_DOM_NS_MATHML);
-            }
+            bool handled;
+            status = tree_template_html_foreign_start(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG
             && named(token->name, "col")

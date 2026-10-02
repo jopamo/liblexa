@@ -378,16 +378,25 @@ control_template_hidden_plan(lxa_html_control_context_t *context, lxa_html_table
 #undef LXA_TEMPLATE_HTML_PRELUDE_HIDDEN
 #undef LXA_TEMPLATE_HTML_PRELUDE_SELECT
 
+typedef enum {
+    CONTROL_TEMPLATE_START_PRELUDE,
+    CONTROL_TEMPLATE_START_FORM,
+    CONTROL_TEMPLATE_START_HTML_FOREIGN
+} control_template_start_route_t;
+
 static lxa_status_t
 control_template_start_route(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, bool *handled, bool form)
+    const lxa_html_token_t *token, bool *handled, control_template_start_route_t route)
 {
     if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
     if (context->failure != LXA_OK) return context->failure;
     if (handled == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
         || context->pending_table_text.length != 0 || context->pending_newline
-        || (form && !lxa_html_tree_name_equals(token->name, "form", 4)))
+        || (route == CONTROL_TEMPLATE_START_FORM && !lxa_html_tree_name_equals(token->name, "form", 4))
+        || (route == CONTROL_TEMPLATE_START_HTML_FOREIGN
+            && !lxa_html_tree_name_equals(token->name, "svg", 3)
+            && !lxa_html_tree_name_equals(token->name, "math", 4)))
         return LXA_ERROR_ARGUMENT;
     if (!state_valid(context)) {
         assert(false);
@@ -396,9 +405,22 @@ control_template_start_route(lxa_html_control_context_t *context,
         return context->failure;
     }
     bool out;
-    lxa_status_t status = form
-        ? lxa_html_template_context_form_token(&context->templates, token, &out)
-        : control_execute_template_html_prelude(context, token, &out);
+    lxa_status_t status;
+    switch (route) {
+    case CONTROL_TEMPLATE_START_PRELUDE:
+        status = control_execute_template_html_prelude(context, token, &out);
+        break;
+    case CONTROL_TEMPLATE_START_FORM:
+        status = lxa_html_template_context_form_token(&context->templates, token, &out);
+        break;
+    case CONTROL_TEMPLATE_START_HTML_FOREIGN:
+        status = lxa_html_template_context_html_foreign_start(&context->templates, token, &out);
+        break;
+    default:
+        assert(false);
+        status = LXA_ERROR_INTERNAL;
+        break;
+    }
     if (status == LXA_OK) *handled = out;
     else {
         context->failure = status;
@@ -412,14 +434,21 @@ lxa_status_t
 lxa_html_control_context_template_start_prelude(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, bool *handled)
 {
-    return control_template_start_route(context, token, handled, false);
+    return control_template_start_route(context, token, handled, CONTROL_TEMPLATE_START_PRELUDE);
 }
 
 lxa_status_t
 lxa_html_control_context_template_form_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, bool *handled)
 {
-    return control_template_start_route(context, token, handled, true);
+    return control_template_start_route(context, token, handled, CONTROL_TEMPLATE_START_FORM);
+}
+
+lxa_status_t
+lxa_html_control_context_template_html_foreign_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    return control_template_start_route(context, token, handled, CONTROL_TEMPLATE_START_HTML_FOREIGN);
 }
 
 static bool

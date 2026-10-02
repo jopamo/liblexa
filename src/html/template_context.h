@@ -182,6 +182,15 @@ lxa_status_t lxa_html_template_context_mathml_table_token(lxa_html_template_cont
  */
 lxa_status_t lxa_html_template_context_start_foreign(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_dom_namespace_t ns);
+/* Route HTML-path SVG/MathML after earlier foreign/select/form dispatch.
+ * Empty active slices are virtual HTML; otherwise charge one current read.
+ * Eligible HTML/integration parents reconstruct formatting before admission.
+ * Table/nonintegrating parents continue without effects. Publish handled only
+ * on success; retain reconstruction/admission and latch later failures.
+ * Token/output must not alias owners.
+ */
+lxa_status_t lxa_html_template_context_html_foreign_start(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 lxa_status_t lxa_html_template_context_breakout(lxa_html_template_context_t *context);
 /* Route template ends before BR conversion and HTML end dispatch. Empty/HTML
  * content continues without effects. Foreign br/p breaks out; other names use

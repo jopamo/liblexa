@@ -1168,6 +1168,63 @@ lxa_html_template_context_current(lxa_html_template_context_t *context,
     return finish(context, current_entry(context, entry, integration));
 }
 
+typedef struct {
+    lxa_html_template_context_t *context;
+    const lxa_html_template_control_frame_t *frame;
+    lxa_html_scope_entry_t current;
+    lxa_html_foreign_context_t integration;
+} template_html_foreign_view_t;
+
+static lxa_status_t
+html_foreign_namespace(template_html_foreign_view_t *view, lxa_dom_namespace_t *ns)
+{
+    lxa_status_t status = current_entry(view->context, &view->current, &view->integration);
+    if (status == LXA_OK) *ns = view->current.namespace_id;
+    return status;
+}
+
+#define LXA_TEMPLATE_HTML_FOREIGN_NAME context_html_foreign_start
+#define LXA_TEMPLATE_HTML_FOREIGN_VIEW template_html_foreign_view_t
+#define LXA_TEMPLATE_HTML_FOREIGN_CURRENT(view) \
+    (lxa_vector_length(&(view)->context->stack->elements) > (view)->frame->boundary)
+#define LXA_TEMPLATE_HTML_FOREIGN_BUDGET(view) ((view)->context->stack->budget)
+#define LXA_TEMPLATE_HTML_FOREIGN_REASON(view) (&(view)->context->limit_reason)
+#define LXA_TEMPLATE_HTML_FOREIGN_NAMESPACE html_foreign_namespace
+#define LXA_TEMPLATE_HTML_FOREIGN_CURRENT_NAME(view, out) (*(out) = (view)->current.name, LXA_OK)
+#define LXA_TEMPLATE_HTML_FOREIGN_INTEGRATION(view, out) \
+    (*(out) = lxa_html_foreign_integration((view)->integration), LXA_OK)
+#define LXA_TEMPLATE_HTML_FOREIGN_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TEMPLATE_HTML_FOREIGN_START(view, token, ns) \
+    lxa_html_template_context_start_foreign((view)->context, token, ns)
+#include "html/template_html_foreign_start.inc"
+#undef LXA_TEMPLATE_HTML_FOREIGN_NAME
+#undef LXA_TEMPLATE_HTML_FOREIGN_VIEW
+#undef LXA_TEMPLATE_HTML_FOREIGN_CURRENT
+#undef LXA_TEMPLATE_HTML_FOREIGN_BUDGET
+#undef LXA_TEMPLATE_HTML_FOREIGN_REASON
+#undef LXA_TEMPLATE_HTML_FOREIGN_NAMESPACE
+#undef LXA_TEMPLATE_HTML_FOREIGN_CURRENT_NAME
+#undef LXA_TEMPLATE_HTML_FOREIGN_INTEGRATION
+#undef LXA_TEMPLATE_HTML_FOREIGN_RECONSTRUCT
+#undef LXA_TEMPLATE_HTML_FOREIGN_START
+
+lxa_status_t
+lxa_html_template_context_html_foreign_start(lxa_html_template_context_t *context,
+    const lxa_html_token_t *token, bool *handled)
+{
+    lxa_status_t status = begin(context);
+    if (status != LXA_OK) return status;
+    size_t count = lxa_vector_length(&context->frames);
+    if (handled == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
+        || token->kind != LXA_HTML_START_TAG
+        || (!lxa_html_tree_name_equals(token->name, "svg", 3)
+            && !lxa_html_tree_name_equals(token->name, "math", 4))) return LXA_ERROR_ARGUMENT;
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    template_html_foreign_view_t view = {.context = context, .frame = &frames[count - 1]};
+    return finish(context, context_html_foreign_start(&view, token, handled));
+}
+
 lxa_status_t
 lxa_html_template_context_emit_data(lxa_html_template_context_t *context,
     lxa_span_t data, lxa_html_data_emit_t emit, void *user)
