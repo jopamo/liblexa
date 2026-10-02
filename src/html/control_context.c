@@ -479,6 +479,60 @@ lxa_html_control_context_template_table_token(lxa_html_control_context_t *contex
 }
 
 static bool
+control_template_has_content(lxa_html_control_context_t *context)
+{
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->templates.frames.bytes.data;
+    return lxa_vector_length(&context->stack.elements)
+        > frames[lxa_vector_length(&context->templates.frames) - 1].boundary;
+}
+
+static lxa_status_t
+control_template_empty_column(lxa_html_control_context_t *context, const lxa_html_token_t *token)
+{
+    bool inserted;
+    return lxa_html_template_context_start_column_prepared(&context->templates, token, &inserted);
+}
+
+#define LXA_TEMPLATE_START_ROUTE_NAME control_execute_template_start_route
+#define LXA_TEMPLATE_START_ROUTE_VIEW lxa_html_control_context_t
+#define LXA_TEMPLATE_START_ROUTE_PRELUDE lxa_html_control_context_template_start_prelude
+#define LXA_TEMPLATE_START_ROUTE_FORM lxa_html_control_context_template_form_token
+#define LXA_TEMPLATE_START_ROUTE_FOREIGN lxa_html_control_context_template_html_foreign_start
+#define LXA_TEMPLATE_START_ROUTE_CURRENT control_template_has_content
+#define LXA_TEMPLATE_START_ROUTE_COLUMN control_template_empty_column
+#define LXA_TEMPLATE_START_ROUTE_TABLE lxa_html_control_context_template_table_token
+#include "html/template_start_route.inc"
+#undef LXA_TEMPLATE_START_ROUTE_NAME
+#undef LXA_TEMPLATE_START_ROUTE_VIEW
+#undef LXA_TEMPLATE_START_ROUTE_PRELUDE
+#undef LXA_TEMPLATE_START_ROUTE_FORM
+#undef LXA_TEMPLATE_START_ROUTE_FOREIGN
+#undef LXA_TEMPLATE_START_ROUTE_CURRENT
+#undef LXA_TEMPLATE_START_ROUTE_COLUMN
+#undef LXA_TEMPLATE_START_ROUTE_TABLE
+
+lxa_status_t
+lxa_html_control_context_template_start_route(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_start_action_t *action)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (action == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    lxa_html_template_start_action_t out;
+    lxa_status_t status = control_execute_template_start_route(context, token, &out);
+    if (status == LXA_OK) *action = out;
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
+static bool
 control_template_end_br(lxa_html_control_context_t *context)
 {
     const lxa_html_template_control_frame_t *frames =
@@ -786,7 +840,7 @@ lxa_html_control_context_template_table_start(lxa_html_control_context_t *contex
         return context->failure;
     }
     lxa_html_control_template_table_start_result_t out = {
-        .action = LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE, .token = *token
+        .action = LXA_HTML_TEMPLATE_START_CONTINUE, .token = *token
     };
     lxa_html_template_current_route_t route;
     lxa_status_t status = lxa_html_template_context_current_token(&context->templates, token, &route);
@@ -799,12 +853,12 @@ lxa_html_control_context_template_table_start(lxa_html_control_context_t *contex
             if (tokenizer == NULL && lxa_html_tree_template_html_text_element(token->name))
                 status = LXA_ERROR_ARGUMENT;
             else status = control_template_table_pop(&view);
-            out.action = LXA_HTML_CONTROL_TEMPLATE_START_REPROCESS;
+            out.action = LXA_HTML_TEMPLATE_START_REPROCESS;
             break;
         case LXA_HTML_TEMPLATE_CURRENT_TABLE: {
             bool handled;
             status = control_execute_template_table_start(&view, token, route.column_group, &handled);
-            if (status == LXA_OK && handled) out.action = LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED;
+            if (status == LXA_OK && handled) out.action = LXA_HTML_TEMPLATE_START_CONSUMED;
             break;
         }
         default:

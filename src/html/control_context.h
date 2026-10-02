@@ -158,13 +158,18 @@ lxa_status_t lxa_html_control_context_template_html_foreign_start(lxa_html_contr
  */
 lxa_status_t lxa_html_control_context_template_table_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_table_action_t *action);
-typedef enum {
-    LXA_HTML_CONTROL_TEMPLATE_START_CONTINUE,
-    LXA_HTML_CONTROL_TEMPLATE_START_CONSUMED,
-    LXA_HTML_CONTROL_TEMPLATE_START_REPROCESS
-} lxa_html_control_template_start_action_t;
+/* Schedule continuing START after intake/misc/foreign/end dispatch. Order
+ * prelude, form, HTML-path foreign, empty-content column and nested-table routes.
+ * CONSUMED completes an earlier rule; REPROCESS requires full earlier dispatch
+ * after a strictly shrinking table pop. CONTINUE proceeds to current-entry
+ * routing and remaining admission. Publish only on success; latch failures
+ * without replay. Prior intake clears pending bytes/newline state; token/output
+ * must not alias owners.
+ */
+lxa_status_t lxa_html_control_context_template_start_route(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, lxa_html_template_start_action_t *action);
 typedef struct {
-    lxa_html_control_template_start_action_t action;
+    lxa_html_template_start_action_t action;
     lxa_html_token_t token;
     uint64_t identity;
     bool foster;
