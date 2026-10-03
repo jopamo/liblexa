@@ -822,6 +822,24 @@ control_template_table_text_start(control_template_table_start_view_t *view,
 #undef LXA_TEMPLATE_TABLE_START_NEWLINE
 #undef LXA_TEMPLATE_TABLE_START_SUPPORTED
 
+#define LXA_TEMPLATE_CURRENT_START_NAME control_execute_template_current_start
+#define LXA_TEMPLATE_CURRENT_START_VIEW control_template_table_start_view_t
+#define LXA_TEMPLATE_CURRENT_START_READ(view, token, route) \
+    lxa_html_template_context_current_token(&(view)->context->templates, token, route)
+#define LXA_TEMPLATE_CURRENT_START_TEXT_CHECK(view) \
+    ((view)->tokenizer == NULL ? LXA_ERROR_ARGUMENT : LXA_OK)
+#define LXA_TEMPLATE_CURRENT_START_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_CURRENT_START_POP control_template_table_pop
+#define LXA_TEMPLATE_CURRENT_START_TABLE control_execute_template_table_start
+#include "html/template_current_start.inc"
+#undef LXA_TEMPLATE_CURRENT_START_NAME
+#undef LXA_TEMPLATE_CURRENT_START_VIEW
+#undef LXA_TEMPLATE_CURRENT_START_READ
+#undef LXA_TEMPLATE_CURRENT_START_TEXT_CHECK
+#undef LXA_TEMPLATE_CURRENT_START_PREFLIGHT
+#undef LXA_TEMPLATE_CURRENT_START_POP
+#undef LXA_TEMPLATE_CURRENT_START_TABLE
+
 lxa_status_t
 lxa_html_control_context_template_table_start(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
@@ -842,31 +860,8 @@ lxa_html_control_context_template_table_start(lxa_html_control_context_t *contex
     lxa_html_control_template_table_start_result_t out = {
         .action = LXA_HTML_TEMPLATE_START_CONTINUE, .token = *token
     };
-    lxa_html_template_current_route_t route;
-    lxa_status_t status = lxa_html_template_context_current_token(&context->templates, token, &route);
     control_template_table_start_view_t view = {context, tokenizer, &out};
-    if (status == LXA_OK) {
-        switch (route.action) {
-        case LXA_HTML_TEMPLATE_CURRENT_CONTINUE:
-            break;
-        case LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START:
-            if (tokenizer == NULL && lxa_html_tree_template_html_text_element(token->name))
-                status = LXA_ERROR_ARGUMENT;
-            else status = control_template_table_pop(&view);
-            out.action = LXA_HTML_TEMPLATE_START_REPROCESS;
-            break;
-        case LXA_HTML_TEMPLATE_CURRENT_TABLE: {
-            bool handled;
-            status = control_execute_template_table_start(&view, token, route.column_group, &handled);
-            if (status == LXA_OK && handled) out.action = LXA_HTML_TEMPLATE_START_CONSUMED;
-            break;
-        }
-        default:
-            assert(false);
-            status = LXA_ERROR_INTERNAL;
-            break;
-        }
-    }
+    lxa_status_t status = control_execute_template_current_start(&view, token, &out.action);
     if (status == LXA_OK) *result = out;
     else if (context->failure == LXA_OK) {
         context->failure = status;

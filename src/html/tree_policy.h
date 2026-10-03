@@ -136,6 +136,18 @@ typedef enum {
     LXA_HTML_TEMPLATE_HTML_START_ORDINARY
 } lxa_html_template_html_start_action_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_CURRENT_CONTINUE,
+    LXA_HTML_TEMPLATE_CURRENT_TABLE,
+    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START,
+    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END
+} lxa_html_template_current_action_t;
+
+typedef struct {
+    lxa_html_template_current_action_t action;
+    bool column_group;
+} lxa_html_template_current_route_t;
+
 static inline bool
 lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
 {

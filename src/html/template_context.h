@@ -275,10 +275,6 @@ lxa_status_t lxa_html_template_context_form_token(lxa_html_template_context_t *c
  */
 lxa_status_t lxa_html_template_context_table_token(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_table_action_t *action);
-typedef struct {
-    lxa_html_template_current_action_t action;
-    bool column_group;
-} lxa_html_template_current_route_t;
 /* Read current active content once after earlier dispatch, charging one WORK.
  * Empty content excludes outer entries and costs no WORK. Publish only on
  * success; latch failures without mutation. Engines consume the copied route

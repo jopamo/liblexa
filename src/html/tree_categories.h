@@ -601,13 +601,6 @@ lxa_html_tree_template_colgroup_end_reprocess(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "rp") || lxa_html_tree_block_container(name);
 }
 
-typedef enum {
-    LXA_HTML_TEMPLATE_CURRENT_CONTINUE,
-    LXA_HTML_TEMPLATE_CURRENT_TABLE,
-    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_START,
-    LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END
-} lxa_html_template_current_action_t;
-
 static inline bool
 lxa_html_tree_foster_reconstructs(lxa_span_t name, lxa_dom_namespace_t ns,
     bool keep_open)
