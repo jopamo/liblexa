@@ -128,6 +128,14 @@ typedef enum {
     LXA_HTML_TEMPLATE_START_REPROCESS
 } lxa_html_template_start_action_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_HTML_START_TEMPLATE,
+    LXA_HTML_TEMPLATE_HTML_START_CLOSED,
+    LXA_HTML_TEMPLATE_HTML_START_TEXT,
+    LXA_HTML_TEMPLATE_HTML_START_PLAINTEXT,
+    LXA_HTML_TEMPLATE_HTML_START_ORDINARY
+} lxa_html_template_html_start_action_t;
+
 static inline bool
 lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
 {

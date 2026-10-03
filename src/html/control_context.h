@@ -241,6 +241,25 @@ typedef struct {
 lxa_status_t lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_start_result_t *result);
 typedef struct {
+    lxa_html_template_html_start_action_t action;
+    lxa_html_token_t token;
+    uint64_t identity;
+    bool foster;
+} lxa_html_control_template_html_start_result_t;
+/* Execute remaining START after early/current-entry/part routing and intake.
+ * Share template, closed and returning-text precedence; bind continuing
+ * plaintext/ordinary admission to the owned coordinators. The caller supplies
+ * patch state: reject has_patch before effects, without inferring attribute
+ * semantics. Nested unpatched entry publishes its owner identity after success.
+ * Require a tokenizer for text starts. Result tokens/attributes remain borrowed;
+ * only image changes name. Publish only on success; latch retained effects on
+ * execution failure. Pending bytes/newline must be clear. Views/results must
+ * not alias owners. Encoding observation and final feedback remain driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_html_start(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_control_template_html_start_result_t *result);
+typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
     void *user;

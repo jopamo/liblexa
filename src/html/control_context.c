@@ -997,6 +997,79 @@ lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *con
     return status;
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_html_control_template_html_start_result_t *out;
+} control_template_html_start_view_t;
+
+static lxa_status_t
+control_template_enter(control_template_html_start_view_t *view, const lxa_html_token_t *token)
+{
+    (void) token;
+    lxa_status_t status = lxa_html_template_context_enter(&view->context->templates,
+        view->context->mode, false);
+    if (status == LXA_OK) {
+        const lxa_html_template_control_frame_t *frames =
+            (const lxa_html_template_control_frame_t *) view->context->templates.frames.bytes.data;
+        view->out->identity = frames[lxa_vector_length(&view->context->templates.frames) - 1].identity;
+    }
+    return status;
+}
+
+#define LXA_TEMPLATE_HTML_START_NAME control_route_template_html_start
+#define LXA_TEMPLATE_HTML_START_VIEW control_template_html_start_view_t
+#define LXA_TEMPLATE_HTML_START_TEMPLATE control_template_enter
+#define LXA_TEMPLATE_HTML_START_CLOSED(view, token) lxa_html_control_context_template_void_start( \
+    (view)->context, token, &(view)->out->token)
+#define LXA_TEMPLATE_HTML_START_TEXT(view, token) lxa_html_control_context_template_text_start( \
+    (view)->context, (view)->tokenizer, token, false, &(view)->out->identity)
+#include "html/template_html_start_route.inc"
+#undef LXA_TEMPLATE_HTML_START_NAME
+#undef LXA_TEMPLATE_HTML_START_VIEW
+#undef LXA_TEMPLATE_HTML_START_TEMPLATE
+#undef LXA_TEMPLATE_HTML_START_CLOSED
+#undef LXA_TEMPLATE_HTML_START_TEXT
+
+lxa_status_t
+lxa_html_control_context_template_html_start(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_control_template_html_start_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || has_patch || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || (lxa_html_tree_template_html_text_element(token->name) && tokenizer == NULL)
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_control_template_html_start_result_t out = {.token = *token};
+    control_template_html_start_view_t view = {context, tokenizer, &out};
+    lxa_status_t status = control_route_template_html_start(&view, token, &out.action);
+    if (status == LXA_OK && out.action == LXA_HTML_TEMPLATE_HTML_START_PLAINTEXT)
+        status = lxa_html_control_context_template_text_start(context, tokenizer, token, false, &out.identity);
+    else if (status == LXA_OK && out.action == LXA_HTML_TEMPLATE_HTML_START_ORDINARY) {
+        lxa_html_control_template_start_result_t ordinary;
+        status = lxa_html_control_context_template_ordinary_start(context, token, &ordinary);
+        if (status == LXA_OK) {
+            out.identity = ordinary.identity;
+            out.foster = ordinary.foster;
+        }
+    }
+    if (status == LXA_OK) *result = out;
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->templates.limit_reason;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
