@@ -5051,6 +5051,25 @@ tree_template_select(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool 
 #undef LXA_TEMPLATE_PART_START_COLUMN
 #undef LXA_TEMPLATE_PART_START_PART
 
+#define LXA_TEMPLATE_ORDINARY_PREPARE_NAME tree_prepare_template_ordinary
+#define LXA_TEMPLATE_ORDINARY_PREPARE_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_ORDINARY_PREPARE_BUTTON(view, name, keep) find_scoped_end_target( \
+    view, &(view)->template_elements, template_boundary(view), name, LXA_HTML_SCOPE_NORMAL, keep)
+#define LXA_TEMPLATE_ORDINARY_PREPARE_PREFLIGHT(view) \
+    lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
+#define LXA_TEMPLATE_ORDINARY_PREPARE_POP template_close_elements
+#define LXA_TEMPLATE_ORDINARY_PREPARE_RECONSTRUCT reconstruct_formatting
+#define LXA_TEMPLATE_ORDINARY_PREPARE_SUPPORTED(view, name, accepted) \
+    lxa_html_tree_supported_container(name, (view)->nodes->budget, &(view)->nodes->limit_reason, accepted)
+#include "html/template_ordinary_prepare.inc"
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_NAME
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_VIEW
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_BUTTON
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_PREFLIGHT
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_POP
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_RECONSTRUCT
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_SUPPORTED
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -5192,28 +5211,10 @@ reprocess_template_token:
         if (token->kind == LXA_HTML_START_TAG
             && (lxa_html_tree_returning_text_element(token->name) || named(token->name, "xmp")))
             return begin_template_text(tree, tokenizer, token);
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "button")) {
-            size_t index;
-            status = find_scoped_end_target(tree, &tree->template_elements,
-                template_boundary(tree), token->name, LXA_HTML_SCOPE_NORMAL, &index);
-            if (status == LXA_OK)
-                status = lxa_budget_check(tree->nodes->budget,
-                    LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-            if (status == LXA_OK)
-                status = template_close_elements(tree, index);
-            if (status == LXA_OK)
-                status = reconstruct_formatting(tree);
-            if (status != LXA_OK) return status;
-        }
         template_ordinary = false;
         if (token->kind == LXA_HTML_START_TAG) {
-            template_ordinary = lxa_html_tree_template_container_start(token->name);
-            if (!template_ordinary) {
-                status = lxa_html_tree_supported_container(token->name,
-                    tree->nodes->budget, &tree->nodes->limit_reason, &template_ordinary);
-                if (status != LXA_OK) return status;
-            }
+            status = tree_prepare_template_ordinary(tree, token->name, &template_ordinary);
+            if (status != LXA_OK) return status;
         }
         if (template_ordinary) {
             size_t count, close_at, drop = SIZE_MAX;

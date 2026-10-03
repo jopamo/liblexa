@@ -206,6 +206,31 @@ lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t end_pop(lxa_html_template_context_t *context, size_t keep);
+
+typedef struct {
+    lxa_html_template_context_t *context;
+    size_t boundary;
+} template_ordinary_view_t;
+
+#define LXA_TEMPLATE_ORDINARY_PREPARE_NAME context_prepare_ordinary
+#define LXA_TEMPLATE_ORDINARY_PREPARE_VIEW template_ordinary_view_t
+#define LXA_TEMPLATE_ORDINARY_PREPARE_BUTTON(view, name, keep) lxa_html_control_stack_scope_find( \
+    (view)->context->stack, (view)->boundary, name, LXA_HTML_SCOPE_NORMAL, keep)
+#define LXA_TEMPLATE_ORDINARY_PREPARE_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_ORDINARY_PREPARE_POP(view, keep) end_pop((view)->context, keep)
+#define LXA_TEMPLATE_ORDINARY_PREPARE_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TEMPLATE_ORDINARY_PREPARE_SUPPORTED(view, name, accepted) lxa_html_tree_supported_container( \
+    name, (view)->context->stack->budget, &(view)->context->limit_reason, accepted)
+#include "html/template_ordinary_prepare.inc"
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_NAME
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_VIEW
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_BUTTON
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_PREFLIGHT
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_POP
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_RECONSTRUCT
+#undef LXA_TEMPLATE_ORDINARY_PREPARE_SUPPORTED
+
 lxa_status_t
 lxa_html_template_context_start_container(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, bool quirks, uint64_t *identity, bool *foster)
@@ -217,30 +242,19 @@ lxa_html_template_context_start_container(lxa_html_template_context_t *context,
     if (identity == NULL || foster == NULL || count == 0 || !lxa_html_tree_token_shape_valid(token)
         || token->kind != LXA_HTML_START_TAG || lxa_html_tree_formatting_tag(token->name)
         || lxa_html_tree_formatting_marker_tag(token->name)) return LXA_ERROR_ARGUMENT;
-    bool accepted = lxa_html_tree_template_container_start(token->name);
-    if (!accepted)
-        status = lxa_html_tree_supported_container(token->name, context->stack->budget,
-            &context->limit_reason, &accepted);
+    const lxa_html_template_control_frame_t *frames =
+        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    template_ordinary_view_t ordinary = {context, frames[count - 1].boundary};
+    bool accepted;
+    status = context_prepare_ordinary(&ordinary, token->name, &accepted);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->stack->limit_reason;
     if (status != LXA_OK) return finish(context, status);
     if (!accepted) return LXA_ERROR_ARGUMENT;
-    if (lxa_html_tree_name_equals(token->name, "button", 6)) {
-        const lxa_html_template_control_frame_t *frames =
-            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
-        size_t keep;
-        status = lxa_html_control_stack_scope_find(context->stack,
-            frames[count - 1].boundary, token->name, LXA_HTML_SCOPE_NORMAL, &keep);
-        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
-        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-        if (status != LXA_OK) return finish(context, status);
-        status = lxa_html_template_context_reconstruct(context);
-        if (status != LXA_OK) return status;
-    }
     if (lxa_html_tree_template_container_reconstructs(token->name)) {
         status = lxa_html_template_context_reconstruct(context);
         if (status != LXA_OK) return status;
     }
-    const lxa_html_template_control_frame_t *frames =
-        (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     lxa_html_template_container_plan_t plan;
     status = lxa_html_control_stack_template_container_plan(context->stack,
         frames[count - 1].boundary, token->name, quirks, &plan);
@@ -489,7 +503,6 @@ lxa_html_template_context_select_token(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
-static lxa_status_t end_pop(lxa_html_template_context_t *context, size_t keep);
 
 typedef struct {
     lxa_html_template_context_t *context;
