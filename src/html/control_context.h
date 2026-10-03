@@ -168,6 +168,13 @@ lxa_status_t lxa_html_control_context_template_table_token(lxa_html_control_cont
  */
 lxa_status_t lxa_html_control_context_template_start_route(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_start_action_t *action);
+/* Continue START after early routing and current-entry dispatch. Select column
+ * or non-table part admission without repeating mode/scope preparation. A
+ * handled result includes grammar-defined ignores. Publish only on success;
+ * latch retained effects on failure. Prior intake clears pending bytes/newline.
+ */
+lxa_status_t lxa_html_control_context_template_part_start(lxa_html_control_context_t *context,
+    const lxa_html_token_t *token, bool *handled);
 typedef struct {
     lxa_html_template_start_action_t action;
     lxa_html_token_t token;

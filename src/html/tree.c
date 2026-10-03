@@ -5015,6 +5015,16 @@ tree_template_select(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool 
 #undef LXA_TEMPLATE_START_ROUTE_COLUMN
 #undef LXA_TEMPLATE_START_ROUTE_TABLE
 
+#define LXA_TEMPLATE_PART_START_NAME tree_execute_template_part_start
+#define LXA_TEMPLATE_PART_START_VIEW lxa_html_tree_t
+#define LXA_TEMPLATE_PART_START_COLUMN template_open_column
+#define LXA_TEMPLATE_PART_START_PART template_open_table_part
+#include "html/template_part_start.inc"
+#undef LXA_TEMPLATE_PART_START_NAME
+#undef LXA_TEMPLATE_PART_START_VIEW
+#undef LXA_TEMPLATE_PART_START_COLUMN
+#undef LXA_TEMPLATE_PART_START_PART
+
 static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
@@ -5136,28 +5146,12 @@ reprocess_template_token:
                     }
                 }
             }
-            else if (ns == LXA_DOM_NS_HTML
-                     && (named(top, "caption")
-                      || named(top, "td") || named(top, "th"))
-                     && token->kind == LXA_HTML_START_TAG
-                     && (lxa_html_tree_table_section(token->name)
-                         || named(token->name, "caption")
-                         || named(token->name, "tr")
-                         || named(token->name, "td")
-                         || named(token->name, "th")))
-                return template_open_table_part(tree, token);
         }
-        if (token->kind == LXA_HTML_START_TAG
-            && named(token->name, "col"))
-            return template_open_column(tree, token);
-        if (token->kind == LXA_HTML_START_TAG
-            && (named(token->name, "caption")
-                || named(token->name, "colgroup")
-                || lxa_html_tree_table_section(token->name)
-                || named(token->name, "tr")
-                || named(token->name, "td")
-                || named(token->name, "th")))
-            return template_open_table_part(tree, token);
+        if (token->kind == LXA_HTML_START_TAG) {
+            bool handled;
+            status = tree_execute_template_part_start(tree, token, &handled);
+            if (status != LXA_OK || handled) return status;
+        }
         if (token->kind == LXA_HTML_END_TAG)
             return template_body_end(tree, token->name);
         if (token->kind == LXA_HTML_START_TAG
