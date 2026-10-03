@@ -148,6 +148,13 @@ typedef struct {
     bool column_group;
 } lxa_html_template_current_route_t;
 
+typedef enum {
+    LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_PARAGRAPH,
+    LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS
+} lxa_html_template_table_end_result_t;
+
 static inline bool
 lxa_html_tree_template_table_context(lxa_html_template_mode_t mode)
 {

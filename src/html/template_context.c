@@ -971,6 +971,37 @@ lxa_html_template_context_foster_text(lxa_html_template_context_t *context,
     return finish(context, status);
 }
 
+static lxa_status_t
+context_table_end_paragraph(lxa_html_template_context_t *context, const lxa_html_token_t *token)
+{
+    uint64_t identity;
+    return lxa_html_template_context_foster_token(context, token, LXA_DOM_NS_HTML, false, &identity);
+}
+
+static lxa_status_t
+context_table_end_ordinary(lxa_html_template_context_t *context, const lxa_html_token_t *token)
+{
+    bool paragraph;
+    return lxa_html_template_context_end_body(context, token, &paragraph);
+}
+
+#define LXA_TEMPLATE_TABLE_END_NAME context_execute_table_end
+#define LXA_TEMPLATE_TABLE_END_VIEW lxa_html_template_context_t
+#define LXA_TEMPLATE_TABLE_END_READ lxa_html_template_context_current_token
+#define LXA_TEMPLATE_TABLE_END_POP(view) end_pop(view, lxa_vector_length(&(view)->stack->elements) - 1)
+#define LXA_TEMPLATE_TABLE_END_PARAGRAPH context_table_end_paragraph
+#define LXA_TEMPLATE_TABLE_END_ORDINARY context_table_end_ordinary
+#define LXA_TEMPLATE_TABLE_END_WORK(view) \
+    lxa_budget_charge((view)->stack->budget, LXA_BUDGET_WORK, 1, &(view)->limit_reason)
+#include "html/template_table_end_execute.inc"
+#undef LXA_TEMPLATE_TABLE_END_NAME
+#undef LXA_TEMPLATE_TABLE_END_VIEW
+#undef LXA_TEMPLATE_TABLE_END_READ
+#undef LXA_TEMPLATE_TABLE_END_POP
+#undef LXA_TEMPLATE_TABLE_END_PARAGRAPH
+#undef LXA_TEMPLATE_TABLE_END_ORDINARY
+#undef LXA_TEMPLATE_TABLE_END_WORK
+
 lxa_status_t
 lxa_html_template_context_end_table(lxa_html_template_context_t *context,
     const lxa_html_token_t *token, lxa_html_template_table_end_result_t *result)
@@ -980,52 +1011,7 @@ lxa_html_template_context_end_table(lxa_html_template_context_t *context,
     if (result == NULL || lxa_vector_length(&context->frames) == 0
         || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG)
         return LXA_ERROR_ARGUMENT;
-    lxa_html_template_current_route_t route;
-    status = lxa_html_template_context_current_token(context, token, &route);
-    if (status != LXA_OK) return status;
-    lxa_html_template_table_end_result_t out = LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE;
-    size_t length = lxa_vector_length(&context->stack->elements);
-    if (route.action == LXA_HTML_TEMPLATE_CURRENT_REPROCESS_END) {
-        status = end_pop(context, length - 1);
-        out = LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS;
-    }
-    else if (route.action == LXA_HTML_TEMPLATE_CURRENT_TABLE) {
-        switch (lxa_html_tree_template_table_end_action(token->name, route.column_group)) {
-            case LXA_HTML_TEMPLATE_TABLE_END_CONTINUE: break;
-            case LXA_HTML_TEMPLATE_TABLE_END_IGNORE:
-                out = LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE;
-                break;
-            case LXA_HTML_TEMPLATE_TABLE_END_POP_IGNORE:
-                status = end_pop(context, length - 1);
-                out = LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE;
-                break;
-            case LXA_HTML_TEMPLATE_TABLE_END_PARAGRAPH: {
-                if (route.column_group) status = end_pop(context, length - 1);
-                lxa_html_token_t adjusted = *token;
-                adjusted.kind = LXA_HTML_START_TAG;
-                uint64_t identity;
-                if (status == LXA_OK)
-                    status = lxa_html_template_context_foster_token(context, &adjusted,
-                        LXA_DOM_NS_HTML, false, &identity);
-                out = LXA_HTML_TEMPLATE_TABLE_RESULT_PARAGRAPH;
-                break;
-            }
-            case LXA_HTML_TEMPLATE_TABLE_END_ORDINARY: {
-                bool paragraph;
-                status = lxa_html_template_context_end_body(context, token, &paragraph);
-                out = LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE;
-                break;
-            }
-            case LXA_HTML_TEMPLATE_TABLE_END_FORMATTING:
-                status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
-                    &context->limit_reason);
-                if (status == LXA_OK) status = end_pop(context, length - 1);
-                out = LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS;
-                break;
-        }
-    }
-    if (status == LXA_OK) *result = out;
-    return finish(context, status);
+    return finish(context, context_execute_table_end(context, token, result));
 }
 
 typedef struct {
