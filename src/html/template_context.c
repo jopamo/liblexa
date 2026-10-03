@@ -645,6 +645,53 @@ end_clear(lxa_html_template_context_t *context)
     return status;
 }
 
+static lxa_status_t
+context_paragraph_find(lxa_html_template_context_t *context, size_t boundary, size_t *keep)
+{
+    lxa_status_t status = lxa_html_control_stack_scope_find(context->stack, boundary,
+        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep);
+    if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
+    return status;
+}
+
+typedef struct {
+    lxa_html_template_context_t *context;
+    lxa_html_template_control_frame_t *frame;
+    lxa_html_text_context_t *text;
+    lxa_html_tokenizer_t *tokenizer;
+    bool skip_newline;
+} template_text_view_t;
+
+#define LXA_TEMPLATE_TEXT_START_NAME context_execute_text_start
+#define LXA_TEMPLATE_TEXT_START_VIEW template_text_view_t
+#define LXA_TEMPLATE_TEXT_START_CHECK(view) LXA_OK
+#define LXA_TEMPLATE_TEXT_START_PARAGRAPH(view, keep) \
+    context_paragraph_find((view)->context, (view)->frame->boundary, keep)
+#define LXA_TEMPLATE_TEXT_START_PREFLIGHT(view) LXA_OK
+#define LXA_TEMPLATE_TEXT_START_LENGTH(view) lxa_vector_length(&(view)->context->stack->elements)
+#define LXA_TEMPLATE_TEXT_START_POP(view, keep) end_pop((view)->context, keep)
+#define LXA_TEMPLATE_TEXT_START_GROUP(view, group) \
+    lxa_html_control_stack_column_group((view)->context->stack, (view)->frame->boundary, group)
+#define LXA_TEMPLATE_TEXT_START_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
+#define LXA_TEMPLATE_TEXT_START_ENTER(view, token, xmp) lxa_html_text_context_enter( \
+    (view)->text, (view)->tokenizer, (token)->name, LXA_TREE_TEMPLATE_TEXT, &(view)->context->limit_reason)
+#define LXA_TEMPLATE_TEXT_START_NEWLINE(view) ((view)->skip_newline = true)
+#define LXA_TEMPLATE_TEXT_START_MODE(view, token) lxa_html_tree_template_start_mode( \
+    (view)->frame->insertion_mode, (token)->name, LXA_DOM_NS_HTML, &(view)->frame->insertion_mode)
+#include "html/template_text_start.inc"
+#undef LXA_TEMPLATE_TEXT_START_NAME
+#undef LXA_TEMPLATE_TEXT_START_VIEW
+#undef LXA_TEMPLATE_TEXT_START_CHECK
+#undef LXA_TEMPLATE_TEXT_START_PARAGRAPH
+#undef LXA_TEMPLATE_TEXT_START_PREFLIGHT
+#undef LXA_TEMPLATE_TEXT_START_LENGTH
+#undef LXA_TEMPLATE_TEXT_START_POP
+#undef LXA_TEMPLATE_TEXT_START_GROUP
+#undef LXA_TEMPLATE_TEXT_START_RECONSTRUCT
+#undef LXA_TEMPLATE_TEXT_START_ENTER
+#undef LXA_TEMPLATE_TEXT_START_NEWLINE
+#undef LXA_TEMPLATE_TEXT_START_MODE
+
 lxa_status_t
 lxa_html_template_context_start_text(lxa_html_template_context_t *context,
     lxa_html_text_context_t *text, lxa_html_tokenizer_t *tokenizer,
@@ -659,33 +706,13 @@ lxa_html_template_context_start_text(lxa_html_template_context_t *context,
         || token->kind != LXA_HTML_START_TAG
         || (!lxa_html_tree_returning_text_element(token->name)
             && !lxa_html_tree_name_equals(token->name, "xmp", 3))) return LXA_ERROR_ARGUMENT;
-    if (lxa_html_tree_name_equals(token->name, "xmp", 3)) {
-        const lxa_html_template_control_frame_t *frames =
-            (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
-        size_t boundary = frames[count - 1].boundary, keep;
-        status = lxa_html_control_stack_scope_find(context->stack, boundary,
-            (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
-        if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
-        bool group;
-        if (status == LXA_OK)
-            status = lxa_html_control_stack_column_group(context->stack, boundary, &group);
-        if (status == LXA_OK && group)
-            status = lxa_html_control_stack_pop_to(context->stack,
-                lxa_vector_length(&context->stack->elements) - 1);
-        if (status == LXA_ERROR_LIMIT) context->limit_reason = context->stack->limit_reason;
-        if (status != LXA_OK) return finish(context, status);
-        status = lxa_html_template_context_reconstruct(context);
-        if (status != LXA_OK) return status;
-    }
-    status = lxa_html_text_context_enter(text, tokenizer, token->name,
-        LXA_TREE_TEMPLATE_TEXT, &context->limit_reason);
-    if (status == LXA_OK) {
-        lxa_html_template_control_frame_t *frames =
-            (lxa_html_template_control_frame_t *) context->frames.bytes.data;
-        status = lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
-            token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode);
-    }
-    if (status == LXA_OK) *skip_newline = lxa_html_tree_name_equals(token->name, "textarea", 8);
+    lxa_html_template_control_frame_t *frames =
+        (lxa_html_template_control_frame_t *) context->frames.bytes.data;
+    template_text_view_t view = {context, &frames[count - 1], text, tokenizer, false};
+    status = context_execute_text_start(&view, token);
+    if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
+        context->limit_reason = context->stack->limit_reason;
+    if (status == LXA_OK) *skip_newline = view.skip_newline;
     return finish(context, status);
 }
 
@@ -717,10 +744,7 @@ typedef struct {
 static lxa_status_t
 context_void_paragraph(template_void_view_t *view, size_t *keep)
 {
-    lxa_status_t status = lxa_html_control_stack_scope_find(view->context->stack, view->frame->boundary,
-        (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep);
-    if (status == LXA_ERROR_LIMIT) view->context->limit_reason = view->context->stack->limit_reason;
-    return status;
+    return context_paragraph_find(view->context, view->frame->boundary, keep);
 }
 
 #define LXA_TEMPLATE_VOID_NAME context_void_start
