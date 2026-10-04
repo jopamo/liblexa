@@ -562,7 +562,7 @@ control_template_end_br(lxa_html_control_context_t *context)
 
 typedef struct {
     lxa_html_control_context_t *context;
-    lxa_html_control_template_end_result_t *out;
+    lxa_html_control_template_token_result_t *out;
 } control_template_end_view_t;
 
 #define LXA_TEMPLATE_END_EXECUTE_NAME control_execute_template_end
@@ -587,37 +587,6 @@ typedef struct {
 #undef LXA_TEMPLATE_END_EXECUTE_TABLE
 #undef LXA_TEMPLATE_END_EXECUTE_PARAGRAPH
 #undef LXA_TEMPLATE_END_EXECUTE_BODY
-
-lxa_status_t
-lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result)
-{
-    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
-    if (context->failure != LXA_OK) return context->failure;
-    if (result == NULL || context->mode != LXA_TREE_TEMPLATE_TEXT
-        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_END_TAG
-        || context->pending_table_text.length != 0 || context->pending_newline)
-        return LXA_ERROR_ARGUMENT;
-    if (!state_valid(context)) {
-        assert(false);
-        context->failure = LXA_ERROR_INTERNAL;
-        context->limit_reason = LXA_BUDGET_COUNT;
-        return context->failure;
-    }
-    lxa_html_control_template_end_result_t out = {.token = *token, .handled = true};
-    lxa_html_token_t adjusted;
-    control_template_end_view_t view = {context, &out};
-    lxa_status_t status = control_execute_template_end(&view, &token, &adjusted, &out.handled);
-    if (status == LXA_OK) {
-        out.token = *token;
-        *result = out;
-    }
-    else {
-        context->failure = status;
-        context->limit_reason = status == LXA_ERROR_LIMIT ? context->templates.limit_reason : LXA_BUDGET_COUNT;
-    }
-    return status;
-}
 
 lxa_status_t
 lxa_html_control_context_template_mathml_table_token(lxa_html_control_context_t *context,
@@ -1130,6 +1099,118 @@ lxa_html_control_context_template_start_dispatch(lxa_html_control_context_t *con
     else if (context->failure == LXA_OK) {
         context->failure = status;
         context->limit_reason = status == LXA_ERROR_LIMIT ? context->templates.limit_reason : LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_html_data_emit_t emit;
+    void *user;
+    lxa_html_control_template_token_result_t *out;
+} control_template_token_view_t;
+
+static lxa_status_t
+control_template_token_end(control_template_token_view_t *view,
+    const lxa_html_token_t **token, lxa_html_token_t *adjusted, bool *handled)
+{
+    control_template_end_view_t end = {view->context, view->out};
+    return control_execute_template_end(&end, token, adjusted, handled);
+}
+
+static lxa_status_t
+control_template_token_start(control_template_token_view_t *view,
+    const lxa_html_token_t **token, lxa_html_template_start_action_t *action)
+{
+    lxa_html_control_template_start_dispatch_result_t out;
+    lxa_status_t status = lxa_html_control_context_template_start_dispatch(view->context,
+        view->tokenizer, *token, false, &out);
+    if (status == LXA_OK) {
+        view->out->token = out.token;
+        *token = &view->out->token;
+        *action = out.action;
+    }
+    return status;
+}
+
+#define LXA_TEMPLATE_HTML_PRELUDE_NAME control_template_token_data_prelude
+#define LXA_TEMPLATE_HTML_PRELUDE_VIEW control_template_token_view_t
+#define LXA_TEMPLATE_HTML_PRELUDE_PREPARE(view, token, handled) (assert(false), LXA_ERROR_INTERNAL)
+#define LXA_TEMPLATE_HTML_PRELUDE_GROUP(view, token, action) \
+    lxa_html_control_context_template_column_group_token((view)->context, token, (view)->emit, (view)->user, action)
+#define LXA_TEMPLATE_HTML_PRELUDE_HIDDEN(view, token, handled) \
+    control_template_hidden_input((view)->context, token, handled)
+#define LXA_TEMPLATE_HTML_PRELUDE_SELECT(view, token, handled) \
+    lxa_html_template_context_select_token(&(view)->context->templates, token, handled)
+#include "html/template_html_prelude.inc"
+#undef LXA_TEMPLATE_HTML_PRELUDE_NAME
+#undef LXA_TEMPLATE_HTML_PRELUDE_VIEW
+#undef LXA_TEMPLATE_HTML_PRELUDE_PREPARE
+#undef LXA_TEMPLATE_HTML_PRELUDE_GROUP
+#undef LXA_TEMPLATE_HTML_PRELUDE_HIDDEN
+#undef LXA_TEMPLATE_HTML_PRELUDE_SELECT
+
+#define LXA_TEMPLATE_TOKEN_NAME control_execute_template_token
+#define LXA_TEMPLATE_TOKEN_VIEW control_template_token_view_t
+#define LXA_TEMPLATE_TOKEN_LENGTH(view) lxa_vector_length(&(view)->context->stack.elements)
+#define LXA_TEMPLATE_TOKEN_MISC(view, token) LXA_OK
+#define LXA_TEMPLATE_TOKEN_FOREIGN(view, token, action) lxa_html_control_context_template_foreign_dispatch( \
+    (view)->context, token, (view)->emit, (view)->user, action)
+#define LXA_TEMPLATE_TOKEN_END control_template_token_end
+#define LXA_TEMPLATE_TOKEN_BOUNDARY(view, token, adjusted, handled) \
+    control_dispatch_template_end((view)->context, token, adjusted, handled)
+#define LXA_TEMPLATE_TOKEN_START control_template_token_start
+#define LXA_TEMPLATE_TOKEN_ORDINARY(view, token) (assert(false), LXA_ERROR_INTERNAL)
+#define LXA_TEMPLATE_TOKEN_DATA_PRELUDE control_template_token_data_prelude
+#define LXA_TEMPLATE_TOKEN_DATA(view, token) lxa_html_control_context_template_data_token( \
+    (view)->context, token, (view)->emit, (view)->user)
+#include "html/template_token_execute.inc"
+#undef LXA_TEMPLATE_TOKEN_NAME
+#undef LXA_TEMPLATE_TOKEN_VIEW
+#undef LXA_TEMPLATE_TOKEN_LENGTH
+#undef LXA_TEMPLATE_TOKEN_MISC
+#undef LXA_TEMPLATE_TOKEN_FOREIGN
+#undef LXA_TEMPLATE_TOKEN_END
+#undef LXA_TEMPLATE_TOKEN_BOUNDARY
+#undef LXA_TEMPLATE_TOKEN_START
+#undef LXA_TEMPLATE_TOKEN_ORDINARY
+#undef LXA_TEMPLATE_TOKEN_DATA_PRELUDE
+#undef LXA_TEMPLATE_TOKEN_DATA
+
+lxa_status_t
+lxa_html_control_context_template_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_data_emit_t emit, void *user,
+    lxa_html_control_template_token_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || has_patch || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind == LXA_HTML_EOF
+        || context->pending_newline
+        || (token->kind != LXA_HTML_TEXT && context->pending_table_text.length != 0)
+        || (token->kind == LXA_HTML_TEXT
+            && !lxa_html_tree_table_text_input_valid(&context->pending_table_text, token->data)))
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_control_template_token_result_t out = {.token = *token};
+    control_template_token_view_t view = {context, tokenizer, emit, user, &out};
+    lxa_html_token_t adjusted;
+    lxa_status_t status = control_execute_template_token(&view, &token, &adjusted);
+    if (status == LXA_OK) {
+        out.token = *token;
+        *result = out;
+    }
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = status == LXA_ERROR_LIMIT
+            ? context->templates.limit_reason : LXA_BUDGET_COUNT;
     }
     return status;
 }

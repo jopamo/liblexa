@@ -109,22 +109,6 @@ lxa_status_t lxa_html_control_context_template_data_token(lxa_html_control_conte
 lxa_status_t lxa_html_control_context_template_text_start(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool foster, uint64_t *identity);
-typedef struct {
-    lxa_html_token_t token;
-    bool handled, implied_paragraph, foster;
-} lxa_html_control_template_end_result_t;
-/* Coordinate accepted template END after intake has flushed pending text and
- * cleared newline state. Order foreign/BR/closure/boundary, column group,
- * select and current-table/body recovery as in the canonical driver. Bound
- * reprocessing by completed content pops. Only converted BR continues as START;
- * its views remain borrowed and attributes/self-closing state are cleared.
- * Report closed implied-paragraph insertion and foster placement without NODE
- * charges or retained paragraph metadata. Publish only on success; latch
- * completed effects on failure without replay. Token/result cannot alias
- * owners. Later START execution, insertion and namespace feedback are separate.
- */
-lxa_status_t lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
-    const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result);
 /* Prepare template HTML START after misc/foreign/end routing and intake.
  * Order body-control/initial-part/BODY-scope preparation, column-group gating,
  * hidden table input and select recovery as in the canonical driver. Hidden
@@ -276,6 +260,26 @@ typedef struct {
 lxa_status_t lxa_html_control_context_template_start_dispatch(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool has_patch, lxa_html_control_template_start_dispatch_result_t *result);
+typedef struct {
+    lxa_html_token_t token;
+    bool implied_paragraph, foster;
+} lxa_html_control_template_token_result_t;
+/* Feedback-only non-EOF template dispatch after TEXT/flush/newline intake.
+ * Run misc/foreign/boundary, END or START, and HTML DATA in canonical order.
+ * Bound foreign/START retries by shrinking content. NULL emit discards ordinary
+ * DATA, not required buffering; callbacks cannot retain views or reenter/mutate
+ * owners. Reject caller-supplied patch state before effects. Misc tokens retain
+ * no metadata; converted BR continues through START without replaying foreign
+ * routing. Report borrowed adjusted tokens and END-only closed paragraph/foster
+ * actions after success, not admission identities. Latch failure without replay.
+ * Pending newline must be clear; pending table bytes require DATA. Token/sink/
+ * result cannot alias owners/pending storage. Text starts require a tokenizer.
+ * Encoding observation, EOF and final namespace feedback remain driver-owned.
+ */
+lxa_status_t lxa_html_control_context_template_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_data_emit_t emit, void *user,
+    lxa_html_control_template_token_result_t *result);
 typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
