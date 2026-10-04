@@ -560,6 +560,34 @@ control_template_end_br(lxa_html_control_context_t *context)
 #undef LXA_TEMPLATE_END_DISPATCH_CLOSE
 #undef LXA_TEMPLATE_END_DISPATCH_BOUNDARY
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_control_template_end_result_t *out;
+} control_template_end_view_t;
+
+#define LXA_TEMPLATE_END_EXECUTE_NAME control_execute_template_end
+#define LXA_TEMPLATE_END_EXECUTE_VIEW control_template_end_view_t
+#define LXA_TEMPLATE_END_EXECUTE_LENGTH(view) lxa_vector_length(&(view)->context->stack.elements)
+#define LXA_TEMPLATE_END_EXECUTE_DISPATCH(view, token, adjusted, handled) \
+    control_dispatch_template_end((view)->context, token, adjusted, handled)
+#define LXA_TEMPLATE_END_EXECUTE_PRELUDE(view, token, handled) \
+    control_execute_template_html_prelude((view)->context, token, handled)
+#define LXA_TEMPLATE_END_EXECUTE_TABLE(view, token, result) \
+    lxa_html_template_context_end_table(&(view)->context->templates, token, result)
+#define LXA_TEMPLATE_END_EXECUTE_PARAGRAPH(view) \
+    ((view)->out->implied_paragraph = true, (view)->out->foster = true)
+#define LXA_TEMPLATE_END_EXECUTE_BODY(view, token) lxa_html_template_context_end_body( \
+    &(view)->context->templates, token, &(view)->out->implied_paragraph)
+#include "html/template_end_execute.inc"
+#undef LXA_TEMPLATE_END_EXECUTE_NAME
+#undef LXA_TEMPLATE_END_EXECUTE_VIEW
+#undef LXA_TEMPLATE_END_EXECUTE_LENGTH
+#undef LXA_TEMPLATE_END_EXECUTE_DISPATCH
+#undef LXA_TEMPLATE_END_EXECUTE_PRELUDE
+#undef LXA_TEMPLATE_END_EXECUTE_TABLE
+#undef LXA_TEMPLATE_END_EXECUTE_PARAGRAPH
+#undef LXA_TEMPLATE_END_EXECUTE_BODY
+
 lxa_status_t
 lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_control_template_end_result_t *result)
@@ -577,53 +605,16 @@ lxa_html_control_context_template_end_token(lxa_html_control_context_t *context,
         return context->failure;
     }
     lxa_html_control_template_end_result_t out = {.token = *token, .handled = true};
-    lxa_status_t status;
-    for (;;) {
-        size_t length = lxa_vector_length(&context->stack.elements);
-        lxa_html_token_t adjusted;
-        bool handled;
-        status = control_dispatch_template_end(context, &token, &adjusted, &handled);
-        if (status != LXA_OK || handled) break;
-        if (token->kind == LXA_HTML_START_TAG) {
-            out.handled = false;
-            out.token = *token;
-            break;
-        }
-        status = control_execute_template_html_prelude(context, token, &handled);
-        if (status != LXA_OK || handled) break;
-        lxa_html_template_table_end_result_t table;
-        status = lxa_html_template_context_end_table(&context->templates, token, &table);
-        if (status != LXA_OK) break;
-        switch (table) {
-        case LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS:
-            if (lxa_vector_length(&context->stack.elements) >= length) {
-                assert(false);
-                context->failure = LXA_ERROR_INTERNAL;
-                context->limit_reason = LXA_BUDGET_COUNT;
-                return context->failure;
-            }
-            continue;
-        case LXA_HTML_TEMPLATE_TABLE_RESULT_PARAGRAPH:
-            out.implied_paragraph = true;
-            out.foster = true;
-            break;
-        case LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE:
-            status = lxa_html_template_context_end_body(&context->templates, token, &out.implied_paragraph);
-            break;
-        case LXA_HTML_TEMPLATE_TABLE_RESULT_IGNORE:
-            break;
-        default:
-            assert(false);
-            context->failure = LXA_ERROR_INTERNAL;
-            context->limit_reason = LXA_BUDGET_COUNT;
-            return context->failure;
-        }
-        break;
+    lxa_html_token_t adjusted;
+    control_template_end_view_t view = {context, &out};
+    lxa_status_t status = control_execute_template_end(&view, &token, &adjusted, &out.handled);
+    if (status == LXA_OK) {
+        out.token = *token;
+        *result = out;
     }
-    if (status == LXA_OK) *result = out;
     else {
         context->failure = status;
-        context->limit_reason = context->templates.limit_reason;
+        context->limit_reason = status == LXA_ERROR_LIMIT ? context->templates.limit_reason : LXA_BUDGET_COUNT;
     }
     return status;
 }
