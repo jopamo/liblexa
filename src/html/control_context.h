@@ -260,6 +260,23 @@ lxa_status_t lxa_html_control_context_template_html_start(lxa_html_control_conte
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool has_patch, lxa_html_control_template_html_start_result_t *result);
 typedef struct {
+    lxa_html_template_start_action_t action;
+    lxa_html_token_t token;
+} lxa_html_control_template_start_dispatch_result_t;
+/* Feedback-only continuing START schedule after intake/misc/foreign/end routes.
+ * Execute early, current-entry, prepared part and late admission in order.
+ * CONSUMED includes grammar ignores; REPROCESS follows a shrinking pop and
+ * requires full earlier dispatch, not another admission-only call. Reject patch
+ * requests before any phase; callers determine patch state. Result reports
+ * flow/borrowed adjusted token, not admission identities. Publish only after
+ * success; latch retained effects without replay. Pending bytes/newline must
+ * be clear. Text routes require a tokenizer; final feedback/encoding remain
+ * driver-owned. Token/result storage must not alias owners.
+ */
+lxa_status_t lxa_html_control_context_template_start_dispatch(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_control_template_start_dispatch_result_t *result);
+typedef struct {
     lxa_html_data_emit_t emit;
     lxa_html_root_prebody_emit_t prebody_emit;
     void *user;

@@ -5150,6 +5150,32 @@ tree_template_select(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool 
 #undef LXA_TEMPLATE_HTML_START_TEXT
 
 static lxa_status_t
+tree_template_start_late(tree_template_table_start_view_t *view,
+    const lxa_html_token_t *token, bool *handled)
+{
+    tree_template_text_view_t late = {view->tree, view->tokenizer};
+    lxa_html_template_html_start_action_t action;
+    lxa_status_t status = tree_route_template_html_start(&late, token, &action);
+    if (status == LXA_OK) *handled = action != LXA_HTML_TEMPLATE_HTML_START_ORDINARY
+        && action != LXA_HTML_TEMPLATE_HTML_START_PLAINTEXT;
+    return status;
+}
+
+#define LXA_TEMPLATE_START_NAME tree_execute_template_start
+#define LXA_TEMPLATE_START_VIEW tree_template_table_start_view_t
+#define LXA_TEMPLATE_START_EARLY(view, token, action) tree_execute_template_start_route((view)->tree, token, action)
+#define LXA_TEMPLATE_START_CURRENT tree_execute_template_current_start
+#define LXA_TEMPLATE_START_PART(view, token, handled) tree_execute_template_part_start((view)->tree, token, handled)
+#define LXA_TEMPLATE_START_LATE tree_template_start_late
+#include "html/template_start_execute.inc"
+#undef LXA_TEMPLATE_START_NAME
+#undef LXA_TEMPLATE_START_VIEW
+#undef LXA_TEMPLATE_START_EARLY
+#undef LXA_TEMPLATE_START_CURRENT
+#undef LXA_TEMPLATE_START_PART
+#undef LXA_TEMPLATE_START_LATE
+
+static lxa_status_t
 consume(lxa_html_tree_t *tree,
         lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
 {
@@ -5179,8 +5205,9 @@ reprocess_template_token:
             if (status != LXA_OK || handled) return status;
         }
         if (token->kind == LXA_HTML_START_TAG) {
+            tree_template_table_start_view_t view = {tree, tokenizer};
             lxa_html_template_start_action_t action;
-            status = tree_execute_template_start_route(tree, token, &action);
+            status = tree_execute_template_start(&view, token, &action);
             if (status != LXA_OK) return status;
             if (action == LXA_HTML_TEMPLATE_START_CONSUMED) return LXA_OK;
             if (action == LXA_HTML_TEMPLATE_START_REPROCESS) goto reprocess_template_token;
@@ -5190,43 +5217,25 @@ reprocess_template_token:
             status = tree_execute_template_html_prelude(tree, token, &handled);
             if (status != LXA_OK || handled) return status;
         }
-        if (token->kind == LXA_HTML_START_TAG) {
-            tree_template_table_start_view_t view = {tree, tokenizer};
-            lxa_html_template_start_action_t action;
-            status = tree_execute_template_current_start(&view, token, &action);
-            if (status != LXA_OK || action == LXA_HTML_TEMPLATE_START_CONSUMED) return status;
-            if (action == LXA_HTML_TEMPLATE_START_REPROCESS) goto reprocess_template_token;
-        }
-        else if (token->kind == LXA_HTML_END_TAG) {
+        if (token->kind == LXA_HTML_END_TAG) {
             lxa_html_template_table_end_result_t result;
             status = tree_execute_template_table_end(tree, token, &result);
             if (status != LXA_OK) return status;
             if (result == LXA_HTML_TEMPLATE_TABLE_RESULT_REPROCESS) goto reprocess_template_token;
             if (result != LXA_HTML_TEMPLATE_TABLE_RESULT_CONTINUE) return LXA_OK;
         }
-        else if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+        else if (token->kind != LXA_HTML_START_TAG
+            && lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
             lxa_html_template_current_route_t current;
             status = tree_template_current_route(tree, token, &current);
             if (status != LXA_OK) return status;
             if (current.action == LXA_HTML_TEMPLATE_CURRENT_TABLE && token->kind == LXA_HTML_TEXT)
                 return insert_data_text(tree, template_parent(tree), token->data, false, true);
         }
-        if (token->kind == LXA_HTML_START_TAG) {
-            bool handled;
-            status = tree_execute_template_part_start(tree, token, &handled);
-            if (status != LXA_OK || handled) return status;
-        }
         if (token->kind == LXA_HTML_END_TAG)
             return template_body_end(tree, token->name);
         if (token->kind == LXA_HTML_TEXT)
             return tree_execute_template_data(tree, token->data);
-        if (token->kind == LXA_HTML_START_TAG) {
-            tree_template_text_view_t start = {tree, tokenizer};
-            lxa_html_template_html_start_action_t action;
-            status = tree_route_template_html_start(&start, token, &action);
-            if (status != LXA_OK || (action != LXA_HTML_TEMPLATE_HTML_START_ORDINARY
-                && action != LXA_HTML_TEMPLATE_HTML_START_PLAINTEXT)) return status;
-        }
         template_ordinary = false;
         if (token->kind == LXA_HTML_START_TAG) {
             status = tree_prepare_template_ordinary(tree, token->name, &template_ordinary);

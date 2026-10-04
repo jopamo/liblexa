@@ -1065,6 +1065,84 @@ lxa_html_control_context_template_html_start(lxa_html_control_context_t *context
     return status;
 }
 
+typedef struct {
+    lxa_html_control_context_t *context;
+    lxa_html_tokenizer_t *tokenizer;
+    lxa_html_token_t *token;
+} control_template_start_view_t;
+
+static lxa_status_t
+control_template_start_current(control_template_start_view_t *view,
+    const lxa_html_token_t *token, lxa_html_template_start_action_t *action)
+{
+    lxa_html_control_template_table_start_result_t current;
+    lxa_status_t status = lxa_html_control_context_template_table_start(view->context,
+        view->tokenizer, token, &current);
+    if (status == LXA_OK) {
+        *view->token = current.token;
+        *action = current.action;
+    }
+    return status;
+}
+
+static lxa_status_t
+control_template_start_late(control_template_start_view_t *view,
+    const lxa_html_token_t *token, bool *handled)
+{
+    lxa_html_control_template_html_start_result_t late;
+    lxa_status_t status = lxa_html_control_context_template_html_start(view->context,
+        view->tokenizer, token, false, &late);
+    if (status == LXA_OK) {
+        *view->token = late.token;
+        *handled = true;
+    }
+    return status;
+}
+
+#define LXA_TEMPLATE_START_NAME control_execute_template_start
+#define LXA_TEMPLATE_START_VIEW control_template_start_view_t
+#define LXA_TEMPLATE_START_EARLY(view, token, action) \
+    lxa_html_control_context_template_start_route((view)->context, token, action)
+#define LXA_TEMPLATE_START_CURRENT control_template_start_current
+#define LXA_TEMPLATE_START_PART(view, token, handled) \
+    lxa_html_control_context_template_part_start((view)->context, token, handled)
+#define LXA_TEMPLATE_START_LATE control_template_start_late
+#include "html/template_start_execute.inc"
+#undef LXA_TEMPLATE_START_NAME
+#undef LXA_TEMPLATE_START_VIEW
+#undef LXA_TEMPLATE_START_EARLY
+#undef LXA_TEMPLATE_START_CURRENT
+#undef LXA_TEMPLATE_START_PART
+#undef LXA_TEMPLATE_START_LATE
+
+lxa_status_t
+lxa_html_control_context_template_start_dispatch(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, lxa_html_control_template_start_dispatch_result_t *result)
+{
+    if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
+    if (context->failure != LXA_OK) return context->failure;
+    if (result == NULL || has_patch || context->mode != LXA_TREE_TEMPLATE_TEXT
+        || !lxa_html_tree_token_shape_valid(token) || token->kind != LXA_HTML_START_TAG
+        || context->pending_table_text.length != 0 || context->pending_newline)
+        return LXA_ERROR_ARGUMENT;
+    if (!state_valid(context)) {
+        assert(false);
+        context->failure = LXA_ERROR_INTERNAL;
+        context->limit_reason = LXA_BUDGET_COUNT;
+        return context->failure;
+    }
+    lxa_html_control_template_start_dispatch_result_t out = {.token = *token};
+    control_template_start_view_t view = {context, tokenizer, &out.token};
+    lxa_status_t status = control_execute_template_start(&view, token, &out.action);
+    if (status == LXA_OK) *result = out;
+    else if (context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = status == LXA_ERROR_LIMIT ? context->templates.limit_reason : LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 static lxa_status_t
 control_start_root(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
