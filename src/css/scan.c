@@ -47,7 +47,13 @@ static int
 name_start(uint32_t c)
 {
     return c == '_' || (c >= 'a' && c <= 'z')
-           || (c >= 'A' && c <= 'Z') || (c >= 0x80 && c <= 0x10ffff);
+           || (c >= 'A' && c <= 'Z') || c == 0xb7
+           || (c >= 0xc0 && c <= 0xd6) || (c >= 0xd8 && c <= 0xf6)
+           || (c >= 0xf8 && c <= 0x37d) || (c >= 0x37f && c <= 0x1fff)
+           || (c >= 0x200c && c <= 0x200d) || (c >= 0x203f && c <= 0x2040)
+           || (c >= 0x2070 && c <= 0x218f) || (c >= 0x2c00 && c <= 0x2fef)
+           || (c >= 0x3001 && c <= 0xd7ff) || (c >= 0xf900 && c <= 0xfdcf)
+           || (c >= 0xfdf0 && c <= 0xfffd) || (c >= 0x10000 && c <= 0x10ffff);
 }
 
 static int
