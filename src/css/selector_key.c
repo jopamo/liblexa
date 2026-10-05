@@ -91,6 +91,20 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         return LXA_OK;
     }
     if (universal && (klass.length || id.length)) return unsupported(syntax);
+    /* Cooked names must not introduce a different lookup-key boundary. */
+    status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, tag.length,
+                               &blocks->limit_reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = 0; i < tag.length; i++) {
+        if (tag.data[i] == '.' || tag.data[i] == '#' || tag.data[i] == '*')
+            return unsupported(syntax);
+    }
+    status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, klass.length,
+                               &blocks->limit_reason);
+    if (status != LXA_OK) return status;
+    for (size_t i = 0; i < klass.length; i++) {
+        if (klass.data[i] == '#') return unsupported(syntax);
+    }
     size = tag.length;
     if (universal) size = 1;
     if (lxa_size_add(size, klass.length, &size) != LXA_OK
