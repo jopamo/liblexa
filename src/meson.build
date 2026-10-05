@@ -26,7 +26,7 @@ if candidate_html_enabled
     'html/foreign_names.c',
     'html/tree.c', 'html/tree_policy.c', 'html/control_stack.c', 'html/root_context.c',
     'html/template_context.c', 'html/control_context.c',
-    'html/formatting_store.c', 'html/document.c')
+    'html/formatting_store.c', 'html/document.c', 'html/extract.c')
   html_candidate_sources += files('serialize/escape.c',
     'serialize/document.c')
   lxa_html_candidate = both_libraries('lexa-html-candidate',
