@@ -65,8 +65,7 @@ digit(uint32_t c)
 static int
 escape(scanner_t *s, size_t ahead)
 {
-    return peek(s, ahead) == '\\' && peek(s, ahead + 1) != 0xffffffffu
-           && peek(s, ahead + 1) != '\n';
+    return peek(s, ahead) == '\\' && peek(s, ahead + 1) != '\n';
 }
 
 static int
@@ -95,6 +94,9 @@ read_escape(scanner_t *s)
     c = peek(s, 0);
     if (s->work_status != LXA_OK) {
         return 0;
+    }
+    if (c == 0xffffffffu) {
+        return 0xfffd;
     }
     if (hex(c) < 0) {
         s->pos++;
@@ -483,7 +485,10 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
             while (status == LXA_OK && s->pos < s->count
                    && peek(s, 0) != quote && peek(s, 0) != '\n') {
                 if (peek(s, 0) == '\\') {
-                    if (escape(s, 0)) {
+                    if (peek(s, 1) == 0xffffffffu) {
+                        s->pos++;
+                    }
+                    else if (escape(s, 0)) {
                         status = put(s, read_escape(s));
                     }
                     else {
