@@ -340,6 +340,20 @@ lxa_status_t lxa_html_control_context_root_dispatch(lxa_html_control_context_t *
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
     bool has_patch, const lxa_html_control_root_sink_t *sink,
     lxa_html_control_root_dispatch_result_t *result);
+/* Consume one tokenizer token and finalize post-effect namespace feedback.
+ * Share initial/TEXT/flush/newline, template, EOF, frameset and root ordering.
+ * The borrowed tokenizer uses the owner's budget and outlives this call.
+ * NULL sinks discard delivery, not required pending storage. Callback views
+ * expire on return; do not retain, reenter or mutate owners/tokenizer/sinks.
+ * Reject patches, malformed tokens, NULL tokenizer and DONE before effects.
+ * Retain completed effects and latch execution/feedback failure without replay.
+ * Tokens/sinks cannot alias owned storage. Encoding observation and input
+ * selection remain external; this is feedback control, not extraction output.
+ */
+lxa_status_t lxa_html_control_context_on_token(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, bool has_patch,
+    const lxa_html_control_intake_sink_t *intake_sink,
+    const lxa_html_control_root_sink_t *root_sink);
 /* Flush owned pending table text before non-DATA intake, after any EOF TEXT
  * restoration. Select the active template slice or root ledger. NULL emit
  * discards; callback views expire on return and cannot mutate/reenter owners.

@@ -5342,45 +5342,64 @@ tree_template_html_data(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 #undef LXA_TEMPLATE_TOKEN_DATA
 
 static lxa_status_t
-consume(lxa_html_tree_t *tree,
-        lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
+tree_consume_template(tree_foster_text_view_t *view,
+    const lxa_html_token_t **token, lxa_html_token_t *adjusted)
 {
-    lxa_status_t status;
-    lxa_html_token_t adjusted;
-    if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
-    bool intake_handled;
-    status = tree_execute_intake(tree, &token, &adjusted, &intake_handled);
-    if (status != LXA_OK || intake_handled) return status;
-    if (tree->mode == LXA_TREE_TEMPLATE_TEXT) {
-        if (token->kind != LXA_HTML_EOF) {
-            tree_template_table_start_view_t view = {tree, tokenizer};
-            return tree_execute_template_token(&view, &token, &adjusted);
-        }
-        {
-            bool handled;
-            status = tree_dispatch_template_end(tree, &token, &adjusted, &handled);
-            if (status != LXA_OK || handled) return status;
-            status = tree_execute_template_html_prelude(tree, token, &handled);
-            if (status != LXA_OK || handled) return status;
-        }
-        if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
-            lxa_html_template_current_route_t current;
-            status = tree_template_current_route(tree, token, &current);
-            if (status != LXA_OK) return status;
-        }
-        return tree_execute_eof(tree);
+    lxa_html_tree_t *tree = view->tree;
+    if ((*token)->kind != LXA_HTML_EOF) {
+        tree_template_table_start_view_t template = {tree, view->tokenizer};
+        return tree_execute_template_token(&template, token, adjusted);
     }
-    if (token->kind == LXA_HTML_EOF) return tree_execute_eof(tree);
-    if (lxa_html_tree_frameset_mode(tree->mode)) {
-        lxa_html_frameset_action_t action;
-        status = lxa_html_tree_frameset_action(tree->mode, token->kind,
-            token->name, &action);
+    bool handled;
+    lxa_status_t status = tree_dispatch_template_end(tree, token, adjusted, &handled);
+    if (status != LXA_OK || handled) return status;
+    status = tree_execute_template_html_prelude(tree, *token, &handled);
+    if (status != LXA_OK || handled) return status;
+    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+        lxa_html_template_current_route_t current;
+        status = tree_template_current_route(tree, *token, &current);
         if (status != LXA_OK) return status;
-        tree_frameset_execute_view_t view = {tree, tokenizer};
-        return tree_execute_frameset(&view, token, action);
     }
+    return tree_execute_eof(tree);
+}
+
+static lxa_status_t
+tree_consume_frameset(tree_foster_text_view_t *view, const lxa_html_token_t *token)
+{
+    lxa_html_frameset_action_t action;
+    lxa_status_t status = lxa_html_tree_frameset_action(view->tree->mode, token->kind,
+        token->name, &action);
+    if (status != LXA_OK) return status;
+    tree_frameset_execute_view_t frameset = {view->tree, view->tokenizer};
+    return tree_execute_frameset(&frameset, token, action);
+}
+
+#define LXA_TOKEN_EXEC_NAME tree_execute_token
+#define LXA_TOKEN_EXEC_VIEW tree_foster_text_view_t
+#define LXA_TOKEN_EXEC_MODE(view) ((view)->tree->mode)
+#define LXA_TOKEN_EXEC_INTAKE(view, token, adjusted, handled) \
+    tree_execute_intake((view)->tree, token, adjusted, handled)
+#define LXA_TOKEN_EXEC_TEMPLATE tree_consume_template
+#define LXA_TOKEN_EXEC_EOF(view) tree_execute_eof((view)->tree)
+#define LXA_TOKEN_EXEC_FRAMESET tree_consume_frameset
+#define LXA_TOKEN_EXEC_ROOT tree_dispatch_root
+#include "html/token_execute.inc"
+#undef LXA_TOKEN_EXEC_NAME
+#undef LXA_TOKEN_EXEC_VIEW
+#undef LXA_TOKEN_EXEC_MODE
+#undef LXA_TOKEN_EXEC_INTAKE
+#undef LXA_TOKEN_EXEC_TEMPLATE
+#undef LXA_TOKEN_EXEC_EOF
+#undef LXA_TOKEN_EXEC_FRAMESET
+#undef LXA_TOKEN_EXEC_ROOT
+
+static lxa_status_t
+consume(lxa_html_tree_t *tree,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token)
+{
+    if (!lxa_html_tree_token_shape_valid(token)) return LXA_ERROR_ARGUMENT;
     tree_foster_text_view_t view = {tree, tokenizer, {0}};
-    return tree_dispatch_root(&view, &token, &adjusted);
+    return tree_execute_token(&view, token);
 }
 
 lxa_status_t
