@@ -362,6 +362,24 @@ lxa_html_tree_name_equals(lxa_span_t name, const char *text, size_t length)
         && memcmp(name.data, text, length) == 0;
 }
 
+typedef struct {
+    lxa_status_t (*emit)(void *user, const lxa_html_token_t *token);
+    void *user;
+} lxa_html_meta_sink_t;
+
+/* Call only after successful admission. Borrow effective token views during
+ * delivery; the sink owns declaration/BOM policy and callback diagnostics.
+ */
+static inline lxa_status_t
+lxa_html_tree_observe_meta(const lxa_html_meta_sink_t *sink,
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns)
+{
+    if (sink == NULL || sink->emit == NULL || ns != LXA_DOM_NS_HTML
+        || !lxa_html_tree_name_equals(token->name, "meta", 4))
+        return LXA_OK;
+    return sink->emit(sink->user, token);
+}
+
 static inline bool
 lxa_html_tree_heading(lxa_span_t name)
 {

@@ -2,6 +2,151 @@
 #include <string.h>
 #include "html/control_context.h"
 
+static lxa_status_t
+control_input_status(lxa_html_input_result_t result)
+{
+    switch (result) {
+    case LXA_HTML_INPUT_OK: return LXA_OK;
+    case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
+    case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
+    case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
+    case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
+    default: return LXA_ERROR_ARGUMENT;
+    }
+}
+
+static lxa_status_t
+control_input_token(void *user, lxa_html_tokenizer_t *tokenizer,
+    const lxa_html_token_t *token)
+{
+    return lxa_html_control_context_on_token(user, tokenizer, token,
+        false, NULL, NULL);
+}
+
+static lxa_status_t
+control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
+    lxa_budget_t *budget, const lxa_encoding_t **declared,
+    lxa_limit_reason_t *reason)
+{
+    lxa_html_control_context_t control = {0};
+    lxa_html_tokenizer_t *tokenizer = NULL;
+    lxa_html_input_meta_observer_t meta = {
+        .budget = budget, .reason = LXA_BUDGET_COUNT
+    };
+    lxa_status_t status = lxa_html_control_context_init(&control, allocator, budget);
+    if (status == LXA_OK) {
+        control.meta = (lxa_html_meta_sink_t){lxa_html_input_observe_meta, &meta};
+        status = lxa_html_tokenizer_create_with_budget(allocator,
+            control_input_token, NULL, &control, budget, &tokenizer);
+        if (status == LXA_ERROR_LIMIT && reason != NULL)
+            *reason = LXA_BUDGET_MEMORY;
+    }
+    if (status == LXA_OK) {
+        lxa_html_result_t result = lxa_html_tokenizer_feed_prepaid(tokenizer, decoded);
+        if (result == LXA_HTML_OK)
+            result = lxa_html_tokenizer_finish(tokenizer);
+        switch (result) {
+        case LXA_HTML_OK: break;
+        case LXA_HTML_LIMIT: status = LXA_ERROR_LIMIT; break;
+        case LXA_HTML_NO_MEMORY: status = LXA_ERROR_NO_MEMORY; break;
+        case LXA_HTML_OVERFLOW: status = LXA_ERROR_OVERFLOW; break;
+        case LXA_HTML_ENTROPY: status = LXA_ERROR_ENTROPY; break;
+        case LXA_HTML_UNSUPPORTED: status = LXA_ERROR_UNSUPPORTED; break;
+        case LXA_HTML_CALLBACK_FAILURE:
+            status = lxa_html_tokenizer_callback_status(tokenizer);
+            if (status == LXA_OK || status == LXA_ERROR_ARGUMENT)
+                status = LXA_ERROR_INTERNAL;
+            break;
+        default: status = LXA_ERROR_INTERNAL; break;
+        }
+        if (status == LXA_ERROR_LIMIT && reason != NULL)
+            *reason = meta.reason != LXA_BUDGET_COUNT ? meta.reason
+                : result == LXA_HTML_LIMIT ? lxa_html_tokenizer_limit_reason(tokenizer)
+                : control.limit_reason;
+        if (status == LXA_OK && control.mode != LXA_TREE_DONE)
+            status = LXA_ERROR_INTERNAL;
+    }
+    if (status == LXA_OK) *declared = meta.declared;
+    lxa_html_tokenizer_destroy(tokenizer);
+    lxa_html_control_context_destroy(&control);
+    return status;
+}
+
+lxa_status_t
+lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
+    size_t prefix, lxa_budget_t *budget, lxa_buffer_t *decoded,
+    lxa_vector_t *mapping, lxa_html_control_input_t *selection,
+    lxa_limit_reason_t *reason)
+{
+    if (reason != NULL) *reason = LXA_BUDGET_COUNT;
+    if (budget == NULL || decoded == NULL || mapping == NULL || selection == NULL
+        || (input.data == NULL && input.length != 0) || prefix > input.length
+        || (fixed == NULL && prefix != 0) || budget->used[LXA_BUDGET_INPUT] != 0
+        || decoded->budget != budget || decoded->data != NULL
+        || decoded->length != 0 || decoded->capacity != 0
+        || mapping->element_size != sizeof(lxa_html_input_mapping_t)
+        || mapping->bytes.budget != budget || mapping->bytes.data != NULL
+        || mapping->bytes.length != 0 || mapping->bytes.capacity != 0)
+        return LXA_ERROR_ARGUMENT;
+    const lxa_encoding_t *encoding = fixed;
+    lxa_status_t status;
+    if (fixed == NULL) {
+        status = control_input_status(lxa_html_input_select(input,
+            budget->limits.max_input_bytes, &encoding, &prefix));
+        if (status != LXA_OK) {
+            if (status == LXA_ERROR_LIMIT && reason != NULL)
+                *reason = LXA_BUDGET_INPUT;
+            return status;
+        }
+    }
+    lxa_buffer_t tentative = {0};
+    lxa_vector_t offsets = {0};
+    size_t malformed = 0;
+    status = lxa_buffer_init(&tentative, &decoded->allocator);
+    if (status == LXA_OK) status = lxa_buffer_bind_budget(&tentative, budget);
+    if (status == LXA_OK)
+        status = lxa_vector_init(&offsets, &mapping->bytes.allocator,
+            sizeof(lxa_html_input_mapping_t));
+    if (status == LXA_OK) status = lxa_vector_bind_budget(&offsets, budget);
+    if (status == LXA_OK)
+        status = control_input_status(lxa_html_input_decode_mapped(input, encoding,
+            prefix, budget, &tentative, &offsets, &malformed, reason));
+    if (status == LXA_OK && fixed == NULL && prefix == 0) {
+        const lxa_encoding_t *declared = NULL;
+        status = control_input_meta((lxa_span_t){tentative.data, tentative.length},
+            &decoded->allocator, budget, &declared, reason);
+        bool utf16 = encoding == lxa_encoding_lookup(
+            (lxa_span_t){(const uint8_t *)"utf-16le", 8})
+            || encoding == lxa_encoding_lookup(
+                (lxa_span_t){(const uint8_t *)"utf-16be", 8});
+        if (status == LXA_OK && !utf16 && declared != NULL && declared != encoding) {
+            encoding = declared;
+            lxa_buffer_destroy(&tentative);
+            lxa_vector_destroy(&offsets);
+            status = lxa_buffer_init(&tentative, &decoded->allocator);
+            if (status == LXA_OK) status = lxa_buffer_bind_budget(&tentative, budget);
+            if (status == LXA_OK)
+                status = lxa_vector_init(&offsets, &mapping->bytes.allocator,
+                    sizeof(lxa_html_input_mapping_t));
+            if (status == LXA_OK) status = lxa_vector_bind_budget(&offsets, budget);
+            if (status == LXA_OK)
+                status = control_input_status(lxa_html_input_decode_mapped_prepaid(
+                    input, encoding, prefix, budget, &tentative, &offsets,
+                    &malformed, reason));
+        }
+    }
+    if (status == LXA_OK) {
+        *decoded = tentative;
+        *mapping = offsets;
+        *selection = (lxa_html_control_input_t){encoding, prefix, malformed};
+    }
+    else {
+        lxa_buffer_destroy(&tentative);
+        lxa_vector_destroy(&offsets);
+    }
+    return status;
+}
+
 lxa_status_t
 lxa_html_control_context_init(lxa_html_control_context_t *context,
     const lxa_allocator_t *allocator, lxa_budget_t *budget)
@@ -15,6 +160,10 @@ lxa_html_control_context_init(lxa_html_control_context_t *context,
     if (status == LXA_OK) status = lxa_html_root_context_init(&context->root, &context->stack);
     if (status == LXA_OK)
         status = lxa_html_template_context_init(&context->templates, &context->stack, &context->formatting);
+    if (status == LXA_OK) {
+        context->root.meta = &context->meta;
+        context->templates.meta = &context->meta;
+    }
     if (status == LXA_OK) status = lxa_buffer_init(&context->pending_table_text, allocator);
     if (status == LXA_OK) status = lxa_buffer_bind_budget(&context->pending_table_text, budget);
     if (status == LXA_OK) status = lxa_buffer_init(&context->spaces, allocator);
@@ -42,6 +191,7 @@ static bool
 state_valid(const lxa_html_control_context_t *context)
 {
     return context->root.stack == &context->stack && context->templates.stack == &context->stack
+        && context->root.meta == &context->meta && context->templates.meta == &context->meta
         && context->templates.formatting == &context->formatting
         && context->formatting.store == &context->snapshots
         && context->snapshots.budget == context->stack.budget

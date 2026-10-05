@@ -171,8 +171,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         /* A meta-triggered reparse starts with certain encoding confidence. */
         if (attempt == 0 && prefix == 0) {
-            tree.on_meta = lxa_html_input_observe_meta;
-            tree.meta_context = &meta;
+            tree.meta = (lxa_html_meta_sink_t){lxa_html_input_observe_meta, &meta};
         }
         status = lxa_html_tokenizer_create_with_budget(allocator,
             lxa_html_tree_on_token, NULL, &tree,

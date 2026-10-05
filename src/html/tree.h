@@ -39,8 +39,7 @@ typedef struct {
     lxa_vector_t template_stack; /* enclosing fragment, patch, boundary and mode */
     lxa_vector_t template_elements; /* open HTML elements in template content */
     lxa_buffer_t table_text; /* held until the next non-text token */
-    lxa_status_t (*on_meta)(void *context, const lxa_html_token_t *token);
-    void *meta_context; /* observer context outlives tree use */
+    lxa_html_meta_sink_t meta; /* observer context outlives tree use */
     lxa_html_root_mode_t mode;
     lxa_html_text_context_t text_context;
     lxa_html_root_mode_t template_return_mode;

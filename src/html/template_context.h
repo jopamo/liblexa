@@ -13,6 +13,7 @@ typedef struct {
     lxa_vector_t frames; /* engines update only the active insertion_mode */
     lxa_html_control_stack_t *stack;
     lxa_html_formatting_list_t *formatting;
+    const lxa_html_meta_sink_t *meta;
     size_t root_length;
     lxa_html_root_mode_t return_mode;
     lxa_status_t failure;
@@ -21,6 +22,8 @@ typedef struct {
 
 /* Single-thread-confined owner of unpatched virtual-template frames. Borrowed
  * stack, formatting list, allocator context and budget outlive destroy.
+ * Engines may bind a borrowed meta sink; it and its user context outlive use.
+ * Callbacks must not reenter, mutate owners or retain token views.
  * Stack template entries own OPEN_ELEMENTS credits; list markers own ACTIVE
  * charges. Destroy frees only frames, then callers destroy list/stack owners.
  * Engines must not remove/move retained entries across frame boundaries.

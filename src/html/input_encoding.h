@@ -110,6 +110,28 @@ typedef struct {
     bool identity;
 } lxa_html_input_mapping_t;
 
+typedef struct {
+    const lxa_encoding_t *encoding;
+    size_t prefix_length, malformed;
+} lxa_html_control_input_t;
+
+/* Prepare complete source input before observable callbacks. NULL fixed uses
+ * shared automatic selection and accepted-meta control feedback; otherwise
+ * use fixed/prefix without declarations. Automatic prefix must be zero.
+ * decoded/mapping must be initialized, allocation-free and bound to budget,
+ * which has not accepted INPUT yet.
+ * Publish both and selection only on success. No caller callbacks or DOM nodes.
+ * A late declaration releases tentative buffers before prepaid redecoding;
+ * INPUT is accepted once and WORK remains cumulative. Failure retains charges,
+ * not buffers or control state. Consumers replay the result with prepaid
+ * tokenization and no meta observer: encoding is then certain.
+ * Owners/input/selection must not alias; allocators cannot reenter.
+ */
+lxa_status_t lxa_html_control_input_prepare(lxa_span_t input,
+    const lxa_encoding_t *fixed, size_t prefix, lxa_budget_t *budget,
+    lxa_buffer_t *decoded, lxa_vector_t *mapping,
+    lxa_html_control_input_t *selection, lxa_limit_reason_t *reason);
+
 /* Opt-in raw-byte mapping for source-mode tokenization. mapping is an empty
  * vector of lxa_html_input_mapping_t bound to the same budget as output.
  * Publish both only on success. Offsets include a stripped BOM; malformed

@@ -8,11 +8,14 @@
  * HTML/head own no open entries. BODY enters the stack only when it is empty;
  * its key records the last successful admission, survives borrowed pops and
  * clears when frameset replacement removes the BODY owner.
- * Only frameset_ok is engine-writable. The engine owns mode changes and
+ * Only frameset_ok and the optional borrowed meta sink are engine-writable.
+ * The sink and its user context outlive use; callbacks must not reenter or
+ * mutate owners or retain token views. The engine owns mode changes and
  * accepted-rule dispatch; call outside active template/text rules.
  */
 typedef struct {
     lxa_html_control_stack_t *stack;
+    const lxa_html_meta_sink_t *meta;
     uint64_t body_identity;
     bool html, head, body, frameset_ok;
     lxa_status_t failure;

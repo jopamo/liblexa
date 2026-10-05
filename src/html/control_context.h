@@ -1,6 +1,8 @@
 #ifndef LIBLEXA_HTML_CONTROL_CONTEXT_H
 #define LIBLEXA_HTML_CONTROL_CONTEXT_H
 
+#include "html/input_encoding.h"
+
 #include "html/root_context.h"
 #include "html/template_context.h"
 
@@ -11,6 +13,7 @@ typedef struct {
     lxa_html_root_context_t root;
     lxa_html_template_context_t templates;
     lxa_html_text_context_t text;
+    lxa_html_meta_sink_t meta;
     lxa_buffer_t pending_table_text, spaces;
     lxa_html_root_mode_t mode;
     lxa_html_document_mode_t document_mode;
@@ -25,10 +28,14 @@ typedef struct {
  * context outlive destruction and must not alias this owner. No tokenizer or
  * input views are owned here. Destroy releases live metadata/scratch credits,
  * not cumulative WORK. Failed init leaves safely destructible empty storage.
+ * Bind meta before token delivery; root/template admission borrow that one
+ * sink. Its user context outlives use. Do not reenter, mutate owners/sink or
+ * retain token views in callbacks. Failed delivery retains effects and latches.
  */
 lxa_status_t lxa_html_control_context_init(lxa_html_control_context_t *context,
     const lxa_allocator_t *allocator, lxa_budget_t *budget);
 void lxa_html_control_context_destroy(lxa_html_control_context_t *context);
+
 typedef struct {
     lxa_html_text_emit_t text_emit;
     lxa_html_table_text_emit_t table_emit;
@@ -195,7 +202,7 @@ lxa_status_t lxa_html_control_context_template_mathml_table_token(lxa_html_contr
  * spans expire on return; do not retain, reenter or mutate owners. Token/output
  * cannot alias owners/pending storage. Publish action only on success; latch
  * failed scans/admission/delivery without replay. Later HTML/end dispatch,
- * namespace feedback and encoding observation remain driver-owned.
+ * namespace feedback remain driver-owned. Later HTML admission observes meta.
  */
 lxa_status_t lxa_html_control_context_template_foreign_dispatch(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, lxa_html_data_emit_t emit, void *user,
@@ -254,7 +261,7 @@ typedef struct {
  * requests before any phase; callers determine patch state. Result reports
  * flow/borrowed adjusted token, not admission identities. Publish only after
  * success; latch retained effects without replay. Pending bytes/newline must
- * be clear. Text routes require a tokenizer; final feedback/encoding remain
+ * be clear. Text routes require a tokenizer; final feedback/input selection remain
  * driver-owned. Token/result storage must not alias owners.
  */
 lxa_status_t lxa_html_control_context_template_start_dispatch(lxa_html_control_context_t *context,
@@ -305,8 +312,8 @@ typedef struct {
  * execution failure without replay. Shape/context/patch argument rejection
  * preserves state. The result kind selects start/end/destination; TEXT has no
  * value. Token/sink/result must not alias owners. Earlier non-DATA intake must
- * flush pending table text. This phase does not finalize namespace feedback or
- * observe encoding; the driver does that later. EOF remains driver-owned.
+ * flush pending table text. Admission observes accepted HTML meta; this phase
+ * does not finalize namespace feedback. EOF remains driver-owned.
  */
 lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
@@ -334,7 +341,7 @@ typedef struct {
  * Token/sink/result must not alias owners or owned storage.
  * Sink callbacks follow root_token's lifetime/reentry contract. Publish the
  * selected action/token/value only on success; latch effects without replay.
- * The driver still observes encoding and finalizes namespace feedback.
+ * Admission observes accepted HTML meta; the driver finalizes namespace feedback.
  */
 lxa_status_t lxa_html_control_context_root_dispatch(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
@@ -347,8 +354,9 @@ lxa_status_t lxa_html_control_context_root_dispatch(lxa_html_control_context_t *
  * expire on return; do not retain, reenter or mutate owners/tokenizer/sinks.
  * Reject patches, malformed tokens, NULL tokenizer and DONE before effects.
  * Retain completed effects and latch execution/feedback failure without replay.
- * Tokens/sinks cannot alias owned storage. Encoding observation and input
- * selection remain external; this is feedback control, not extraction output.
+ * Tokens/sinks cannot alias owned storage. Accepted HTML meta uses the owner's
+ * optional sink; input selection remains external. This is feedback control,
+ * not extraction output.
  */
 lxa_status_t lxa_html_control_context_on_token(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token, bool has_patch,

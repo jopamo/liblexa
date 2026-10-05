@@ -2315,10 +2315,7 @@ static lxa_status_t
 observe_inserted_meta(lxa_html_tree_t *tree, const lxa_html_token_t *token,
                       lxa_dom_namespace_t ns)
 {
-    if (tree->on_meta == NULL || ns != LXA_DOM_NS_HTML
-        || !named(token->name, "meta"))
-        return LXA_OK;
-    return tree->on_meta(tree->meta_context, token);
+    return lxa_html_tree_observe_meta(&tree->meta, token, ns);
 }
 
 #define LXA_ROOT_FOSTER_GROUP_NAME tree_recover_foster_group

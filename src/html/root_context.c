@@ -643,7 +643,7 @@ root_void_paragraph(root_void_view_t *view)
 #define LXA_ROOT_VOID_RECONSTRUCT(view) \
     lxa_html_root_context_reconstruct((view)->context, (view)->formatting)
 #define LXA_ROOT_VOID_INSERT(view, token, head, hr, mode) \
-    ((void) (view), (void) (token), (void) (head), (void) (hr), (void) (mode), LXA_OK)
+    lxa_html_tree_observe_meta((view)->context->meta, token, LXA_DOM_NS_HTML)
 #include "html/root_void_start.inc"
 #undef LXA_ROOT_VOID_NAME
 #undef LXA_ROOT_VOID_VIEW
@@ -964,8 +964,8 @@ static lxa_status_t
 context_foster_html_admit(root_formatting_start_view_t *view,
     const lxa_html_token_t *token, bool keep_open, bool formatting, bool marker, size_t drop)
 {
-    if (!keep_open) return LXA_OK;
     lxa_html_root_context_t *context = view->recovery.context;
+    if (!keep_open) return lxa_html_tree_observe_meta(context->meta, token, LXA_DOM_NS_HTML);
     lxa_html_formatting_list_t *list = view->recovery.formatting;
     lxa_status_t status = check_body_child_depth(context, lxa_vector_length(&context->stack->elements));
     if (status != LXA_OK) return status;

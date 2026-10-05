@@ -762,7 +762,8 @@ context_void_paragraph(template_void_view_t *view, size_t *keep)
 
 #define LXA_TEMPLATE_VOID_NAME context_void_start
 #define LXA_TEMPLATE_VOID_VIEW template_void_view_t
-#define LXA_TEMPLATE_VOID_HEAD(view, token) LXA_OK
+#define LXA_TEMPLATE_VOID_HEAD(view, token) \
+    lxa_html_tree_observe_meta((view)->context->meta, token, LXA_DOM_NS_HTML)
 #define LXA_TEMPLATE_VOID_RECONSTRUCT(view) lxa_html_template_context_reconstruct((view)->context)
 #define LXA_TEMPLATE_VOID_PARAGRAPH context_void_paragraph
 #define LXA_TEMPLATE_VOID_PREFLIGHT(view) LXA_OK
@@ -931,6 +932,8 @@ lxa_html_template_context_foster_token(lxa_html_template_context_t *context,
     if (lxa_html_tree_foster_reconstructs(token->name, ns, keep_open))
         status = lxa_html_template_context_reconstruct(context);
     if (status != LXA_OK) return status;
+    status = lxa_html_tree_observe_meta(context->meta, token, ns);
+    if (status != LXA_OK) return finish(context, status);
     if (marker) {
         status = lxa_html_formatting_list_reserve_marker(context->formatting);
         if (status == LXA_ERROR_LIMIT) context->limit_reason = context->formatting->store->limit_reason;
