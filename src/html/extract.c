@@ -126,10 +126,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                             const lxa_html_token_t *token)
 {
     extraction_t *owner = context;
-    lxa_status_t status =
-        lxa_budget_charge(&owner->budget, LXA_BUDGET_TOKENS, 1, &owner->reason);
-    if (status != LXA_OK)
-        return status;
+    lxa_status_t status;
     if (token->kind == LXA_HTML_START_TAG && owner->count != 0 &&
         (owner->include_templates || owner->control.templates.frames.bytes.length == 0)) {
         for (size_t a = 0; a < token->attribute_count; a++) {

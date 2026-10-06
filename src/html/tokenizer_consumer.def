@@ -2,6 +2,11 @@
 LXA_HTML_CONSUMER_HOOK(emit,
     (lxa_html_tokenizer_t *tokenizer, lxa_html_token_t *token),
     lxa_status_t status;
+    lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+    status = lxa_budget_charge(tokenizer->budget, LXA_BUDGET_TOKENS, 1, &reason);
+    if (status != LXA_OK) {
+        return budget_result(tokenizer, status, reason);
+    }
     tokenizer->in_callback = true;
     status = LXA_HTML_EMIT_TOKEN(tokenizer, token);
     tokenizer->in_callback = false;

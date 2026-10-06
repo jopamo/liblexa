@@ -107,6 +107,10 @@ typedef enum {
  * references recover as U+FFFD; control references use the spec's override
  * table. Input beyond configured token/name limits returns LIMIT.
  * Do not promote this candidate until the consumed grammar and tree are qualified.
+ * This candidate charges each delivered token, including EOF, before its
+ * callback. Failed callbacks retain that TOKENS charge. Diagnostics and tree
+ * reprocessing do not charge tokens. Reset retains cumulative charges with
+ * a caller-owned budget, and resets them with a tokenizer-owned budget.
  * This candidate charges accepted input, scanner work and all retained
  * tokenizer/codec objects and text/name capacity to the shared budget; it
  * checks token/name sizes before append. Large attribute sets use a temporary
