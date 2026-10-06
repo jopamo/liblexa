@@ -231,18 +231,6 @@ lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t
     status = lxa_budget_init(&owner.budget, limits);
     if (status != LXA_OK)
         goto done;
-    for (size_t i = 0; i < count; i++) {
-        status = lxa_budget_charge(&owner.budget, LXA_BUDGET_WORK, 1, &owner.reason);
-        if (status == LXA_OK)
-            status = name_check(targets[i].tag, true, allocator, &owner, &name_decoder);
-        if (status == LXA_OK)
-            status =
-                name_check(targets[i].attribute, false, allocator, &owner, &name_decoder);
-        if (status != LXA_OK)
-            goto done;
-    }
-    lxa_decoder_destroy(name_decoder);
-    name_decoder = NULL;
     status = lxa_buffer_init(&decoded, allocator);
     if (status == LXA_OK)
         status = lxa_buffer_bind_budget(&decoded, &owner.budget);
@@ -261,6 +249,18 @@ lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t
     if (status != LXA_OK)
         goto done;
     owner.encoding = selection.encoding;
+    for (size_t i = 0; i < count; i++) {
+        status = lxa_budget_charge(&owner.budget, LXA_BUDGET_WORK, 1, &owner.reason);
+        if (status == LXA_OK)
+            status = name_check(targets[i].tag, true, allocator, &owner, &name_decoder);
+        if (status == LXA_OK)
+            status =
+                name_check(targets[i].attribute, false, allocator, &owner, &name_decoder);
+        if (status != LXA_OK)
+            goto done;
+    }
+    lxa_decoder_destroy(name_decoder);
+    name_decoder = NULL;
     status = lxa_html_control_context_init(&owner.control, allocator, &owner.budget);
     if (status != LXA_OK)
         goto done;
