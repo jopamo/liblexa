@@ -1,10 +1,10 @@
-#include "liblexa/html_source.h"
+#include "html/source_consumer.h"
 #include "html/control_context.h"
 #include <string.h>
 
 typedef struct {
     lxa_html_control_context_t control;
-    lxa_budget_t budget;
+    lxa_budget_t *budget;
     lxa_vector_t mapping;
     const lxa_html_source_target_t *targets;
     size_t count, input_length;
@@ -15,7 +15,7 @@ typedef struct {
     lxa_limit_reason_t reason;
 } extraction_t;
 
-static lxa_html_result_t result_for(lxa_status_t status)
+lxa_html_result_t lxa_html_source_result(lxa_status_t status)
 {
     switch (status) {
     case LXA_OK:
@@ -70,10 +70,10 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
     lxa_status_t status;
     if ((name.data == NULL && name.length != 0) || (!empty && name.length == 0))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_check_item(&owner->budget, LXA_BUDGET_NAME_BYTES, name.length,
+    status = lxa_budget_check_item(owner->budget, LXA_BUDGET_NAME_BYTES, name.length,
                                    &owner->reason);
     if (status == LXA_OK)
-        status = lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, name.length,
+        status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, name.length,
                                    &owner->reason);
     if (status != LXA_OK)
         return status;
@@ -86,14 +86,14 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
     if (!unicode)
         return LXA_OK;
     status =
-        lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, name.length, &owner->reason);
+        lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, name.length, &owner->reason);
     if (status != LXA_OK)
         return status;
     if (*decoder == NULL) {
         const lxa_encoding_t *utf8 =
             lxa_encoding_lookup((lxa_span_t){(const uint8_t *)"utf-8", 5});
         status = lxa_decoder_create_with_budget(utf8, LXA_ENCODING_FATAL, allocator,
-                                                &owner->budget, decoder);
+                                                owner->budget, decoder);
         if (status == LXA_ERROR_LIMIT)
             owner->reason = LXA_BUDGET_MEMORY;
         if (status != LXA_OK)
@@ -134,7 +134,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
             for (size_t t = 0; t < owner->count; t++) {
                 const lxa_html_source_target_t *target = &owner->targets[t];
                 status =
-                    lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
+                    lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
                 if (status != LXA_OK)
                     return status;
                 if (target->attribute.length != attribute->name.length ||
@@ -144,7 +144,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                 status =
                     lxa_size_add(target->attribute.length, target->tag.length, &work);
                 if (status == LXA_OK)
-                    status = lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, work,
+                    status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, work,
                                                &owner->reason);
                 if (status != LXA_OK)
                     return status;
@@ -165,7 +165,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                          owner->mapping.bytes.length / sizeof(lxa_html_input_mapping_t);
                      n != 0; n >>= 1)
                     mapping_work += 2;
-                status = lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, mapping_work,
+                status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, mapping_work,
                                            &owner->reason);
                 if (status != LXA_OK)
                     return status;
@@ -197,13 +197,14 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
 }
 
 lxa_status_t
-lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t *limits,
+lxa_html_extract_attributes_with_budget(const lxa_allocator_t *allocator, lxa_budget_t *budget,
                             lxa_span_t input, const lxa_html_extract_options_t *options,
                             const lxa_html_source_target_t *targets, size_t count,
                             lxa_html_source_attribute_callback_t callback, void *context,
                             lxa_html_result_t *parser_result, lxa_limit_reason_t *reason)
 {
-    extraction_t owner = {.targets = targets,
+    extraction_t owner = {.budget = budget,
+                          .targets = targets,
                           .count = count,
                           .input_length = input.length,
                           .callback = callback,
@@ -221,36 +222,35 @@ lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t
     if (reason != NULL)
         *reason = LXA_BUDGET_COUNT;
     if (allocator == NULL || allocator->allocate == NULL || allocator->resize == NULL ||
-        allocator->release == NULL || (input.data == NULL && input.length != 0) ||
+        allocator->release == NULL || budget == NULL ||
+        budget->used[LXA_BUDGET_INPUT] != 0 || budget->used[LXA_BUDGET_NODES] != 0 ||
+        (input.data == NULL && input.length != 0) ||
         (count != 0 && (targets == NULL || callback == NULL)))
         return status;
     size_t target_bytes;
     status = lxa_size_mul(count, sizeof(*targets), &target_bytes);
     if (status != LXA_OK)
         goto done;
-    status = lxa_budget_init(&owner.budget, limits);
-    if (status != LXA_OK)
-        goto done;
     status = lxa_buffer_init(&decoded, allocator);
     if (status == LXA_OK)
-        status = lxa_buffer_bind_budget(&decoded, &owner.budget);
+        status = lxa_buffer_bind_budget(&decoded, owner.budget);
     if (status == LXA_OK)
         status =
             lxa_vector_init(&owner.mapping, allocator, sizeof(lxa_html_input_mapping_t));
     if (status == LXA_OK)
-        status = lxa_vector_bind_budget(&owner.mapping, &owner.budget);
+        status = lxa_vector_bind_budget(&owner.mapping, owner.budget);
     if (status != LXA_OK)
         goto done;
     lxa_html_control_input_t selection;
     status = lxa_html_control_input_prepare(
         input, options == NULL ? NULL : options->encoding,
-        options == NULL ? 0 : options->prefix_length, &owner.budget, &decoded,
+        options == NULL ? 0 : options->prefix_length, owner.budget, &decoded,
         &owner.mapping, &selection, &owner.reason);
     if (status != LXA_OK)
         goto done;
     owner.encoding = selection.encoding;
     for (size_t i = 0; i < count; i++) {
-        status = lxa_budget_charge(&owner.budget, LXA_BUDGET_WORK, 1, &owner.reason);
+        status = lxa_budget_charge(owner.budget, LXA_BUDGET_WORK, 1, &owner.reason);
         if (status == LXA_OK)
             status = name_check(targets[i].tag, true, allocator, &owner, &name_decoder);
         if (status == LXA_OK)
@@ -261,11 +261,11 @@ lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t
     }
     lxa_decoder_destroy(name_decoder);
     name_decoder = NULL;
-    status = lxa_html_control_context_init(&owner.control, allocator, &owner.budget);
+    status = lxa_html_control_context_init(&owner.control, allocator, owner.budget);
     if (status != LXA_OK)
         goto done;
     status = lxa_html_tokenizer_create_with_budget(allocator, observe, NULL, &owner,
-                                                   &owner.budget, &tokenizer);
+                                                   owner.budget, &tokenizer);
     if (status != LXA_OK) {
         if (status == LXA_ERROR_LIMIT)
             owner.reason = LXA_BUDGET_MEMORY;
@@ -285,8 +285,8 @@ lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t
     if (result == LXA_HTML_LIMIT)
         owner.reason = lxa_html_tokenizer_limit_reason(tokenizer);
     if (status == LXA_OK && (owner.control.mode != LXA_TREE_DONE ||
-                             owner.budget.used[LXA_BUDGET_INPUT] != input.length ||
-                             owner.budget.used[LXA_BUDGET_NODES] != 0))
+                             owner.budget->used[LXA_BUDGET_INPUT] != input.length ||
+                             owner.budget->used[LXA_BUDGET_NODES] != 0))
         status = LXA_ERROR_INTERNAL;
 done:
     lxa_decoder_destroy(name_decoder);
@@ -296,8 +296,23 @@ done:
     lxa_buffer_destroy(&decoded);
     if (parser_result != NULL)
         *parser_result =
-            owner.callback_failed ? LXA_HTML_CALLBACK_FAILURE : result_for(status);
+            owner.callback_failed ? LXA_HTML_CALLBACK_FAILURE : lxa_html_source_result(status);
     if (reason != NULL)
         *reason = owner.reason;
     return status;
+}
+
+lxa_status_t
+lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t *limits,
+                            lxa_span_t input, const lxa_html_extract_options_t *options,
+                            const lxa_html_source_target_t *targets, size_t count,
+                            lxa_html_source_attribute_callback_t callback, void *context,
+                            lxa_html_result_t *parser_result, lxa_limit_reason_t *reason)
+{
+    lxa_budget_t budget;
+    lxa_status_t status = lxa_budget_init(&budget, limits);
+    if (status != LXA_OK)
+        return status;
+    return lxa_html_extract_attributes_with_budget(allocator, &budget, input, options,
+        targets, count, callback, context, parser_result, reason);
 }

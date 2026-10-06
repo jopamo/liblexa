@@ -20,6 +20,7 @@ install_headers('include/liblexa/unicode.h', subdir: 'liblexa')
 install_headers('include/liblexa/css.h', subdir: 'liblexa')
 if candidate_html_enabled
   install_headers('include/liblexa/html.h', 'include/liblexa/html_source.h',
+    'include/liblexa/html_rewrite.h',
     'include/liblexa/serialize.h',
     subdir: 'liblexa')
 endif
