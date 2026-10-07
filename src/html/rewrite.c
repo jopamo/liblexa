@@ -152,6 +152,13 @@ build(rewrite_t *owner, const lxa_html_source_attribute_t *event, lxa_span_t val
     lxa_buffer_clear(&owner->syntax);
     lxa_encoder_reset(owner->encoder);
     status = decode(owner, event->name, false);
+    if (status == LXA_ERROR_UNSUPPORTED) {
+        lxa_buffer_clear(&owner->syntax);
+        lxa_encoder_reset(owner->encoder);
+        status =
+            append(owner, (lxa_span_t){owner->input.data + event->source_start,
+                                       event->source_name_end - event->source_start});
+    }
     if (status == LXA_OK)
         status = ascii(owner, "=\"");
     if (status == LXA_OK)
@@ -197,7 +204,9 @@ rewrite(void *context, const lxa_html_source_attribute_t *event)
     }
     if (!replacement.replace)
         return LXA_OK;
-    if (event->source_start < owner->cursor || event->source_end < event->source_start ||
+    if (event->source_start < owner->cursor ||
+        event->source_start >= event->source_name_end ||
+        event->source_name_end > event->source_end ||
         event->source_end > owner->input.length) {
         owner->operation_failed = true;
         return LXA_ERROR_INTERNAL;

@@ -26,6 +26,7 @@ typedef struct {
     size_t source_start, source_end; /* Original-byte, half-open attribute syntax. */
     size_t target_index;             /* First matching descriptor, not event order. */
     const lxa_encoding_t *encoding;  /* Final immutable decoder identity. */
+    size_t source_name_end;          /* Original-byte end of the raw attribute name. */
 } lxa_html_source_attribute_t;
 
 typedef lxa_status_t (*lxa_html_source_attribute_callback_t)(

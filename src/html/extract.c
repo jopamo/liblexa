@@ -184,11 +184,11 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                                                      .value = attribute->value,
                                                      .target_index = t,
                                                      .encoding = owner->encoding};
-                size_t mapping_work = 2;
+                size_t mapping_work = 3;
                 for (size_t n =
                          owner->mapping.bytes.length / sizeof(lxa_html_input_mapping_t);
                      n != 0; n >>= 1)
-                    mapping_work += 2;
+                    mapping_work += 3;
                 status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, mapping_work,
                                            &owner->reason);
                 if (status != LXA_OK)
@@ -198,9 +198,14 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                                                    &event.source_start);
                 if (status == LXA_OK)
                     status = lxa_html_input_raw_offset(&owner->mapping,
+                                                       token->attribute_sources[a].name_end,
+                                                       &event.source_name_end);
+                if (status == LXA_OK)
+                    status = lxa_html_input_raw_offset(&owner->mapping,
                                                        token->attribute_sources[a].end,
                                                        &event.source_end);
-                if (status != LXA_OK || event.source_start > event.source_end ||
+                if (status != LXA_OK || event.source_start >= event.source_name_end ||
+                    event.source_name_end > event.source_end ||
                     event.source_end > owner->input_length)
                     return LXA_ERROR_INTERNAL;
                 status = owner->callback(owner->user, &event);

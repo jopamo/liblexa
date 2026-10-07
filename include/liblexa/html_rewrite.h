@@ -23,6 +23,7 @@ typedef lxa_status_t (*lxa_html_source_rewrite_callback_t)(
  * without NUL until it has been consumed, before the next decision callback.
  * It may alias the event or input. Its complete syntax is built and validated
  * before publishing it. Bytes outside replaced attribute spans stay exact.
+ * Keep the raw source name if its normalized name cannot be encoded.
  *
  * Preserve source encoding, quote values and escape references/CR. Legacy
  * encodings use numeric references for non-ASCII values. C1 controls whose

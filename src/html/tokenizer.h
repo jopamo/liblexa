@@ -23,6 +23,7 @@ typedef struct {
 
 typedef struct {
     size_t start, end;           /* half-open range in concatenated feed bytes */
+    size_t name_end;             /* excludes the delimiter after an attribute name */
 } lxa_html_source_range_t;
 
 typedef struct {

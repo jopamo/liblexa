@@ -788,7 +788,9 @@ begin_attribute(lxa_html_tokenizer_t *tokenizer, size_t offset)
                                     = tokenizer->attribute_bytes.length;
     tokenizer->attribute_state = ATTRIBUTE_KEEP;
     if (tokenizer->source_ranges) {
-        tokenizer->attribute_source = (lxa_html_source_range_t) {offset, offset};
+        tokenizer->attribute_source = (lxa_html_source_range_t) {
+            .start = offset, .end = offset, .name_end = offset
+        };
     }
     tokenizer->state = STATE_ATTRIBUTE_NAME;
     return LXA_HTML_OK;
@@ -870,7 +872,10 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
     if (slot == NULL) {
         return LXA_HTML_INTERNAL;
     }
-    if (tokenizer->source_ranges) tokenizer->attribute_source.end = offset;
+    if (tokenizer->source_ranges) {
+        tokenizer->attribute_source.end = offset;
+        tokenizer->attribute_source.name_end = offset;
+    }
     slot->value_start = tokenizer->attribute_bytes.length;
     /* Bound flat lookup; copied index keys survive attribute-buffer growth. */
     if (tokenizer->attribute_names != NULL || count >= 32) {
