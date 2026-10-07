@@ -455,6 +455,11 @@ lxa_status_t
 lxa_html_tree_font_breakout(const lxa_html_token_t *token, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, bool *out);
 
+/* Conservatively retain values used by no-DOM control and accepted-meta
+ * feedback. Formatting equality compares every effective attribute value. */
+bool lxa_html_tree_attribute_value_required(lxa_span_t tag, lxa_span_t name,
+    bool observe_meta);
+
 typedef enum {
     LXA_HTML_HEAD_NOSCRIPT_CONTINUE, LXA_HTML_HEAD_NOSCRIPT_IGNORE,
     LXA_HTML_HEAD_NOSCRIPT_CLOSE, LXA_HTML_HEAD_NOSCRIPT_REPROCESS

@@ -16,6 +16,32 @@ LXA_HTML_CONSUMER_HOOK(emit,
     }
     return LXA_HTML_OK;
 )
+LXA_HTML_CONSUMER_HOOK(filter_value,
+    (lxa_html_tokenizer_t *tokenizer),
+    if (tokenizer->value_filter == NULL)
+        return LXA_HTML_OK;
+    if (tokenizer->end_tag) {
+        tokenizer->attribute.value_start = SIZE_MAX;
+        return LXA_HTML_OK;
+    }
+    lxa_html_result_t result = charge_work(tokenizer, 1);
+    if (result != LXA_HTML_OK)
+        return result;
+    bool retain = true;
+    tokenizer->in_callback = true;
+    lxa_status_t status = tokenizer->value_filter(tokenizer->value_filter_context,
+        (lxa_span_t){tokenizer->name.data, tokenizer->name.length},
+        (lxa_span_t){tokenizer->attribute_bytes.data + tokenizer->attribute.name_start,
+                     tokenizer->attribute.name_length}, &retain);
+    tokenizer->in_callback = false;
+    if (status != LXA_OK) {
+        tokenizer->callback_status = status;
+        return LXA_HTML_CALLBACK_FAILURE;
+    }
+    if (!retain)
+        tokenizer->attribute.value_start = SIZE_MAX;
+    return LXA_HTML_OK;
+)
 LXA_HTML_CONSUMER_HOOK(emit_error,
     (lxa_html_tokenizer_t *tokenizer, const char *code, size_t offset),
     lxa_status_t status;

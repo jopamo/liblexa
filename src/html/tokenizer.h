@@ -53,6 +53,9 @@ typedef lxa_status_t (*lxa_html_token_callback_t)(
     void *context, lxa_html_tokenizer_t *tokenizer,
     const lxa_html_token_t *token);
 
+typedef lxa_status_t (*lxa_html_attribute_value_filter_f)(
+    void *context, lxa_span_t tag, lxa_span_t attribute, bool *retain);
+
 /* WHATWG tokenizer error code spelling, e.g. "duplicate-attribute";
  * the byte-decoding boundary uses "invalid-utf-8" for malformed input.
  * Diagnostics are recoverable and delivered in input order; offset is the
@@ -154,6 +157,20 @@ lxa_html_result_t lxa_html_tokenizer_finish(lxa_html_tokenizer_t *tokenizer);
  */
 lxa_html_result_t lxa_html_tokenizer_enable_source_ranges(
     lxa_html_tokenizer_t *tokenizer);
+
+/* Configure before feeding input. Inspect each effective start attribute's
+ * normalized names and retain its value only when requested. Omitted values
+ * are delivered as empty spans; names, ordering, ranges, diagnostics and exact
+ * normalized TOKEN_BYTES accounting remain intact. Discarded duplicate and
+ * end-tag values are omitted without calling the filter. Reference scanning remains
+ * necessary for that accounting. Default NULL retains every value.
+ * Filter views expire on return; a non-OK status latches callback failure.
+ * Reset preserves the filter; its context lives until replacement/destruction.
+ * The caller must retain every value needed by its control/tree consumer.
+ */
+lxa_html_result_t lxa_html_tokenizer_filter_attribute_values(
+    lxa_html_tokenizer_t *tokenizer, lxa_html_attribute_value_filter_f filter,
+    void *context);
 /* LXA_OK unless the last feed/finish failed in a callback. */
 lxa_status_t lxa_html_tokenizer_callback_status(
     const lxa_html_tokenizer_t *tokenizer);

@@ -122,6 +122,47 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
                                               : LXA_ERROR_INTERNAL;
 }
 
+static lxa_status_t target_index(extraction_t *owner, lxa_span_t tag,
+                                 lxa_span_t name, size_t *index)
+{
+    *index = SIZE_MAX;
+    for (size_t t = 0; t < owner->count; t++) {
+        const lxa_html_source_target_t *target = &owner->targets[t];
+        lxa_status_t status =
+            lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
+        if (status != LXA_OK)
+            return status;
+        if (target->attribute.length != name.length ||
+            (target->tag.length != 0 && target->tag.length != tag.length))
+            continue;
+        size_t work;
+        status = lxa_size_add(target->attribute.length, target->tag.length, &work);
+        if (status == LXA_OK)
+            status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, work, &owner->reason);
+        if (status != LXA_OK)
+            return status;
+        if (memcmp(target->attribute.data, name.data, name.length) == 0 &&
+            (target->tag.length == 0 || memcmp(target->tag.data, tag.data, tag.length) == 0)) {
+            *index = t;
+            break;
+        }
+    }
+    return LXA_OK;
+}
+
+static lxa_status_t retain_value(void *context, lxa_span_t tag,
+                                 lxa_span_t name, bool *retain)
+{
+    extraction_t *owner = context;
+    *retain = lxa_html_tree_attribute_value_required(tag, name, false);
+    if (*retain)
+        return LXA_OK;
+    size_t index;
+    lxa_status_t status = target_index(owner, tag, name, &index);
+    *retain = index != SIZE_MAX;
+    return status;
+}
+
 static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                             const lxa_html_token_t *token)
 {
@@ -131,28 +172,11 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
         (owner->include_templates || owner->control.templates.frames.bytes.length == 0)) {
         for (size_t a = 0; a < token->attribute_count; a++) {
             const lxa_html_attribute_t *attribute = &token->attributes[a];
-            for (size_t t = 0; t < owner->count; t++) {
-                const lxa_html_source_target_t *target = &owner->targets[t];
-                status =
-                    lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
-                if (status != LXA_OK)
-                    return status;
-                if (target->attribute.length != attribute->name.length ||
-                    (target->tag.length != 0 && target->tag.length != token->name.length))
-                    continue;
-                size_t work;
-                status =
-                    lxa_size_add(target->attribute.length, target->tag.length, &work);
-                if (status == LXA_OK)
-                    status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, work,
-                                               &owner->reason);
-                if (status != LXA_OK)
-                    return status;
-                if (memcmp(target->attribute.data, attribute->name.data,
-                           attribute->name.length) != 0 ||
-                    (target->tag.length != 0 &&
-                     memcmp(target->tag.data, token->name.data, token->name.length) != 0))
-                    continue;
+            size_t t;
+            status = target_index(owner, token->name, attribute->name, &t);
+            if (status != LXA_OK)
+                return status;
+            if (t != SIZE_MAX) {
                 if (token->attribute_sources == NULL)
                     return LXA_ERROR_INTERNAL;
                 lxa_html_source_attribute_t event = {.tag = token->name,
@@ -185,7 +209,6 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                     owner->reason = LXA_BUDGET_COUNT;
                     return status;
                 }
-                break;
             }
         }
     }
@@ -273,6 +296,8 @@ lxa_html_extract_attributes_with_budget(const lxa_allocator_t *allocator, lxa_bu
     }
     result =
         count == 0 ? LXA_HTML_OK : lxa_html_tokenizer_enable_source_ranges(tokenizer);
+    if (result == LXA_HTML_OK)
+        result = lxa_html_tokenizer_filter_attribute_values(tokenizer, retain_value, &owner);
     if (result == LXA_HTML_OK)
         result = lxa_html_tokenizer_feed_prepaid(
             tokenizer, (lxa_span_t){decoded.data, decoded.length});

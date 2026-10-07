@@ -24,6 +24,14 @@ control_input_token(void *user, lxa_html_tokenizer_t *tokenizer,
 }
 
 static lxa_status_t
+control_input_value(void *user, lxa_span_t tag, lxa_span_t name, bool *retain)
+{
+    (void) user;
+    *retain = lxa_html_tree_attribute_value_required(tag, name, true);
+    return LXA_OK;
+}
+
+static lxa_status_t
 control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
     lxa_budget_t *budget, const lxa_encoding_t **declared,
     lxa_limit_reason_t *reason)
@@ -42,7 +50,10 @@ control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
             *reason = LXA_BUDGET_MEMORY;
     }
     if (status == LXA_OK) {
-        lxa_html_result_t result = lxa_html_tokenizer_feed_prepaid(tokenizer, decoded);
+        lxa_html_result_t result = lxa_html_tokenizer_filter_attribute_values(
+            tokenizer, control_input_value, NULL);
+        if (result == LXA_HTML_OK)
+            result = lxa_html_tokenizer_feed_prepaid(tokenizer, decoded);
         if (result == LXA_HTML_OK)
             result = lxa_html_tokenizer_finish(tokenizer);
         switch (result) {

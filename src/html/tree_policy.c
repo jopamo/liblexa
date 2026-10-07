@@ -734,6 +734,22 @@ lxa_html_tree_font_breakout(const lxa_html_token_t *token, lxa_budget_t *budget,
     return start_attribute_query(token, budget, reason, LXA_START_ATTRIBUTE_FONT_BREAKOUT, out);
 }
 
+bool
+lxa_html_tree_attribute_value_required(lxa_span_t tag, lxa_span_t name,
+    bool observe_meta)
+{
+    if (lxa_html_tree_formatting_tag(tag))
+        return true;
+    if (lxa_html_tree_name_equals(tag, "input", 5))
+        return lxa_html_tree_name_equals(name, "type", 4);
+    if (lxa_html_tree_name_equals(tag, "annotation-xml", 14))
+        return lxa_html_tree_name_equals(name, "encoding", 8);
+    return observe_meta && lxa_html_tree_name_equals(tag, "meta", 4)
+        && (lxa_html_tree_name_equals(name, "charset", 7)
+            || lxa_html_tree_name_equals(name, "http-equiv", 10)
+            || lxa_html_tree_name_equals(name, "content", 7));
+}
+
 lxa_status_t
 lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
     lxa_span_t target, lxa_html_virtual_table_start_plan_t *out)

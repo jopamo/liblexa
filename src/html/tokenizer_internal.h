@@ -16,6 +16,7 @@ typedef enum {
 
 typedef struct {
     size_t name_start, name_length, value_start, value_length;
+    /* SIZE_MAX value_start counts normalized bytes without retaining a value. */
 } attribute_slot_t;
 
 /* A discarded duplicate remains the current parsing candidate for its value. */
@@ -33,11 +34,14 @@ struct lxa_html_tokenizer {
     lxa_html_source_range_t attribute_source;
     attribute_state_t attribute_state;
     size_t source_attribute_count; /* Includes duplicates for the source limit. */
+    size_t omitted_value_bytes; /* Normalized bytes excluded from attribute storage. */
     lxa_budget_t owned_budget, *budget;
     lxa_decoder_t *decoder;
     lxa_encoder_t *encoder;
     lxa_html_token_callback_t on_token;
     lxa_html_error_callback_t on_error;
+    lxa_html_attribute_value_filter_f value_filter;
+    void *value_filter_context;
     void *context;
     tokenizer_state_t state;
     tokenizer_state_t raw_mode, raw_return_mode;

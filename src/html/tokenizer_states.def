@@ -680,7 +680,8 @@ LXA_HTML_STATE(ATTRIBUTE_NAME, 23, TAG, ATTRIBUTE_NAME,
             goto fail;
         }
         if (lxa_size_add(tokenizer->attribute_bytes.length,
-                         tokenizer->name.length, &total) != LXA_OK) {
+                         tokenizer->omitted_value_bytes, &total) != LXA_OK
+            || lxa_size_add(total, tokenizer->name.length, &total) != LXA_OK) {
             result = LXA_HTML_OVERFLOW;
             goto fail;
         }

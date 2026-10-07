@@ -236,6 +236,7 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         tokenizer->attribute_source = (lxa_html_source_range_t) {0};
         tokenizer->attribute_state = ATTRIBUTE_NONE;
         tokenizer->source_attribute_count = 0;
+        tokenizer->omitted_value_bytes = 0;
         lxa_decoder_reset(tokenizer->decoder);
         lxa_encoder_reset(tokenizer->encoder);
         tokenizer->state = STATE_DATA;
@@ -288,6 +289,18 @@ lxa_status_t
 lxa_html_tokenizer_callback_status(const lxa_html_tokenizer_t *tokenizer)
 {
     return tokenizer == NULL ? LXA_ERROR_ARGUMENT : tokenizer->callback_status;
+}
+
+lxa_html_result_t
+lxa_html_tokenizer_filter_attribute_values(lxa_html_tokenizer_t *tokenizer,
+    lxa_html_attribute_value_filter_f filter, void *context)
+{
+    if (tokenizer == NULL || tokenizer->feed_started || tokenizer->closed
+        || tokenizer->in_callback || tokenizer->stopped != LXA_HTML_OK)
+        return LXA_HTML_BAD_ARGUMENT;
+    tokenizer->value_filter = filter;
+    tokenizer->value_filter_context = context;
+    return LXA_HTML_OK;
 }
 
 lxa_limit_reason_t
