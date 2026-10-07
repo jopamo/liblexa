@@ -1,5 +1,6 @@
 #include "liblexa/html_rewrite.h"
 #include "html/source_consumer.h"
+#include "html-charref-overrides.h"
 #include <stdio.h>
 
 typedef struct {
@@ -70,8 +71,14 @@ scalar(rewrite_t *owner, uint32_t cp)
         return ascii(owner, "&quot;");
     if (cp == '<')
         return ascii(owner, "&lt;");
-    /* C1 references can decode to different scalars through HTML overrides. */
-    if ((cp >= 0x80 && cp <= 0x9f) || (cp >= 0x20 && (owner->unicode || cp < 0x80)))
+    if (cp >= 0x80 && cp <= 0x9f) {
+        for (size_t i = 0; i < LIBLEXA_HTML_CHARREF_OVERRIDE_COUNT; ++i) {
+            if (liblexa_html_charref_overrides[i].input == cp &&
+                liblexa_html_charref_overrides[i].output != cp)
+                return encode(owner, cp);
+        }
+    }
+    if (cp >= 0x20 && (owner->unicode || cp < 0x80))
         return encode(owner, cp);
     char reference[16];
     int length = snprintf(reference, sizeof(reference), "&#x%lx;", (unsigned long)cp);

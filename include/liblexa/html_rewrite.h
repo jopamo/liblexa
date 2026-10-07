@@ -25,8 +25,8 @@ typedef lxa_status_t (*lxa_html_source_rewrite_callback_t)(
  * before publishing it. Bytes outside replaced attribute spans stay exact.
  *
  * Preserve source encoding, quote values and escape references/CR. Legacy
- * encodings use numeric references for non-ASCII values; unrepresentable C1
- * controls return UNSUPPORTED rather than a reference with a different value.
+ * encodings use numeric references for non-ASCII values. C1 controls whose
+ * references change value require literal encoding or return UNSUPPORTED.
  * A no-replacement pass reproduces input bytes, including malformed input.
  * Callback/sink errors propagate unchanged with CALLBACK_FAILURE. Invalid
  * replacement values return ARGUMENT. Short successful writes are retried;
