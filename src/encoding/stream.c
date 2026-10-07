@@ -855,15 +855,6 @@ lxa_decoder_finish(lxa_decoder_t *decoder, uint32_t *output, size_t capacity,
     return LXA_ENCODING_OK;
 }
 
-static size_t
-utf8_length(uint32_t scalar)
-{
-    if (scalar < 0x80) return 1;
-    if (scalar < 0x800) return 2;
-    if (scalar < 0x10000) return 3;
-    return 4;
-}
-
 static void
 utf16_write(uint8_t *out, uint16_t unit, bool big_endian)
 {
@@ -1058,7 +1049,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             }
             cp = '?';
         }
-        n = utf8_length(cp);
+        n = lxa_encoding_utf8_scalar_length(cp);
         if (n > output.length - progress->produced) {
             return LXA_ENCODING_OUTPUT_FULL;
         }

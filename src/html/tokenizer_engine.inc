@@ -1,6 +1,7 @@
 /* Instantiate with LXA_HTML_ENGINE_NAME and consumer delivery policies. */
 #include "html/tokenizer_scan.h"
 #include "html-charref-overrides.h"
+#include "encoding/stream_internal.h"
 
 typedef enum {
     EOF_TEXT, EOF_TAG_PREFIX, EOF_DECLARATION_DASH, EOF_COMMENT_OPEN,
@@ -229,6 +230,11 @@ append_reference_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp)
     lxa_encoding_result_t status;
     if (!reference_in_attribute(tokenizer)) {
         return append_scalar(tokenizer, cp);
+    }
+    if (tokenizer->attribute.value_start == SIZE_MAX) {
+        /* Omitted values use only the normalized byte count. */
+        lxa_span_t counted = {NULL, lxa_encoding_utf8_scalar_length(cp)};
+        return append_attribute(tokenizer, counted, false);
     }
     status = lxa_encoder_feed(tokenizer->encoder, &cp, 1, out, &progress);
     if (status != LXA_ENCODING_OK || progress.consumed != 1) {
