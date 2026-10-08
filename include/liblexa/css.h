@@ -324,6 +324,11 @@ lxa_status_t lxa_css_media_screen(lxa_css_tokens_t *tokens,
                                    size_t first, size_t after,
                                    lxa_css_media_t *out);
 
+/* Check normalized tag/class spans for lookup-key separator ambiguity, not
+ * CSS grammar. Empty spans denote absent parts; nonempty NULL spans fail.
+ * The trailing ID component cannot introduce a different key boundary. */
+bool lxa_css_selector_key_names_unambiguous(lxa_span_t tag, lxa_span_t klass);
+
 /* Normalize one simple selector into the exact key used by librsvg's style
  * lookup: optional tag, one class, one ID, in that order. No matching is
  * performed here. Malformed and unsupported syntax return OK with distinct

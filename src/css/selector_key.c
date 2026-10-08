@@ -1,6 +1,23 @@
 #include "css/blocks.h"
 #include "liblexa/base.h"
 
+bool
+lxa_css_selector_key_names_unambiguous(lxa_span_t tag, lxa_span_t klass)
+{
+    if ((tag.length != 0 && tag.data == NULL)
+        || (klass.length != 0 && klass.data == NULL))
+        return false;
+    for (size_t i = 0; i < tag.length; i++) {
+        if (tag.data[i] == '.' || tag.data[i] == '#' || tag.data[i] == '*')
+            return false;
+    }
+    for (size_t i = 0; i < klass.length; i++) {
+        if (klass.data[i] == '#')
+            return false;
+    }
+    return true;
+}
+
 static lxa_status_t
 unsupported(lxa_css_syntax_t *syntax)
 {
@@ -95,16 +112,13 @@ lxa_css_selector_key(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, tag.length,
                                &blocks->limit_reason);
     if (status != LXA_OK) return status;
-    for (size_t i = 0; i < tag.length; i++) {
-        if (tag.data[i] == '.' || tag.data[i] == '#' || tag.data[i] == '*')
-            return unsupported(syntax);
-    }
+    if (!lxa_css_selector_key_names_unambiguous(tag, (lxa_span_t) {0}))
+        return unsupported(syntax);
     status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, klass.length,
                                &blocks->limit_reason);
     if (status != LXA_OK) return status;
-    for (size_t i = 0; i < klass.length; i++) {
-        if (klass.data[i] == '#') return unsupported(syntax);
-    }
+    if (!lxa_css_selector_key_names_unambiguous((lxa_span_t) {0}, klass))
+        return unsupported(syntax);
     size = tag.length;
     if (universal) size = 1;
     if (lxa_size_add(size, klass.length, &size) != LXA_OK
