@@ -30,6 +30,14 @@ typedef struct {
     lxa_id_t id;
 } lxa_dom_atom_t;
 
+/* Map values must survive vector growth; charge and release whole blocks. */
+enum { ATOMS_PER_BLOCK = 32 };
+
+typedef struct lxa_dom_atom_block {
+    struct lxa_dom_atom_block *next;
+    lxa_dom_atom_t atoms[ATOMS_PER_BLOCK];
+} lxa_dom_atom_block_t;
+
 typedef struct {
     size_t name_offset, name_length;
     size_t value_offset, value_length;
@@ -215,14 +223,15 @@ lxa_dom_nodes_create_with_entropy(const lxa_allocator_t *allocator,
 static void
 release_atoms(lxa_dom_nodes_t *nodes)
 {
-    size_t i;
-    lxa_dom_atom_t *const *atoms =
-        (lxa_dom_atom_t *const *) nodes->atoms.bytes.data;
-    for (i = 0; i < lxa_vector_length(&nodes->atoms); ++i) {
-        lxa_free(&nodes->allocator, atoms[i]);
+    lxa_dom_atom_block_t *block = nodes->atom_blocks;
+    while (block != NULL) {
+        lxa_dom_atom_block_t *next = block->next;
+        lxa_free(&nodes->allocator, block);
         lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY,
-                           sizeof(lxa_dom_atom_t));
+                           sizeof(*block));
+        block = next;
     }
+    nodes->atom_blocks = NULL;
     lxa_vector_clear(&nodes->atoms);
 }
 
@@ -831,6 +840,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     lxa_dom_element_t element;
     lxa_dom_record_t record;
     lxa_dom_atom_t *atom = NULL;
+    bool new_block = false;
     void *atom_value = NULL;
     lxa_handle_t packed;
     lxa_id_t node_id, payload_id, atom_id = LXA_ID_NONE;
@@ -949,17 +959,27 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         return status;
     }
     if (!found) {
-        status = lxa_budget_charge(nodes->budget, LXA_BUDGET_MEMORY,
-                                    sizeof(*atom), &nodes->limit_reason);
-        if (status != LXA_OK) {
-            return status;
+        if (atom_id % ATOMS_PER_BLOCK == 0) {
+            lxa_dom_atom_block_t *block;
+            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_MEMORY,
+                sizeof(*block), &nodes->limit_reason);
+            if (status != LXA_OK) {
+                return status;
+            }
+            status = lxa_alloc(&nodes->allocator, sizeof(*block),
+                               (void **) &block);
+            if (status != LXA_OK) {
+                lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY,
+                                   sizeof(*block));
+                return status;
+            }
+            block->next = nodes->atom_blocks;
+            nodes->atom_blocks = block;
+            new_block = true;
         }
-        status = lxa_alloc(&nodes->allocator, sizeof(*atom), (void **) &atom);
-        if (status != LXA_OK) {
-            lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY,
-                               sizeof(*atom));
-            return status;
-        }
+        if (nodes->atom_blocks == NULL)
+            return LXA_ERROR_ARGUMENT;
+        atom = &nodes->atom_blocks->atoms[atom_id % ATOMS_PER_BLOCK];
         atom->offset = nodes->strings.length;
         atom->length = name.length;
         atom->id = atom_id;
@@ -1040,8 +1060,13 @@ rollback:
     }
     if (!found && atom != NULL) {
         lxa_buffer_truncate(&nodes->strings, atom->offset);
-        lxa_free(&nodes->allocator, atom);
-        lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY, sizeof(*atom));
+        if (new_block) {
+            lxa_dom_atom_block_t *block = nodes->atom_blocks;
+            nodes->atom_blocks = block->next;
+            lxa_free(&nodes->allocator, block);
+            lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY,
+                               sizeof(*block));
+        }
     }
     if (status == LXA_ERROR_LIMIT
         && nodes->limit_reason == LXA_BUDGET_COUNT) {

@@ -109,6 +109,7 @@ struct lxa_dom_nodes {
     lxa_vector_t attributes;
     lxa_vector_t doctypes;
     lxa_vector_t atoms; /* lxa_dom_atom_t *; atoms stay at stable addresses */
+    struct lxa_dom_atom_block *atom_blocks;
     lxa_table_t *atom_lookup;
     lxa_buffer_t strings;
     size_t retired;
