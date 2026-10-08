@@ -195,8 +195,8 @@ lxa_html_tree_special_element(lxa_span_t name, lxa_dom_namespace_t ns)
     if (namespace == NULL) return false;
     for (size_t i = 0; i < LIBLEXA_HTML_SPECIAL_COUNT; ++i) {
         const liblexa_html_special_tag *tag = &liblexa_html_special_tags[i];
-        if (strcmp(tag->namespace_name, namespace) == 0
-            && lxa_html_tree_name_equals(name, tag->tag, strlen(tag->tag)))
+        if (lxa_html_tree_name_equals(name, tag->tag, tag->length)
+            && strcmp(tag->namespace_name, namespace) == 0)
             return true;
     }
     return false;
@@ -232,8 +232,8 @@ lxa_html_tree_scope_boundary(lxa_span_t name, lxa_dom_namespace_t ns,
     for (size_t i = 0; i < LIBLEXA_HTML_SCOPE_BOUNDARY_COUNT; ++i) {
         const liblexa_html_scope_boundary *tag = &liblexa_html_scope_boundaries[i];
         if ((tag->mask & scope) != 0
-            && strcmp(tag->namespace_name, namespace) == 0
-            && lxa_html_tree_name_equals(name, tag->tag, strlen(tag->tag)))
+            && lxa_html_tree_name_equals(name, tag->tag, tag->length)
+            && strcmp(tag->namespace_name, namespace) == 0)
             return true;
     }
     return false;
