@@ -139,6 +139,10 @@ lxa_status_t lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out);
+/* Read name and namespace after one reference/payload check.
+ * Failure clears both outputs; success has the element-name view lifetime. */
+lxa_status_t lxa_dom_nodes_element_read(const lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t element, lxa_span_t *name, lxa_dom_namespace_t *ns);
 /* Parser-only constructor for adjusted foreign attribute spellings and
  * qualified-name namespace. Same ownership and limits as HTML attributes. */
 lxa_status_t lxa_dom_nodes_append_foreign_attribute(lxa_dom_nodes_t *nodes,
