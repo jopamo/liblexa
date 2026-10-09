@@ -656,80 +656,12 @@ euc_jp_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
     return LXA_ENCODING_OK;
 }
 
-lxa_encoding_result_t
-lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-                 size_t capacity, lxa_encoding_progress_t *progress)
+static lxa_encoding_result_t
+utf8_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
+           size_t capacity, lxa_encoding_progress_t *progress)
 {
-    if (progress == NULL) {
-        return LXA_ENCODING_INVALID_ARGUMENT;
-    }
-    progress->consumed = progress->produced = 0;
-    if (decoder == NULL || decoder->failed || decoder->closed
-        || (input.data == NULL && input.length != 0)
-        || (output == NULL && capacity != 0))
-    {
-        return LXA_ENCODING_INVALID_ARGUMENT;
-    }
-
-    if (decoder->encoding == &utf16le_encoding
-        || decoder->encoding == &utf16be_encoding)
-    {
-        return utf16_feed(decoder, input, output, capacity, progress);
-    }
-    if (decoder->encoding == &euc_kr_encoding) {
-        return euc_kr_feed(decoder, input, output, capacity, progress);
-    }
-    if (decoder->encoding == &euc_jp_encoding) {
-        return euc_jp_feed(decoder, input, output, capacity, progress);
-    }
-    if (decoder->encoding == replacement_encoding && input.length != 0) {
-        if (!decoder->replacement_done) {
-            if (decoder->mode == LXA_ENCODING_FATAL) {
-                progress->consumed = 1;
-                record_error(decoder);
-                decoder->failed = true;
-                return LXA_ENCODING_MALFORMED;
-            }
-            if (capacity == 0) {
-                return LXA_ENCODING_OUTPUT_FULL;
-            }
-            output[0] = 0xfffd;
-            record_error(decoder);
-            progress->produced = 1;
-            decoder->replacement_done = true;
-        }
-        progress->consumed = input.length;
-        return LXA_ENCODING_OK;
-    }
-
     while (progress->consumed < input.length) {
         uint8_t c = input.data[progress->consumed];
-        if (decoder->encoding != utf8_encoding) {
-            uint32_t cp = c < 0x80 ? c :
-                decoder->encoding->index != NULL
-                ? decoder->encoding->index[c - 0x80] : 0xf700u + c;
-            if (cp != UINT32_MAX) {
-                if (progress->produced == capacity) {
-                    return LXA_ENCODING_OUTPUT_FULL;
-                }
-                output[progress->produced++] = cp;
-                progress->consumed++;
-                continue;
-            }
-            if (decoder->mode == LXA_ENCODING_FATAL) {
-                progress->consumed++;
-                record_error(decoder);
-                decoder->failed = true;
-                return LXA_ENCODING_MALFORMED;
-            }
-            if (progress->produced == capacity) {
-                return LXA_ENCODING_OUTPUT_FULL;
-            }
-            output[progress->produced++] = 0xfffd;
-            record_error(decoder);
-            progress->consumed++;
-            continue;
-        }
         if (decoder->remaining == 0) {
             if (c < 0x80) {
                 if (progress->produced == capacity) {
@@ -796,6 +728,85 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
         if (decoder->remaining == 0) {
             output[progress->produced++] = decoder->scalar;
         }
+    }
+    return LXA_ENCODING_OK;
+}
+
+lxa_encoding_result_t
+lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
+                 size_t capacity, lxa_encoding_progress_t *progress)
+{
+    if (progress == NULL) {
+        return LXA_ENCODING_INVALID_ARGUMENT;
+    }
+    progress->consumed = progress->produced = 0;
+    if (decoder == NULL || decoder->failed || decoder->closed
+        || (input.data == NULL && input.length != 0)
+        || (output == NULL && capacity != 0))
+    {
+        return LXA_ENCODING_INVALID_ARGUMENT;
+    }
+
+    if (decoder->encoding == utf8_encoding) {
+        return utf8_feed(decoder, input, output, capacity, progress);
+    }
+    if (decoder->encoding == &utf16le_encoding
+        || decoder->encoding == &utf16be_encoding)
+    {
+        return utf16_feed(decoder, input, output, capacity, progress);
+    }
+    if (decoder->encoding == &euc_kr_encoding) {
+        return euc_kr_feed(decoder, input, output, capacity, progress);
+    }
+    if (decoder->encoding == &euc_jp_encoding) {
+        return euc_jp_feed(decoder, input, output, capacity, progress);
+    }
+    if (decoder->encoding == replacement_encoding && input.length != 0) {
+        if (!decoder->replacement_done) {
+            if (decoder->mode == LXA_ENCODING_FATAL) {
+                progress->consumed = 1;
+                record_error(decoder);
+                decoder->failed = true;
+                return LXA_ENCODING_MALFORMED;
+            }
+            if (capacity == 0) {
+                return LXA_ENCODING_OUTPUT_FULL;
+            }
+            output[0] = 0xfffd;
+            record_error(decoder);
+            progress->produced = 1;
+            decoder->replacement_done = true;
+        }
+        progress->consumed = input.length;
+        return LXA_ENCODING_OK;
+    }
+
+    while (progress->consumed < input.length) {
+        uint8_t c = input.data[progress->consumed];
+        uint32_t cp = c < 0x80 ? c :
+            decoder->encoding->index != NULL
+            ? decoder->encoding->index[c - 0x80] : 0xf700u + c;
+        if (cp != UINT32_MAX) {
+            if (progress->produced == capacity) {
+                return LXA_ENCODING_OUTPUT_FULL;
+            }
+            output[progress->produced++] = cp;
+            progress->consumed++;
+            continue;
+        }
+        if (decoder->mode == LXA_ENCODING_FATAL) {
+            progress->consumed++;
+            record_error(decoder);
+            decoder->failed = true;
+            return LXA_ENCODING_MALFORMED;
+        }
+        if (progress->produced == capacity) {
+            return LXA_ENCODING_OUTPUT_FULL;
+        }
+        output[progress->produced++] = 0xfffd;
+        record_error(decoder);
+        progress->consumed++;
+        continue;
     }
     return LXA_ENCODING_OK;
 }
