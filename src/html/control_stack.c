@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include "base/budget_internal.h"
 #include "html/control_stack.h"
 #include "html/foreign_names.h"
 
@@ -75,7 +76,7 @@ lxa_html_control_stack_claim_identity(lxa_html_control_stack_t *stack, uint64_t 
     if (status != LXA_OK) return status;
     if (identity == NULL) return LXA_ERROR_ARGUMENT;
     if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
     if (status == LXA_OK) *identity = stack->next_identity++;
     return status;
 }
@@ -83,10 +84,10 @@ lxa_html_control_stack_claim_identity(lxa_html_control_stack_t *stack, uint64_t 
 static lxa_status_t
 check_push(lxa_html_control_stack_t *stack, size_t total)
 {
-    lxa_status_t status = lxa_budget_check(stack->budget,
+    lxa_status_t status = lxa_budget_check_impl(stack->budget,
         LXA_BUDGET_OPEN_ELEMENTS, 1, &stack->limit_reason);
     if (status == LXA_OK && total > stack->charged_name_bytes)
-        status = lxa_budget_check(stack->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_STRINGS,
             total - stack->charged_name_bytes, &stack->limit_reason);
     return status;
 }
@@ -125,7 +126,7 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
         status = lxa_size_add(lxa_vector_length(&stack->elements), 1, &count);
     if (status == LXA_OK) status = check_push(stack, total);
     if (status == LXA_OK)
-        status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+        status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
             name.length / 8 + (name.length % 8 != 0), &stack->limit_reason);
     if (status == LXA_OK) status = lxa_vector_reserve(&stack->elements, count);
     if (status == LXA_OK) status = lxa_buffer_reserve(&stack->names, total);
@@ -146,10 +147,10 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
         (void) internal(lxa_buffer_truncate(&stack->names, element.name_offset));
         return internal(status);
     }
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_OPEN_ELEMENTS, 1, NULL);
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_OPEN_ELEMENTS, 1, NULL);
     bool open_charged = status == LXA_OK;
     if (open_charged && total > stack->charged_name_bytes)
-        status = lxa_budget_charge(stack->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_STRINGS,
                                    total - stack->charged_name_bytes, NULL);
     if (status != LXA_OK) {
         if (open_charged)
@@ -241,7 +242,7 @@ lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
     if (identity == NULL || expected == 0 || index >= lxa_vector_length(&stack->elements))
         return LXA_ERROR_ARGUMENT;
     if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_scope_entry_t entry;
     status = read_element(stack, index, &entry, NULL);
@@ -277,7 +278,7 @@ lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t
     size_t low = from < to ? from : to, high = from < to ? to : from;
     size_t first = low == 0 ? 0 : low - 1;
     size_t end = high + 1 < length ? high + 2 : length;
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK, end - first,
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK, end - first,
                                &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t *elements =
@@ -294,7 +295,7 @@ lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t
     size_t start = elements[low].name_offset;
     size_t finish = elements[high].name_offset + elements[high].name_length;
     size_t bytes = finish - start;
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
                                bytes / 8 + (bytes % 8 != 0), &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t moved = elements[from];
@@ -334,7 +335,7 @@ lxa_html_control_stack_remove(lxa_html_control_stack_t *stack, size_t index)
     }
     if (stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS] == 0)
         return internal(LXA_ERROR_INTERNAL);
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
                                length - index, &stack->limit_reason);
     if (status != LXA_OK) return status;
     if (internal(lxa_vector_erase(&stack->elements, index, 1)) != LXA_OK
@@ -360,7 +361,7 @@ lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack, size_t keep)
     if (status != LXA_OK) return status;
     if (length - keep > stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS])
         return internal(LXA_ERROR_INTERNAL);
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
                                length - keep, &stack->limit_reason);
     if (status != LXA_OK) return status;
     if (internal(lxa_vector_erase(&stack->elements, keep, length - keep)) != LXA_OK
@@ -381,7 +382,7 @@ lxa_html_control_stack_get(lxa_html_control_stack_t *stack, size_t index,
     if (status != LXA_OK) return status;
     if (entry == NULL || index >= lxa_vector_length(&stack->elements))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_charge(stack->budget, LXA_BUDGET_WORK,
+    status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
                                1, &stack->limit_reason);
     if (status != LXA_OK) return status;
     bool annotation_html;
@@ -824,7 +825,7 @@ container_read(const control_stack_view_t *view, size_t index, lxa_span_t *name)
     control_stack_scope_search(view, boundary, (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep)
 #define LXA_TEMPLATE_CONTAINER_READ container_read
 #define LXA_TEMPLATE_CONTAINER_WORK(view, amount) \
-    lxa_budget_charge((view)->stack->budget, LXA_BUDGET_WORK, amount, &(view)->stack->limit_reason)
+    lxa_budget_charge_impl((view)->stack->budget, LXA_BUDGET_WORK, amount, &(view)->stack->limit_reason)
 #include "html/template_container_plan.inc"
 #undef LXA_TEMPLATE_CONTAINER_NAME
 #undef LXA_TEMPLATE_CONTAINER_VIEW
