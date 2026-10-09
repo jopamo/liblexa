@@ -1,3 +1,5 @@
+#include "base/budget_internal.h"
+
 /* Instantiate with LXA_HTML_ENGINE_NAME and consumer delivery policies. */
 #include "html/tokenizer_scan.h"
 #include "html-charref-overrides.h"
@@ -82,7 +84,7 @@ static lxa_html_result_t
 charge_work(lxa_html_tokenizer_t *tokenizer, size_t steps)
 {
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
-    lxa_status_t status = lxa_budget_charge(tokenizer->budget, LXA_BUDGET_WORK,
+    lxa_status_t status = lxa_budget_charge_work(tokenizer->budget,
                                             steps, &reason);
     return budget_result(tokenizer, status, reason);
 }

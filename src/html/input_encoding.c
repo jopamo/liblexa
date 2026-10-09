@@ -1,4 +1,5 @@
 #include "html/input_encoding.h"
+#include "base/budget_internal.h"
 #include "encoding/stream_internal.h"
 #include <string.h>
 
@@ -23,7 +24,7 @@ append_scalars(lxa_buffer_t *output, const uint32_t *scalars, size_t count,
     if (count > sizeof(bytes) / 4) {
         return LXA_HTML_INPUT_BAD_ARGUMENT;
     }
-    lxa_status_t status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+    lxa_status_t status = lxa_budget_charge_work(budget,
                                             count, reason);
     if (status != LXA_OK) {
         return input_status(status);
@@ -105,7 +106,7 @@ report_malformed(lxa_span_t bytes, const lxa_encoding_t *encoding,
         size_t before = lxa_decoder_error_count(decoder);
         size_t errors, j;
         lxa_span_t byte = {bytes.data + i, 1};
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
+        status = lxa_budget_charge_work(budget, 1, reason);
         if (status != LXA_OK) {
             result = input_status(status);
             goto done;
@@ -305,7 +306,7 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
                                           mapping == NULL ? 256 : 1,
                                           &progress);
         offset += progress.consumed;
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK,
+        status = lxa_budget_charge_work(budget,
                                    progress.consumed, reason);
         if (status != LXA_OK) {
             result = input_status(status);
@@ -654,10 +655,10 @@ lxa_html_input_meta_encoding(
         if (name.data == NULL || name.length == 0
             || (value.data == NULL && value.length != 0))
             return LXA_HTML_INPUT_BAD_ARGUMENT;
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, work, reason);
+        status = lxa_budget_charge_work(budget, work, reason);
         if (status != LXA_OK) return input_status(status);
         if (equals(name.data, name.length, "charset", 7)) {
-            status = lxa_budget_charge(budget, LXA_BUDGET_WORK, value.length, reason);
+            status = lxa_budget_charge_work(budget, value.length, reason);
             if (status != LXA_OK) return input_status(status);
             return lxa_html_input_resolve_label(value, encoding);
         }
@@ -669,7 +670,7 @@ lxa_html_input_meta_encoding(
         bool found;
         lxa_span_t label;
         size_t work;
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 12, reason);
+        status = lxa_budget_charge_work(budget, 12, reason);
         if (status != LXA_OK) return input_status(status);
         if (!equals(pragma->value.data, 12, "content-type", 12))
             return LXA_HTML_INPUT_OK;
@@ -677,7 +678,7 @@ lxa_html_input_meta_encoding(
          * and walks the matching value once. */
         status = lxa_size_mul(content->value.length, 8, &work);
         if (status == LXA_OK)
-            status = lxa_budget_charge(budget, LXA_BUDGET_WORK, work, reason);
+            status = lxa_budget_charge_work(budget, work, reason);
         if (status == LXA_OK)
             status = lxa_html_input_content_charset(content->value, &found, &label);
         if (status != LXA_OK) return input_status(status);

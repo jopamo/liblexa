@@ -1,5 +1,5 @@
 #include <string.h>
-#include "liblexa/base.h"
+#include "base/budget_internal.h"
 
 lxa_limits_t
 lxa_limits_default(void)
@@ -80,74 +80,18 @@ lxa_budget_reset_session(lxa_budget_t *budget)
     }
 }
 
-static uint64_t
-maximum(const lxa_limits_t *limits, lxa_budget_kind_t kind)
-{
-    switch (kind) {
-        case LXA_BUDGET_INPUT: return limits->max_input_bytes;
-        case LXA_BUDGET_MEMORY: return limits->max_memory_bytes;
-        case LXA_BUDGET_NODES: return limits->max_nodes;
-        case LXA_BUDGET_ATTRIBUTES: return limits->max_attributes;
-        case LXA_BUDGET_STRINGS: return limits->max_string_bytes;
-        case LXA_BUDGET_TREE_DEPTH: return limits->max_tree_depth;
-        case LXA_BUDGET_OPEN_ELEMENTS: return limits->max_open_elements;
-        case LXA_BUDGET_ACTIVE_FORMATTING:
-            return limits->max_active_formatting;
-        case LXA_BUDGET_CSS_NESTING: return limits->max_css_nesting;
-        case LXA_BUDGET_TOKENS: return limits->max_tokens;
-        case LXA_BUDGET_WORK: return limits->max_work;
-        case LXA_BUDGET_ATTRS_PER_ELEMENT:
-            return limits->max_attributes_per_element;
-        case LXA_BUDGET_TOKEN_BYTES: return limits->max_token_bytes;
-        case LXA_BUDGET_NAME_BYTES: return limits->max_name_bytes;
-        default: return 0;
-    }
-}
-
 lxa_status_t
 lxa_budget_check(const lxa_budget_t *budget, lxa_budget_kind_t kind,
                  uint64_t amount, lxa_budget_kind_t *reason)
 {
-    uint64_t used, limit;
-    if (reason != NULL) {
-        *reason = LXA_BUDGET_COUNT;
-    }
-    if (budget == NULL || kind < 0 || kind > LXA_BUDGET_WORK) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    used = budget->used[kind];
-    if (amount > UINT64_MAX - used) {
-        return LXA_ERROR_OVERFLOW;
-    }
-    limit = maximum(&budget->limits, kind);
-    if (kind == LXA_BUDGET_WORK && budget->work_credit < limit) {
-        limit = budget->work_credit;
-    }
-    if (used > limit || amount > limit - used) {
-        if (reason != NULL) {
-            *reason = kind;
-        }
-        return LXA_ERROR_LIMIT;
-    }
-    return LXA_OK;
+    return lxa_budget_check_impl(budget, kind, amount, reason);
 }
 
 lxa_status_t
 lxa_budget_charge(lxa_budget_t *budget, lxa_budget_kind_t kind,
                   uint64_t amount, lxa_budget_kind_t *reason)
 {
-    lxa_status_t status;
-    if (kind == LXA_BUDGET_INPUT) {
-        if (reason != NULL) {
-            *reason = LXA_BUDGET_COUNT;
-        }
-        return LXA_ERROR_ARGUMENT;
-    }
-    status = lxa_budget_check(budget, kind, amount, reason);
-    if (status == LXA_OK) {
-        budget->used[kind] += amount;
-    }
-    return status;
+    return lxa_budget_charge_impl(budget, kind, amount, reason);
 }
 
 lxa_status_t
@@ -190,7 +134,7 @@ lxa_budget_check_item(const lxa_budget_t *budget, lxa_budget_kind_t kind,
         || kind >= LXA_BUDGET_COUNT) {
         return LXA_ERROR_ARGUMENT;
     }
-    if (size > maximum(&budget->limits, kind)) {
+    if (size > lxa_budget_maximum(&budget->limits, kind)) {
         if (reason != NULL) {
             *reason = kind;
         }
