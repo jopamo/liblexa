@@ -192,10 +192,12 @@ map_scalar(lxa_vector_t *mapping, lxa_span_t bytes,
         .decoded_end = output->length, .raw_end = raw_end
     };
     lxa_html_input_mapping_t previous = points[count - 1];
-    size_t width = output->length - decoded_start;
+    size_t width;
     lxa_status_t status;
-    if (raw_end < previous.raw_end || raw_end > bytes.length)
+    if (bytes.data == NULL || decoded_start >= output->length
+        || raw_end < previous.raw_end || raw_end > bytes.length)
         return LXA_HTML_INPUT_BAD_ARGUMENT;
+    width = output->length - decoded_start;
     point.identity = raw_end - previous.raw_end == width
         && memcmp(bytes.data + previous.raw_end,
                   output->data + decoded_start, width) == 0;
@@ -207,6 +209,46 @@ map_scalar(lxa_vector_t *mapping, lxa_span_t bytes,
     if (status == LXA_ERROR_LIMIT && reason != NULL)
         *reason = LXA_BUDGET_MEMORY;
     return input_status(status);
+}
+
+/* Return zero to retain scalar handling at allocation or work boundaries. */
+static size_t
+append_identity_ascii(lxa_span_t bytes, size_t offset, lxa_decoder_t *decoder,
+                      lxa_buffer_t *output, lxa_vector_t *mapping,
+                      lxa_budget_t *budget)
+{
+    size_t count, bound, length = 0;
+    lxa_html_input_mapping_t *last;
+    if (bytes.length - offset < 3
+        || output->capacity - output->length < 2
+        || bytes.data[offset] >= 0x80
+        || lxa_decoder_pending_bytes(decoder) != 0)
+        return 0;
+    count = lxa_vector_length(mapping);
+    if (count < 2) return 0;
+    last = (lxa_html_input_mapping_t *) mapping->bytes.data + count - 1;
+    if (!last->identity || last->raw_end != offset
+        || last->decoded_end != output->length)
+        return 0;
+    bound = output->capacity - output->length;
+    if (bound >= bytes.length - offset) bound = bytes.length - offset - 1;
+    if (bound > UINT64_MAX / 2
+        || lxa_budget_check_impl(budget, LXA_BUDGET_WORK, (uint64_t) bound * 2, NULL)
+           != LXA_OK)
+        return 0;
+    /* A one-scalar feed may consume the following multibyte prefix. Leave
+     * its preceding ASCII byte to the decoder, including at full output. */
+    while (length < bound && bytes.data[offset + length + 1] < 0x80)
+        length++;
+    if (length < 2
+        || lxa_budget_charge_work(budget, (uint64_t) length * 2, NULL) != LXA_OK)
+        return 0;
+    /* Both scalar charges succeed, with no allocation or callback between. */
+    memcpy(output->data + output->length, bytes.data + offset, length);
+    output->length += length;
+    last->decoded_end += length;
+    last->raw_end += length;
+    return length;
 }
 
 static lxa_html_input_result_t
@@ -226,6 +268,7 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
     uint32_t scalars[256];
     lxa_encoding_progress_t progress;
     lxa_encoding_result_t decode_result;
+    bool identity_runs;
     if (malformed != NULL) {
         *malformed = 0;
     }
@@ -295,8 +338,14 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             goto done;
         }
     }
+    identity_runs = mapping != NULL && encoding == lxa_encoding_lookup(
+        (lxa_span_t) {(const uint8_t *) "utf-8", 5});
     offset = prefix_length;
     do {
+        if (identity_runs && offset != bytes.length) {
+            offset += append_identity_ascii(bytes, offset, decoder,
+                &temporary, &temporary_mapping, budget);
+        }
         size_t decoded_start = temporary.length;
         lxa_span_t remaining = {
             bytes.data == NULL ? NULL : bytes.data + offset,
