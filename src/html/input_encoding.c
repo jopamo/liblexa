@@ -16,6 +16,20 @@ input_status(lxa_status_t status)
 }
 
 static lxa_html_input_result_t
+append_bytes(lxa_buffer_t *output, lxa_span_t bytes, lxa_limit_reason_t *reason)
+{
+    if (bytes.length != 0) {
+        lxa_status_t status = lxa_buffer_append(output, bytes);
+        if (status != LXA_OK) {
+            if (status == LXA_ERROR_LIMIT && reason != NULL)
+                *reason = LXA_BUDGET_MEMORY;
+            return input_status(status);
+        }
+    }
+    return LXA_HTML_INPUT_OK;
+}
+
+static lxa_html_input_result_t
 append_scalars(lxa_buffer_t *output, const uint32_t *scalars, size_t count,
                lxa_budget_t *budget, lxa_limit_reason_t *reason)
 {
@@ -50,16 +64,7 @@ append_scalars(lxa_buffer_t *output, const uint32_t *scalars, size_t count,
             bytes[length++] = (uint8_t) (0x80 | (cp & 0x3f));
         }
     }
-    if (length != 0) {
-        status = lxa_buffer_append(output, (lxa_span_t) {bytes, length});
-        if (status != LXA_OK) {
-            if (status == LXA_ERROR_LIMIT && reason != NULL) {
-                *reason = LXA_BUDGET_MEMORY;
-            }
-            return input_status(status);
-        }
-    }
-    return LXA_HTML_INPUT_OK;
+    return append_bytes(output, (lxa_span_t) {bytes, length}, reason);
 }
 
 static lxa_html_input_result_t
@@ -268,7 +273,7 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
     uint32_t scalars[256];
     lxa_encoding_progress_t progress;
     lxa_encoding_result_t decode_result;
-    bool identity_runs;
+    bool identity_runs, ascii_batches;
     if (malformed != NULL) {
         *malformed = 0;
     }
@@ -340,6 +345,9 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
     }
     identity_runs = mapping != NULL && encoding == lxa_encoding_lookup(
         (lxa_span_t) {(const uint8_t *) "utf-8", 5});
+    ascii_batches = mapping == NULL && bytes.length != 0
+        && encoding == lxa_encoding_lookup(
+            (lxa_span_t) {(const uint8_t *) "utf-8", 5});
     offset = prefix_length;
     do {
         if (identity_runs && offset != bytes.length) {
@@ -351,9 +359,29 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             bytes.data == NULL ? NULL : bytes.data + offset,
             bytes.length - offset
         };
-        decode_result = lxa_decoder_feed(decoder, remaining, scalars,
-                                          mapping == NULL ? 256 : 1,
-                                          &progress);
+        size_t ascii = 0;
+        if (ascii_batches && remaining.length != 0
+            && lxa_decoder_pending_bytes(decoder) == 0) {
+            size_t count = remaining.length < 256 ? remaining.length : 256;
+            uint8_t bits = 0;
+            /* A full scalar batch can consume the next multibyte prefix.
+             * Keep that boundary, and all pending sequences, in the decoder. */
+            if (count == remaining.length || remaining.data[count] < 0x80) {
+                for (size_t i = 0; i < count; ++i)
+                    bits |= remaining.data[i];
+                if (bits < 0x80) ascii = count;
+            }
+        }
+        if (ascii != 0) {
+            progress.consumed = progress.produced = ascii;
+            decode_result = ascii == remaining.length
+                ? LXA_ENCODING_OK : LXA_ENCODING_OUTPUT_FULL;
+        }
+        else {
+            decode_result = lxa_decoder_feed(decoder, remaining, scalars,
+                                              mapping == NULL ? 256 : 1,
+                                              &progress);
+        }
         offset += progress.consumed;
         status = lxa_budget_charge_work(budget,
                                    progress.consumed, reason);
@@ -361,8 +389,17 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             result = input_status(status);
             goto done;
         }
-        result = append_scalars(&temporary, scalars, progress.produced, budget,
-                                reason);
+        if (ascii != 0) {
+            status = lxa_budget_charge_work(budget, ascii, reason);
+            result = status == LXA_OK
+                ? append_bytes(&temporary, (lxa_span_t) {remaining.data, ascii},
+                               reason)
+                : input_status(status);
+        }
+        else {
+            result = append_scalars(&temporary, scalars, progress.produced,
+                                    budget, reason);
+        }
         if (result != LXA_HTML_INPUT_OK) {
             goto done;
         }
