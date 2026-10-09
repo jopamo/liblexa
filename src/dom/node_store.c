@@ -2,6 +2,7 @@
 #include <string.h>
 #include "liblexa/dom.h"
 #include "base/budget_internal.h"
+#include "base/vector_internal.h"
 #include "dom/node_store_internal.h"
 #include "dom/content_patch.h"
 
@@ -273,7 +274,7 @@ static lxa_status_t
 check_new_slot(lxa_dom_nodes_t *nodes, lxa_budget_kind_t *reason)
 {
     *reason = LXA_BUDGET_COUNT;
-    if (lxa_vector_length(&nodes->records) >= nodes->charged_slots) {
+    if (lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)) >= nodes->charged_slots) {
         return lxa_budget_check(nodes->budget, LXA_BUDGET_NODES, 1, reason);
     }
     return LXA_OK;
@@ -282,7 +283,7 @@ check_new_slot(lxa_dom_nodes_t *nodes, lxa_budget_kind_t *reason)
 static void
 charge_new_slot(lxa_dom_nodes_t *nodes)
 {
-    size_t length = lxa_vector_length(&nodes->records);
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     if (length > nodes->charged_slots) {
         lxa_budget_charge(nodes->budget, LXA_BUDGET_NODES, 1, NULL);
         nodes->charged_slots = length;
@@ -301,7 +302,7 @@ lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes)
     if (nodes->epoch == UINT64_MAX) {
         return LXA_ERROR_OVERFLOW;
     }
-    atom_count = lxa_vector_length(&nodes->atoms);
+    atom_count = lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *));
     status = lxa_table_clear_cost(nodes->atom_lookup, &clear_work);
     if (status != LXA_OK) {
         return status;
@@ -334,13 +335,13 @@ lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes)
         /* Existing slots cannot be reused with generation 1. Keep their
          * indexes reserved, even across later resets.
          */
-        nodes->retired = lxa_vector_length(&nodes->records);
+        nodes->retired = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
         nodes->generation = 1;
     }
     else {
         ++nodes->generation;
         lxa_vector_erase(&nodes->records, nodes->retired,
-                         lxa_vector_length(&nodes->records) - nodes->retired);
+                         lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)) - nodes->retired);
     }
     lxa_buffer_clear(&nodes->strings);
     lxa_vector_clear(&nodes->elements);
@@ -356,7 +357,7 @@ size_t
 lxa_dom_nodes_length(const lxa_dom_nodes_t *nodes)
 {
     return nodes == NULL ? 0
-           : lxa_vector_length(&nodes->records) - nodes->retired;
+           : lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)) - nodes->retired;
 }
 
 lxa_status_t
@@ -378,7 +379,7 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     if (nodes == NULL || !valid_kind(kind)) {
         return LXA_ERROR_ARGUMENT;
     }
-    status = lxa_size_to_id(lxa_vector_length(&nodes->records), &id);
+    status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &id);
     if (status != LXA_OK) {
         return status;
     }
@@ -390,7 +391,7 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     if (status != LXA_OK) {
         return status;
     }
-    status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+    status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->records, next);
     }
@@ -437,7 +438,7 @@ lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
         || lxa_handle_unpack(handle.handle, &index, &generation) != LXA_OK) {
         return LXA_ERROR_ARGUMENT;
     }
-    if (index < nodes->retired || index >= lxa_vector_length(&nodes->records)) {
+    if (index < nodes->retired || index >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     entry = (const lxa_dom_record_t *) nodes->records.bytes.data + index;
@@ -513,7 +514,7 @@ read_relation(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     if (status != LXA_OK) {
         return status;
     }
-    if (id < nodes->retired || id >= lxa_vector_length(&nodes->records)) {
+    if (id < nodes->retired || id >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     source_id = (lxa_id_t) source.handle;
@@ -539,7 +540,7 @@ read_relation(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
             && (record.prev == LXA_ID_NONE
                 ? records[id].first_child != source_id
                 : (record.prev < nodes->retired
-                   || record.prev >= lxa_vector_length(&nodes->records)
+                   || record.prev >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
                    || records[record.prev].next != source_id
                    || records[record.prev].parent != id)))) {
         return LXA_ERROR_ARGUMENT;
@@ -607,12 +608,12 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         return LXA_ERROR_ARGUMENT;
     }
     /* Narrow both indexes and count before reserving any resources. */
-    status = lxa_size_to_id(lxa_vector_length(&nodes->records), &node_id);
+    status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &node_id);
     if (status == LXA_OK) {
         status = lxa_handle_pack(node_id, nodes->generation, &packed);
     }
     if (status == LXA_OK) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->characters), &payload_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t)), &payload_id);
     }
     if (status == LXA_OK) {
         status = check_new_slot(nodes, &nodes->limit_reason);
@@ -626,13 +627,13 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
                                   &nodes->limit_reason);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->records, next);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->characters), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->characters, next);
@@ -721,7 +722,7 @@ lxa_dom_nodes_character_read(const lxa_dom_nodes_t *nodes,
         return status;
     }
     if ((node.kind != LXA_DOM_KIND_TEXT && node.kind != LXA_DOM_KIND_COMMENT)
-        || node.payload >= lxa_vector_length(&nodes->characters)) {
+        || node.payload >= lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     payload = (const lxa_dom_character_t *) nodes->characters.bytes.data
@@ -776,7 +777,7 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     status = lxa_dom_nodes_read(nodes, text, &record);
     if (status != LXA_OK) return status;
     if (record.kind != LXA_DOM_KIND_TEXT
-        || record.payload >= lxa_vector_length(&nodes->characters))
+        || record.payload >= lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t)))
         return LXA_ERROR_ARGUMENT;
     old = ((const lxa_dom_character_t *)
            nodes->characters.bytes.data)[record.payload];
@@ -897,15 +898,15 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         }
         return status;
     }
-    if (found && (atom == NULL || atom->id >= lxa_vector_length(&nodes->atoms))) {
+    if (found && (atom == NULL || atom->id >= lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *)))) {
         return LXA_ERROR_ARGUMENT;
     }
-    status = lxa_size_to_id(lxa_vector_length(&nodes->records), &node_id);
+    status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &node_id);
     if (status == LXA_OK) {
         status = lxa_handle_pack(node_id, nodes->generation, &packed);
     }
     if (status == LXA_OK) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->elements), &payload_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)), &payload_id);
     }
     if (status == LXA_OK) {
         status = check_new_slot(nodes, &nodes->limit_reason);
@@ -917,26 +918,26 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         }
     }
     if (status == LXA_OK && !found) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->atoms), &atom_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *)), &atom_id);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
         status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->records, next);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->elements), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->elements, next);
     }
     if (status == LXA_OK && !found) {
-        status = lxa_size_add(lxa_vector_length(&nodes->atoms), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *)), 1, &next);
         if (status == LXA_OK) {
             status = lxa_vector_reserve(&nodes->atoms, next);
         }
@@ -1108,7 +1109,7 @@ element_payload(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
         return status;
     }
     if (record.kind != LXA_DOM_KIND_ELEMENT
-        || record.payload >= lxa_vector_length(&nodes->elements)) {
+        || record.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     *out = (const lxa_dom_element_t *) nodes->elements.bytes.data + record.payload;
@@ -1120,7 +1121,7 @@ element_name(const lxa_dom_nodes_t *nodes, const lxa_dom_element_t *payload,
              lxa_span_t *out)
 {
     const lxa_dom_atom_t *atom;
-    if (payload->atom >= lxa_vector_length(&nodes->atoms)) {
+    if (payload->atom >= lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *))) {
         return LXA_ERROR_ARGUMENT;
     }
     atom = ((lxa_dom_atom_t *const *) nodes->atoms.bytes.data)[payload->atom];
@@ -1193,7 +1194,7 @@ find_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
         (const lxa_dom_record_t *) nodes->records.bytes.data;
     const lxa_dom_template_t *entries =
         (const lxa_dom_template_t *) nodes->templates.bytes.data;
-    size_t length = lxa_vector_length(&nodes->records), steps = 0;
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), steps = 0;
     lxa_id_t cursor = start;
     *found = false;
     while (cursor != LXA_ID_NONE) {
@@ -1213,13 +1214,13 @@ find_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
             continue;
         }
         if (records[cursor].kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT) break;
-        for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+        for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
             status = lxa_budget_charge_work(nodes->budget, 1,
                                        reason);
             if (status != LXA_OK) return status;
             if (entries[i].fragment == cursor) break;
         }
-        cursor = i == lxa_vector_length(&nodes->templates)
+        cursor = i == lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t))
                  ? LXA_ID_NONE : entries[i].element;
     }
     return LXA_OK;
@@ -1286,7 +1287,7 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     status = check_virtual_ancestor(nodes, pair.element, pair.fragment,
                                     &nodes->limit_reason);
     if (status != LXA_OK) return status;
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         const lxa_dom_template_t *entries =
             (const lxa_dom_template_t *) nodes->templates.bytes.data;
         status = lxa_budget_charge_work(nodes->budget, 1,
@@ -1319,7 +1320,7 @@ lxa_dom_nodes_template_contents(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT)
         return LXA_ERROR_ARGUMENT;
     entries = (const lxa_dom_template_t *) nodes->templates.bytes.data;
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         status = lxa_budget_charge_work(nodes->budget, 1,
                                    &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -1351,7 +1352,7 @@ lxa_dom_nodes_template_owner(lxa_dom_nodes_t *nodes,
         || record.parent != LXA_ID_NONE)
         return LXA_ERROR_ARGUMENT;
     entries = (const lxa_dom_template_t *) nodes->templates.bytes.data;
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         status = lxa_budget_charge_work(nodes->budget, 1,
                                    &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -1370,7 +1371,7 @@ check_template_parent(lxa_dom_nodes_t *nodes, lxa_id_t parent)
     const lxa_dom_template_t *entries =
         (const lxa_dom_template_t *) nodes->templates.bytes.data;
     size_t i;
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         lxa_status_t status = lxa_budget_charge_work(nodes->budget,
                                                  1, &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -1440,18 +1441,18 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     status = lxa_budget_charge_work(nodes->budget, value.length,
                                 &nodes->limit_reason);
     if (status == LXA_OK) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->records), &node_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &node_id);
     }
     if (status == LXA_OK) {
         status = lxa_handle_pack(node_id, nodes->generation, &packed);
     }
     if (status == LXA_OK) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->attributes), &payload_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)), &payload_id);
     }
     if (status == LXA_OK) {
         status = check_new_slot(nodes, &nodes->limit_reason);
     }
-    if (status == LXA_OK && lxa_vector_length(&nodes->attributes)
+    if (status == LXA_OK && lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
                             >= nodes->charged_attrs) {
         status = lxa_budget_check(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
                                    &nodes->limit_reason);
@@ -1467,13 +1468,13 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->records, next);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->attributes), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->attributes, next);
@@ -1489,7 +1490,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         return status;
     }
     status = check_new_slot(nodes, &nodes->limit_reason);
-    if (status == LXA_OK && lxa_vector_length(&nodes->attributes)
+    if (status == LXA_OK && lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
                             >= nodes->charged_attrs) {
         status = lxa_budget_check(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
                                    &nodes->limit_reason);
@@ -1541,7 +1542,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
-    if (lxa_vector_length(&nodes->attributes) > nodes->charged_attrs) {
+    if (lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)) > nodes->charged_attrs) {
         lxa_budget_charge(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1, NULL);
         ++nodes->charged_attrs;
     }
@@ -1591,7 +1592,7 @@ lxa_dom_nodes_attribute_namespace(const lxa_dom_nodes_t *nodes,
     status = lxa_dom_nodes_read(nodes, attribute, &record);
     if (status != LXA_OK) return status;
     if (record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || record.payload >= lxa_vector_length(&nodes->attributes))
+        || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)))
         return LXA_ERROR_ARGUMENT;
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
     status = lxa_dom_nodes_attribute_read(nodes, attribute, &name, &value);
@@ -1630,7 +1631,7 @@ lxa_dom_nodes_attribute_read(const lxa_dom_nodes_t *nodes,
         return status;
     }
     if (record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || record.payload >= lxa_vector_length(&nodes->attributes)) {
+        || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
@@ -1664,7 +1665,7 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
     }
     status = lxa_dom_nodes_read(nodes, attribute, &record);
     if (status != LXA_OK || record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || record.payload >= lxa_vector_length(&nodes->attributes)) {
+        || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     attr = (lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
@@ -1759,12 +1760,12 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK) {
         return status;
     }
-    status = lxa_size_to_id(lxa_vector_length(&nodes->records), &id);
+    status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &id);
     if (status == LXA_OK) {
         status = lxa_handle_pack(id, nodes->generation, &handle);
     }
     if (status == LXA_OK) {
-        status = lxa_size_to_id(lxa_vector_length(&nodes->doctypes), &payload_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->doctypes, sizeof(lxa_dom_doctype_t)), &payload_id);
     }
     if (status == LXA_OK) {
         status = check_new_slot(nodes, &nodes->limit_reason);
@@ -1784,13 +1785,13 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->records, next);
     }
     if (status == LXA_OK) {
-        status = lxa_size_add(lxa_vector_length(&nodes->doctypes), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->doctypes, sizeof(lxa_dom_doctype_t)), 1, &next);
     }
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&nodes->doctypes, next);
@@ -1874,7 +1875,7 @@ lxa_dom_nodes_doctype_read(const lxa_dom_nodes_t *nodes,
     memset(out, 0, sizeof(*out));
     status = lxa_dom_nodes_read(nodes, doctype, &record);
     if (status != LXA_OK || record.kind != LXA_DOM_KIND_DOCUMENT_TYPE
-        || record.payload >= lxa_vector_length(&nodes->doctypes)) {
+        || record.payload >= lxa_vector_length_sized(&nodes->doctypes, sizeof(lxa_dom_doctype_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     payload = (const lxa_dom_doctype_t *) nodes->doctypes.bytes.data
@@ -1960,11 +1961,11 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
         status = string_source(nodes, fields[i], &self[i], &sources[i]);
         if (status != LXA_OK) return status;
     }
-    status = lxa_size_to_id(lxa_vector_length(&nodes->records), &id);
+    status = lxa_size_to_id(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), &id);
     if (status == LXA_OK)
         status = lxa_handle_pack(id, nodes->generation, &handle);
     if (status == LXA_OK)
-        status = lxa_size_to_id(lxa_vector_length(&nodes->pis), &payload_id);
+        status = lxa_size_to_id(lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t)), &payload_id);
     if (status == LXA_OK)
         status = check_new_slot(nodes, &nodes->limit_reason);
     total = nodes->strings.length;
@@ -1980,10 +1981,10 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
         status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     if (status == LXA_OK)
-        status = lxa_size_add(lxa_vector_length(&nodes->records), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
     if (status == LXA_OK) status = lxa_vector_reserve(&nodes->records, next);
     if (status == LXA_OK)
-        status = lxa_size_add(lxa_vector_length(&nodes->pis), 1, &next);
+        status = lxa_size_add(lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t)), 1, &next);
     if (status == LXA_OK) status = lxa_vector_reserve(&nodes->pis, next);
     if (status == LXA_OK) status = lxa_buffer_reserve(&nodes->strings, total);
     if (status != LXA_OK) {
@@ -2049,7 +2050,7 @@ lxa_dom_nodes_pi_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t pi,
     *data = (lxa_span_t){0};
     if (lxa_dom_nodes_read(nodes, pi, &record) != LXA_OK
         || record.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION
-        || record.payload >= lxa_vector_length(&nodes->pis))
+        || record.payload >= lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t)))
         return LXA_ERROR_ARGUMENT;
     payload = (const lxa_dom_pi_t *) nodes->pis.bytes.data + record.payload;
     if (payload->target.offset > nodes->strings.length
@@ -2087,9 +2088,9 @@ scan_attributes(lxa_dom_nodes_t *nodes, lxa_id_t element_id,
             return status;
         }
         if (count >= element.attr_count || cursor < nodes->retired
-            || cursor >= lxa_vector_length(&nodes->records)
+            || cursor >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
             || records[cursor].kind != LXA_DOM_KIND_ATTRIBUTE
-            || records[cursor].payload >= lxa_vector_length(&nodes->attributes)) {
+            || records[cursor].payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
             return LXA_ERROR_ARGUMENT;
         }
         ++count;
@@ -2172,8 +2173,8 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     }
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
         || child.kind != LXA_DOM_KIND_ATTRIBUTE
-        || host.payload >= lxa_vector_length(&nodes->elements)
-        || child.payload >= lxa_vector_length(&nodes->attributes)) {
+        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))
+        || child.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     elements = (lxa_dom_element_t *) nodes->elements.bytes.data;
@@ -2242,8 +2243,8 @@ lxa_dom_nodes_detach_attribute(lxa_dom_nodes_t *nodes,
     }
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
         || child.kind != LXA_DOM_KIND_ATTRIBUTE
-        || host.payload >= lxa_vector_length(&nodes->elements)
-        || child.payload >= lxa_vector_length(&nodes->attributes)) {
+        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))
+        || child.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     host_id = (lxa_id_t) element.handle;
@@ -2308,9 +2309,9 @@ lxa_dom_nodes_replace_attribute(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
         || old_record.kind != LXA_DOM_KIND_ATTRIBUTE
         || new_record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || host.payload >= lxa_vector_length(&nodes->elements)
-        || old_record.payload >= lxa_vector_length(&nodes->attributes)
-        || new_record.payload >= lxa_vector_length(&nodes->attributes)) {
+        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))
+        || old_record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
+        || new_record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     host_id = (lxa_id_t) element.handle;
@@ -2388,7 +2389,7 @@ lxa_dom_nodes_find_attribute(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     }
     status = lxa_dom_nodes_read(nodes, element, &host);
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
-        || host.payload >= lxa_vector_length(&nodes->elements)) {
+        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     elements = (const lxa_dom_element_t *) nodes->elements.bytes.data;
@@ -2420,7 +2421,7 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     memset(out, 0, sizeof(*out));
     status = lxa_dom_nodes_read(nodes, element, &host);
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
-        || host.payload >= lxa_vector_length(&nodes->elements)) {
+        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     elements = (const lxa_dom_element_t *) nodes->elements.bytes.data;
@@ -2435,7 +2436,7 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     else {
         status = lxa_dom_nodes_read(nodes, previous, &entry);
         if (status != LXA_OK || entry.kind != LXA_DOM_KIND_ATTRIBUTE
-            || entry.payload >= lxa_vector_length(&nodes->attributes)
+            || entry.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
             || attrs[entry.payload].owner != owner) {
             return LXA_ERROR_ARGUMENT;
         }
@@ -2449,12 +2450,12 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     if (status != LXA_OK) {
         return status;
     }
-    if (id < nodes->retired || id >= lxa_vector_length(&nodes->records)) {
+    if (id < nodes->retired || id >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
         return LXA_ERROR_ARGUMENT;
     }
     entry = ((const lxa_dom_record_t *) nodes->records.bytes.data)[id];
     if (entry.kind != LXA_DOM_KIND_ATTRIBUTE
-        || entry.payload >= lxa_vector_length(&nodes->attributes)
+        || entry.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
         || attrs[entry.payload].owner != owner) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -2511,7 +2512,7 @@ selectedcontent_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_status_t status;
     *disabled = false;
     *select = (lxa_dom_ref_t){0};
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     while (parent.handle != LXA_HANDLE_NONE) {
         select_tag_t tag;
         if (++steps > length) return LXA_ERROR_ARGUMENT;
@@ -2588,7 +2589,7 @@ next_descendant(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
                   lxa_dom_ref_t current, bool descend, size_t *ascents,
                   lxa_dom_ref_t *out)
 {
-    size_t length = lxa_vector_length(&nodes->records);
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status;
     if (descend) {
         status = lxa_dom_nodes_first_child(nodes, current, out);
@@ -2635,7 +2636,7 @@ lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
         status = lxa_dom_nodes_element_namespace(nodes, scope, &ns);
         if (status != LXA_OK) return status;
     }
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     status = lxa_dom_nodes_first_child(nodes, scope, &cursor);
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
         if (++visits > length) return LXA_ERROR_ARGUMENT;
@@ -2707,7 +2708,7 @@ first_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
                         lxa_handle_t excluded, lxa_dom_ref_t *out)
 {
     lxa_dom_ref_t cursor;
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = lxa_dom_nodes_first_child(nodes, select, &cursor);
     *out = (lxa_dom_ref_t){0};
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
@@ -2754,7 +2755,7 @@ static lxa_status_t
 disable_cloned_selectedcontent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t staging)
 {
     lxa_dom_ref_t cursor;
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = lxa_dom_nodes_first_child(nodes, staging, &cursor);
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
         select_tag_t tag;
@@ -2944,7 +2945,7 @@ option_select_at(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                    const select_view_t *move, lxa_dom_ref_t *out)
 {
     lxa_dom_ref_t select = parent;
-    size_t length = lxa_vector_length(&nodes->records), steps = 0;
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), steps = 0;
     bool grouped = false;
     lxa_status_t status;
     *out = (lxa_dom_ref_t){0};
@@ -3047,7 +3048,7 @@ scan_select_options(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
 {
     lxa_dom_ref_t cursor, group = {0}, attribute;
     select_tag_t tag;
-    size_t length = lxa_vector_length(&nodes->records);
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     size_t steps = 0, ascents = 0;
     bool disabled_group = false, excluding = false;
     lxa_status_t status = select_first_child(nodes, select, move, &cursor);
@@ -3321,7 +3322,7 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     if (parent_copy.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
         || (child_copy.kind != LXA_DOM_KIND_TEXT
             && child_copy.kind != LXA_DOM_KIND_COMMENT)
-        || child_copy.payload >= lxa_vector_length(&nodes->characters)
+        || child_copy.payload >= lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t))
         || child_copy.parent != LXA_ID_NONE || child_copy.prev != LXA_ID_NONE
         || child_copy.next != LXA_ID_NONE
         || (parent_copy.first_child == LXA_ID_NONE)
@@ -3339,7 +3340,7 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     tail = NULL;
     if (parent_copy.last_child != LXA_ID_NONE) {
         if (parent_copy.last_child < nodes->retired
-            || parent_copy.last_child >= lxa_vector_length(&nodes->records)
+            || parent_copy.last_child >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
             || parent_copy.last_child == child_id) {
             return LXA_ERROR_ARGUMENT;
         }
@@ -3367,14 +3368,14 @@ constructed_child_payload_valid(const lxa_dom_nodes_t *nodes,
 {
     switch (child->kind) {
     case LXA_DOM_KIND_ELEMENT:
-        return child->payload < lxa_vector_length(&nodes->elements);
+        return child->payload < lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t));
     case LXA_DOM_KIND_TEXT:
     case LXA_DOM_KIND_COMMENT:
-        return child->payload < lxa_vector_length(&nodes->characters);
+        return child->payload < lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t));
     case LXA_DOM_KIND_PROCESSING_INSTRUCTION:
-        return child->payload < lxa_vector_length(&nodes->pis);
+        return child->payload < lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t));
     case LXA_DOM_KIND_DOCUMENT_TYPE:
-        return child->payload < lxa_vector_length(&nodes->doctypes);
+        return child->payload < lxa_vector_length_sized(&nodes->doctypes, sizeof(lxa_dom_doctype_t));
     default:
         return false;
     }
@@ -3388,7 +3389,7 @@ check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
     const lxa_dom_record_t *records =
         (const lxa_dom_record_t *) nodes->records.bytes.data;
     lxa_id_t sibling = host->first_child, previous = LXA_ID_NONE;
-    size_t length = lxa_vector_length(&nodes->records), linked = 0;
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), linked = 0;
     bool past_target = false;
     if (!document_child_kind(kind)) return LXA_ERROR_ARGUMENT;
     while (sibling != LXA_ID_NONE) {
@@ -3446,7 +3447,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     if (status != LXA_OK) {
         return status;
     }
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     parent_id = (lxa_id_t) parent.handle;
     child_id = (lxa_id_t) child.handle;
     target_id = before.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
@@ -3456,7 +3457,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
          && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
         || !constructed_child_payload_valid(nodes, &leaf)
         || (host.kind == LXA_DOM_KIND_ELEMENT
-            && host.payload >= lxa_vector_length(&nodes->elements))
+            && host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || (host.kind != LXA_DOM_KIND_DOCUMENT
             && leaf.kind == LXA_DOM_KIND_DOCUMENT_TYPE)
         || (host.kind == LXA_DOM_KIND_DOCUMENT
@@ -3472,7 +3473,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     }
     status = check_template_parent(nodes, parent_id);
     if (status != LXA_OK) return status;
-    if (lxa_vector_length(&nodes->templates) != 0) {
+    if (lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)) != 0) {
         status = check_virtual_ancestor(nodes, parent_id, child_id,
                                         &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -3557,7 +3558,7 @@ attached_child_links(const lxa_dom_nodes_t *nodes, lxa_id_t child_id,
 {
     const lxa_dom_record_t *records =
         (const lxa_dom_record_t *) nodes->records.bytes.data;
-    size_t length = lxa_vector_length(&nodes->records);
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_id_t old_id = moved->parent;
     const lxa_dom_record_t *old;
     if (old_id < nodes->retired || old_id >= length)
@@ -3567,7 +3568,7 @@ attached_child_links(const lxa_dom_nodes_t *nodes, lxa_id_t child_id,
          && old->kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
          && old->kind != LXA_DOM_KIND_ELEMENT)
         || (old->kind == LXA_DOM_KIND_ELEMENT
-            && old->payload >= lxa_vector_length(&nodes->elements))
+            && old->payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || old->first_child == LXA_ID_NONE
         || (old->first_child == LXA_ID_NONE) != (old->last_child == LXA_ID_NONE)
         || (moved->prev == LXA_ID_NONE
@@ -3658,7 +3659,7 @@ check_selectedcontent_child_removals(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent)
 {
     lxa_dom_ref_t root, select, no_owner = {0};
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = nearest_select(nodes, parent, NULL, &select);
     if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, parent, &root);
     while (status == LXA_OK && root.handle != LXA_HANDLE_NONE) {
@@ -3704,7 +3705,7 @@ affected_selectedcontent_removal(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t no_owner = {0};
     select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = element.handle,
                               .prior_choice = LXA_ID_NONE};
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = lxa_handle_pack(record->parent, nodes->generation, &parent.handle);
     *affected = false;
     if (status == LXA_OK) status = nearest_select(nodes, parent, NULL, &select);
@@ -3833,7 +3834,7 @@ lxa_dom_nodes_prepare_content_patch(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
     if (status == LXA_OK) status = lxa_vector_bind_budget(&removed, nodes->budget);
     if (status == LXA_OK)
         status = lxa_dom_nodes_next_sibling(nodes, patch.start, &cursor);
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE
            && cursor.handle != patch.end.handle) {
         if (++visits > length) { status = LXA_ERROR_ARGUMENT; break; }
@@ -3931,7 +3932,7 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     if (status == LXA_OK && before.handle != LXA_HANDLE_NONE)
         status = lxa_dom_nodes_read(nodes, before, &target);
     if (status != LXA_OK) return status;
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     host_id = (lxa_id_t) parent.handle;
     child_id = (lxa_id_t) child.handle;
     old_id = moved.parent;
@@ -3945,9 +3946,9 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             && moved.kind != LXA_DOM_KIND_COMMENT
             && moved.kind != LXA_DOM_KIND_PROCESSING_INSTRUCTION)
         || (host.kind == LXA_DOM_KIND_ELEMENT
-            && host.payload >= lxa_vector_length(&nodes->elements))
+            && host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || (moved.kind == LXA_DOM_KIND_ELEMENT
-            && moved.payload >= lxa_vector_length(&nodes->elements))
+            && moved.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || (host.kind == LXA_DOM_KIND_DOCUMENT
             && !document_child_kind(moved.kind))
         || (target_id != LXA_ID_NONE
@@ -3971,7 +3972,7 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     if (external_owner.handle == child.handle) external_owner = (lxa_dom_ref_t){0};
     status = check_template_parent(nodes, host_id);
     if (status != LXA_OK) return status;
-    if (lxa_vector_length(&nodes->templates) != 0) {
+    if (lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)) != 0) {
         status = check_virtual_ancestor(nodes, host_id, child_id,
                                         &nodes->limit_reason);
         if (status != LXA_OK) return status;
@@ -4031,7 +4032,7 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                 || entry.prev != LXA_ID_NONE || entry.next != LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
-            && (entry.payload >= lxa_vector_length(&nodes->pis)
+            && (entry.payload >= lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t))
                 || entry.first_child != LXA_ID_NONE
                 || entry.last_child != LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
@@ -4046,7 +4047,7 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             if (status == LXA_OK && inert == 0)
                 status = option_reparent_effect(nodes, ref, &move,
                                                   external_owner, &reset_options);
-            if (status == LXA_OK && lxa_vector_length(&nodes->templates) != 0)
+            if (status == LXA_OK && lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)) != 0)
                 status = lxa_dom_nodes_template_contents(nodes, ref, &contents);
             if (status != LXA_OK) return status;
         }
@@ -4326,7 +4327,7 @@ static lxa_status_t
 child_copy_context(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ancestor,
                      size_t *depth, bool *connected)
 {
-    size_t length = lxa_vector_length(&nodes->records);
+    size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     bool inert = false;
     *depth = 0;
     *connected = false;
@@ -4398,12 +4399,12 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
     if ((host.kind != LXA_DOM_KIND_ELEMENT
          && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
         || (host.kind == LXA_DOM_KIND_ELEMENT
-            && host.payload >= lxa_vector_length(&nodes->elements))
+            && host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE))
         return LXA_ERROR_ARGUMENT;
     status = check_template_parent(nodes, (lxa_id_t) target.handle);
     if (status != LXA_OK) return status;
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_id_t host_parent = (lxa_id_t) target.handle;
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
     for (cursor = host.first_child; cursor != LXA_ID_NONE;) {
@@ -4435,7 +4436,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
         if ((original.kind != LXA_DOM_KIND_ELEMENT
              && original.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
             || (original.kind == LXA_DOM_KIND_ELEMENT
-                && original.payload >= lxa_vector_length(&nodes->elements))
+                && original.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
             || (original.first_child == LXA_ID_NONE)
                != (original.last_child == LXA_ID_NONE))
             return LXA_ERROR_ARGUMENT;
@@ -4569,7 +4570,7 @@ save_content_record(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_id_t id)
 {
     content_undo_t entry;
     if (id == LXA_ID_NONE) return LXA_OK;
-    if (id < nodes->retired || id >= lxa_vector_length(&nodes->records))
+    if (id < nodes->retired || id >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)))
         return LXA_ERROR_ARGUMENT;
     entry.id = id;
     entry.record = ((const lxa_dom_record_t *) nodes->records.bytes.data)[id];
@@ -4603,7 +4604,7 @@ collect_content_connections(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
                             lxa_vector_t *hooks)
 {
     lxa_dom_ref_t cursor = root;
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = lxa_vector_init(hooks, &nodes->allocator, sizeof(content_hook_t));
     if (status == LXA_OK) status = lxa_vector_bind_budget(hooks, nodes->budget);
     while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
@@ -4633,7 +4634,7 @@ collect_content_hooks(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     select_tag_t tag;
     select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle,
                               .prior_choice = LXA_ID_NONE};
-    size_t visits = 0, ascents = 0, length = lxa_vector_length(&nodes->records);
+    size_t visits = 0, ascents = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     lxa_status_t status = select_tag(nodes, root, &tag);
     if (status == LXA_OK)
         status = tag == SELECT_OPTION ? option_select(nodes, root, NULL, &old_owner)
@@ -5042,7 +5043,7 @@ static lxa_status_t
 nearest_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t ancestor,
                  const select_view_t *view, lxa_dom_ref_t *out)
 {
-    size_t steps = 0, length = lxa_vector_length(&nodes->records);
+    size_t steps = 0, length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     *out = (lxa_dom_ref_t){0};
     while (ancestor.handle != LXA_HANDLE_NONE) {
         select_tag_t tag;
@@ -5100,7 +5101,7 @@ collect_nonprimary_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
     status = select_tag(nodes, select, &tag);
     if (status != LXA_OK || tag != SELECT_SELECT)
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     status = lxa_vector_init(targets, &nodes->allocator, sizeof(lxa_dom_ref_t));
     if (status == LXA_OK) status = lxa_vector_bind_budget(targets, nodes->budget);
     if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, select, &cursor);
@@ -5167,7 +5168,7 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
         return status;
     }
     start = output->length;
-    length = lxa_vector_length(&nodes->records);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     status = lxa_size_mul(length, 2, &max_visits);
     if (status != LXA_OK) {
         return status;
@@ -5280,13 +5281,13 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
     if (nodes == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
-    length = lxa_vector_length(&nodes->records);
-    characters = lxa_vector_length(&nodes->characters);
-    element_count = lxa_vector_length(&nodes->elements);
-    attribute_count = lxa_vector_length(&nodes->attributes);
-    atom_count = lxa_vector_length(&nodes->atoms);
-    doctype_count = lxa_vector_length(&nodes->doctypes);
-    pi_count = lxa_vector_length(&nodes->pis);
+    length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
+    characters = lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t));
+    element_count = lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t));
+    attribute_count = lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t));
+    atom_count = lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *));
+    doctype_count = lxa_vector_length_sized(&nodes->doctypes, sizeof(lxa_dom_doctype_t));
+    pi_count = lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t));
     if (nodes->retired > length) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -5334,7 +5335,7 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
     doctypes = (const lxa_dom_doctype_t *) nodes->doctypes.bytes.data;
     atoms = (lxa_dom_atom_t *const *) nodes->atoms.bytes.data;
     status = LXA_ERROR_ARGUMENT;
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         const lxa_dom_template_t *entries =
             (const lxa_dom_template_t *) nodes->templates.bytes.data;
         const lxa_dom_template_t *pair = &entries[i];
@@ -5377,7 +5378,7 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
                 goto done;
         }
     }
-    for (i = 0; i < lxa_vector_length(&nodes->templates); ++i) {
+    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
         const lxa_dom_template_t *entries =
             (const lxa_dom_template_t *) nodes->templates.bytes.data;
         status = check_virtual_ancestor(nodes, entries[i].element,
