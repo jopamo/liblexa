@@ -1,3 +1,5 @@
+#include "base/budget_internal.h"
+
 /* Instantiate end-target searches with a borrowed stack and static access.
  * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
@@ -14,8 +16,8 @@ LXA_TABLE_MARKERS_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t keep, size_t *out
 {
     size_t length = LXA_SCOPE_LENGTH(view), markers = 0;
     if (keep > length) return LXA_ERROR_ARGUMENT;
-    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-        LXA_BUDGET_WORK, length - keep, LXA_SCOPE_REASON(view));
+    lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+        length - keep, LXA_SCOPE_REASON(view));
     if (status != LXA_OK) return status;
     for (size_t i = keep; i < length; ++i) {
         lxa_span_t name;
@@ -66,8 +68,8 @@ LXA_COLUMN_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         bool table = false, formatting = false;
         while (i > boundary) {
             lxa_span_t name;
-            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+                1, LXA_SCOPE_REASON(view));
             if (status == LXA_OK) status = LXA_SCOPE_READ(view, --i, &name, &ns);
             if (status != LXA_OK) return status;
             if (lxa_html_tree_name_equals(name, "table", 5)) {
@@ -100,8 +102,8 @@ LXA_TEMPLATE_CLOSE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         size_t work;
         lxa_status_t status = lxa_size_add(length - boundary, 1, &work);
         if (status == LXA_OK)
-            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-                LXA_BUDGET_WORK, work, LXA_SCOPE_REASON(view));
+            status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+                work, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
     }
     if (explicit_end && has_patch) {
@@ -131,8 +133,8 @@ LXA_FOSTERED_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t start,
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         bool clearable;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            2, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, i, &name, &ns);
         if (status != LXA_OK) return status;
         if (first_cell && i == start
@@ -156,8 +158,8 @@ LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         return LXA_ERROR_ARGUMENT;
     lxa_span_t root, row;
     lxa_dom_namespace_t ns;
-    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-        LXA_BUDGET_WORK, section_root ? 2 : 1, LXA_SCOPE_REASON(view));
+    lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+        section_root ? 2 : 1, LXA_SCOPE_REASON(view));
     if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
     if (status == LXA_OK && section_root)
         status = LXA_SCOPE_READ(view, boundary + 1, &row, &ns);
@@ -172,8 +174,8 @@ LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         ++start;
         if (start < length) {
             lxa_span_t cell;
-            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+                1, LXA_SCOPE_REASON(view));
             if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &cell, &ns);
             if (status != LXA_OK) return status;
             if (lxa_html_tree_name_equals(cell, "td", 2)
@@ -201,8 +203,8 @@ LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     lxa_span_t root, row, item;
     lxa_status_t status;
     if (mode == LXA_TEMPLATE_TABLE_BODY && active >= 3) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            2, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &row, &ns);
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &item, &ns);
         if (status != LXA_OK) return status;
@@ -212,8 +214,8 @@ LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         if (direct_cell) ++start;
     }
     if (mode == LXA_TEMPLATE_TABLE && active >= 3) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            2, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, start, &row, &ns);
         if (status != LXA_OK) return status;
@@ -222,8 +224,8 @@ LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         if (fostered_row) ++start;
     }
     if (mode == LXA_TEMPLATE_TABLE && active >= 4) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 3, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            3, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary + 1, &row, &ns);
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary + 2, &item, &ns);
@@ -270,13 +272,13 @@ LXA_TEMPLATE_MATHML_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     for (size_t i = length; i > boundary;) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ_NAME(view, --i, &name);
         if (status != LXA_OK) return status;
         if (lxa_html_tree_name_equals(name, "table", 5)) {
-            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-                LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+            status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+                1, LXA_SCOPE_REASON(view));
             if (status == LXA_OK) status = LXA_SCOPE_NAMESPACE(view, i, &ns);
             if (status != LXA_OK) return status;
             if (ns == LXA_DOM_NS_HTML) {
@@ -288,8 +290,8 @@ LXA_TEMPLATE_MATHML_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     if (mode == LXA_TEMPLATE_TABLE || mode == LXA_TEMPLATE_TABLE_BODY) {
         lxa_span_t root;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            2, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ_NAME(view, boundary, &root);
         if (status == LXA_OK) status = LXA_SCOPE_NAMESPACE(view, boundary, &ns);
         if (status != LXA_OK) return status;
@@ -318,8 +320,8 @@ LXA_TEMPLATE_TABLE_SCAN_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
         if (ns != LXA_DOM_NS_HTML) {
@@ -397,8 +399,8 @@ LXA_TEMPLATE_TABLE_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         goto publish;
     }
     if (active != 0 && mode == LXA_TEMPLATE_TABLE && (scan.ordinary_above || caption_open)) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
         if (status != LXA_OK) return status;
         if (lxa_html_tree_name_equals(root, "caption", 7) || !lxa_html_tree_table_context(root)) {
@@ -461,8 +463,8 @@ LXA_TEMPLATE_TABLE_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     else if (active == 2 && mode == LXA_TEMPLATE_TABLE_BODY
         && (lxa_html_tree_name_equals(top, "td", 2) || lxa_html_tree_name_equals(top, "th", 2))
         && (row || cell)) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &parent, &ns);
         if (status != LXA_OK) return status;
         if (!lxa_html_tree_name_equals(parent, "tr", 2)) return LXA_ERROR_INTERNAL;
@@ -471,8 +473,8 @@ LXA_TEMPLATE_TABLE_START_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     else if (active == 3 && mode == LXA_TEMPLATE_TABLE
         && (lxa_html_tree_name_equals(top, "td", 2) || lxa_html_tree_name_equals(top, "th", 2))
         && (row || cell)) {
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 2, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            2, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, length - 2, &parent, &ns);
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, boundary, &root, &ns);
         if (status != LXA_OK) return status;
@@ -517,8 +519,8 @@ LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(
-            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(
+            LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
@@ -564,7 +566,7 @@ LXA_SCOPE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t targ
     plan.search_length = LXA_SCOPE_LENGTH(&search);
     status = LXA_SCOPE_NAME(&search, boundary, target, scope, &plan.index);
     if (status == LXA_OK && column_group)
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK,
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
                                    1, LXA_SCOPE_REASON(view));
     if (status == LXA_OK) *out = plan;
     return status;
@@ -578,8 +580,8 @@ LXA_OPEN_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     *index = length;
     for (size_t i = boundary; i < length; ++i) {
         uint64_t identity;
-        lxa_status_t status = lxa_budget_charge(
-            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(
+            LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_IDENTITY(view, i, &identity);
         if (status != LXA_OK) return status;
@@ -601,8 +603,8 @@ LXA_SCOPED_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         uint64_t identity;
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(
-            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(
+            LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_IDENTITY(view, --i, &identity);
         if (status != LXA_OK) return status;
@@ -626,14 +628,14 @@ LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(
-            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(
+            LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
         if (ns == LXA_DOM_NS_HTML && name.length == target.length) {
             size_t blocks = name.length / 8 + (name.length % 8 != 0);
-            status = lxa_budget_charge(LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK,
+            status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
                                        blocks, LXA_SCOPE_REASON(view));
             if (status != LXA_OK) return status;
             if (lxa_html_tree_name_equals(name, (const char *) target.data,
@@ -660,7 +662,7 @@ LXA_ORDINARY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     plan.search_length = LXA_SCOPE_LENGTH(&search);
     status = LXA_ORDINARY_NAME(&search, boundary, target, &plan.index);
     if (status == LXA_OK && column_group)
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK,
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
                                    1, LXA_SCOPE_REASON(view));
     if (status == LXA_OK) *out = plan;
     return status;
@@ -670,8 +672,8 @@ LXA_TEMPLATE_MISSING_TABLE_PLAN_NAME(const LXA_SCOPE_VIEW *view,
     size_t boundary, size_t *out)
 {
     size_t length = LXA_SCOPE_LENGTH(view), keep = length;
-    lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-        LXA_BUDGET_WORK, length - boundary, LXA_SCOPE_REASON(view));
+    lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+        length - boundary, LXA_SCOPE_REASON(view));
     if (status != LXA_OK) return status;
     for (size_t i = length; i > boundary; ) {
         lxa_span_t name;
@@ -720,7 +722,7 @@ LXA_TEMPLATE_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     else if (!lxa_html_tree_name_equals(target, "col", 3) && length > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK,
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
                                    1, LXA_SCOPE_REASON(view));
         if (status == LXA_OK) status = LXA_SCOPE_READ(view, length - 1, &name, &ns);
         if (status != LXA_OK) return status;
@@ -742,8 +744,8 @@ LXA_LIST_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     for (size_t i = length; i > boundary; ) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
@@ -779,8 +781,8 @@ LXA_IMPLIED_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     while (keep > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(
-            LXA_SCOPE_BUDGET(view), LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(
+            LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, keep - 1, &name, &ns);
         if (status != LXA_OK) return status;
@@ -844,8 +846,8 @@ LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
@@ -883,8 +885,8 @@ LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     else if (length > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, length - 1, &name, &ns);
         if (status != LXA_OK) return status;
@@ -905,8 +907,8 @@ LXA_TABLE_CONTEXT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     while (i > boundary) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
-        lxa_status_t status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        lxa_status_t status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
         status = LXA_SCOPE_READ(view, --i, &name, &ns);
         if (status != LXA_OK) return status;
@@ -920,8 +922,8 @@ LXA_TABLE_CONTEXT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         if (lxa_html_tree_table_context(name)) {
             plan.in_table = true;
             if (i == length - 1 && lxa_html_tree_name_equals(name, "colgroup", 8)) {
-                status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-                    LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+                status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+                    1, LXA_SCOPE_REASON(view));
                 if (status != LXA_OK) return status;
                 plan.keep = i;
             }
@@ -945,8 +947,8 @@ LXA_FORM_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, uint64_t identity,
     if (identity != 0)
         status = LXA_SCOPED_REFERENCE_NAME(&search, 0, identity, &index);
     if (status == LXA_OK && column_group)
-        status = lxa_budget_charge(LXA_SCOPE_BUDGET(view),
-            LXA_BUDGET_WORK, 1, LXA_SCOPE_REASON(view));
+        status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
+            1, LXA_SCOPE_REASON(view));
     if (status != LXA_OK) return status;
     lxa_html_form_end_plan_t plan = {length, index, index != length};
     if (plan.found) {
