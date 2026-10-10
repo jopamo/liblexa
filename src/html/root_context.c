@@ -3484,12 +3484,14 @@ lxa_html_root_context_foreign_dispatch(lxa_html_root_context_t *context,
     lxa_html_root_mode_t mode, const lxa_html_token_t *token,
     lxa_html_data_emit_t emit, void *user, lxa_html_root_foreign_dispatch_result_t *result)
 {
-    lxa_status_t status = begin(context);
-    if (status != LXA_OK) return status;
-    if (result == NULL) return LXA_ERROR_ARGUMENT;
+    if (result == NULL) {
+        lxa_status_t status = begin(context);
+        return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
+    }
+    /* Routing validates the context before dispatch has any effects. */
     lxa_html_root_foreign_dispatch_result_t out = {false, 0, 0};
     root_foreign_dispatch_view_t view = {context, mode, emit, user, &out};
-    status = context_dispatch_foreign(&view, token, &out.handled);
+    lxa_status_t status = context_dispatch_foreign(&view, token, &out.handled);
     if (status == LXA_OK) *result = out;
     return status;
 }
