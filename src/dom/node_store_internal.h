@@ -138,6 +138,36 @@ lxa_status_t lxa_dom_nodes_append_parsed_html_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out);
+
+typedef struct {
+    lxa_span_t name, value;
+    lxa_dom_attr_namespace_t namespace_id;
+} lxa_dom_builder_attribute_t;
+
+typedef lxa_status_t (*lxa_dom_builder_attribute_f)(const void *context,
+    lxa_dom_namespace_t ns, size_t index, lxa_dom_builder_attribute_t *out);
+
+typedef struct {
+    lxa_span_t name;
+    lxa_dom_namespace_t namespace_id;
+    size_t attribute_count;
+    lxa_dom_builder_attribute_f attribute;
+    const void *context;
+} lxa_dom_builder_element_t;
+
+/* Construct a fresh detached element and its attributes in source order.
+ * The descriptor and borrowed input spans must outlive the call and must not
+ * alias store storage. The private attribute reader only resolves input:
+ * it must not access/mutate the store, allocate, or call external observers.
+ * Allocator reentry remains forbidden. IDs, never array pointers, cross grows;
+ * the ownership window ends on return, including failure. No cached proof
+ * survives linking, external mutation, deletion, reset or a later operation.
+ * Publish out when the element is created. Later failure retains that element,
+ * earlier attributes and all accepted charges, as the separate checked calls do.
+ */
+lxa_status_t lxa_dom_nodes_build_element(lxa_dom_nodes_t *nodes,
+    const lxa_dom_builder_element_t *input, lxa_dom_ref_t *out);
+
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out);
 /* Read name and namespace after one reference/payload check.

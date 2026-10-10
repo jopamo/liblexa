@@ -2152,6 +2152,46 @@ option_selected_attribute(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     return status;
 }
 
+static lxa_status_t
+attach_attribute_at_tail(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
+    lxa_dom_record_t host, lxa_dom_record_t child, lxa_id_t attr_id,
+    lxa_id_t tail, lxa_span_t name)
+{
+    lxa_id_t host_id = (lxa_id_t) element.handle;
+    lxa_dom_element_t *data =
+        (lxa_dom_element_t *) nodes->elements.bytes.data + host.payload;
+    lxa_dom_attr_t *attrs = (lxa_dom_attr_t *) nodes->attributes.bytes.data;
+    lxa_dom_attr_t *attr = &attrs[child.payload];
+    bool select_option;
+    lxa_status_t status;
+    status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+                                    (uint64_t) data->attr_count + 1,
+                                    &nodes->limit_reason);
+    if (status != LXA_OK) {
+        return status;
+    }
+    if (data->attr_count == UINT32_MAX) {
+        return LXA_ERROR_OVERFLOW;
+    }
+    status = option_selected_attribute(nodes, element, host, name,
+                                       attr->namespace_id, &select_option);
+    if (status != LXA_OK) return status;
+    /* No allocation, callbacks or fallible work after this point. */
+    attr->owner = host_id;
+    if (tail == LXA_ID_NONE) {
+        data->first_attr = attr_id;
+    }
+    else {
+        attrs[((lxa_dom_record_t *) nodes->records.bytes.data)[tail].payload].next
+            = attr_id;
+    }
+    ++data->attr_count;
+    if (select_option)
+        ((lxa_dom_record_t *) nodes->records.bytes.data)[host_id].flags
+            |= LXA_DOM_OPTION_SELECTED;
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t attribute)
@@ -2161,7 +2201,6 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     lxa_dom_attr_t *attrs, *attr;
     lxa_id_t host_id, attr_id, match, tail;
     lxa_span_t name, value;
-    bool select_option;
     lxa_status_t status;
     if (nodes == NULL) {
         return LXA_ERROR_ARGUMENT;
@@ -2194,31 +2233,69 @@ lxa_dom_nodes_attach_attribute(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || match != LXA_ID_NONE) {
         return status == LXA_OK ? LXA_ERROR_ARGUMENT : status;
     }
-    status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
-                                    (uint64_t) data->attr_count + 1,
-                                    &nodes->limit_reason);
-    if (status != LXA_OK) {
-        return status;
-    }
-    if (data->attr_count == UINT32_MAX) {
-        return LXA_ERROR_OVERFLOW;
-    }
-    status = option_selected_attribute(nodes, element, host, name,
-                                       attr->namespace_id, &select_option);
+    return attach_attribute_at_tail(nodes, element, host, child, attr_id, tail, name);
+}
+
+lxa_status_t
+lxa_dom_nodes_build_element(lxa_dom_nodes_t *nodes,
+    const lxa_dom_builder_element_t *input, lxa_dom_ref_t *out)
+{
+    if (nodes != NULL) nodes->limit_reason = LXA_BUDGET_COUNT;
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    *out = (lxa_dom_ref_t){0};
+    if (nodes == NULL || input == NULL
+        || (input->attribute_count != 0 && input->attribute == NULL))
+        return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = append_element(nodes, input->name,
+        input->namespace_id, HTML_NAME_TOKEN_TAG, out);
     if (status != LXA_OK) return status;
-    /* No allocation, callbacks or fallible work after this point. */
-    attr->owner = host_id;
-    if (tail == LXA_ID_NONE) {
-        data->first_attr = attr_id;
+    lxa_id_t host_id = (lxa_id_t) out->handle;
+    for (size_t i = 0; i < input->attribute_count; ++i) {
+        lxa_dom_builder_attribute_t entry;
+        status = input->attribute(input->context, input->namespace_id, i, &entry);
+        if (status != LXA_OK) return status;
+        status = lxa_budget_charge_work(nodes->budget, 1, &nodes->limit_reason);
+        if (status != LXA_OK) return status;
+        if (entry.name.data == NULL && entry.name.length != 0)
+            return LXA_ERROR_ARGUMENT;
+        lxa_dom_record_t host =
+            ((const lxa_dom_record_t *) nodes->records.bytes.data)[host_id];
+        lxa_dom_element_t data =
+            ((const lxa_dom_element_t *) nodes->elements.bytes.data)[host.payload];
+        uint64_t prior_work = nodes->budget->used[LXA_BUDGET_WORK];
+        lxa_id_t match, tail;
+        status = scan_attributes(nodes, host_id, data, entry.name,
+                                 &match, &tail, NULL);
+        if (status != LXA_OK) return status;
+        if (match != LXA_ID_NONE) continue;
+        uint64_t scan_work = nodes->budget->used[LXA_BUDGET_WORK] - prior_work;
+        lxa_dom_ref_t attribute;
+        status = append_attribute(nodes, entry.name, entry.value,
+            input->namespace_id != LXA_DOM_NS_HTML,
+            input->namespace_id == LXA_DOM_NS_HTML
+                ? LXA_DOM_ATTR_NS_NONE : entry.namespace_id,
+            HTML_NAME_TOKEN_ATTRIBUTE, &attribute);
+        if (status != LXA_OK) return status;
+
+        /* Only detached storage grew. The owned chain and its scan charge
+         * are unchanged; retain scalar charging at the exhaustion boundary. */
+        if (scan_work != 0) {
+            if (lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+                                      scan_work, NULL) == LXA_OK)
+                status = lxa_budget_charge_work(nodes->budget, scan_work,
+                                                &nodes->limit_reason);
+            else
+                status = scan_attributes(nodes, host_id, data, entry.name,
+                                         &match, &tail, NULL);
+            if (status != LXA_OK) return status;
+        }
+        lxa_id_t attr_id = (lxa_id_t) attribute.handle;
+        lxa_dom_record_t child =
+            ((const lxa_dom_record_t *) nodes->records.bytes.data)[attr_id];
+        status = attach_attribute_at_tail(nodes, *out, host, child, attr_id, tail,
+            entry.name);
+        if (status != LXA_OK) return status;
     }
-    else {
-        attrs[((lxa_dom_record_t *) nodes->records.bytes.data)[tail].payload].next
-            = attr_id;
-    }
-    ++data->attr_count;
-    if (select_option)
-        ((lxa_dom_record_t *) nodes->records.bytes.data)[host_id].flags
-            |= LXA_DOM_OPTION_SELECTED;
     return LXA_OK;
 }
 
