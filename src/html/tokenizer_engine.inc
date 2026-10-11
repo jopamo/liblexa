@@ -92,40 +92,12 @@ charge_work(lxa_html_tokenizer_t *tokenizer, size_t steps)
 static lxa_html_result_t
 account_run(lxa_html_tokenizer_t *tokenizer, size_t bytes)
 {
-    uint64_t credit = tokenizer->budget->work_credit;
-    uint64_t used = tokenizer->budget->used[LXA_BUDGET_WORK];
-    uint64_t input_left = tokenizer->budget->limits.max_input_bytes;
-    lxa_html_result_t result;
     if (tokenizer->prepaid_input) {
         return charge_work(tokenizer, bytes);
     }
-    if (input_left >= tokenizer->budget->used[LXA_BUDGET_INPUT]) {
-        input_left -= tokenizer->budget->used[LXA_BUDGET_INPUT];
-    }
-    else {
-        input_left = 0;
-    }
-    if (credit > tokenizer->budget->limits.max_work) {
-        credit = tokenizer->budget->limits.max_work;
-    }
-    if (used <= credit && bytes <= credit - used && bytes <= input_left
-        && (tokenizer->budget->limits.work_per_input_byte == 0
-            || bytes <= (UINT64_MAX - tokenizer->budget->work_credit)
-                        / tokenizer->budget->limits.work_per_input_byte)) {
-        result = accept_input(tokenizer, bytes);
-        return result == LXA_HTML_OK ? charge_work(tokenizer, bytes) : result;
-    }
-    while (bytes-- != 0) {
-        result = accept_input(tokenizer, 1);
-        if (result != LXA_HTML_OK) {
-            return result;
-        }
-        result = charge_work(tokenizer, 1);
-        if (result != LXA_HTML_OK) {
-            return result;
-        }
-    }
-    return LXA_HTML_OK;
+    lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+    lxa_status_t status = lxa_budget_accept_work_run(tokenizer->budget, bytes, &reason);
+    return budget_result(tokenizer, status, reason);
 }
 
 #define LXA_HTML_CONSUMER_HOOK(name, parameters, ...) \
