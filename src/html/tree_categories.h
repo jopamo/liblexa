@@ -180,26 +180,40 @@ lxa_html_select_arguments_valid(lxa_html_token_kind_t kind, lxa_span_t name)
             || name.length != 0);
 }
 
-static inline const char *
-lxa_html_tree_namespace_name(lxa_dom_namespace_t ns)
+_Static_assert(LXA_DOM_NS_HTML == 1 && LXA_DOM_NS_MATHML == 2 && LXA_DOM_NS_SVG == 3,
+    "generated tag metadata namespace IDs");
+_Static_assert(LIBLEXA_HTML_TAG_METADATA_COUNT <= UINT16_MAX + 1u,
+    "generated tag metadata ID width");
+
+static inline uint16_t
+lxa_html_tree_tag_id(lxa_span_t name, lxa_dom_namespace_t ns)
 {
-    return ns == LXA_DOM_NS_HTML ? "html"
-        : ns == LXA_DOM_NS_SVG ? "svg"
-        : ns == LXA_DOM_NS_MATHML ? "mathml" : NULL;
+    if ((unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
+        return 0;
+    if (name.data == NULL || name.length == 0 || name.length > LIBLEXA_HTML_TAG_NAME_MAX)
+        return (uint16_t) ns;
+    size_t first = 4, end = LIBLEXA_HTML_TAG_METADATA_COUNT;
+    while (first < end) {
+        size_t middle = first + (end - first) / 2;
+        const liblexa_html_tag_metadata *tag = &liblexa_html_tag_metadata_table[middle];
+        int order = (int) ns - tag->namespace_id;
+        if (order == 0) {
+            size_t length = name.length < tag->length ? name.length : tag->length;
+            order = memcmp(name.data, tag->tag, length);
+            if (order == 0)
+                order = name.length < tag->length ? -1 : name.length > tag->length;
+        }
+        if (order == 0) return (uint16_t) middle;
+        if (order < 0) end = middle;
+        else first = middle + 1;
+    }
+    return (uint16_t) ns;
 }
 
 static inline bool
 lxa_html_tree_special_element(lxa_span_t name, lxa_dom_namespace_t ns)
 {
-    const char *namespace = lxa_html_tree_namespace_name(ns);
-    if (namespace == NULL) return false;
-    for (size_t i = 0; i < LIBLEXA_HTML_SPECIAL_COUNT; ++i) {
-        const liblexa_html_special_tag *tag = &liblexa_html_special_tags[i];
-        if (lxa_html_tree_name_equals(name, tag->tag, tag->length)
-            && strcmp(tag->namespace_name, namespace) == 0)
-            return true;
-    }
-    return false;
+    return liblexa_html_tag_metadata_table[lxa_html_tree_tag_id(name, ns)].special != 0;
 }
 
 /* Formatting and implied-end predicates require HTML-rule dispatch. */
@@ -227,16 +241,8 @@ static inline bool
 lxa_html_tree_scope_boundary(lxa_span_t name, lxa_dom_namespace_t ns,
                              lxa_html_scope_kind_t scope)
 {
-    const char *namespace = lxa_html_tree_namespace_name(ns);
-    if (namespace == NULL) return false;
-    for (size_t i = 0; i < LIBLEXA_HTML_SCOPE_BOUNDARY_COUNT; ++i) {
-        const liblexa_html_scope_boundary *tag = &liblexa_html_scope_boundaries[i];
-        if ((tag->mask & scope) != 0
-            && lxa_html_tree_name_equals(name, tag->tag, tag->length)
-            && strcmp(tag->namespace_name, namespace) == 0)
-            return true;
-    }
-    return false;
+    return (liblexa_html_tag_metadata_table[lxa_html_tree_tag_id(name, ns)].scope_mask
+            & scope) != 0;
 }
 
 static inline bool
