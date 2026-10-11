@@ -9,6 +9,7 @@ typedef struct {
     uint64_t identity;
     lxa_dom_namespace_t namespace_id;
     bool annotation_html;
+    uint16_t tag_id; /* descriptor of the owned, adjusted name and namespace */
 } lxa_html_control_element_t;
 
 typedef struct {

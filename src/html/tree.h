@@ -34,6 +34,7 @@ typedef struct {
 typedef struct {
     lxa_handle_t handle;
     uint32_t actual_depth, depth_revision;
+    uint16_t tag_id; /* immutable element metadata; zero requires checked lookup */
 } lxa_html_open_entry_t;
 
 enum {

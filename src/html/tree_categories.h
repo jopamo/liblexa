@@ -216,6 +216,16 @@ lxa_html_tree_special_element(lxa_span_t name, lxa_dom_namespace_t ns)
     return liblexa_html_tag_metadata_table[lxa_html_tree_tag_id(name, ns)].special != 0;
 }
 
+static inline uint16_t
+lxa_html_tree_cached_tag_id(uint16_t id, lxa_span_t name, lxa_dom_namespace_t ns)
+{
+    /* Call only after the owner checks its immutable name and namespace. */
+    if (id != 0 && id < LIBLEXA_HTML_TAG_METADATA_COUNT
+        && liblexa_html_tag_metadata_table[id].namespace_id == ns)
+        return id;
+    return lxa_html_tree_tag_id(name, ns);
+}
+
 /* Formatting and implied-end predicates require HTML-rule dispatch. */
 static inline bool
 lxa_html_tree_formatting_tag(lxa_span_t name)

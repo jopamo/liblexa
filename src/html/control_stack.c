@@ -140,11 +140,17 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
     status = check_push(stack, total);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t element = {
-        stack->names.length, name.length, stack->next_identity, ns, annotation_html
+        .name_offset = stack->names.length, .name_length = name.length,
+        .identity = stack->next_identity, .namespace_id = ns,
+        .annotation_html = annotation_html
     };
     status = self ? lxa_buffer_append_self(&stack->names, source, name.length)
                   : lxa_buffer_append(&stack->names, name);
-    if (status == LXA_OK) status = lxa_vector_push(&stack->elements, &element);
+    if (status == LXA_OK) {
+        element.tag_id = lxa_html_tree_tag_id(
+            (lxa_span_t){stack->names.data + element.name_offset, element.name_length}, ns);
+        status = lxa_vector_push(&stack->elements, &element);
+    }
     if (status != LXA_OK) {
         (void) internal(lxa_buffer_truncate(&stack->names, element.name_offset));
         return internal(status);
@@ -438,6 +444,15 @@ control_stack_read(const control_stack_view_t *view, size_t index,
     return status;
 }
 
+static inline uint16_t
+control_stack_tag_id(const control_stack_view_t *view, size_t index,
+    lxa_span_t name, lxa_dom_namespace_t ns)
+{
+    const lxa_html_control_element_t *entries =
+        (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
+    return lxa_html_tree_cached_tag_id(entries[index].tag_id, name, ns);
+}
+
 static inline lxa_status_t
 control_stack_identity(const control_stack_view_t *view, size_t index,
                         uint64_t *identity)
@@ -494,6 +509,7 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #define LXA_SPECIAL_VIEW control_stack_view_t
 #define LXA_SPECIAL_LENGTH(view) ((view)->length)
 #define LXA_SPECIAL_READ control_stack_read
+#define LXA_SPECIAL_TAG_ID control_stack_tag_id
 #define LXA_SPECIAL_BUDGET(view) ((view)->stack->budget)
 #define LXA_SPECIAL_REASON(view) (&(view)->stack->limit_reason)
 #include "html/special_find.inc"
@@ -501,6 +517,7 @@ control_stack_identity(const control_stack_view_t *view, size_t index,
 #undef LXA_SPECIAL_VIEW
 #undef LXA_SPECIAL_LENGTH
 #undef LXA_SPECIAL_READ
+#undef LXA_SPECIAL_TAG_ID
 #undef LXA_SPECIAL_BUDGET
 #undef LXA_SPECIAL_REASON
 
@@ -587,9 +604,11 @@ control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *n
 #define LXA_SCOPE_BUDGET(view) ((view)->stack->budget)
 #define LXA_SCOPE_REASON(view) (&(view)->stack->limit_reason)
 #define LXA_SCOPE_READ control_stack_read
+#define LXA_SCOPE_TAG_ID control_stack_tag_id
 #define LXA_SCOPE_READ_NAME control_stack_name
 #include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
+#undef LXA_SCOPE_TAG_ID
 #undef LXA_SCOPE_READ_NAME
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET

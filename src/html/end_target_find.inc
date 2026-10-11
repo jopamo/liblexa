@@ -1,7 +1,7 @@
 #include "base/budget_internal.h"
 
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,NAMESPACE,PLAN_NAME,IDENTITY},
+ * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,TAG_ID,NAMESPACE,PLAN_NAME,IDENTITY},
  * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN,MATHML_TABLE}_PLAN_NAME,
@@ -531,7 +531,9 @@ LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
             *index = i;
             return LXA_OK;
         }
-        if (lxa_html_tree_scope_boundary(name, ns, scope)) break;
+        if ((liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].scope_mask & scope) != 0)
+            break;
     }
     return LXA_OK;
 }
@@ -614,7 +616,9 @@ LXA_SCOPED_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
         }
         status = LXA_SCOPE_READ(view, i, &name, &ns);
         if (status != LXA_OK) return status;
-        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
+        if ((liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].scope_mask & LXA_HTML_SCOPE_NORMAL) != 0)
+            break;
     }
     return LXA_OK;
 }
@@ -644,7 +648,9 @@ LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target
                 return LXA_OK;
             }
         }
-        if (lxa_html_tree_special_element(name, ns)) break;
+        if (liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].special != 0)
+            break;
     }
     return LXA_OK;
 }
@@ -762,7 +768,8 @@ LXA_LIST_ITEM_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             index = i;
             break;
         }
-        if (lxa_html_tree_special_element(name, ns)
+        if (liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].special != 0
             && !(ns == LXA_DOM_NS_HTML
                  && (lxa_html_tree_name_equals(name, "address", 7)
                      || lxa_html_tree_name_equals(name, "div", 3)
@@ -857,7 +864,8 @@ LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             goto publish;
         }
         if (foreign_end && ns != LXA_DOM_NS_HTML) {
-            foreign_boundary |= lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL);
+            foreign_boundary |= (liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].scope_mask & LXA_HTML_SCOPE_NORMAL) != 0;
             continue;
         }
         foreign_end = false;
@@ -866,7 +874,9 @@ LXA_SELECT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
             select = i;
             break;
         }
-        if (lxa_html_tree_scope_boundary(name, ns, LXA_HTML_SCOPE_NORMAL)) break;
+        if ((liblexa_html_tag_metadata_table[
+                LXA_SCOPE_TAG_ID(view, i, name, ns)].scope_mask & LXA_HTML_SCOPE_NORMAL) != 0)
+            break;
     }
     if (select != length && (select_token || input)) {
         plan.keep = select;

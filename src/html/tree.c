@@ -45,10 +45,23 @@ make_open_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
 }
 
 static lxa_status_t
+make_element_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
+    lxa_html_open_entry_t *out)
+{
+    lxa_status_t status = make_open_entry(tree, ref, out);
+    lxa_span_t name;
+    lxa_dom_namespace_t ns;
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_element_read(tree->nodes, ref, &name, &ns);
+    if (status == LXA_OK) out->tag_id = lxa_html_tree_tag_id(name, ns);
+    return status;
+}
+
+static lxa_status_t
 push_open_entry(lxa_html_tree_t *tree, lxa_vector_t *elements, lxa_dom_ref_t ref)
 {
     lxa_html_open_entry_t entry;
-    lxa_status_t status = make_open_entry(tree, ref, &entry);
+    lxa_status_t status = make_element_entry(tree, ref, &entry);
     return status == LXA_OK ? lxa_vector_push(elements, &entry) : status;
 }
 
@@ -123,7 +136,10 @@ remember_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
                 return LXA_OK;
             lxa_html_open_entry_t repaired;
             lxa_status_t status = make_open_entry(tree, parent, &repaired);
-            if (status == LXA_OK) *entry = repaired;
+            if (status == LXA_OK) {
+                repaired.tag_id = entry->tag_id;
+                *entry = repaired;
+            }
             return status;
         }
     }
@@ -1004,6 +1020,13 @@ tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
         view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name, ns);
 }
 
+static inline uint16_t
+tree_scope_tag_id(const lxa_html_tree_scope_view_t *view, size_t index,
+    lxa_span_t name, lxa_dom_namespace_t ns)
+{
+    return lxa_html_tree_cached_tag_id(view->entries[index].tag_id, name, ns);
+}
+
 static inline lxa_status_t
 tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
                      uint64_t *identity)
@@ -1077,6 +1100,7 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_SPECIAL_VIEW lxa_html_tree_scope_view_t
 #define LXA_SPECIAL_LENGTH(view) ((view)->length)
 #define LXA_SPECIAL_READ tree_scope_read
+#define LXA_SPECIAL_TAG_ID tree_scope_tag_id
 #define LXA_SPECIAL_BUDGET(view) ((view)->tree->nodes->budget)
 #define LXA_SPECIAL_REASON(view) (&(view)->tree->nodes->limit_reason)
 #include "html/special_find.inc"
@@ -1084,6 +1108,7 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SPECIAL_VIEW
 #undef LXA_SPECIAL_LENGTH
 #undef LXA_SPECIAL_READ
+#undef LXA_SPECIAL_TAG_ID
 #undef LXA_SPECIAL_BUDGET
 #undef LXA_SPECIAL_REASON
 
@@ -1120,11 +1145,13 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_SCOPE_BUDGET(view) ((view)->tree->nodes->budget)
 #define LXA_SCOPE_REASON(view) (&(view)->tree->nodes->limit_reason)
 #define LXA_SCOPE_READ tree_scope_read
+#define LXA_SCOPE_TAG_ID tree_scope_tag_id
 #define LXA_SCOPE_READ_NAME(view, index, name) \
     lxa_dom_nodes_element_name((view)->tree->nodes, \
         lxa_html_open_ref((view)->tree, &(view)->entries[index]), name)
 #include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
+#undef LXA_SCOPE_TAG_ID
 #undef LXA_SCOPE_READ_NAME
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET
@@ -1746,7 +1773,7 @@ tree_adoption_inner(tree_adoption_view_t *view, size_t entry, size_t node,
     if (status != LXA_OK) return status;
     formatting_entries(view->tree)[entry].element = clone;
     lxa_html_open_entry_t replacement;
-    status = make_open_entry(view->tree, clone, &replacement);
+    status = make_element_entry(view->tree, clone, &replacement);
     if (status != LXA_OK) return status;
     ((lxa_html_open_entry_t *) view->elements->bytes.data)[node] = replacement;
     status = lxa_dom_nodes_reparent_constructed_child(view->tree->nodes, clone, last);
@@ -1812,7 +1839,7 @@ tree_adoption_commit(tree_adoption_view_t *view, lxa_dom_ref_t clone, size_t for
     }
     /* Removing formatting shifts furthest up by one. Insert below it. */
     lxa_html_open_entry_t open_entry;
-    status = make_open_entry(tree, clone, &open_entry);
+    status = make_element_entry(tree, clone, &open_entry);
     if (status == LXA_OK)
         status = lxa_vector_insert(view->elements, furthest_index, &open_entry);
     if (status != LXA_OK) {

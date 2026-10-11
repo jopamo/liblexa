@@ -113,9 +113,11 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #define LXA_SCOPE_BUDGET(view) ((view)->budget)
 #define LXA_SCOPE_REASON(view) ((view)->reason)
 #define LXA_SCOPE_READ lxa_html_control_scope_read
+#define LXA_SCOPE_TAG_ID(view, index, name, ns) lxa_html_tree_tag_id(name, ns)
 #define LXA_SCOPE_READ_NAME lxa_html_control_scope_name
 #include "html/end_target_find.inc"
 #undef LXA_SCOPE_READ
+#undef LXA_SCOPE_TAG_ID
 #undef LXA_SCOPE_READ_NAME
 #undef LXA_SCOPE_REASON
 #undef LXA_SCOPE_BUDGET
