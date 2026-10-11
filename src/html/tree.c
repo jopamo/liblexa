@@ -52,8 +52,32 @@ push_open_entry(lxa_html_tree_t *tree, lxa_vector_t *elements, lxa_dom_ref_t ref
     return status == LXA_OK ? lxa_vector_push(elements, &entry) : status;
 }
 
+static lxa_html_open_entry_t *
+fixed_depth_entry(lxa_html_tree_t *tree, lxa_dom_ref_t ref)
+{
+    if (ref.handle == LXA_HANDLE_NONE) return NULL;
+    if (ref.handle == tree->document.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_DOCUMENT];
+    if (ref.handle == tree->html.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_HTML];
+    if (ref.handle == tree->head.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_HEAD];
+    if (ref.handle == tree->head_noscript.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_HEAD_NOSCRIPT];
+    if (ref.handle == tree->body.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_BODY];
+    if (ref.handle == tree->template_fragment.handle) return &tree->fixed_depth[LXA_HTML_DEPTH_TEMPLATE];
+    return NULL;
+}
+
+static lxa_status_t
+remember_fixed_depth(lxa_html_tree_t *tree, lxa_dom_ref_t ref)
+{
+    lxa_html_open_entry_t *entry = fixed_depth_entry(tree, ref);
+    if (entry == NULL) return LXA_OK;
+    if (entry->handle == ref.handle && entry->actual_depth != 0
+        && entry->depth_revision == tree->nodes->depth_revision)
+        return LXA_OK;
+    return make_open_entry(tree, ref, entry);
+}
+
 static void
-use_stack_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
+use_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     lxa_dom_insertion_depth_t *depth)
 {
     if (depth->parent == parent.handle || depth->child == parent.handle)
@@ -74,10 +98,18 @@ use_stack_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             return;
         }
     }
+    const lxa_html_open_entry_t *entry = fixed_depth_entry(tree, parent);
+    if (entry != NULL && entry->handle == parent.handle
+        && entry->actual_depth != 0 && entry->depth_revision != 0
+        && entry->depth_revision == tree->nodes->depth_revision)
+        *depth = (lxa_dom_insertion_depth_t){
+            tree->nodes, tree->document.epoch, entry->depth_revision,
+            entry->handle, LXA_HANDLE_NONE, entry->actual_depth
+        };
 }
 
 static lxa_status_t
-remember_stack_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
+remember_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
 {
     lxa_vector_t *stacks[] = {&tree->open_elements, &tree->template_elements};
     for (size_t i = 0; i < sizeof(stacks) / sizeof(stacks[0]); ++i) {
@@ -95,7 +127,7 @@ remember_stack_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
             return status;
         }
     }
-    return LXA_OK;
+    return remember_fixed_depth(tree, parent);
 }
 
 /* Keep virtual template context for tree feedback; redirect only insertion. */
@@ -113,10 +145,10 @@ insert_constructed(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 {
     lxa_status_t status = resolve_template_location(tree, &parent, &before);
     if (status != LXA_OK) return status;
-    use_stack_depth(tree, parent, &tree->insertion_depth);
+    use_insertion_depth(tree, parent, &tree->insertion_depth);
     status = lxa_dom_nodes_insert_constructed_cached(tree->nodes, parent, child,
         before, &tree->insertion_depth);
-    if (status == LXA_OK) status = remember_stack_depth(tree, parent);
+    if (status == LXA_OK) status = remember_insertion_depth(tree, parent);
     return status;
 }
 
@@ -134,12 +166,12 @@ build_insert_element_input(lxa_html_tree_t *tree,
     if (tree->template_patch.target.handle != LXA_HANDLE_NONE
         && parent.handle == tree->template_fragment.handle)
         actual = tree->template_patch.target;
-    use_stack_depth(tree, actual, &depth);
+    use_insertion_depth(tree, actual, &depth);
     lxa_status_t status = lxa_dom_nodes_build_insert_element(tree->nodes,
         input, &location, &depth, out);
     if (status == LXA_OK) {
         tree->insertion_depth = depth;
-        status = remember_stack_depth(tree, location.parent);
+        status = remember_insertion_depth(tree, location.parent);
     }
     return status;
 }
@@ -209,7 +241,10 @@ ensure_element(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
     };
     status = build_insert_element_input(tree, &input, parent,
         (lxa_dom_ref_t){0}, &node);
-    if (status == LXA_OK) *slot = node;
+    if (status == LXA_OK) {
+        *slot = node;
+        status = remember_fixed_depth(tree, node);
+    }
     return status;
 }
 
@@ -4127,7 +4162,10 @@ admit_head_noscript(lxa_html_tree_t *tree, const lxa_html_token_t *token)
     lxa_dom_ref_t child;
     lxa_status_t status = build_insert_element(tree, token, token->name, LXA_DOM_NS_HTML,
         tree->head, (lxa_dom_ref_t){0}, &child);
-    if (status == LXA_OK) tree->head_noscript = child;
+    if (status == LXA_OK) {
+        tree->head_noscript = child;
+        status = remember_fixed_depth(tree, child);
+    }
     return status;
 }
 

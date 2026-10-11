@@ -36,6 +36,16 @@ typedef struct {
     uint32_t actual_depth, depth_revision;
 } lxa_html_open_entry_t;
 
+enum {
+    LXA_HTML_DEPTH_DOCUMENT,
+    LXA_HTML_DEPTH_HTML,
+    LXA_HTML_DEPTH_HEAD,
+    LXA_HTML_DEPTH_HEAD_NOSCRIPT,
+    LXA_HTML_DEPTH_BODY,
+    LXA_HTML_DEPTH_TEMPLATE,
+    LXA_HTML_DEPTH_FIXED_COUNT
+};
+
 typedef struct {
     lxa_dom_nodes_t *nodes;
     lxa_dom_ref_t document, html, head, head_noscript, body, form;
@@ -43,6 +53,7 @@ typedef struct {
     lxa_dom_content_patch_t template_patch;
     lxa_dom_ref_t text_element;
     lxa_dom_insertion_depth_t insertion_depth;
+    lxa_html_open_entry_t fixed_depth[LXA_HTML_DEPTH_FIXED_COUNT];
     lxa_vector_t formatting; /* active entries and scope markers */
     size_t formatting_marker; /* SIZE_MAX when no marker is active */
     lxa_vector_t open_elements; /* lxa_html_open_entry_t; no node ownership */
