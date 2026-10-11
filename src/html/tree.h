@@ -28,6 +28,14 @@ typedef struct {
     size_t previous_marker; /* read only through the marker index chain */
 } lxa_html_formatting_entry_t;
 
+/* Open stacks belong to one parser document/epoch. Keep only the packed handle
+ * per entry; reconstruct checked references from that captured context.
+ * Zero depth is unknown; a stale revision requires checked ancestry repair. */
+typedef struct {
+    lxa_handle_t handle;
+    uint32_t actual_depth, depth_revision;
+} lxa_html_open_entry_t;
+
 typedef struct {
     lxa_dom_nodes_t *nodes;
     lxa_dom_ref_t document, html, head, head_noscript, body, form;
@@ -37,7 +45,7 @@ typedef struct {
     lxa_dom_insertion_depth_t insertion_depth;
     lxa_vector_t formatting; /* active entries and scope markers */
     size_t formatting_marker; /* SIZE_MAX when no marker is active */
-    lxa_vector_t open_elements; /* parser scratch; owns only references */
+    lxa_vector_t open_elements; /* lxa_html_open_entry_t; no node ownership */
     lxa_vector_t template_stack; /* enclosing fragment, patch, boundary and mode */
     lxa_vector_t template_elements; /* open HTML elements in template content */
     lxa_buffer_t table_text; /* held until the next non-text token */
@@ -51,6 +59,12 @@ typedef struct {
     bool frameset_ok;
     lxa_status_t failure;
 } lxa_html_tree_t;
+
+static inline lxa_dom_ref_t
+lxa_html_open_ref(const lxa_html_tree_t *tree, const lxa_html_open_entry_t *entry)
+{
+    return (lxa_dom_ref_t){tree->nodes, tree->document.epoch, entry->handle};
+}
 
 lxa_status_t lxa_html_tree_init(
     lxa_html_tree_t *tree, lxa_dom_nodes_t *nodes);

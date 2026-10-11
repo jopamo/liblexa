@@ -169,8 +169,10 @@ typedef struct {
 lxa_status_t lxa_dom_nodes_build_element(lxa_dom_nodes_t *nodes,
     const lxa_dom_builder_element_t *input, lxa_dom_ref_t *out);
 
-/* Zero-initialized, parser-owned insertion cursor. Only checked insertion may
- * populate it; callers may clear but must not manufacture or edit its proof.
+/* Zero-initialized, parser-owned insertion cursor. Only checked insertion mints
+ * proof. A parser may retain its parent/child depths in owned stack entries and
+ * restore a parent cursor with the same owner, captured epoch and revision.
+ * Callers may clear proof but must not invent depths or refresh its revision.
  * Depth counts actual ancestors, including the document/fragment root, not
  * open-stack entries or virtual template hosts. Detached element roots do not
  * produce proof. New leaf links preserve existing anchored depths; removals,
