@@ -5,6 +5,7 @@
 #include "liblexa/base.h"
 #include "dom/namespace.h"
 #include "dom/shape.h"
+#include "dom/content_patch.h"
 
 /* The engine record contains IDs only. Drafts have no published links or
  * payload; typed payload construction and tree publication are separate.
@@ -133,8 +134,6 @@ typedef enum {
 
 /* Parser-only names preserve canonical tokenizer spelling, including
  * characters rejected by the public DOM constructors. */
-lxa_status_t lxa_dom_nodes_append_parsed_html_element(lxa_dom_nodes_t *nodes,
-    lxa_span_t name, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_append_parsed_html_attribute(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_span_t value, lxa_dom_ref_t *out);
 lxa_status_t lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
@@ -196,6 +195,21 @@ typedef struct {
 lxa_status_t lxa_dom_nodes_insert_constructed_cached(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before,
     lxa_dom_insertion_depth_t *depth);
+
+typedef struct {
+    lxa_dom_ref_t parent, before;
+    lxa_handle_t fragment;
+    const lxa_dom_content_patch_t *patch;
+} lxa_dom_builder_location_t;
+
+/* Extend fresh-element ownership through linking, with no escaping leaf proof.
+ * Build first, then resolve the optional patch and check the existing parent,
+ * anchor, hierarchy and budgets. Failure retains the built element/attributes
+ * and accepted charges. Location and patch are borrowed, non-store storage;
+ * success or location failure leaves the resolved location in place. */
+lxa_status_t lxa_dom_nodes_build_insert_element(lxa_dom_nodes_t *nodes,
+    const lxa_dom_builder_element_t *input, lxa_dom_builder_location_t *location,
+    lxa_dom_insertion_depth_t *depth, lxa_dom_ref_t *out);
 
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out);

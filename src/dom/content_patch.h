@@ -7,6 +7,13 @@ typedef struct {
     lxa_dom_ref_t target, start, end;
 } lxa_dom_content_patch_t;
 
+/* Redirect an insertion at the virtual fragment root to its patch target.
+ * Use an attached end marker as the insertion anchor; detached/moved ends do
+ * not supply an anchor. Preserve the parent query's WORK and failure. */
+lxa_status_t lxa_dom_nodes_resolve_content_location(lxa_dom_nodes_t *nodes,
+    lxa_handle_t fragment, const lxa_dom_content_patch_t *patch,
+    lxa_dom_ref_t *parent, lxa_dom_ref_t *before);
+
 /* Find the first named marker/start PI among actual scope descendants in tree
  * order. A marker returns itself twice; a start pairs with the next unnested
  * end among its siblings, regardless of their names. An unpaired start has

@@ -1093,13 +1093,6 @@ lxa_dom_nodes_append_html_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
 }
 
 lxa_status_t
-lxa_dom_nodes_append_parsed_html_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
-                                          lxa_dom_ref_t *out)
-{
-    return append_element(nodes, name, LXA_DOM_NS_HTML, HTML_NAME_TOKEN_TAG, out);
-}
-
-lxa_status_t
 lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_dom_ref_t *out)
 {
@@ -3511,7 +3504,8 @@ check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
 static lxa_status_t
 construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                 lxa_dom_ref_t child, lxa_dom_ref_t before,
-                lxa_dom_insertion_depth_t *proof)
+                lxa_dom_insertion_depth_t *proof,
+                const lxa_dom_record_t *owned_leaf)
 {
     lxa_dom_record_t host, leaf, target;
     lxa_dom_record_t *records;
@@ -3527,7 +3521,9 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         return LXA_ERROR_ARGUMENT;
     }
     status = lxa_dom_nodes_read(nodes, parent, &host);
-    if (status == LXA_OK) {
+    if (status == LXA_OK && owned_leaf != NULL) {
+        leaf = *owned_leaf;
+    } else if (status == LXA_OK) {
         status = lxa_dom_nodes_read(nodes, child, &leaf);
     }
     if (status == LXA_OK && before.handle != LXA_HANDLE_NONE)
@@ -3543,7 +3539,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     if ((host.kind != LXA_DOM_KIND_ELEMENT
          && host.kind != LXA_DOM_KIND_DOCUMENT
          && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
-        || !constructed_child_payload_valid(nodes, &leaf)
+        || (owned_leaf == NULL && !constructed_child_payload_valid(nodes, &leaf))
         || (host.kind == LXA_DOM_KIND_ELEMENT
             && host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
         || (host.kind != LXA_DOM_KIND_DOCUMENT
@@ -3553,9 +3549,10 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         || (target_id != LXA_ID_NONE
             && (target.parent != parent_id
                 || target_id < nodes->retired || target_id >= length))
-        || leaf.parent != LXA_ID_NONE || leaf.prev != LXA_ID_NONE
-        || leaf.next != LXA_ID_NONE || leaf.first_child != LXA_ID_NONE
-        || leaf.last_child != LXA_ID_NONE
+        || (owned_leaf == NULL
+            && (leaf.parent != LXA_ID_NONE || leaf.prev != LXA_ID_NONE
+                || leaf.next != LXA_ID_NONE || leaf.first_child != LXA_ID_NONE
+                || leaf.last_child != LXA_ID_NONE))
         || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE)) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -3653,7 +3650,7 @@ lxa_dom_nodes_append_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child)
 {
     lxa_dom_ref_t end = {0};
-    return construct_child(nodes, parent, child, end, NULL);
+    return construct_child(nodes, parent, child, end, NULL, NULL);
 }
 
 lxa_status_t
@@ -3661,7 +3658,7 @@ lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before)
 {
     if (before.handle == LXA_HANDLE_NONE) return LXA_ERROR_ARGUMENT;
-    return construct_child(nodes, parent, child, before, NULL);
+    return construct_child(nodes, parent, child, before, NULL, NULL);
 }
 
 lxa_status_t
@@ -3669,7 +3666,48 @@ lxa_dom_nodes_insert_constructed_cached(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before,
     lxa_dom_insertion_depth_t *depth)
 {
-    return construct_child(nodes, parent, child, before, depth);
+    return construct_child(nodes, parent, child, before, depth, NULL);
+}
+
+lxa_status_t
+lxa_dom_nodes_resolve_content_location(lxa_dom_nodes_t *nodes,
+    lxa_handle_t fragment, const lxa_dom_content_patch_t *patch,
+    lxa_dom_ref_t *parent, lxa_dom_ref_t *before)
+{
+    lxa_dom_ref_t actual;
+    if (nodes == NULL || parent == NULL || before == NULL)
+        return LXA_ERROR_ARGUMENT;
+    if (patch == NULL || patch->target.handle == LXA_HANDLE_NONE
+        || parent->handle != fragment)
+        return LXA_OK;
+    *parent = patch->target;
+    *before = (lxa_dom_ref_t){0};
+    if (patch->end.handle == LXA_HANDLE_NONE) return LXA_OK;
+    lxa_status_t status = lxa_dom_nodes_parent(nodes, patch->end, &actual);
+    if (status == LXA_OK && actual.handle == parent->handle)
+        *before = patch->end;
+    return status;
+}
+
+lxa_status_t
+lxa_dom_nodes_build_insert_element(lxa_dom_nodes_t *nodes,
+    const lxa_dom_builder_element_t *input, lxa_dom_builder_location_t *location,
+    lxa_dom_insertion_depth_t *depth, lxa_dom_ref_t *out)
+{
+    if (location == NULL) {
+        if (nodes != NULL) nodes->limit_reason = LXA_BUDGET_COUNT;
+        if (out != NULL) *out = (lxa_dom_ref_t){0};
+        return LXA_ERROR_ARGUMENT;
+    }
+    lxa_status_t status = lxa_dom_nodes_build_element(nodes, input, out);
+    if (status != LXA_OK) return status;
+    status = lxa_dom_nodes_resolve_content_location(nodes, location->fragment,
+        location->patch, &location->parent, &location->before);
+    if (status != LXA_OK) return status;
+    lxa_dom_record_t leaf =
+        ((const lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) out->handle];
+    return construct_child(nodes, location->parent, *out, location->before,
+        depth, &leaf);
 }
 
 static lxa_status_t
