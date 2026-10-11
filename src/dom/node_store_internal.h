@@ -115,6 +115,7 @@ struct lxa_dom_nodes {
     size_t retired;
     uint64_t epoch;
     uint32_t generation;
+    uint32_t depth_revision;
     lxa_budget_t own_budget;
     lxa_budget_t *budget;
     size_t charged_slots;
@@ -167,6 +168,32 @@ typedef struct {
  */
 lxa_status_t lxa_dom_nodes_build_element(lxa_dom_nodes_t *nodes,
     const lxa_dom_builder_element_t *input, lxa_dom_ref_t *out);
+
+/* Zero-initialized, parser-owned insertion cursor. Only checked insertion may
+ * populate it; callers may clear but must not manufacture or edit its proof.
+ * Depth counts actual ancestors, including the document/fragment root, not
+ * open-stack entries or virtual template hosts. Detached element roots do not
+ * produce proof. New leaf links preserve existing anchored depths; removals,
+ * moves, child replacement and template binding expire them. Reset changes the
+ * epoch. Revision wrap disables reuse until reset. No borrowed storage survives
+ * a call, and observer-triggered mutations use the same invalidation. Clear
+ * the cursor before destroying its store or rebinding its parser.
+ */
+typedef struct {
+    const lxa_dom_nodes_t *owner;
+    uint64_t epoch;
+    uint32_t revision;
+    lxa_handle_t parent, child;
+    size_t parent_depth;
+} lxa_dom_insertion_depth_t;
+
+/* Same hierarchy/partial-charge contract as checked leaf insertion. A valid
+ * cursor removes the ancestry walk only when its whole WORK charge succeeds;
+ * quota/overflow boundaries and cache misses retain ordered ancestry checks.
+ * Publish parent/child depth only after successful linking. */
+lxa_status_t lxa_dom_nodes_insert_constructed_cached(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before,
+    lxa_dom_insertion_depth_t *depth);
 
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out);

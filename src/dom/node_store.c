@@ -12,6 +12,12 @@ valid_kind(lxa_dom_kind_t kind)
     return kind > LXA_DOM_KIND_INVALID && kind < LXA_DOM_KIND_COUNT;
 }
 
+static void
+invalidate_depth(lxa_dom_nodes_t *nodes)
+{
+    if (nodes->depth_revision != 0) ++nodes->depth_revision;
+}
+
 typedef struct {
     size_t offset, length;
 } lxa_dom_character_t;
@@ -179,6 +185,7 @@ lxa_dom_nodes_create_with_entropy(const lxa_allocator_t *allocator,
     }
     nodes->epoch = 1;
     nodes->generation = 1;
+    nodes->depth_revision = 1;
     nodes->own_budget = local_budget;
     nodes->budget = shared == NULL ? &nodes->own_budget : shared;
     nodes->limit_reason = LXA_BUDGET_COUNT;
@@ -331,6 +338,7 @@ lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes)
     }
     release_atoms(nodes);
     ++nodes->epoch;
+    nodes->depth_revision = 1;
     if (nodes->generation == UINT32_MAX) {
         /* Existing slots cannot be reused with generation 1. Keep their
          * indexes reserved, even across later resets.
@@ -1298,6 +1306,7 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
             return LXA_ERROR_ARGUMENT;
     }
     status = lxa_vector_push(&nodes->templates, &pair);
+    if (status == LXA_OK) invalidate_depth(nodes);
     if (status == LXA_ERROR_LIMIT) nodes->limit_reason = LXA_BUDGET_MEMORY;
     return status;
 }
@@ -3501,12 +3510,14 @@ check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
 
 static lxa_status_t
 construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
-                lxa_dom_ref_t child, lxa_dom_ref_t before)
+                lxa_dom_ref_t child, lxa_dom_ref_t before,
+                lxa_dom_insertion_depth_t *proof)
 {
     lxa_dom_record_t host, leaf, target;
     lxa_dom_record_t *records;
     lxa_id_t parent_id, child_id, target_id, cursor;
     size_t depth = 1, steps = 0, length;
+    bool anchored = false, cached = false;
     lxa_status_t status;
     if (nodes != NULL) {
         nodes->limit_reason = LXA_BUDGET_COUNT;
@@ -3576,7 +3587,22 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                || records[target.prev].parent != parent_id))) {
         return LXA_ERROR_ARGUMENT;
     }
-    for (cursor = parent_id; cursor != LXA_ID_NONE;) {
+    if (proof != NULL && proof->owner == nodes && proof->epoch == nodes->epoch
+        && proof->revision != 0 && proof->revision == nodes->depth_revision) {
+        size_t known = proof->parent_depth;
+        if (parent.handle == proof->child && known < length) ++known;
+        else if (parent.handle != proof->parent) known = 0;
+        if (known != 0 && known <= length
+            && lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK, known,
+                                      NULL) == LXA_OK) {
+            status = lxa_budget_charge_work(nodes->budget, known,
+                                           &nodes->limit_reason);
+            if (status != LXA_OK) return status;
+            depth = known;
+            anchored = cached = true;
+        }
+    }
+    for (cursor = cached ? LXA_ID_NONE : parent_id; cursor != LXA_ID_NONE;) {
         lxa_dom_record_t *ancestor;
         if (cursor < nodes->retired || cursor >= length || ++steps > length) {
             return LXA_ERROR_ARGUMENT;
@@ -3594,6 +3620,9 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             return LXA_ERROR_ARGUMENT;
         }
         cursor = ancestor->parent;
+        if (cursor == LXA_ID_NONE)
+            anchored = ancestor->kind == LXA_DOM_KIND_DOCUMENT
+                       || ancestor->kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT;
         if (cursor != LXA_ID_NONE) {
             status = lxa_size_add(depth, 1, &depth);
             if (status != LXA_OK) {
@@ -3610,6 +3639,12 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         commit_append(nodes, parent_id, child_id, host.last_child);
     else
         commit_insert(nodes, parent_id, child_id, target_id);
+    if (proof != NULL) {
+        *proof = anchored ? (lxa_dom_insertion_depth_t){
+            nodes, nodes->epoch, nodes->depth_revision,
+            parent.handle, child.handle, depth
+        } : (lxa_dom_insertion_depth_t){0};
+    }
     return LXA_OK;
 }
 
@@ -3618,7 +3653,7 @@ lxa_dom_nodes_append_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child)
 {
     lxa_dom_ref_t end = {0};
-    return construct_child(nodes, parent, child, end);
+    return construct_child(nodes, parent, child, end, NULL);
 }
 
 lxa_status_t
@@ -3626,7 +3661,15 @@ lxa_dom_nodes_insert_constructed_before(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before)
 {
     if (before.handle == LXA_HANDLE_NONE) return LXA_ERROR_ARGUMENT;
-    return construct_child(nodes, parent, child, before);
+    return construct_child(nodes, parent, child, before, NULL);
+}
+
+lxa_status_t
+lxa_dom_nodes_insert_constructed_cached(lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t parent, lxa_dom_ref_t child, lxa_dom_ref_t before,
+    lxa_dom_insertion_depth_t *depth)
+{
+    return construct_child(nodes, parent, child, before, depth);
 }
 
 static lxa_status_t
@@ -3666,8 +3709,10 @@ attached_child_links(const lxa_dom_nodes_t *nodes, lxa_id_t child_id,
 }
 
 static void
-unlink_constructed(lxa_dom_record_t *records, const lxa_dom_record_t *moved)
+unlink_constructed(lxa_dom_nodes_t *nodes, const lxa_dom_record_t *moved)
 {
+    lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
+    invalidate_depth(nodes);
     lxa_dom_record_t *old = &records[moved->parent];
     if (moved->prev == LXA_ID_NONE) old->first_child = moved->next;
     else records[moved->prev].next = moved->next;
@@ -3860,7 +3905,7 @@ lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK) goto done;
 commit:
     records = (lxa_dom_record_t *) nodes->records.bytes.data;
-    unlink_constructed(records, &moved);
+    unlink_constructed(nodes, &moved);
     records[child_id].parent = LXA_ID_NONE;
     records[child_id].prev = LXA_ID_NONE;
     records[child_id].next = LXA_ID_NONE;
@@ -4197,9 +4242,10 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             || target_id == moved.next))
         return LXA_OK;
     /* All remaining writes are allocation-free and cannot fail. */
-    if (removing) unlink_constructed(records, &moved);
+    if (removing) unlink_constructed(nodes, &moved);
     predecessor = target_id == LXA_ID_NONE
                   ? records[host_id].last_child : records[target_id].prev;
+    invalidate_depth(nodes);
     records[child_id].parent = host_id;
     records[child_id].prev = predecessor;
     records[child_id].next = target_id;
@@ -4602,6 +4648,7 @@ commit_child_replacement(lxa_dom_nodes_t *nodes, const child_replace_plan_t *pla
     lxa_dom_record_t host = plan->host, candidate = plan->candidate;
     lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
     lxa_id_t cursor;
+    invalidate_depth(nodes);
     /* All source reads and resource checks precede the link transfer. */
     for (cursor = host.first_child; cursor != LXA_ID_NONE;) {
         lxa_id_t next = records[cursor].next;
@@ -4834,7 +4881,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             if (status == LXA_OK) status = save_content_record(nodes, &undo, record.next);
             if (status != LXA_OK) break;
             lxa_dom_record_t *records = (lxa_dom_record_t *) nodes->records.bytes.data;
-            unlink_constructed(records, &record);
+            unlink_constructed(nodes, &record);
             records[(lxa_id_t) root.handle].parent =
                 records[(lxa_id_t) root.handle].prev =
                 records[(lxa_id_t) root.handle].next = LXA_ID_NONE;
@@ -4895,6 +4942,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             if (status == LXA_OK && frame.before.handle != LXA_HANDLE_NONE)
                 status = save_content_record(nodes, &undo, (lxa_id_t) frame.before.handle);
             if (status != LXA_OK) break;
+            invalidate_depth(nodes);
             if (frame.before.handle == LXA_HANDLE_NONE)
                 commit_append(nodes, (lxa_id_t) frame.destination.handle,
                               (lxa_id_t) frame.root.handle, predecessor);

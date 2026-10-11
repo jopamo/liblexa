@@ -6,6 +6,7 @@
 #include "dom/content_patch.h"
 #include "liblexa/dom.h"
 #include "liblexa/base.h"
+#include "dom/node_store_internal.h"
 
 /* Private complete-document tree-construction candidate over a borrowed store.
  * Root/template contexts share scope and active-formatting algorithms. Template
@@ -33,6 +34,7 @@ typedef struct {
     lxa_dom_ref_t template_fragment; /* active virtual-template content */
     lxa_dom_content_patch_t template_patch;
     lxa_dom_ref_t text_element;
+    lxa_dom_insertion_depth_t insertion_depth;
     lxa_vector_t formatting; /* active entries and scope markers */
     size_t formatting_marker; /* SIZE_MAX when no marker is active */
     lxa_vector_t open_elements; /* parser scratch; owns only references */

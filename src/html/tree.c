@@ -45,10 +45,8 @@ insert_constructed(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
 {
     lxa_status_t status = resolve_template_location(tree, &parent, &before);
     if (status != LXA_OK) return status;
-    return before.handle == LXA_HANDLE_NONE
-        ? lxa_dom_nodes_append_constructed_child(tree->nodes, parent, child)
-        : lxa_dom_nodes_insert_constructed_before(tree->nodes, parent, child,
-                                                   before);
+    return lxa_dom_nodes_insert_constructed_cached(tree->nodes, parent, child,
+        before, &tree->insertion_depth);
 }
 
 static lxa_status_t
