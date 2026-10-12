@@ -1196,35 +1196,56 @@ find_virtual_ancestor(const lxa_dom_nodes_t *nodes, lxa_id_t start,
     const lxa_dom_template_t *entries =
         (const lxa_dom_template_t *) nodes->templates.bytes.data;
     size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), steps = 0;
+    size_t templates = lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t));
     lxa_id_t cursor = start;
+    uint64_t work = 0;
+    bool batch = false;
+    lxa_status_t status = LXA_OK;
     *found = false;
+    /* The cycle guard bounds record probes, including its failing probe. */
+    if (length < UINT64_MAX && templates < UINT64_MAX) {
+        uint64_t records_bound = (uint64_t) length + 1;
+        uint64_t probes_bound = (uint64_t) templates + 1;
+        if (records_bound <= UINT64_MAX / probes_bound)
+            batch = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+                records_bound * probes_bound, NULL) == LXA_OK;
+    }
     while (cursor != LXA_ID_NONE) {
         size_t i;
-        lxa_status_t status = lxa_budget_charge_work(nodes->budget,
-                                                 1, reason);
-        if (status != LXA_OK) return status;
+        if (batch) ++work;
+        else status = lxa_budget_charge_work(nodes->budget, 1, reason);
+        if (status != LXA_OK) goto done;
         if (cursor < nodes->retired || cursor >= length
-            || ++steps > length)
-            return LXA_ERROR_ARGUMENT;
+            || ++steps > length) {
+            status = LXA_ERROR_ARGUMENT;
+            goto done;
+        }
         if (cursor == target) {
             *found = true;
-            return LXA_OK;
+            break;
         }
         if (records[cursor].parent != LXA_ID_NONE) {
             cursor = records[cursor].parent;
             continue;
         }
         if (records[cursor].kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT) break;
-        for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
-            status = lxa_budget_charge_work(nodes->budget, 1,
-                                       reason);
-            if (status != LXA_OK) return status;
+        for (i = 0; i < templates; ++i) {
+            if (batch) ++work;
+            else status = lxa_budget_charge_work(nodes->budget, 1, reason);
+            if (status != LXA_OK) goto done;
             if (entries[i].fragment == cursor) break;
         }
-        cursor = i == lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t))
-                 ? LXA_ID_NONE : entries[i].element;
+        cursor = i == templates ? LXA_ID_NONE : entries[i].element;
     }
-    return LXA_OK;
+done:
+    if (batch && work != 0) {
+        lxa_status_t charged = lxa_budget_charge_work(nodes->budget, work, reason);
+        if (charged != LXA_OK) {
+            *found = false;
+            return charged;
+        }
+    }
+    return status;
 }
 
 static lxa_status_t
