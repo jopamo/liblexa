@@ -48,14 +48,20 @@ scan_class(tokenizer_state_t state)
 static lxa_html_result_t
 scan_run(tokenizer_state_t state, lxa_span_t input, size_t *count)
 {
-    switch (scan_class(state)) {
+    switch (state) {
+#define LXA_HTML_STATE(name, id, action, scan, ...) \
+    case STATE_##name: goto scan_##scan;
+#include "html/tokenizer_states.def"
+#undef LXA_HTML_STATE
+    }
+    assert(!"invalid tokenizer state");
+    return LXA_HTML_INTERNAL;
+
 #define LXA_HTML_SCAN_CLASS(name, predicate) \
-    case SCAN_##name: *count = lxa_html_scan_##name(input); return LXA_HTML_OK;
+    scan_##name: *count = lxa_html_scan_##name(input); return LXA_HTML_OK;
 #include "html/tokenizer_scan.def"
 #undef LXA_HTML_SCAN_CLASS
-    case SCAN_NONE:
-        break;
-    }
+    scan_NONE:
     assert(!"state has no run scanner");
     return LXA_HTML_INTERNAL;
 }
