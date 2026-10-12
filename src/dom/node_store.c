@@ -1372,8 +1372,16 @@ check_template_parent(lxa_dom_nodes_t *nodes, lxa_id_t parent)
 {
     const lxa_dom_template_t *entries =
         (const lxa_dom_template_t *) nodes->templates.bytes.data;
-    size_t i;
-    for (i = 0; i < lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t)); ++i) {
+    size_t i, count = lxa_vector_length_sized(&nodes->templates, sizeof(lxa_dom_template_t));
+    if (count != 0
+        && lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK, count, NULL) == LXA_OK) {
+        for (i = 0; i < count; ++i)
+            if (entries[i].element == parent) break;
+        lxa_status_t status = lxa_budget_charge_work(nodes->budget,
+            i == count ? count : i + 1, &nodes->limit_reason);
+        return status == LXA_OK && i != count ? LXA_ERROR_ARGUMENT : status;
+    }
+    for (i = 0; i < count; ++i) {
         lxa_status_t status = lxa_budget_charge_work(nodes->budget,
                                                  1, &nodes->limit_reason);
         if (status != LXA_OK) return status;
