@@ -81,12 +81,10 @@ lxa_budget_charge_work(lxa_budget_t *budget, uint64_t amount,
     return lxa_budget_charge_impl(budget, LXA_BUDGET_WORK, amount, reason);
 }
 
-/* Equivalent to accepting one byte, then charging one WORK, repeatedly.
- * Aggregate only when every step succeeds; retain ordered partial failure. */
-static inline lxa_status_t
-lxa_budget_accept_work_run(lxa_budget_t *budget, size_t bytes,
-    lxa_budget_kind_t *reason)
+static inline bool
+lxa_budget_accept_work_run_fits(const lxa_budget_t *budget, size_t bytes)
 {
+    if (bytes == 0) return true;
     if (budget != NULL && bytes != 0) {
         uint64_t rate = budget->limits.work_per_input_byte;
         uint64_t credit = budget->work_credit;
@@ -99,10 +97,21 @@ lxa_budget_accept_work_run(lxa_budget_t *budget, size_t bytes,
             && work <= budget->limits.max_work
             && bytes <= budget->limits.max_work - work
             && (rate != 0 ? work < credit + rate
-                          : work <= credit && bytes <= credit - work)) {
-            lxa_status_t status = lxa_budget_accept_input(budget, bytes, reason);
-            return status == LXA_OK ? lxa_budget_charge_work(budget, bytes, reason) : status;
-        }
+                          : work <= credit && bytes <= credit - work))
+            return true;
+    }
+    return false;
+}
+
+/* Equivalent to accepting one byte, then charging one WORK, repeatedly.
+ * Aggregate only when every step succeeds; retain ordered partial failure. */
+static inline lxa_status_t
+lxa_budget_accept_work_run(lxa_budget_t *budget, size_t bytes,
+    lxa_budget_kind_t *reason)
+{
+    if (bytes != 0 && lxa_budget_accept_work_run_fits(budget, bytes)) {
+        lxa_status_t status = lxa_budget_accept_input(budget, bytes, reason);
+        return status == LXA_OK ? lxa_budget_charge_work(budget, bytes, reason) : status;
     }
     while (bytes-- != 0) {
         lxa_status_t status = lxa_budget_accept_input(budget, 1, reason);

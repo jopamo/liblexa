@@ -941,6 +941,80 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
     return filter_value(tokenizer);
 }
 
+static lxa_html_result_t
+append_utf8_run(lxa_html_tokenizer_t *tokenizer, lxa_span_t input,
+    size_t offset, size_t *consumed)
+{
+    *consumed = 0;
+    if (tokenizer->utf8_pending || lxa_decoder_pending_bytes(tokenizer->decoder) != 0)
+        return LXA_HTML_OK;
+    tokenizer_scan_class_t scan = scan_class(tokenizer->state);
+    bool value = scan == SCAN_VALUE_DOUBLE || scan == SCAN_VALUE_SINGLE;
+    if (!value && scan != SCAN_DATA && scan != SCAN_RAW
+        && scan != SCAN_PLAIN && scan != SCAN_ESCAPED)
+        return LXA_HTML_OK;
+    lxa_buffer_t *buffer = value ? &tokenizer->attribute_bytes : &tokenizer->text;
+    attribute_slot_t *slot = value ? &tokenizer->attribute : NULL;
+    size_t total = buffer->length;
+    if (value) {
+        if ((tokenizer->attribute_state != ATTRIBUTE_KEEP
+                && tokenizer->attribute_state != ATTRIBUTE_DISCARD)
+            || slot->value_start == SIZE_MAX
+            || lxa_size_add(total, tokenizer->omitted_value_bytes, &total) != LXA_OK
+            || lxa_size_add(total, tokenizer->name.length, &total) != LXA_OK)
+            return LXA_HTML_OK;
+    }
+    size_t limit = tokenizer->budget->limits.max_token_bytes;
+    if (buffer->length > buffer->capacity || total > limit) return LXA_HTML_OK;
+    size_t bound = buffer->capacity - buffer->length;
+    if (bound > limit - total) bound = limit - total;
+    if (value && bound > SIZE_MAX - slot->value_length)
+        bound = SIZE_MAX - slot->value_length;
+    if (bound > input.length) bound = input.length;
+    if (bound < 2) return LXA_HTML_OK;
+    uintptr_t source = (uintptr_t) input.data, storage = (uintptr_t) buffer->data;
+    if (source <= storage ? storage - source < input.length
+                          : source - storage < buffer->capacity)
+        return LXA_HTML_OK;
+    size_t count = 0, last_scalar = 0;
+    while (count < bound) {
+        uint8_t byte = input.data[count];
+        if (byte < 0x80) {
+            size_t ascii;
+            lxa_span_t run = limit_run(
+                (lxa_span_t){input.data + count, input.length - count}, bound, count);
+            lxa_html_result_t result = scan_run(tokenizer->state, run, &ascii);
+            if (result != LXA_HTML_OK) return result;
+            /* An ASCII append is indivisible at quota/allocation failure. */
+            if (ascii == 0 || ascii > bound - count) break;
+            count += ascii;
+        }
+        else {
+            uint32_t scalar;
+            size_t width = lxa_encoding_utf8_complete(
+                (lxa_span_t){input.data + count, bound - count}, &scalar);
+            if (width == 0 || input_scalar_error(scalar) != NULL) break;
+            last_scalar = count;
+            count += width;
+        }
+    }
+    if (count == 0) return LXA_HTML_OK;
+    size_t remaining = count - 1; /* The feed loop already charges the first byte. */
+    if (tokenizer->prepaid_input
+        ? lxa_budget_check_impl(tokenizer->budget, LXA_BUDGET_WORK, remaining, NULL) != LXA_OK
+        : !lxa_budget_accept_work_run_fits(tokenizer->budget, remaining))
+        return LXA_HTML_OK;
+    lxa_html_result_t result = account_run(tokenizer, remaining);
+    if (result != LXA_HTML_OK) return result;
+    /* Complete identity scalars fit existing storage; no effects intervene. */
+    memcpy(buffer->data + buffer->length, input.data, count);
+    buffer->length += count;
+    if (value) slot->value_length += count;
+    tokenizer->utf8_start = offset + last_scalar;
+    *consumed = count;
+    return LXA_HTML_OK;
+}
+
 static bool
 ascii_name_is(lxa_span_t name, const char *lowercase, size_t length)
 {

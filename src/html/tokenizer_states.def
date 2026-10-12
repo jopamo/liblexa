@@ -73,6 +73,15 @@ LXA_HTML_STATE(SCRIPT_DOUBLE_ESCAPED_DASH_DASH, 13, SCRIPT_ESCAPED, ESCAPED,
         break;
     }
     if (tokenizer->utf8_pending || c >= 0x80) {
+        size_t count;
+        result = append_utf8_run(tokenizer,
+            (lxa_span_t){input.data + i, input.length - i}, tokenizer->offset + i, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            accepted = i;
+            break;
+        }
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
             tokenizer->utf8_start = tokenizer->offset + i;
@@ -393,6 +402,15 @@ LXA_HTML_STATE(DATA, 0, TEXT, DATA,
         break;
     }
     if (tokenizer->utf8_pending || c >= 0x80) {
+        size_t count;
+        result = append_utf8_run(tokenizer,
+            (lxa_span_t){input.data + i, input.length - i}, tokenizer->offset + i, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            accepted = i;
+            break;
+        }
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
             tokenizer->utf8_start = tokenizer->offset + i;
@@ -838,6 +856,15 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG, VALUE_UNQUOTED,
         }
     }
     if (tokenizer->utf8_pending || c >= 0x80) {
+        size_t count;
+        result = append_utf8_run(tokenizer,
+            (lxa_span_t){input.data + i, input.length - i}, tokenizer->offset + i, &count);
+        if (result != LXA_HTML_OK) goto fail;
+        if (count != 0) {
+            i += count;
+            accepted = i;
+            break;
+        }
         bool consumed = false;
         if (!tokenizer->utf8_pending) {
             tokenizer->utf8_start = tokenizer->offset + i;

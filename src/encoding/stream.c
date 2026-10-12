@@ -663,32 +663,20 @@ utf8_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
     while (progress->consumed < input.length) {
         uint8_t c = input.data[progress->consumed];
         if (decoder->remaining == 0) {
+            uint8_t lower, upper;
+            size_t width;
             if (c < 0x80) {
                 if (progress->produced == capacity) {
                     return LXA_ENCODING_OUTPUT_FULL;
                 }
                 output[progress->produced++] = c;
             }
-            else if (c >= 0xc2 && c <= 0xdf) {
+            else if ((width = lxa_encoding_utf8_lead(c, &lower, &upper)) != 0) {
                 decoder->byte = c;
-                decoder->scalar = c & 0x1f;
-                decoder->remaining = 1;
-                decoder->lower = 0x80;
-                decoder->upper = 0xbf;
-            }
-            else if (c >= 0xe0 && c <= 0xef) {
-                decoder->byte = c;
-                decoder->scalar = c & 0x0f;
-                decoder->remaining = 2;
-                decoder->lower = c == 0xe0 ? 0xa0 : 0x80;
-                decoder->upper = c == 0xed ? 0x9f : 0xbf;
-            }
-            else if (c >= 0xf0 && c <= 0xf4) {
-                decoder->byte = c;
-                decoder->scalar = c & 0x07;
-                decoder->remaining = 3;
-                decoder->lower = c == 0xf0 ? 0x90 : 0x80;
-                decoder->upper = c == 0xf4 ? 0x8f : 0xbf;
+                decoder->scalar = c & (0x7fu >> width);
+                decoder->remaining = (unsigned) width - 1;
+                decoder->lower = lower;
+                decoder->upper = upper;
             }
             else {
                 /* This byte is the entire malformed sequence. */
