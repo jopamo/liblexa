@@ -90,6 +90,21 @@ budget_result(lxa_html_tokenizer_t *tokenizer, lxa_status_t status,
          : LXA_HTML_BAD_ARGUMENT;
 }
 
+/* Append after the caller has checked token/name sizes. */
+static inline lxa_html_result_t
+buffer_append_storage(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
+                      lxa_span_t bytes)
+{
+    lxa_status_t status = lxa_buffer_append(buffer, bytes);
+    if (status == LXA_ERROR_NO_MEMORY) {
+        return LXA_HTML_NO_MEMORY;
+    }
+    if (status == LXA_ERROR_LIMIT) {
+        return budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+    }
+    return budget_result(tokenizer, status, LXA_BUDGET_COUNT);
+}
+
 static inline lxa_html_result_t
 buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
               lxa_span_t bytes, lxa_budget_kind_t kind)
@@ -120,14 +135,7 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
     if (status != LXA_OK) {
         return budget_result(tokenizer, status, reason);
     }
-    status = lxa_buffer_append(buffer, bytes);
-    if (status == LXA_ERROR_NO_MEMORY) {
-        return LXA_HTML_NO_MEMORY;
-    }
-    if (status == LXA_ERROR_LIMIT) {
-        return budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
-    }
-    return budget_result(tokenizer, status, LXA_BUDGET_COUNT);
+    return buffer_append_storage(tokenizer, buffer, bytes);
 }
 
 #endif

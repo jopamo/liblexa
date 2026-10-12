@@ -130,8 +130,7 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
                                    total, &reason);
     return status == LXA_OK
-           ? buffer_append(tokenizer, target, bytes,
-                           LXA_BUDGET_TOKEN_BYTES)
+           ? buffer_append_storage(tokenizer, target, bytes)
            : budget_result(tokenizer, status, reason);
 }
 
@@ -836,9 +835,8 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
         return LXA_HTML_OK;
     }
     {
-        lxa_html_result_t result = buffer_append(tokenizer,
-                                      &tokenizer->attribute_bytes, bytes,
-                                      LXA_BUDGET_TOKEN_BYTES);
+        lxa_html_result_t result = buffer_append_storage(tokenizer,
+                                      &tokenizer->attribute_bytes, bytes);
         if (result == LXA_HTML_OK) {
             if (name) {
                 slot->name_length = component_length;
