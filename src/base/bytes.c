@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "liblexa/base.h"
+#include "base/budget_internal.h"
 
 static int
 valid_allocator(const lxa_allocator_t *allocator)
@@ -78,8 +79,8 @@ lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity)
         return LXA_OK;
     }
     if (buffer->budget != NULL) {
-        status = lxa_budget_charge(buffer->budget, LXA_BUDGET_MEMORY,
-                                   capacity - buffer->capacity, NULL);
+        status = lxa_budget_charge_impl(buffer->budget, LXA_BUDGET_MEMORY,
+                                        capacity - buffer->capacity, NULL);
         if (status != LXA_OK) {
             return status;
         }
