@@ -139,6 +139,13 @@ static lxa_html_result_t
 append_decoded_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp,
                       bool in_name)
 {
+    if ((tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
+            || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
+            || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED)
+        && tokenizer->attribute.value_start == SIZE_MAX) {
+        lxa_span_t counted = {NULL, lxa_encoding_utf8_scalar_length(cp)};
+        return append_attribute(tokenizer, counted, false);
+    }
     uint8_t bytes[4];
     lxa_mut_span_t out = {bytes, sizeof(bytes)};
     lxa_encoding_progress_t progress;
