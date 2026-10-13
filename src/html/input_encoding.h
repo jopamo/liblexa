@@ -113,6 +113,7 @@ typedef struct {
 typedef struct {
     const lxa_encoding_t *encoding;
     size_t prefix_length, malformed;
+    lxa_span_t utf8;
 } lxa_html_control_input_t;
 
 /* Prepare complete source input before observable callbacks. NULL fixed uses
@@ -120,12 +121,16 @@ typedef struct {
  * use fixed/prefix without declarations. Automatic prefix must be zero.
  * decoded/mapping must be initialized, allocation-free and bound to budget,
  * which has not accepted INPUT yet.
- * Publish both and selection only on success. No caller callbacks or DOM nodes.
+ * Publish both and selection only on success. Replay selection.utf8, which
+ * refers to decoded storage or borrows fixed UTF-8 ASCII input after prefix.
+ * Keep input immutable and both owners alive until replay finishes.
+ * No caller callbacks or DOM nodes.
  * A late declaration releases tentative buffers before prepaid redecoding;
  * INPUT is accepted once and WORK remains cumulative. Failure retains charges,
  * not buffers or control state. Consumers replay the result with prepaid
  * tokenization and no meta observer: encoding is then certain.
- * Owners/input/selection must not alias; allocators cannot reenter.
+ * Owner objects and selection must not overlap input or each other;
+ * allocators cannot reenter.
  */
 lxa_status_t lxa_html_control_input_prepare(lxa_span_t input,
     const lxa_encoding_t *fixed, size_t prefix, lxa_budget_t *budget,

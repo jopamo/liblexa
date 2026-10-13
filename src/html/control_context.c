@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include "base/budget_internal.h"
 #include "html/control_context.h"
 
 static lxa_status_t
@@ -119,9 +120,47 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
         status = lxa_vector_init(&offsets, &mapping->bytes.allocator,
             sizeof(lxa_html_input_mapping_t));
     if (status == LXA_OK) status = lxa_vector_bind_budget(&offsets, budget);
-    if (status == LXA_OK)
-        status = control_input_status(lxa_html_input_decode_mapped(input, encoding,
-            prefix, budget, &tentative, &offsets, &malformed, reason));
+    bool prepaid = fixed == lxa_encoding_lookup(
+        (lxa_span_t){(const uint8_t *)"utf-8", 5});
+    if (status == LXA_OK && prepaid)
+        status = lxa_budget_accept_input(budget, input.length, reason);
+    size_t length = input.length - prefix;
+    /* Scan only affordable input; otherwise retain scalar-ordered WORK failure. */
+    bool ascii = status == LXA_OK && prepaid && length <= UINT64_MAX / 2
+        && lxa_budget_check_impl(budget, LXA_BUDGET_WORK,
+            (uint64_t)length * 2, NULL) == LXA_OK;
+    if (ascii) {
+        for (size_t i = prefix; i < input.length; ++i) {
+            if (input.data[i] >= 0x80) {
+                ascii = false;
+                break;
+            }
+        }
+    }
+    bool borrowed = false;
+    if (status == LXA_OK && ascii) {
+        lxa_html_input_mapping_t point = {.raw_end = prefix};
+        status = lxa_vector_reserve(&offsets, length == 0 ? 1 : 2);
+        if (status == LXA_OK) status = lxa_vector_push(&offsets, &point);
+        if (status == LXA_OK && length != 0) {
+            point = (lxa_html_input_mapping_t){
+                .decoded_end = length, .raw_end = input.length,
+                .identity = true
+            };
+            status = lxa_vector_push(&offsets, &point);
+        }
+        if (status == LXA_ERROR_LIMIT && reason != NULL)
+            *reason = LXA_BUDGET_MEMORY;
+        if (status == LXA_OK)
+            status = lxa_budget_charge_work(budget, (uint64_t)length * 2, reason);
+        borrowed = status == LXA_OK;
+    }
+    else if (status == LXA_OK)
+        status = control_input_status(prepaid
+            ? lxa_html_input_decode_mapped_prepaid(input, encoding, prefix,
+                budget, &tentative, &offsets, &malformed, reason)
+            : lxa_html_input_decode_mapped(input, encoding, prefix,
+                budget, &tentative, &offsets, &malformed, reason));
     if (status == LXA_OK && fixed == NULL && prefix == 0) {
         const lxa_encoding_t *declared = NULL;
         status = control_input_meta((lxa_span_t){tentative.data, tentative.length},
@@ -149,7 +188,13 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
     if (status == LXA_OK) {
         *decoded = tentative;
         *mapping = offsets;
-        *selection = (lxa_html_control_input_t){encoding, prefix, malformed};
+        *selection = (lxa_html_control_input_t){
+            .encoding = encoding, .prefix_length = prefix, .malformed = malformed,
+            .utf8 = borrowed
+                ? (lxa_span_t){input.data == NULL ? NULL : input.data + prefix,
+                    input.length - prefix}
+                : (lxa_span_t){tentative.data, tentative.length}
+        };
     }
     else {
         lxa_buffer_destroy(&tentative);

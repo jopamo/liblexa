@@ -304,8 +304,7 @@ lxa_html_extract_attributes_with_budget(const lxa_allocator_t *allocator, lxa_bu
     if (result == LXA_HTML_OK)
         result = lxa_html_tokenizer_filter_attribute_values(tokenizer, retain_value, &owner);
     if (result == LXA_HTML_OK)
-        result = lxa_html_tokenizer_feed_prepaid(
-            tokenizer, (lxa_span_t){decoded.data, decoded.length});
+        result = lxa_html_tokenizer_feed_prepaid(tokenizer, selection.utf8);
     if (result == LXA_HTML_OK)
         result = lxa_html_tokenizer_finish(tokenizer);
     status = token_status(result, tokenizer);
