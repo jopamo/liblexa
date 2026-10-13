@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include "base/vector_internal.h"
 #include "dom/node_store_internal.h"
 #include "html/foreign_names.h"
 #include "html/foreign_context.h"
@@ -300,7 +301,7 @@ root_open_body(lxa_html_tree_t *tree)
 #define LXA_ROOT_HAS_HEAD(view) ((view)->head.handle != LXA_HANDLE_NONE)
 #define LXA_ROOT_HAS_BODY(view) ((view)->body.handle != LXA_HANDLE_NONE)
 #define LXA_ROOT_ENSURE_CREATE root_create
-#define LXA_ROOT_ENSURE_OPEN_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_ENSURE_OPEN_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_ROOT_ENSURE_OPEN_BODY root_open_body
 #define LXA_ROOT_ENSURE_FRAMESET(view) ((view)->frameset_ok = true)
 #include "html/root_ensure.inc"
@@ -318,7 +319,7 @@ root_open_body(lxa_html_tree_t *tree)
 static lxa_dom_ref_t
 current_element(const lxa_html_tree_t *tree)
 {
-    size_t count = lxa_vector_length(&tree->open_elements);
+    size_t count = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t));
     return lxa_html_open_ref(tree, &((const lxa_html_open_entry_t *) tree->open_elements.bytes.data)[count - 1]);
 }
 
@@ -346,7 +347,7 @@ formatting_parent(const lxa_html_tree_t *tree)
 {
     /* The root stack omits html; closing the frameset can empty it. */
     if (tree->mode == LXA_TREE_AFTER_AFTER_FRAMESET
-        && lxa_vector_length(&tree->open_elements) == 0)
+        && lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) == 0)
         return tree->html;
     return tree->mode == LXA_TREE_TEMPLATE_TEXT
         ? template_parent(tree) : current_element(tree);
@@ -446,7 +447,7 @@ pop_elements(lxa_html_tree_t *tree, lxa_vector_t *elements, size_t keep)
 static lxa_status_t
 pop_element(lxa_html_tree_t *tree)
 {
-    size_t length = lxa_vector_length(&tree->open_elements);
+    size_t length = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t));
     return length == 0 ? LXA_ERROR_INTERNAL
         : remove_open_element(tree, &tree->open_elements, length - 1);
 }
@@ -457,7 +458,7 @@ tree_pop_table(lxa_html_tree_t *, size_t, bool);
 #define LXA_FRAMESET_END_NAME tree_frameset_end
 #define LXA_FRAMESET_END_VIEW lxa_html_tree_t
 #define LXA_FRAMESET_END_POP(view) pop_element(view)
-#define LXA_FRAMESET_END_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_FRAMESET_END_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #include "html/frameset_end.inc"
 #undef LXA_FRAMESET_END_NAME
 #undef LXA_FRAMESET_END_VIEW
@@ -550,7 +551,7 @@ reserve_open_elements(lxa_html_tree_t *tree, size_t count)
     lxa_status_t status = lxa_budget_check(tree->nodes->budget,
         LXA_BUDGET_OPEN_ELEMENTS, count, &tree->nodes->limit_reason);
     if (status == LXA_OK)
-        status = lxa_size_add(lxa_vector_length(&tree->open_elements),
+        status = lxa_size_add(lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)),
                               count, &required);
     if (status == LXA_OK)
         status = lxa_vector_reserve(&tree->open_elements, required);
@@ -810,7 +811,7 @@ check_template_depth(lxa_html_tree_t *tree, size_t templates, size_t elements,
 {
     size_t ancestors = 0;
     if (in_body) {
-        size_t root = lxa_vector_length(&tree->open_elements);
+        size_t root = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t));
         if (root == 0) return LXA_ERROR_INTERNAL;
         ancestors = root - 1;
     }
@@ -837,7 +838,7 @@ reserve_formatting_elements(lxa_html_tree_t *tree, size_t count)
     lxa_status_t status;
     if (tree->mode != LXA_TREE_TEMPLATE_TEXT)
         return reserve_open_elements(tree, count);
-    status = lxa_size_add(lxa_vector_length(&tree->template_elements), count,
+    status = lxa_size_add(lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), count,
                           &required);
     if (status == LXA_OK)
         status = check_template_elements(tree, required);
@@ -890,7 +891,7 @@ root_data_table(lxa_html_tree_t *tree, bool *table)
 #define LXA_ROOT_DATA_BODY ensure_body
 #define LXA_ROOT_DATA_MODE(view) ((view)->mode)
 #define LXA_ROOT_DATA_FRAMESET(view) ((view)->frameset_ok)
-#define LXA_ROOT_DATA_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_DATA_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_ROOT_DATA_TABLE_QUERY root_data_table
 #define LXA_ROOT_DATA_RECONSTRUCT reconstruct_formatting
 #include "html/root_data_prepare.inc"
@@ -911,11 +912,11 @@ static lxa_status_t plan_list_item(lxa_html_tree_t *, const lxa_vector_t *,
 static lxa_status_t
 close_list_item(lxa_html_tree_t *tree, bool definition)
 {
-    size_t length = lxa_vector_length(&tree->open_elements), index;
+    size_t length = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)), index;
     if (length <= 1) return LXA_OK;
     lxa_status_t status = plan_list_item(tree, &tree->open_elements, 1, definition, &index);
     if (status != LXA_OK) return status;
-    while (lxa_vector_length(&tree->open_elements) > index) {
+    while (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) > index) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
@@ -935,9 +936,9 @@ close_paragraph(lxa_html_tree_t *tree, bool *closed)
     if (closed != NULL) *closed = false;
     lxa_status_t status = find_scoped_end_target(tree, &tree->open_elements,
         0, literal("p"), LXA_HTML_SCOPE_BUTTON, &i);
-    if (status != LXA_OK || i == lxa_vector_length(&tree->open_elements))
+    if (status != LXA_OK || i == lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)))
         return status;
-    while (lxa_vector_length(&tree->open_elements) > i) {
+    while (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) > i) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
@@ -976,7 +977,7 @@ insert_missing_root_paragraph(lxa_html_tree_t *tree)
 #define LXA_ROOT_PARAGRAPH_END_NAME tree_end_root_paragraph
 #define LXA_ROOT_PARAGRAPH_END_VIEW lxa_html_tree_t
 #define LXA_ROOT_PARAGRAPH_END_CLOSE close_paragraph
-#define LXA_ROOT_PARAGRAPH_END_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_PARAGRAPH_END_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_ROOT_PARAGRAPH_END_BODY ensure_body
 #define LXA_ROOT_PARAGRAPH_END_MISSING insert_missing_root_paragraph
 #include "html/root_paragraph_end.inc"
@@ -999,7 +1000,7 @@ end_ordinary_element(lxa_html_tree_t *tree, lxa_span_t target)
     lxa_status_t status = plan_ordinary_end_target(tree, &tree->open_elements,
                                                   0, target, &index);
     if (status != LXA_OK) return status;
-    while (lxa_vector_length(&tree->open_elements) > index) {
+    while (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) > index) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
@@ -1412,7 +1413,7 @@ end_scoped_element(lxa_html_tree_t *tree, lxa_span_t target,
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))
     };
     return tree_scoped_end(&view, target, scope);
 }
@@ -1441,9 +1442,9 @@ close_open_button(lxa_html_tree_t *tree)
     size_t i;
     lxa_status_t status = find_scoped_end_target(tree, &tree->open_elements,
         0, literal("button"), LXA_HTML_SCOPE_NORMAL, &i);
-    if (status != LXA_OK || i == lxa_vector_length(&tree->open_elements))
+    if (status != LXA_OK || i == lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)))
         return status;
-    while (lxa_vector_length(&tree->open_elements) > i) {
+    while (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) > i) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
@@ -2391,7 +2392,7 @@ root_foreign_route(tree_foreign_execute_view_t *view, const lxa_html_token_t *to
     lxa_html_tree_t *tree = view->tree;
     if ((tree->mode != LXA_TREE_IN_BODY && tree->mode != LXA_TREE_AFTER_BODY
             && tree->mode != LXA_TREE_AFTER_HTML)
-        || lxa_vector_length(&tree->open_elements) <= 1) {
+        || lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) <= 1) {
         *route = LXA_HTML_FOREIGN_ROOT_HTML;
         return LXA_OK;
     }
@@ -2600,14 +2601,14 @@ tree_root_part_close_plan(lxa_html_tree_t *tree, lxa_html_table_group_t group, s
 {
     const lxa_html_tree_scope_view_t view = {tree,
         (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)};
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))};
     return tree_root_table_part_close_plan(&view, 1, group, index);
 }
 
 #define LXA_ROOT_PART_CLOSE_EXEC_NAME close_open_table_part
 #define LXA_ROOT_PART_CLOSE_EXEC_VIEW lxa_html_tree_t
 #define LXA_ROOT_PART_CLOSE_EXEC_PLAN tree_root_part_close_plan
-#define LXA_ROOT_PART_CLOSE_EXEC_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_PART_CLOSE_EXEC_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_ROOT_PART_CLOSE_EXEC_NODE(view) \
     lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
 #define LXA_ROOT_PART_CLOSE_EXEC_POP pop_table_elements
@@ -2629,7 +2630,7 @@ tree_root_caption_find(lxa_html_tree_t *tree, size_t *index)
 #define LXA_ROOT_CAPTION_NAME close_caption_for_table_start
 #define LXA_ROOT_CAPTION_VIEW lxa_html_tree_t
 #define LXA_ROOT_CAPTION_FIND tree_root_caption_find
-#define LXA_ROOT_CAPTION_LENGTH(view) lxa_vector_length(&(view)->open_elements)
+#define LXA_ROOT_CAPTION_LENGTH(view) lxa_vector_length_sized(&(view)->open_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_ROOT_CAPTION_RESERVE reserve_open_elements
 #define LXA_ROOT_CAPTION_NODE(view, count) \
     lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, count, &(view)->nodes->limit_reason)
@@ -2654,7 +2655,7 @@ tree_root_table_plan(lxa_html_tree_t *tree, lxa_span_t top, bool *close_existing
 {
     const lxa_html_tree_scope_view_t view = {tree,
         (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)};
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))};
     return tree_root_table_close_plan(&view, 1,
         lxa_html_tree_table_context(top), close_existing);
 }
@@ -2708,7 +2709,7 @@ tree_root_table_part_plan(lxa_html_tree_t *tree, lxa_span_t target,
     if (status != LXA_OK) return status;
     const lxa_html_tree_scope_view_t view = {tree,
         (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)};
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))};
     return tree_root_table_part_context_plan(&view, 1, top, target, plan);
 }
 
@@ -3020,7 +3021,7 @@ root_frameset_prepare(root_frameset_view_t *view)
     lxa_html_tree_t *tree = view->tree;
     lxa_budget_t after = *tree->nodes->budget;
     size_t pop_count = view->replace_body
-        ? lxa_vector_length(&tree->open_elements) : 0;
+        ? lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) : 0;
     size_t needed = 1;
     lxa_status_t status = lxa_budget_release(&after, LXA_BUDGET_OPEN_ELEMENTS,
                                              pop_count);
@@ -3062,7 +3063,7 @@ root_frameset_replace(root_frameset_view_t *view)
     if (status == LXA_OK && parent.handle != LXA_HANDLE_NONE)
         status = lxa_dom_nodes_detach_constructed_child(tree->nodes, tree->body);
     if (status != LXA_OK) return status;
-    while (lxa_vector_length(&tree->open_elements) != 0) {
+    while (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) != 0) {
         status = pop_element(tree);
         if (status != LXA_OK) return status;
     }
@@ -3162,11 +3163,11 @@ lxa_html_tree_destroy(lxa_html_tree_t *tree)
                             lxa_vector_length(&tree->formatting));
     if (tree->nodes != NULL)
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
-                            lxa_vector_length(&tree->open_elements));
+                            lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)));
     if (tree->nodes != NULL)
         lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
             lxa_vector_length(&tree->template_stack)
-            + lxa_vector_length(&tree->template_elements)
+            + lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t))
             + (tree->template_fragment.handle != LXA_HANDLE_NONE ? 1 : 0));
     lxa_buffer_destroy(&tree->table_text);
     lxa_vector_destroy(&tree->template_elements);
@@ -3189,7 +3190,7 @@ template_boundary_valid(const lxa_html_tree_t *tree)
     const lxa_html_template_frame_t *frames =
         (const lxa_html_template_frame_t *) tree->template_stack.bytes.data;
     return lxa_html_tree_template_boundary_valid(length,
-        lxa_vector_length(&tree->template_elements),
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)),
         length == 0 ? 0 : frames[length - 1].element_count,
         length < 2 ? 0 : frames[length - 2].element_count);
 }
@@ -3275,7 +3276,7 @@ static lxa_status_t
 close_template(lxa_html_tree_t *tree, bool explicit_end)
 {
     size_t length = lxa_vector_length(&tree->template_stack);
-    size_t elements = lxa_vector_length(&tree->template_elements);
+    size_t elements = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t));
     lxa_html_template_frame_t frame = {0};
     size_t boundary = 0;
     if (!template_boundary_valid(tree)) {
@@ -3323,7 +3324,7 @@ template_boundary(const lxa_html_tree_t *tree)
 static lxa_dom_ref_t
 template_parent(const lxa_html_tree_t *tree)
 {
-    size_t length = lxa_vector_length(&tree->template_elements);
+    size_t length = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t));
     return length == template_boundary(tree) ? tree->template_fragment
         : lxa_html_open_ref(tree, &((const lxa_html_open_entry_t *) tree->template_elements.bytes.data)[length - 1]);
 }
@@ -3345,7 +3346,7 @@ template_insertion_location(lxa_html_tree_t *tree,
     lxa_status_t status;
     *parent = template_parent(tree);
     *before = (lxa_dom_ref_t){0};
-    if (lxa_vector_length(&tree->template_elements) == template_boundary(tree))
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) == template_boundary(tree))
         return LXA_OK;
     status = lxa_dom_nodes_element_read(tree->nodes, *parent, &name, &ns);
     if (status != LXA_OK) return status;
@@ -3372,7 +3373,7 @@ template_foster_element(lxa_html_tree_t *tree,
     if (status != LXA_OK) return status;
     if (keep_open) {
         status = lxa_size_add(
-            lxa_vector_length(&tree->template_elements), 1, &after);
+            lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), 1, &after);
         if (status == LXA_OK)
             status = check_template_elements(tree, after);
         if (status == LXA_OK)
@@ -3428,7 +3429,7 @@ static lxa_status_t
 template_table_text_group(lxa_html_tree_t *tree, bool *group)
 {
     *group = false;
-    if (lxa_vector_length(&tree->template_elements) == template_boundary(tree)) return LXA_OK;
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) == template_boundary(tree)) return LXA_OK;
     lxa_span_t top;
     lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, template_parent(tree), &top);
     if (status == LXA_OK) *group = named(top, "colgroup");
@@ -3452,7 +3453,7 @@ template_table_text_foster(lxa_html_tree_t *tree, lxa_span_t bytes)
 #define LXA_TABLE_TEXT_FLUSH_GROUP template_table_text_group
 #define LXA_TABLE_TEXT_FLUSH_PREFLIGHT(view) LXA_OK
 #define LXA_TABLE_TEXT_FLUSH_POP(view) \
-    template_pop_elements(view, lxa_vector_length(&(view)->template_elements) - 1)
+    template_pop_elements(view, lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) - 1)
 #define LXA_TABLE_TEXT_FLUSH_RECONSTRUCT reconstruct_formatting
 #define LXA_TABLE_TEXT_FLUSH_FOSTER template_table_text_foster
 #include "html/table_text_flush.inc"
@@ -3471,7 +3472,7 @@ static lxa_status_t
 flush_template_table_text(lxa_html_tree_t *tree)
 {
     if (tree->table_text.length == 0) return LXA_OK;
-    if (lxa_vector_length(&tree->template_elements) < template_boundary(tree)) return LXA_ERROR_INTERNAL;
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) < template_boundary(tree)) return LXA_ERROR_INTERNAL;
     lxa_status_t status = tree_flush_template_table_text(tree,
         (lxa_span_t){tree->table_text.data, tree->table_text.length});
     if (status == LXA_OK) lxa_buffer_clear(&tree->table_text);
@@ -3492,7 +3493,7 @@ begin_template(lxa_html_tree_t *tree,
                           nested ? 2 : 1, &depth);
     if (status == LXA_OK)
         status = check_template_depth(tree, depth,
-            lxa_vector_length(&tree->template_elements),
+            lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)),
             tree->mode == LXA_TREE_IN_BODY
                 || (nested && tree->template_return_mode == LXA_TREE_IN_BODY));
     if (status == LXA_OK)
@@ -3552,7 +3553,7 @@ begin_template(lxa_html_tree_t *tree,
     if (nested) {
         frame.fragment = tree->template_fragment;
         frame.patch = tree->template_patch;
-        frame.element_count = lxa_vector_length(&tree->template_elements);
+        frame.element_count = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t));
         frame.insertion_mode = tree->template_insertion_mode;
         status = lxa_vector_push(&tree->template_stack, &frame);
         if (status != LXA_OK) return status;
@@ -3617,7 +3618,7 @@ template_open_foreign(lxa_html_tree_t *tree,
     lxa_span_t name = token->name;
     size_t count;
     lxa_status_t status = lxa_size_add(
-        lxa_vector_length(&tree->template_elements), 1, &count);
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), 1, &count);
     if (status == LXA_OK)
         status = check_template_elements(tree, count);
     if (status == LXA_OK)
@@ -3657,7 +3658,7 @@ template_open_table_part(lxa_html_tree_t *tree,
                          const lxa_html_token_t *token)
 {
     lxa_html_token_t implied = {0};
-    size_t length = lxa_vector_length(&tree->template_elements);
+    size_t length = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t));
     bool column = named(token->name, "col");
     if (!lxa_html_tree_table_part(token->name) || named(token->name, "table")) {
         assert(false);
@@ -3741,7 +3742,7 @@ template_open_column(lxa_html_tree_t *tree,
                      const lxa_html_token_t *token)
 {
     lxa_html_token_t implied = {0};
-    size_t length = lxa_vector_length(&tree->template_elements), after;
+    size_t length = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), after;
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->template_elements.bytes.data, length
     };
@@ -3833,7 +3834,7 @@ tree_template_column_group_plan(lxa_html_tree_t *tree, const lxa_html_token_t *t
 {
     bool group_open = false;
     if (tree->template_insertion_mode == LXA_TEMPLATE_COLUMN_GROUP
-        && lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+        && lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(tree)) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge(tree->nodes->budget,
@@ -3944,7 +3945,7 @@ tree_template_text_group(tree_template_text_view_t *view, bool *group)
 {
     lxa_html_tree_t *tree = view->tree;
     *group = false;
-    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(tree)) {
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_dom_nodes_element_read(
@@ -4005,7 +4006,7 @@ template_end_plan(lxa_html_tree_t *tree, lxa_html_token_kind_t kind,
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->template_elements.bytes.data,
-        lxa_vector_length(&tree->template_elements)
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t))
     };
     return tree_template_end_plan(&view, template_boundary(tree), kind, name, plan);
 }
@@ -4101,7 +4102,7 @@ hidden_table_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token, size_t
 #define LXA_TEMPLATE_HTML_FOREIGN_NAME tree_template_html_foreign_start
 #define LXA_TEMPLATE_HTML_FOREIGN_VIEW lxa_html_tree_t
 #define LXA_TEMPLATE_HTML_FOREIGN_CURRENT(view) \
-    (lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+    (lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(view))
 #define LXA_TEMPLATE_HTML_FOREIGN_BUDGET(view) ((view)->nodes->budget)
 #define LXA_TEMPLATE_HTML_FOREIGN_REASON(view) (&(view)->nodes->limit_reason)
 #define LXA_TEMPLATE_HTML_FOREIGN_NAMESPACE(view, out) \
@@ -4135,7 +4136,7 @@ tree_template_table_scope(lxa_html_tree_t *tree, size_t *index)
 #define LXA_TEMPLATE_TABLE_TOKEN_VIEW lxa_html_tree_t
 #define LXA_TEMPLATE_TABLE_TOKEN_PLAN hidden_table_plan
 #define LXA_TEMPLATE_TABLE_TOKEN_SCOPE tree_template_table_scope
-#define LXA_TEMPLATE_TABLE_TOKEN_LENGTH(view) lxa_vector_length(&(view)->template_elements)
+#define LXA_TEMPLATE_TABLE_TOKEN_LENGTH(view) lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_TEMPLATE_TABLE_TOKEN_POP template_pop_elements
 #define LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT(view) \
     lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
@@ -4165,7 +4166,7 @@ tree_template_void_insert(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 #define LXA_TEMPLATE_VOID_PARAGRAPH template_plan_paragraph_close
 #define LXA_TEMPLATE_VOID_PREFLIGHT(view) \
     lxa_budget_check((view)->nodes->budget, LXA_BUDGET_NODES, 1, &(view)->nodes->limit_reason)
-#define LXA_TEMPLATE_VOID_LENGTH(view) lxa_vector_length(&(view)->template_elements)
+#define LXA_TEMPLATE_VOID_LENGTH(view) lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_TEMPLATE_VOID_POP template_pop_elements
 #define LXA_TEMPLATE_VOID_INSERT tree_template_void_insert
 #define LXA_TEMPLATE_VOID_MODE(view, token) template_start_mode(view, token, LXA_DOM_NS_HTML)
@@ -4326,7 +4327,7 @@ tree_body_end_body(lxa_html_tree_t *tree, bool html, lxa_html_root_mode_t *mode)
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))
     };
     return tree_end_body(&view, html, mode);
 }
@@ -4336,7 +4337,7 @@ tree_body_end_form(lxa_html_tree_t *tree)
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
-        lxa_vector_length(&tree->open_elements)
+        lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))
     };
     return tree_end_form(&view, &tree->form.handle);
 }
@@ -4563,7 +4564,7 @@ tree_start_frameset_eligible(tree_foster_text_view_t *view, bool *eligible)
 {
     lxa_html_tree_t *tree = view->tree;
     const lxa_html_open_entry_t *open = (const lxa_html_open_entry_t *) tree->open_elements.bytes.data;
-    size_t length = lxa_vector_length(&tree->open_elements);
+    size_t length = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t));
     *eligible = lxa_html_tree_frameset_body_eligible(tree->frameset_ok,
         tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : open[0].handle);
     return LXA_OK;
@@ -4629,7 +4630,7 @@ tree_root_start_table_query(tree_foster_text_view_t *view, bool *table, bool *gr
 {
     *table = *group = false;
     lxa_html_tree_t *tree = view->tree;
-    if (lxa_vector_length(&tree->open_elements) <= 1) return LXA_OK;
+    if (lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) <= 1) return LXA_OK;
     lxa_span_t top;
     lxa_status_t status = lxa_dom_nodes_element_name(tree->nodes, current_element(tree), &top);
     if (status == LXA_OK) {
@@ -4736,7 +4737,7 @@ static lxa_status_t
 tree_template_foreign_end_route(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     lxa_html_foreign_root_route_t *route)
 {
-    if (lxa_vector_length(&tree->template_elements) <= template_boundary(tree)) {
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) <= template_boundary(tree)) {
         *route = LXA_HTML_FOREIGN_ROOT_HTML;
         return LXA_OK;
     }
@@ -4789,7 +4790,7 @@ tree_template_foreign_end_consume(lxa_html_tree_t *tree, const lxa_html_token_t 
 #define LXA_TEMPLATE_END_DISPATCH_FOREIGN tree_dispatch_template_foreign_end
 #define LXA_TEMPLATE_END_DISPATCH_BR(view) lxa_html_tree_template_end_br_start( \
     (view)->template_insertion_mode, \
-    lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+    lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(view))
 #define LXA_TEMPLATE_END_DISPATCH_CLOSE(view) close_template(view, true)
 #define LXA_TEMPLATE_END_DISPATCH_BOUNDARY template_end_formatting_boundary
 #include "html/template_end_dispatch.inc"
@@ -4845,7 +4846,7 @@ tree_template_foreign_end_consume(lxa_html_tree_t *tree, const lxa_html_token_t 
 #define LXA_TEMPLATE_DATA_VIEW lxa_html_tree_t
 #define LXA_TEMPLATE_DATA_VALID(view) ((view)->template_fragment.handle == LXA_HANDLE_NONE \
     ? LXA_ERROR_INTERNAL : LXA_OK)
-#define LXA_TEMPLATE_DATA_TABLE(view) (lxa_vector_length(&(view)->template_elements) \
+#define LXA_TEMPLATE_DATA_TABLE(view) (lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) \
     == template_boundary(view) && lxa_html_tree_template_table_context((view)->template_insertion_mode))
 #define LXA_TEMPLATE_DATA_RECONSTRUCT reconstruct_formatting
 #define LXA_TEMPLATE_DATA_EMIT(view, bytes, table) insert_data_text( \
@@ -4944,7 +4945,7 @@ tree_finish_templates(lxa_html_tree_t *tree)
 {
     size_t work;
     lxa_status_t status = lxa_size_add(lxa_vector_length(&tree->template_stack),
-        lxa_vector_length(&tree->template_elements), &work);
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), &work);
     if (status == LXA_OK) status = lxa_size_add(work, 1, &work);
     if (status == LXA_OK)
         status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, work, &tree->nodes->limit_reason);
@@ -4971,7 +4972,7 @@ tree_finish_templates(lxa_html_tree_t *tree)
 static lxa_status_t
 tree_template_foreign_namespace(lxa_html_tree_t *tree, lxa_dom_namespace_t *ns)
 {
-    if (lxa_vector_length(&tree->template_elements) <= template_boundary(tree)) {
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) <= template_boundary(tree)) {
         *ns = LXA_DOM_NS_HTML;
         return LXA_OK;
     }
@@ -4990,7 +4991,7 @@ tree_template_foreign_table(lxa_html_tree_t *tree, const lxa_html_token_t *token
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->template_elements.bytes.data,
-        lxa_vector_length(&tree->template_elements)
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t))
     };
     lxa_html_template_mathml_table_action_t action;
     lxa_status_t status = tree_template_mathml_table_plan(&view, template_boundary(tree),
@@ -5100,7 +5101,7 @@ static lxa_status_t
 tree_template_current_route(lxa_html_tree_t *tree, const lxa_html_token_t *token,
     lxa_html_template_current_route_t *route)
 {
-    size_t length = lxa_vector_length(&tree->template_elements), boundary = template_boundary(tree);
+    size_t length = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), boundary = template_boundary(tree);
     lxa_html_template_current_route_t out = {LXA_HTML_TEMPLATE_CURRENT_CONTINUE, false};
     if (length > boundary) {
         const lxa_html_open_entry_t *open = (const lxa_html_open_entry_t *) tree->template_elements.bytes.data;
@@ -5149,7 +5150,7 @@ tree_template_table_end_ordinary(lxa_html_tree_t *tree, const lxa_html_token_t *
 #define LXA_TEMPLATE_TABLE_END_NAME tree_execute_template_table_end
 #define LXA_TEMPLATE_TABLE_END_VIEW lxa_html_tree_t
 #define LXA_TEMPLATE_TABLE_END_READ tree_template_current_route
-#define LXA_TEMPLATE_TABLE_END_POP(view) template_pop_elements(view, lxa_vector_length(&(view)->template_elements) - 1)
+#define LXA_TEMPLATE_TABLE_END_POP(view) template_pop_elements(view, lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) - 1)
 #define LXA_TEMPLATE_TABLE_END_PARAGRAPH(view, token) template_foster_element(view, token, false, NULL, LXA_DOM_NS_HTML)
 #define LXA_TEMPLATE_TABLE_END_ORDINARY tree_template_table_end_ordinary
 #define LXA_TEMPLATE_TABLE_END_WORK(view) \
@@ -5166,7 +5167,7 @@ tree_template_table_end_ordinary(lxa_html_tree_t *tree, const lxa_html_token_t *
 static lxa_status_t
 tree_template_prepare_name(lxa_html_tree_t *tree, lxa_span_t *name)
 {
-    size_t length = lxa_vector_length(&tree->template_elements);
+    size_t length = lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t));
     const lxa_html_open_entry_t *open = (const lxa_html_open_entry_t *) tree->template_elements.bytes.data;
     lxa_status_t status = lxa_budget_charge(tree->nodes->budget, LXA_BUDGET_WORK, 1,
         &tree->nodes->limit_reason);
@@ -5176,10 +5177,10 @@ tree_template_prepare_name(lxa_html_tree_t *tree, lxa_span_t *name)
 #define LXA_TEMPLATE_PREPARE_START_NAME tree_prepare_template_start
 #define LXA_TEMPLATE_PREPARE_START_VIEW lxa_html_tree_t
 #define LXA_TEMPLATE_PREPARE_START_CURRENT(view) \
-    (lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+    (lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(view))
 #define LXA_TEMPLATE_PREPARE_START_NAME_READ tree_template_prepare_name
 #define LXA_TEMPLATE_PREPARE_START_POP(view) \
-    template_pop_elements(view, lxa_vector_length(&(view)->template_elements) - 1)
+    template_pop_elements(view, lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) - 1)
 #define LXA_TEMPLATE_PREPARE_START_MODE(view, token) template_start_mode(view, token, LXA_DOM_NS_HTML)
 #define LXA_TEMPLATE_PREPARE_START_MODE_GET(view) ((view)->template_insertion_mode)
 #define LXA_TEMPLATE_PREPARE_START_TABLE(view, found) \
@@ -5223,7 +5224,7 @@ tree_template_select(lxa_html_tree_t *tree, const lxa_html_token_t *token, bool 
 #define LXA_TEMPLATE_START_ROUTE_FORM tree_template_form_token
 #define LXA_TEMPLATE_START_ROUTE_FOREIGN tree_template_html_foreign_start
 #define LXA_TEMPLATE_START_ROUTE_CURRENT(view) \
-    (lxa_vector_length(&(view)->template_elements) > template_boundary(view))
+    (lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(view))
 #define LXA_TEMPLATE_START_ROUTE_COLUMN template_open_column
 #define LXA_TEMPLATE_START_ROUTE_TABLE(view, token, out) tree_template_table_token(view, out)
 #include "html/template_start_route.inc"
@@ -5305,7 +5306,7 @@ tree_template_start_late(tree_template_table_start_view_t *view,
 
 #define LXA_TEMPLATE_END_EXECUTE_NAME tree_execute_template_end
 #define LXA_TEMPLATE_END_EXECUTE_VIEW lxa_html_tree_t
-#define LXA_TEMPLATE_END_EXECUTE_LENGTH(view) lxa_vector_length(&(view)->template_elements)
+#define LXA_TEMPLATE_END_EXECUTE_LENGTH(view) lxa_vector_length_sized(&(view)->template_elements, sizeof(lxa_html_open_entry_t))
 #define LXA_TEMPLATE_END_EXECUTE_DISPATCH tree_dispatch_template_end
 #define LXA_TEMPLATE_END_EXECUTE_PRELUDE tree_execute_template_html_prelude
 #define LXA_TEMPLATE_END_EXECUTE_TABLE tree_execute_template_table_end
@@ -5347,7 +5348,7 @@ tree_template_ordinary_start(tree_template_table_start_view_t *start,
     if (status != LXA_OK) return status;
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->template_elements.bytes.data,
-        lxa_vector_length(&tree->template_elements)
+        lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t))
     };
     lxa_html_template_container_plan_t recovery;
     status = tree_template_container_plan(&view, template_boundary(tree), token->name,
@@ -5363,7 +5364,7 @@ tree_template_ordinary_start(tree_template_table_start_view_t *start,
     if (status == LXA_OK)
         status = check_template_elements(tree, count);
     if (status == LXA_OK
-        && close_at == lxa_vector_length(&tree->template_elements))
+        && close_at == lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)))
         status = lxa_budget_check(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
     if (status == LXA_OK)
@@ -5377,7 +5378,7 @@ tree_template_ordinary_start(tree_template_table_start_view_t *start,
     if (status != LXA_OK) return status;
     status = build_element(tree, token, token->name, LXA_DOM_NS_HTML, &child);
     if (status != LXA_OK) return status;
-    if (close_at != lxa_vector_length(&tree->template_elements)) {
+    if (close_at != lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t))) {
         status = template_pop_elements(tree, close_at);
         if (status != LXA_OK) return status;
     }
@@ -5428,7 +5429,7 @@ tree_template_token_start(tree_template_table_start_view_t *view,
 static lxa_status_t
 tree_template_html_data(lxa_html_tree_t *tree, const lxa_html_token_t *token)
 {
-    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(tree)) {
         lxa_html_template_current_route_t current;
         lxa_status_t status = tree_template_current_route(tree, token, &current);
         if (status != LXA_OK) return status;
@@ -5480,7 +5481,7 @@ tree_consume_template(tree_foster_text_view_t *view,
     if (status != LXA_OK || handled) return status;
     status = tree_execute_template_html_prelude(tree, *token, &handled);
     if (status != LXA_OK || handled) return status;
-    if (lxa_vector_length(&tree->template_elements) > template_boundary(tree)) {
+    if (lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)) > template_boundary(tree)) {
         lxa_html_template_current_route_t current;
         status = tree_template_current_route(tree, *token, &current);
         if (status != LXA_OK) return status;
