@@ -37,7 +37,6 @@ struct lxa_html_tokenizer {
     size_t omitted_value_bytes; /* Normalized bytes excluded from attribute storage. */
     lxa_budget_t owned_budget, *budget;
     lxa_decoder_t *decoder;
-    lxa_encoder_t *encoder;
     lxa_html_token_callback_t on_token;
     lxa_html_error_callback_t on_error;
     lxa_html_attribute_value_filter_f value_filter;

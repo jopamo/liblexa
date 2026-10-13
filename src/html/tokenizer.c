@@ -170,11 +170,6 @@ lxa_html_tokenizer_create_with_budget(
         const lxa_encoding_t *utf8 = lxa_encoding_lookup(label);
         status = lxa_decoder_create_with_budget(
             utf8, LXA_ENCODING_REPLACE, allocator, budget, &tokenizer->decoder);
-        if (status == LXA_OK) {
-            status = lxa_encoder_create_with_budget(
-                utf8, LXA_ENCODING_FATAL, allocator, budget,
-                &tokenizer->encoder);
-        }
     }
     if (status != LXA_OK) {
         lxa_html_tokenizer_destroy(tokenizer);
@@ -196,7 +191,6 @@ lxa_html_tokenizer_destroy(lxa_html_tokenizer_t *tokenizer)
     external = tokenizer->budget == &tokenizer->owned_budget
                ? NULL : tokenizer->budget;
     lxa_table_destroy(tokenizer->attribute_names);
-    lxa_encoder_destroy(tokenizer->encoder);
     lxa_decoder_destroy(tokenizer->decoder);
     lxa_vector_destroy(&tokenizer->attribute_sources);
     lxa_vector_destroy(&tokenizer->attribute_views);
@@ -238,7 +232,6 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         tokenizer->source_attribute_count = 0;
         tokenizer->omitted_value_bytes = 0;
         lxa_decoder_reset(tokenizer->decoder);
-        lxa_encoder_reset(tokenizer->encoder);
         tokenizer->state = STATE_DATA;
         tokenizer->raw_mode = STATE_DATA;
         tokenizer->raw_return_mode = STATE_DATA;

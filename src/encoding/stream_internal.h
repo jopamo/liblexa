@@ -1,6 +1,7 @@
 #ifndef LIBLEXA_ENCODING_STREAM_INTERNAL_H
 #define LIBLEXA_ENCODING_STREAM_INTERNAL_H
 
+#include <assert.h>
 #include "liblexa/encoding.h"
 
 static inline size_t
@@ -51,6 +52,30 @@ lxa_encoding_utf8_scalar_length(uint32_t scalar)
     if (scalar < 0x800) return 2;
     if (scalar < 0x10000) return 3;
     return 4;
+}
+
+static inline bool
+lxa_encoding_scalar_valid(uint32_t scalar)
+{
+    return scalar <= 0x10ffff && !(scalar >= 0xd800 && scalar <= 0xdfff);
+}
+
+/* Write a validated scalar into its UTF-8 width. */
+static inline void
+lxa_encoding_utf8_write(uint8_t *output, uint32_t scalar, size_t width)
+{
+    assert(lxa_encoding_scalar_valid(scalar)
+        && width == lxa_encoding_utf8_scalar_length(scalar));
+    if (width == 1) {
+        output[0] = (uint8_t) scalar;
+    }
+    else {
+        for (size_t i = width - 1; i != 0; i--) {
+            output[i] = 0x80 | (scalar & 0x3f);
+            scalar >>= 6;
+        }
+        output[0] = (uint8_t) ((0xf0 << (4 - width)) | scalar);
+    }
 }
 
 /* Buffered source bytes awaiting scalar emission. Query after OK or

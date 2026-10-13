@@ -152,15 +152,11 @@ append_decoded_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp,
         return append_attribute(tokenizer, counted, false);
     }
     uint8_t bytes[4];
-    lxa_mut_span_t out = {bytes, sizeof(bytes)};
-    lxa_encoding_progress_t progress;
-    lxa_encoding_result_t result = lxa_encoder_feed(tokenizer->encoder, &cp, 1,
-                                                     out, &progress);
-    if (result != LXA_ENCODING_OK || progress.consumed != 1) {
-        return LXA_HTML_BAD_ARGUMENT;
-    }
+    if (!lxa_encoding_scalar_valid(cp)) return LXA_HTML_BAD_ARGUMENT;
+    size_t width = lxa_encoding_utf8_scalar_length(cp);
+    lxa_encoding_utf8_write(bytes, cp, width);
     {
-        lxa_span_t decoded = {bytes, progress.produced};
+        lxa_span_t decoded = {bytes, width};
         if (tokenizer->state == STATE_ATTRIBUTE_NAME
             || tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
             || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
@@ -211,9 +207,6 @@ static lxa_html_result_t
 append_reference_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp)
 {
     uint8_t bytes[4];
-    lxa_mut_span_t out = {bytes, sizeof(bytes)};
-    lxa_encoding_progress_t progress;
-    lxa_encoding_result_t status;
     if (!reference_in_attribute(tokenizer)) {
         return append_scalar(tokenizer, cp);
     }
@@ -222,12 +215,11 @@ append_reference_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp)
         lxa_span_t counted = {NULL, lxa_encoding_utf8_scalar_length(cp)};
         return append_attribute(tokenizer, counted, false);
     }
-    status = lxa_encoder_feed(tokenizer->encoder, &cp, 1, out, &progress);
-    if (status != LXA_ENCODING_OK || progress.consumed != 1) {
-        return LXA_HTML_BAD_ARGUMENT;
-    }
+    if (!lxa_encoding_scalar_valid(cp)) return LXA_HTML_BAD_ARGUMENT;
+    size_t width = lxa_encoding_utf8_scalar_length(cp);
+    lxa_encoding_utf8_write(bytes, cp, width);
     {
-        lxa_span_t decoded = {bytes, progress.produced};
+        lxa_span_t decoded = {bytes, width};
         return append_reference_bytes(tokenizer, decoded);
     }
 }
@@ -235,8 +227,7 @@ append_reference_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp)
 static bool
 supported_scalar(uint32_t cp)
 {
-    return cp != 0 && cp <= 0x10ffff
-           && !(cp >= 0xd800 && cp <= 0xdfff);
+    return cp != 0 && lxa_encoding_scalar_valid(cp);
 }
 
 static const char *

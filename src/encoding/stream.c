@@ -981,7 +981,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             || encoder->encoding == &utf16be_encoding)
         {
             bool big_endian = encoder->encoding == &utf16be_encoding;
-            if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+            if (!lxa_encoding_scalar_valid(cp)) {
                 if (encoder->mode == LXA_ENCODING_FATAL) {
                     progress->consumed++;
                     encoder->failed = true;
@@ -1040,7 +1040,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             progress->consumed++;
             continue;
         }
-        if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+        if (!lxa_encoding_scalar_valid(cp)) {
             if (encoder->mode == LXA_ENCODING_FATAL) {
                 progress->consumed++;
                 encoder->failed = true;
@@ -1053,17 +1053,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             return LXA_ENCODING_OUTPUT_FULL;
         }
         at = progress->produced;
-        if (n == 1) {
-            output.data[at] = (uint8_t) cp;
-        }
-        else {
-            size_t i;
-            for (i = n - 1; i > 0; i--) {
-                output.data[at + i] = 0x80 | (cp & 0x3f);
-                cp >>= 6;
-            }
-            output.data[at] = (uint8_t) ((0xf0 << (4 - n)) | cp);
-        }
+        lxa_encoding_utf8_write(output.data + at, cp, n);
         progress->produced += n;
         progress->consumed++;
     }
