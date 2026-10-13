@@ -165,12 +165,6 @@ lxa_html_tokenizer_create_with_budget(
     if (status == LXA_OK) {
         status = lxa_vector_bind_budget(&tokenizer->attribute_sources, budget);
     }
-    if (status == LXA_OK) {
-        lxa_span_t label = {(const uint8_t *) "utf-8", 5};
-        const lxa_encoding_t *utf8 = lxa_encoding_lookup(label);
-        status = lxa_decoder_create_with_budget(
-            utf8, LXA_ENCODING_REPLACE, allocator, budget, &tokenizer->decoder);
-    }
     if (status != LXA_OK) {
         lxa_html_tokenizer_destroy(tokenizer);
         return status;

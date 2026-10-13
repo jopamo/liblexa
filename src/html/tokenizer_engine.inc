@@ -416,6 +416,18 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
     lxa_encoding_result_t status;
     lxa_html_result_t result;
     uint32_t cp;
+    if (tokenizer->decoder == NULL) {
+        assert(!tokenizer->utf8_pending);
+        if (tokenizer->utf8_pending) return LXA_HTML_INTERNAL;
+        const lxa_encoding_t *utf8 = lxa_encoding_lookup(
+            (lxa_span_t){(const uint8_t *) "utf-8", 5});
+        lxa_status_t created = lxa_decoder_create_with_budget(utf8,
+            LXA_ENCODING_REPLACE, &tokenizer->allocator, tokenizer->budget,
+            &tokenizer->decoder);
+        if (created != LXA_OK)
+            return created == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+                : budget_result(tokenizer, created, LXA_BUDGET_MEMORY);
+    }
     size_t errors = lxa_decoder_error_count(tokenizer->decoder);
     status = lxa_decoder_feed(tokenizer->decoder, byte, &cp, 1, &progress);
     if (status != LXA_ENCODING_OK
@@ -456,6 +468,10 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
 static lxa_html_result_t
 finish_decoder(lxa_html_tokenizer_t *tokenizer, bool in_name)
 {
+    if (tokenizer->decoder == NULL) {
+        assert(!tokenizer->utf8_pending);
+        return tokenizer->utf8_pending ? LXA_HTML_INTERNAL : LXA_HTML_OK;
+    }
     lxa_encoding_progress_t progress;
     lxa_encoding_result_t status;
     lxa_html_result_t result;
