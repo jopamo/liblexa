@@ -126,7 +126,7 @@ lxa_dom_nodes_create_with_entropy(const lxa_allocator_t *allocator,
         lxa_budget_init(&local_budget, NULL);
         budget = &local_budget;
     }
-    status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY, sizeof(*nodes), reason);
+    status = lxa_budget_charge_impl(budget, LXA_BUDGET_MEMORY, sizeof(*nodes), reason);
     if (status != LXA_OK) {
         return status;
     }
@@ -282,7 +282,7 @@ check_new_slot(lxa_dom_nodes_t *nodes, lxa_budget_kind_t *reason)
 {
     *reason = LXA_BUDGET_COUNT;
     if (lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)) >= nodes->charged_slots) {
-        return lxa_budget_check(nodes->budget, LXA_BUDGET_NODES, 1, reason);
+        return lxa_budget_check_impl(nodes->budget, LXA_BUDGET_NODES, 1, reason);
     }
     return LXA_OK;
 }
@@ -292,7 +292,7 @@ charge_new_slot(lxa_dom_nodes_t *nodes)
 {
     size_t length = lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t));
     if (length > nodes->charged_slots) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_NODES, 1, NULL);
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_NODES, 1, NULL);
         nodes->charged_slots = length;
     }
 }
@@ -318,7 +318,7 @@ lxa_dom_nodes_reset(lxa_dom_nodes_t *nodes)
     if (status != LXA_OK) {
         return status;
     }
-    status = lxa_budget_check(nodes->budget, LXA_BUDGET_WORK, total_work,
+    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK, total_work,
                               &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
@@ -630,7 +630,7 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         status = lxa_size_add(nodes->strings.length, text.length, &total);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
                                   total - nodes->charged_string_bytes,
                                   &nodes->limit_reason);
     }
@@ -662,7 +662,7 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
      */
     status = check_new_slot(nodes, &nodes->limit_reason);
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
                                   total - nodes->charged_string_bytes,
                                   &nodes->limit_reason);
     }
@@ -702,7 +702,7 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -803,7 +803,7 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     if (status == LXA_OK) status = lxa_size_add(original, copied, &total);
     if (status != LXA_OK) return status;
     if (total > nodes->charged_string_bytes)
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     if (status == LXA_OK)
         status = lxa_budget_charge_work(nodes->budget, copied,
@@ -816,7 +816,7 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
         if (status != LXA_OK) return status;
     }
@@ -836,7 +836,7 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     characters[record.payload].offset = offset;
     characters[record.payload].length = length;
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -929,7 +929,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         status = lxa_size_to_id(lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *)), &atom_id);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
@@ -962,7 +962,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     }
     status = check_new_slot(nodes, &nodes->limit_reason);
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status != LXA_OK) {
@@ -971,7 +971,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     if (!found) {
         if (atom_id % ATOMS_PER_BLOCK == 0) {
             lxa_dom_atom_block_t *block;
-            status = lxa_budget_charge(nodes->budget, LXA_BUDGET_MEMORY,
+            status = lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_MEMORY,
                 sizeof(*block), &nodes->limit_reason);
             if (status != LXA_OK) {
                 return status;
@@ -1044,7 +1044,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         goto rollback;
     }
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -1485,7 +1485,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     }
     if (status == LXA_OK && lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
                             >= nodes->charged_attrs) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
                                    &nodes->limit_reason);
     }
     if (status == LXA_OK) {
@@ -1495,7 +1495,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         status = lxa_size_add(total, value.length, &total);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
@@ -1523,11 +1523,11 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     status = check_new_slot(nodes, &nodes->limit_reason);
     if (status == LXA_OK && lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
                             >= nodes->charged_attrs) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,
                                    &nodes->limit_reason);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status != LXA_OK) {
@@ -1569,12 +1569,12 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
     if (lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)) > nodes->charged_attrs) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1, NULL);
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1, NULL);
         ++nodes->charged_attrs;
     }
     charge_new_slot(nodes);
@@ -1713,7 +1713,7 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
     offset = nodes->strings.length;
     status = lxa_size_add(offset, value.length, &total);
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
@@ -1727,7 +1727,7 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
         if (status != LXA_OK) {
             return status;
@@ -1746,7 +1746,7 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
     attr->value_offset = offset;
     attr->value_length = value.length;
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -1812,7 +1812,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
                                     &nodes->limit_reason);
     }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status == LXA_OK) {
@@ -1839,7 +1839,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     }
     status = check_new_slot(nodes, &nodes->limit_reason);
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
     if (status != LXA_OK) {
@@ -1882,7 +1882,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -2009,7 +2009,7 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
                                     total - nodes->strings.length,
                                     &nodes->limit_reason);
     if (status == LXA_OK && total > nodes->charged_string_bytes)
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     if (status == LXA_OK)
         status = lxa_size_add(lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t)), 1, &next);
@@ -2026,7 +2026,7 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
     }
     status = check_new_slot(nodes, &nodes->limit_reason);
     if (status == LXA_OK && total > nodes->charged_string_bytes)
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     if (status != LXA_OK) return status;
     for (i = 0; i < 2; ++i) {
@@ -2058,7 +2058,7 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
         return status;
     }
     if (total > nodes->charged_string_bytes) {
-        lxa_budget_charge(nodes->budget, LXA_BUDGET_STRINGS,
+        lxa_budget_charge_impl(nodes->budget, LXA_BUDGET_STRINGS,
                           total - nodes->charged_string_bytes, NULL);
         nodes->charged_string_bytes = total;
     }
@@ -3439,7 +3439,7 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
     }
     /* Only fragment -> character is supported here: its child depth is one.
      * Do not hold a live-stack charge on a persistent tree link. */
-    status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH, 1,
+    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_TREE_DEPTH, 1,
                               &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
@@ -3656,7 +3656,7 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             }
         }
     }
-    status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH, depth,
+    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_TREE_DEPTH, depth,
                               &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
@@ -4293,7 +4293,7 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     }
     status = lxa_size_add(depth, max_relative - 1, &new_depth);
     if (status == LXA_OK)
-        status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH,
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_TREE_DEPTH,
                                   new_depth, &nodes->limit_reason);
     if (status != LXA_OK) return status;
     if (reset_options || has_content) {
@@ -4429,7 +4429,7 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
             size_t absolute;
             status = lxa_size_add(target_depth, depth, &absolute);
             if (status == LXA_OK)
-                status = lxa_budget_check(nodes->budget, LXA_BUDGET_TREE_DEPTH,
+                status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_TREE_DEPTH,
                                            absolute, &nodes->limit_reason);
         }
         if (status != LXA_OK) break;
@@ -4491,7 +4491,7 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                 size_t absolute;
                 status = lxa_size_add(target_depth, depth, &absolute);
                 if (status == LXA_OK)
-                    status = lxa_budget_check(nodes->budget,
+                    status = lxa_budget_check_impl(nodes->budget,
                         LXA_BUDGET_TREE_DEPTH, absolute, &nodes->limit_reason);
             }
             if (status == LXA_OK)
@@ -5508,7 +5508,7 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
         return status;
     }
     budget = nodes->budget;
-    status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY, scratch, NULL);
+    status = lxa_budget_charge_impl(budget, LXA_BUDGET_MEMORY, scratch, NULL);
     if (status != LXA_OK) {
         return status;
     }
