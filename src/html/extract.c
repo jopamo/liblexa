@@ -1,3 +1,4 @@
+#include "base/budget_internal.h"
 #include "html/source_consumer.h"
 #include "html/control_context.h"
 #include <string.h>
@@ -73,7 +74,7 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
     status = lxa_budget_check_item(owner->budget, LXA_BUDGET_NAME_BYTES, name.length,
                                    &owner->reason);
     if (status == LXA_OK)
-        status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, name.length,
+        status = lxa_budget_charge_work(owner->budget, name.length,
                                    &owner->reason);
     if (status != LXA_OK)
         return status;
@@ -86,7 +87,7 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
     if (!unicode)
         return LXA_OK;
     status =
-        lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, name.length, &owner->reason);
+        lxa_budget_charge_work(owner->budget, name.length, &owner->reason);
     if (status != LXA_OK)
         return status;
     if (*decoder == NULL) {
@@ -129,7 +130,7 @@ static lxa_status_t target_index(extraction_t *owner, lxa_span_t tag,
     for (size_t t = 0; t < owner->count; t++) {
         const lxa_html_source_target_t *target = &owner->targets[t];
         lxa_status_t status =
-            lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
+            lxa_budget_charge_work(owner->budget, 1, &owner->reason);
         if (status != LXA_OK)
             return status;
         if (target->attribute.length != name.length ||
@@ -138,7 +139,7 @@ static lxa_status_t target_index(extraction_t *owner, lxa_span_t tag,
         size_t work;
         status = lxa_size_add(target->attribute.length, target->tag.length, &work);
         if (status == LXA_OK)
-            status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, work, &owner->reason);
+            status = lxa_budget_charge_work(owner->budget, work, &owner->reason);
         if (status != LXA_OK)
             return status;
         if (memcmp(target->attribute.data, name.data, name.length) == 0 &&
@@ -189,7 +190,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                          owner->mapping.bytes.length / sizeof(lxa_html_input_mapping_t);
                      n != 0; n >>= 1)
                     mapping_work += 3;
-                status = lxa_budget_charge(owner->budget, LXA_BUDGET_WORK, mapping_work,
+                status = lxa_budget_charge_work(owner->budget, mapping_work,
                                            &owner->reason);
                 if (status != LXA_OK)
                     return status;
@@ -278,7 +279,7 @@ lxa_html_extract_attributes_with_budget(const lxa_allocator_t *allocator, lxa_bu
         goto done;
     owner.encoding = selection.encoding;
     for (size_t i = 0; i < count; i++) {
-        status = lxa_budget_charge(owner.budget, LXA_BUDGET_WORK, 1, &owner.reason);
+        status = lxa_budget_charge_work(owner.budget, 1, &owner.reason);
         if (status == LXA_OK)
             status = name_check(targets[i].tag, true, allocator, &owner, &name_decoder);
         if (status == LXA_OK)
