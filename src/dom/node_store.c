@@ -1613,6 +1613,23 @@ lxa_dom_nodes_append_foreign_attribute(lxa_dom_nodes_t *nodes,
                              HTML_NAME_TOKEN_ATTRIBUTE, out);
 }
 
+static lxa_status_t
+attribute_spans(const lxa_dom_nodes_t *nodes, const lxa_dom_attr_t *attr,
+                lxa_span_t *name, lxa_span_t *value)
+{
+    if (attr->name_offset > nodes->strings.length
+        || attr->name_length > nodes->strings.length - attr->name_offset
+        || attr->value_offset > nodes->strings.length
+        || attr->value_length > nodes->strings.length - attr->value_offset) {
+        return LXA_ERROR_ARGUMENT;
+    }
+    name->data = nodes->strings.data + attr->name_offset;
+    name->length = attr->name_length;
+    value->data = nodes->strings.data + attr->value_offset;
+    value->length = attr->value_length;
+    return LXA_OK;
+}
+
 lxa_status_t
 lxa_dom_nodes_attribute_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t attribute, lxa_dom_attr_namespace_t *ns,
@@ -1630,7 +1647,7 @@ lxa_dom_nodes_attribute_namespace(const lxa_dom_nodes_t *nodes,
         || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)))
         return LXA_ERROR_ARGUMENT;
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
-    status = lxa_dom_nodes_attribute_read(nodes, attribute, &name, &value);
+    status = attribute_spans(nodes, attr, &name, &value);
     if (status != LXA_OK) return status;
     if (attr->namespace_id == LXA_DOM_ATTR_NS_XML
         || attr->namespace_id == LXA_DOM_ATTR_NS_XMLNS
@@ -1670,17 +1687,7 @@ lxa_dom_nodes_attribute_read(const lxa_dom_nodes_t *nodes,
         return LXA_ERROR_ARGUMENT;
     }
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
-    if (attr->name_offset > nodes->strings.length
-        || attr->name_length > nodes->strings.length - attr->name_offset
-        || attr->value_offset > nodes->strings.length
-        || attr->value_length > nodes->strings.length - attr->value_offset) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    name->data = nodes->strings.data + attr->name_offset;
-    name->length = attr->name_length;
-    value->data = nodes->strings.data + attr->value_offset;
-    value->length = attr->value_length;
-    return LXA_OK;
+    return attribute_spans(nodes, attr, name, value);
 }
 
 lxa_status_t
