@@ -443,10 +443,12 @@ lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
     }
     memset(out, 0, sizeof(*out));
     if (nodes == NULL || handle.document != nodes || handle.epoch != nodes->epoch
+        || nodes->records.element_size != sizeof(lxa_dom_record_t)
         || lxa_handle_unpack(handle.handle, &index, &generation) != LXA_OK) {
         return LXA_ERROR_ARGUMENT;
     }
-    if (index < nodes->retired || index >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
+    if (index < nodes->retired
+        || index >= nodes->records.bytes.length / sizeof(lxa_dom_record_t)) {
         return LXA_ERROR_ARGUMENT;
     }
     entry = (const lxa_dom_record_t *) nodes->records.bytes.data + index;
@@ -1110,7 +1112,8 @@ element_payload(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
         return status;
     }
     if (record.kind != LXA_DOM_KIND_ELEMENT
-        || record.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))) {
+        || nodes->elements.element_size != sizeof(lxa_dom_element_t)
+        || record.payload >= nodes->elements.bytes.length / sizeof(lxa_dom_element_t)) {
         return LXA_ERROR_ARGUMENT;
     }
     *out = (const lxa_dom_element_t *) nodes->elements.bytes.data + record.payload;
@@ -1122,7 +1125,8 @@ element_name(const lxa_dom_nodes_t *nodes, const lxa_dom_element_t *payload,
              lxa_span_t *out)
 {
     const lxa_dom_atom_t *atom;
-    if (payload->atom >= lxa_vector_length_sized(&nodes->atoms, sizeof(lxa_dom_atom_t *))) {
+    if (nodes->atoms.element_size != sizeof(lxa_dom_atom_t *)
+        || payload->atom >= nodes->atoms.bytes.length / sizeof(lxa_dom_atom_t *)) {
         return LXA_ERROR_ARGUMENT;
     }
     atom = ((lxa_dom_atom_t *const *) nodes->atoms.bytes.data)[payload->atom];
