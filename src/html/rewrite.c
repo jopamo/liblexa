@@ -1,3 +1,4 @@
+#include "base/budget_internal.h"
 #include "liblexa/html_rewrite.h"
 #include "html/source_consumer.h"
 #include "html-charref-overrides.h"
@@ -22,7 +23,7 @@ typedef struct {
 static lxa_status_t
 append(rewrite_t *owner, lxa_span_t bytes)
 {
-    lxa_status_t status = lxa_budget_charge(&owner->budget, LXA_BUDGET_STRINGS,
+    lxa_status_t status = lxa_budget_charge_impl(&owner->budget, LXA_BUDGET_STRINGS,
                                             bytes.length, &owner->reason);
     if (status == LXA_OK)
         status = lxa_buffer_append(&owner->syntax, bytes);
@@ -37,7 +38,7 @@ encode(rewrite_t *owner, uint32_t scalar)
     uint8_t bytes[64];
     lxa_encoding_progress_t progress;
     lxa_status_t status =
-        lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, 1, &owner->reason);
+        lxa_budget_charge_work(&owner->budget, 1, &owner->reason);
     if (status != LXA_OK)
         return status;
     lxa_encoding_result_t result = lxa_encoder_feed(
@@ -93,7 +94,7 @@ decode(rewrite_t *owner, lxa_span_t input, bool value)
     if (input.data == NULL && input.length != 0)
         return LXA_ERROR_ARGUMENT;
     lxa_status_t status =
-        lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, input.length, &owner->reason);
+        lxa_budget_charge_work(&owner->budget, input.length, &owner->reason);
     if (status != LXA_OK)
         return status;
     lxa_decoder_reset(owner->decoder);
@@ -181,7 +182,7 @@ static lxa_status_t
 publish(rewrite_t *owner, lxa_span_t bytes)
 {
     lxa_status_t status =
-        lxa_budget_charge(&owner->budget, LXA_BUDGET_WORK, bytes.length, &owner->reason);
+        lxa_budget_charge_work(&owner->budget, bytes.length, &owner->reason);
     if (status != LXA_OK) {
         owner->operation_failed = true;
         return status;
