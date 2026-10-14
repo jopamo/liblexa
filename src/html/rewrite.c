@@ -1,4 +1,5 @@
 #include "base/budget_internal.h"
+#include "encoding/stream_internal.h"
 #include "liblexa/html_rewrite.h"
 #include "html/source_consumer.h"
 #include "html-charref-overrides.h"
@@ -17,7 +18,7 @@ typedef struct {
     lxa_write_f write;
     void *write_context;
     lxa_limit_reason_t reason;
-    bool unicode, callback_failed, operation_failed;
+    bool utf8, unicode, callback_failed, operation_failed;
 } rewrite_t;
 
 static lxa_status_t
@@ -41,6 +42,13 @@ encode(rewrite_t *owner, uint32_t scalar)
         lxa_budget_charge_work(&owner->budget, 1, &owner->reason);
     if (status != LXA_OK)
         return status;
+    if (owner->utf8) {
+        if (!lxa_encoding_scalar_valid(scalar))
+            return LXA_ERROR_UNSUPPORTED;
+        size_t width = lxa_encoding_utf8_scalar_length(scalar);
+        lxa_encoding_utf8_write(bytes, scalar, width);
+        return append(owner, (lxa_span_t){bytes, width});
+    }
     lxa_encoding_result_t result = lxa_encoder_feed(
         owner->encoder, &scalar, 1, (lxa_mut_span_t){bytes, sizeof(bytes)}, &progress);
     if (result == LXA_ENCODING_MALFORMED)
@@ -132,15 +140,16 @@ build(rewrite_t *owner, const lxa_html_source_attribute_t *event, lxa_span_t val
     if (owner->decoder == NULL) {
         const lxa_encoding_t *utf8 =
             lxa_encoding_lookup((lxa_span_t){(const uint8_t *)"utf-8", 5});
+        owner->utf8 = event->encoding == utf8;
         owner->unicode =
-            event->encoding == utf8 ||
+            owner->utf8 ||
             event->encoding ==
                 lxa_encoding_lookup((lxa_span_t){(const uint8_t *)"utf-16le", 8}) ||
             event->encoding ==
                 lxa_encoding_lookup((lxa_span_t){(const uint8_t *)"utf-16be", 8});
         status = lxa_decoder_create_with_budget(
             utf8, LXA_ENCODING_FATAL, owner->allocator, &owner->budget, &owner->decoder);
-        if (status == LXA_OK)
+        if (status == LXA_OK && !owner->utf8)
             status = lxa_encoder_create_with_budget(event->encoding, LXA_ENCODING_FATAL,
                                                     owner->allocator, &owner->budget,
                                                     &owner->encoder);
@@ -151,7 +160,8 @@ build(rewrite_t *owner, const lxa_html_source_attribute_t *event, lxa_span_t val
         }
     }
     lxa_buffer_clear(&owner->syntax);
-    lxa_encoder_reset(owner->encoder);
+    if (!owner->utf8)
+        lxa_encoder_reset(owner->encoder);
     status = decode(owner, event->name, false);
     if (status == LXA_ERROR_UNSUPPORTED) {
         lxa_buffer_clear(&owner->syntax);
@@ -167,6 +177,8 @@ build(rewrite_t *owner, const lxa_html_source_attribute_t *event, lxa_span_t val
     if (status == LXA_OK)
         status = ascii(owner, "\"");
     if (status == LXA_OK) {
+        if (owner->utf8)
+            return append(owner, (lxa_span_t){0});
         uint8_t bytes[64];
         lxa_encoding_progress_t progress;
         lxa_encoding_result_t result = lxa_encoder_finish(
