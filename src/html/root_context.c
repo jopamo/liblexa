@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include "base/vector_internal.h"
+#include "base/budget_internal.h"
 #include "html/root_context.h"
 #include "html/tree_categories.h"
 
@@ -40,7 +41,7 @@ static lxa_status_t
 reserve_open_slots(lxa_html_root_context_t *context, size_t additional)
 {
     size_t count;
-    lxa_status_t status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+    lxa_status_t status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
         additional, &context->limit_reason);
     if (status == LXA_OK)
         status = lxa_size_add(lxa_vector_length_sized(&context->stack->elements,
@@ -74,7 +75,7 @@ check_body_child_depth(lxa_html_root_context_t *context, size_t retained)
     size_t depth;
     lxa_status_t status = lxa_size_add(retained, 2, &depth);
     return status == LXA_OK
-        ? lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+        ? lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
             depth, &context->limit_reason) : status;
 }
 
@@ -136,12 +137,12 @@ static lxa_status_t
 create(lxa_html_root_context_t *context, lxa_html_root_element_t element)
 {
     lxa_budget_t *budget = context->stack->budget;
-    lxa_status_t status = lxa_budget_check_item(budget, LXA_BUDGET_NAME_BYTES, 4,
+    lxa_status_t status = lxa_budget_check_item_impl(budget, LXA_BUDGET_NAME_BYTES, 4,
         &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
+        status = lxa_budget_charge_impl(budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_check(budget, LXA_BUDGET_TREE_DEPTH,
+        status = lxa_budget_check_impl(budget, LXA_BUDGET_TREE_DEPTH,
             element == LXA_HTML_ROOT_ELEMENT_HTML ? 1 : 2, &context->limit_reason);
     if (status == LXA_OK) {
         switch (element) {
@@ -504,10 +505,10 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
         size_t retained = length - group, count;
         status = check_body_child_depth(context, retained);
         if (status == LXA_OK)
-            status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+            status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
                 group ? 0 : 1, &context->limit_reason);
         if (status == LXA_OK)
-            status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+            status = lxa_budget_check_item_impl(context->stack->budget, LXA_BUDGET_NAME_BYTES,
                 token->name.length, &context->limit_reason);
         if (status == LXA_OK) status = lxa_size_add(retained, 1, &count);
         if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, count);
@@ -553,7 +554,7 @@ context_reconstruct(lxa_html_root_context_t *context,
         sizeof(lxa_html_control_element_t)), length - start, &depth);
     if (status == LXA_OK) status = lxa_size_add(depth, 1, &depth);
     if (status == LXA_OK)
-        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
+        status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
             depth, &context->limit_reason);
     if (status == LXA_OK)
         status = lxa_html_formatting_list_reconstruct_planned(formatting, context->stack, 0, start);
@@ -689,10 +690,10 @@ lxa_html_root_context_start_void(lxa_html_root_context_t *context,
             || (formatting != NULL && (formatting->store == NULL
                 || formatting->store->budget != context->stack->budget)))
             return LXA_ERROR_ARGUMENT;
-        status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+        status = lxa_budget_check_item_impl(context->stack->budget, LXA_BUDGET_NAME_BYTES,
             5, &context->limit_reason);
         if (status == LXA_OK)
-            status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1,
+            status = lxa_budget_charge_impl(context->stack->budget, LXA_BUDGET_WORK, 1,
                 &context->limit_reason);
         if (status == LXA_OK)
             status = check_body_child_depth(context, lxa_vector_length_sized(&context->stack->elements,
@@ -1369,7 +1370,7 @@ context_form_closed(root_form_view_t *view, const lxa_html_token_t *token, size_
     (void) token;
     lxa_html_root_context_t *context = view->context;
     uint64_t identity;
-    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+    lxa_status_t status = lxa_budget_check_item_impl(context->stack->budget,
         LXA_BUDGET_NAME_BYTES, 4, &context->limit_reason);
     if (status == LXA_OK) status = check_body_child_depth(context, keep);
     if (status == LXA_OK)
@@ -2088,7 +2089,7 @@ lxa_html_root_context_prepare_data(lxa_html_root_context_t *context,
         || !body_start_mode_valid(context, *mode) || formatting == NULL
         || formatting->store == NULL || formatting->store->budget != context->stack->budget
         || (data.length != 0 && data.data == NULL)) return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+    status = lxa_budget_charge_impl(context->stack->budget, LXA_BUDGET_WORK,
         data.length, &context->limit_reason);
     root_data_view_t view = {context, formatting, mode};
     lxa_html_root_data_action_t out;
@@ -2287,7 +2288,7 @@ lxa_html_root_context_after_body(lxa_html_root_context_t *context,
             || formatting->store->budget != context->stack->budget)))
         return LXA_ERROR_ARGUMENT;
     if (token->kind == LXA_HTML_TEXT)
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK,
+        status = lxa_budget_charge_impl(context->stack->budget, LXA_BUDGET_WORK,
             token->data.length, &context->limit_reason);
     lxa_html_after_body_action_t out;
     if (status == LXA_OK) status = lxa_html_tree_after_body_action(token, &out);
@@ -2354,12 +2355,12 @@ head_noscript_admit(root_head_noscript_view_t *view, const lxa_html_token_t *tok
 {
     (void) token;
     lxa_html_root_context_t *context = view->context;
-    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+    lxa_status_t status = lxa_budget_check_item_impl(context->stack->budget,
         LXA_BUDGET_NAME_BYTES, 8, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
+        status = lxa_budget_charge_impl(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_TREE_DEPTH, 3, &context->limit_reason);
+        status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_TREE_DEPTH, 3, &context->limit_reason);
     return status;
 }
 
@@ -2537,7 +2538,7 @@ frameset_prepare(root_frameset_control_view_t *view)
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    status = lxa_budget_check(&after, LXA_BUDGET_OPEN_ELEMENTS, 1, &context->limit_reason);
+    status = lxa_budget_check_impl(&after, LXA_BUDGET_OPEN_ELEMENTS, 1, &context->limit_reason);
     if (status == LXA_OK) {
         status = lxa_vector_reserve(&stack->elements, 1);
         if (status == LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_MEMORY;
@@ -2550,10 +2551,10 @@ frameset_admit(root_frameset_control_view_t *view, const lxa_html_token_t *token
 {
     (void) token;
     lxa_html_root_context_t *context = view->context;
-    lxa_status_t status = lxa_budget_check_item(context->stack->budget,
+    lxa_status_t status = lxa_budget_check_item_impl(context->stack->budget,
         LXA_BUDGET_NAME_BYTES, 8, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_charge(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
+        status = lxa_budget_charge_impl(context->stack->budget, LXA_BUDGET_WORK, 1, &context->limit_reason);
     if (status == LXA_OK)
         status = check_body_child_depth(context,
             *view->mode == LXA_TREE_IN_FRAMESET
@@ -2566,9 +2567,9 @@ frameset_admit(root_frameset_control_view_t *view, const lxa_html_token_t *token
         status = lxa_size_add(lxa_vector_length_sized(&stack->elements,
             sizeof(lxa_html_control_element_t)), 1, &work);
         if (status == LXA_OK)
-            status = lxa_budget_check(stack->budget, LXA_BUDGET_WORK, work, &context->limit_reason);
+            status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_WORK, work, &context->limit_reason);
         if (status == LXA_OK && stack->charged_name_bytes < 8)
-            status = lxa_budget_check(stack->budget, LXA_BUDGET_STRINGS,
+            status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_STRINGS,
                 8 - stack->charged_name_bytes, &context->limit_reason);
         if (status == LXA_OK) {
             status = lxa_buffer_reserve(&stack->names, 8);
@@ -3217,7 +3218,7 @@ context_data_null_pop(root_data_null_view_t *view)
 static lxa_status_t
 context_data_null_flush(root_data_null_view_t *view, lxa_span_t pending)
 {
-    lxa_status_t status = lxa_budget_charge(view->context->stack->budget,
+    lxa_status_t status = lxa_budget_charge_impl(view->context->stack->budget,
         LXA_BUDGET_WORK, pending.length, &view->context->limit_reason);
     if (status == LXA_OK && pending.length != 0 && view->emit != NULL)
         status = view->emit(view->user, pending, view->column_group);
