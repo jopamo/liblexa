@@ -482,6 +482,26 @@ LXA_HTML_STATE(DATA, 0, TEXT, DATA,
         }
         if (i != start) {
             lxa_span_t bytes = {input.data + start, i - start};
+            if (LXA_HTML_DIRECT_TREE_TEXT && prepaid
+                && tokenizer->state == STATE_DATA && tokenizer->text.length == 0
+                && i < input.length && input.data[i] == '<') {
+                lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+                lxa_status_t status = lxa_budget_check_item_impl(tokenizer->budget,
+                    LXA_BUDGET_TOKEN_BYTES, bytes.length, &reason);
+                result = budget_result(tokenizer, status, reason);
+                if (result != LXA_HTML_OK) goto fail;
+                result = charge_work(tokenizer, 1);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i + 1;
+                lxa_html_token_t token = {0};
+                token.kind = LXA_HTML_TEXT;
+                token.data = bytes;
+                result = emit(tokenizer, &token);
+                if (result != LXA_HTML_OK) goto fail;
+                tokenizer->state = STATE_TAG_OPEN;
+                i++;
+                break;
+            }
             result = buffer_append(tokenizer, &tokenizer->text, bytes,
                                    LXA_BUDGET_TOKEN_BYTES);
             if (result != LXA_HTML_OK) {

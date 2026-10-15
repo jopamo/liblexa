@@ -10,7 +10,9 @@
     lxa_html_tree_on_token((tokenizer)->context, tokenizer, token)
 #define LXA_HTML_HAS_DIAGNOSTICS(tokenizer) false
 #define LXA_HTML_EMIT_DIAGNOSTIC(tokenizer, code, offset) LXA_OK
+#define LXA_HTML_DIRECT_TREE_TEXT 1
 #include "html/tokenizer_engine.inc"
+#undef LXA_HTML_DIRECT_TREE_TEXT
 #undef LXA_HTML_EMIT_DIAGNOSTIC
 #undef LXA_HTML_HAS_DIAGNOSTICS
 #undef LXA_HTML_EMIT_TOKEN
