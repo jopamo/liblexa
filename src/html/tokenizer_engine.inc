@@ -133,7 +133,7 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
-    status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
+    status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
                                    total, &reason);
     return status == LXA_OK
            ? buffer_append_storage(tokenizer, target, bytes)
@@ -775,7 +775,7 @@ begin_attribute(lxa_html_tokenizer_t *tokenizer, size_t offset)
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
-    status = lxa_budget_check_item(tokenizer->budget,
+    status = lxa_budget_check_item_impl(tokenizer->budget,
                                    LXA_BUDGET_ATTRS_PER_ELEMENT,
                                    count, &reason);
     if (status != LXA_OK) {
@@ -830,10 +830,10 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
-    status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
+    status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
                                    total, &reason);
     if (status == LXA_OK && name) {
-        status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
+        status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
                                        component_length, &reason);
     }
     if (status != LXA_OK) {

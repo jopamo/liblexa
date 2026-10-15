@@ -56,6 +56,26 @@ lxa_budget_check_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
 }
 
 static inline lxa_status_t
+lxa_budget_check_item_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
+                      uint64_t size, lxa_budget_kind_t *reason)
+{
+    if (reason != NULL) {
+        *reason = LXA_BUDGET_COUNT;
+    }
+    if (budget == NULL || kind < LXA_BUDGET_ATTRS_PER_ELEMENT
+        || kind >= LXA_BUDGET_COUNT) {
+        return LXA_ERROR_ARGUMENT;
+    }
+    if (size > lxa_budget_maximum(&budget->limits, kind)) {
+        if (reason != NULL) {
+            *reason = kind;
+        }
+        return LXA_ERROR_LIMIT;
+    }
+    return LXA_OK;
+}
+
+static inline lxa_status_t
 lxa_budget_charge_impl(lxa_budget_t *budget, lxa_budget_kind_t kind,
                   uint64_t amount, lxa_budget_kind_t *reason)
 {

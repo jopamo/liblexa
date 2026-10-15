@@ -344,7 +344,7 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
         if (tokenizer->state != STATE_DATA || appropriate_end_tag.length == 0) {
             return LXA_HTML_BAD_ARGUMENT;
         }
-        status = lxa_budget_check_item(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
+        status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
                                        appropriate_end_tag.length, &reason);
         if (status != LXA_OK) {
             return budget_result(tokenizer, status, reason);

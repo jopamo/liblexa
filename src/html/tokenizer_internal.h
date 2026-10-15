@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include "base/budget_internal.h"
 #include "html/tokenizer.h"
 #include "html/tokenizer_classes.h"
 #include "liblexa/encoding.h"
@@ -115,9 +116,9 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
-    status = lxa_budget_check_item(tokenizer->budget, kind, length, &reason);
+    status = lxa_budget_check_item_impl(tokenizer->budget, kind, length, &reason);
     if (status == LXA_OK && buffer == &tokenizer->name) {
-        status = lxa_budget_check_item(tokenizer->budget,
+        status = lxa_budget_check_item_impl(tokenizer->budget,
                                        LXA_BUDGET_TOKEN_BYTES, length, &reason);
     }
     else if (status == LXA_OK && buffer == &tokenizer->text
@@ -126,7 +127,7 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
         size_t total;
         status = lxa_size_add(tokenizer->name.length, length, &total);
         if (status == LXA_OK) {
-            status = lxa_budget_check_item(tokenizer->budget,
+            status = lxa_budget_check_item_impl(tokenizer->budget,
                                            LXA_BUDGET_TOKEN_BYTES, total,
                                            &reason);
         }

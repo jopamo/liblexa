@@ -323,7 +323,7 @@ LXA_HTML_STATE(RAW_END_TAG_NAME, 18, RAW_CANDIDATE, NONE,
             result = LXA_HTML_OVERFLOW;
             goto fail;
         }
-        status = lxa_budget_check_item(tokenizer->budget,
+        status = lxa_budget_check_item_impl(tokenizer->budget,
                                        LXA_BUDGET_TOKEN_BYTES, total,
                                        &reason);
         if (status != LXA_OK) {
