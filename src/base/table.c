@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "liblexa/base.h"
+#include "base/budget_internal.h"
 
 typedef struct {
     uint8_t *key;
@@ -25,7 +26,7 @@ struct lxa_table {
 static lxa_status_t
 charge(lxa_table_t *table, lxa_budget_kind_t kind, size_t count)
 {
-    return lxa_budget_charge(table->budget, kind, count, &table->reason);
+    return lxa_budget_charge_impl(table->budget, kind, count, &table->reason);
 }
 
 static void
@@ -194,7 +195,7 @@ lxa_table_create_with_budget(const lxa_allocator_t *allocator,
         }
         budget = &local;
     }
-    status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY, sizeof(*table), NULL);
+    status = lxa_budget_charge_impl(budget, LXA_BUDGET_MEMORY, sizeof(*table), NULL);
     if (status != LXA_OK) {
         return status;
     }
