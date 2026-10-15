@@ -1644,7 +1644,8 @@ lxa_dom_nodes_attribute_namespace(const lxa_dom_nodes_t *nodes,
     status = lxa_dom_nodes_read(nodes, attribute, &record);
     if (status != LXA_OK) return status;
     if (record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t)))
+        || nodes->attributes.element_size != sizeof(lxa_dom_attr_t)
+        || record.payload >= nodes->attributes.bytes.length / sizeof(lxa_dom_attr_t))
         return LXA_ERROR_ARGUMENT;
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
     status = attribute_spans(nodes, attr, &name, &value);
@@ -1683,7 +1684,8 @@ lxa_dom_nodes_attribute_read(const lxa_dom_nodes_t *nodes,
         return status;
     }
     if (record.kind != LXA_DOM_KIND_ATTRIBUTE
-        || record.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))) {
+        || nodes->attributes.element_size != sizeof(lxa_dom_attr_t)
+        || record.payload >= nodes->attributes.bytes.length / sizeof(lxa_dom_attr_t)) {
         return LXA_ERROR_ARGUMENT;
     }
     attr = (const lxa_dom_attr_t *) nodes->attributes.bytes.data + record.payload;
@@ -2540,7 +2542,9 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     memset(out, 0, sizeof(*out));
     status = lxa_dom_nodes_read(nodes, element, &host);
     if (status != LXA_OK || host.kind != LXA_DOM_KIND_ELEMENT
-        || host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t))) {
+        || nodes->elements.element_size != sizeof(lxa_dom_element_t)
+        || host.payload >= nodes->elements.bytes.length / sizeof(lxa_dom_element_t)
+        || nodes->attributes.element_size != sizeof(lxa_dom_attr_t)) {
         return LXA_ERROR_ARGUMENT;
     }
     elements = (const lxa_dom_element_t *) nodes->elements.bytes.data;
@@ -2555,7 +2559,7 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     else {
         status = lxa_dom_nodes_read(nodes, previous, &entry);
         if (status != LXA_OK || entry.kind != LXA_DOM_KIND_ATTRIBUTE
-            || entry.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
+            || entry.payload >= nodes->attributes.bytes.length / sizeof(lxa_dom_attr_t)
             || attrs[entry.payload].owner != owner) {
             return LXA_ERROR_ARGUMENT;
         }
@@ -2569,12 +2573,12 @@ lxa_dom_nodes_attribute_next(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     if (status != LXA_OK) {
         return status;
     }
-    if (id < nodes->retired || id >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
+    if (id < nodes->retired || id >= nodes->records.bytes.length / sizeof(lxa_dom_record_t)) {
         return LXA_ERROR_ARGUMENT;
     }
     entry = ((const lxa_dom_record_t *) nodes->records.bytes.data)[id];
     if (entry.kind != LXA_DOM_KIND_ATTRIBUTE
-        || entry.payload >= lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
+        || entry.payload >= nodes->attributes.bytes.length / sizeof(lxa_dom_attr_t)
         || attrs[entry.payload].owner != owner) {
         return LXA_ERROR_ARGUMENT;
     }
