@@ -418,7 +418,7 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     record.prev = record.next = record.payload = LXA_ID_NONE;
     record.kind = (uint16_t) kind;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status == LXA_ERROR_LIMIT) {
         nodes->limit_reason = LXA_BUDGET_MEMORY;
     }
@@ -680,7 +680,8 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         }
         return status;
     }
-    status = lxa_vector_push(&nodes->characters, &character);
+    status = lxa_vector_push_sized(&nodes->characters, &character,
+                                   sizeof(character));
     if (status != LXA_OK) {
         lxa_buffer_truncate(&nodes->strings, character.offset);
         if (status == LXA_ERROR_LIMIT) {
@@ -694,7 +695,7 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     record.payload = payload_id;
     record.kind = (uint16_t) kind;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status != LXA_OK) {
         lxa_vector_erase(&nodes->characters, payload_id, 1);
         lxa_buffer_truncate(&nodes->strings, character.offset);
@@ -1020,7 +1021,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
             }
             inserted = true;
         }
-        status = lxa_vector_push(&nodes->atoms, &atom);
+        status = lxa_vector_push_sized(&nodes->atoms, &atom, sizeof(atom));
         if (status != LXA_OK) {
             goto rollback;
         }
@@ -1030,7 +1031,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     element.namespace_id = ns;
     element.first_attr = LXA_ID_NONE;
     element.attr_count = 0;
-    status = lxa_vector_push(&nodes->elements, &element);
+    status = lxa_vector_push_sized(&nodes->elements, &element, sizeof(element));
     if (status != LXA_OK) {
         goto rollback;
     }
@@ -1040,7 +1041,7 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     record.kind = LXA_DOM_KIND_ELEMENT;
     record.payload = payload_id;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status != LXA_OK) {
         lxa_vector_erase(&nodes->elements, payload_id, 1);
         goto rollback;
@@ -1323,7 +1324,7 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
             || entries[i].fragment == pair.fragment)
             return LXA_ERROR_ARGUMENT;
     }
-    status = lxa_vector_push(&nodes->templates, &pair);
+    status = lxa_vector_push_sized(&nodes->templates, &pair, sizeof(pair));
     if (status == LXA_OK) invalidate_depth(nodes);
     if (status == LXA_ERROR_LIMIT) nodes->limit_reason = LXA_BUDGET_MEMORY;
     return status;
@@ -1555,7 +1556,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         lxa_buffer_truncate(&nodes->strings, attr.name_offset);
         return status;
     }
-    status = lxa_vector_push(&nodes->attributes, &attr);
+    status = lxa_vector_push_sized(&nodes->attributes, &attr, sizeof(attr));
     if (status != LXA_OK) {
         lxa_buffer_truncate(&nodes->strings, attr.name_offset);
         return status;
@@ -1566,7 +1567,7 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     record.kind = LXA_DOM_KIND_ATTRIBUTE;
     record.payload = payload_id;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status != LXA_OK) {
         lxa_vector_erase(&nodes->attributes, payload_id, 1);
         lxa_buffer_truncate(&nodes->strings, attr.name_offset);
@@ -1877,7 +1878,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     payload.has_public = data.has_public_id;
     payload.has_system = data.has_system_id;
     payload.force_quirks = data.force_quirks;
-    status = lxa_vector_push(&nodes->doctypes, &payload);
+    status = lxa_vector_push_sized(&nodes->doctypes, &payload, sizeof(payload));
     if (status != LXA_OK) {
         lxa_buffer_truncate(&nodes->strings, positions[0]);
         return status;
@@ -1888,7 +1889,7 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     record.kind = LXA_DOM_KIND_DOCUMENT_TYPE;
     record.payload = payload_id;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status != LXA_OK) {
         lxa_vector_erase(&nodes->doctypes, payload_id, 1);
         lxa_buffer_truncate(&nodes->strings, positions[0]);
@@ -2053,7 +2054,7 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
     }
     payload.target = (lxa_dom_character_t){positions[0], target.length};
     payload.data = (lxa_dom_character_t){positions[1], data.length};
-    status = lxa_vector_push(&nodes->pis, &payload);
+    status = lxa_vector_push_sized(&nodes->pis, &payload, sizeof(payload));
     if (status != LXA_OK) {
         lxa_buffer_truncate(&nodes->strings, positions[0]);
         return status;
@@ -2064,7 +2065,7 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
     record.kind = LXA_DOM_KIND_PROCESSING_INSTRUCTION;
     record.payload = payload_id;
     record.generation = nodes->generation;
-    status = lxa_vector_push(&nodes->records, &record);
+    status = lxa_vector_push_sized(&nodes->records, &record, sizeof(record));
     if (status != LXA_OK) {
         lxa_vector_erase(&nodes->pis, payload_id, 1);
         lxa_buffer_truncate(&nodes->strings, positions[0]);

@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "liblexa/base.h"
+#include "base/vector_internal.h"
 
 lxa_status_t
 lxa_vector_init(lxa_vector_t *vector, const lxa_allocator_t *allocator,
@@ -92,16 +93,8 @@ lxa_vector_insert(lxa_vector_t *vector, size_t index, const void *value)
 lxa_status_t
 lxa_vector_push(lxa_vector_t *vector, const void *value)
 {
-    if (vector != NULL && vector->element_size != 0 && value != NULL
-        && vector->bytes.length <= vector->bytes.capacity
-        && vector->element_size <= vector->bytes.capacity
-                                   - vector->bytes.length) {
-        memcpy(vector->bytes.data + vector->bytes.length, value,
-               vector->element_size);
-        vector->bytes.length += vector->element_size;
-        return LXA_OK;
-    }
-    return lxa_vector_insert(vector, lxa_vector_length(vector), value);
+    return lxa_vector_push_impl(vector, value,
+                               vector == NULL ? 0 : vector->element_size);
 }
 
 lxa_status_t
