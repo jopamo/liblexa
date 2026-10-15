@@ -673,8 +673,16 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
     return LXA_HTML_OK;
 }
 
+#if LXA_HTML_BORROW_TREE_INPUT
+static lxa_html_result_t
+emit_tag_named(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset,
+               lxa_span_t name)
+#else
+#define emit_tag_named(tokenizer, self_closing, offset, ...) \
+    emit_tag(tokenizer, self_closing, offset)
 static lxa_html_result_t
 emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
+#endif
 {
     lxa_html_token_t token = {0};
     lxa_html_result_t result;
@@ -697,8 +705,12 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
         }
     }
     token.kind = tokenizer->end_tag ? LXA_HTML_END_TAG : LXA_HTML_START_TAG;
+#if LXA_HTML_BORROW_TREE_INPUT
+    token.name = name;
+#else
     token.name.data = tokenizer->name.data;
     token.name.length = tokenizer->name.length;
+#endif
     token.self_closing = self_closing;
     if (tokenizer->end_tag && count != 0) {
         result = emit_error(tokenizer, "end-tag-with-attributes", offset);
@@ -760,6 +772,15 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
     }
     return result;
 }
+
+#if LXA_HTML_BORROW_TREE_INPUT
+static lxa_html_result_t
+emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
+{
+    return emit_tag_named(tokenizer, self_closing, offset,
+        (lxa_span_t){tokenizer->name.data, tokenizer->name.length});
+}
+#endif
 
 static lxa_html_result_t
 begin_attribute(lxa_html_tokenizer_t *tokenizer, size_t offset)
@@ -1555,3 +1576,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
     }
     return result;
 }
+
+#if !LXA_HTML_BORROW_TREE_INPUT
+#undef emit_tag_named
+#endif

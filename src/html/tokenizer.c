@@ -7,9 +7,9 @@
 #define LXA_HTML_HAS_DIAGNOSTICS(tokenizer) ((tokenizer)->on_error != NULL)
 #define LXA_HTML_EMIT_DIAGNOSTIC(tokenizer, code, offset) \
     (tokenizer)->on_error((tokenizer)->context, code, offset)
-#define LXA_HTML_DIRECT_TREE_TEXT 0
+#define LXA_HTML_BORROW_TREE_INPUT 0
 #include "html/tokenizer_engine.inc"
-#undef LXA_HTML_DIRECT_TREE_TEXT
+#undef LXA_HTML_BORROW_TREE_INPUT
 #undef LXA_HTML_EMIT_DIAGNOSTIC
 #undef LXA_HTML_HAS_DIAGNOSTICS
 #undef LXA_HTML_EMIT_TOKEN

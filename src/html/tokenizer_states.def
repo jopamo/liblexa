@@ -482,7 +482,7 @@ LXA_HTML_STATE(DATA, 0, TEXT, DATA,
         }
         if (i != start) {
             lxa_span_t bytes = {input.data + start, i - start};
-            if (LXA_HTML_DIRECT_TREE_TEXT && prepaid
+            if (LXA_HTML_BORROW_TREE_INPUT && prepaid
                 && tokenizer->state == STATE_DATA && tokenizer->text.length == 0
                 && i < input.length && input.data[i] == '<') {
                 lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
@@ -550,6 +550,16 @@ LXA_HTML_STATE(TAG_OPEN, 19, TAG_PREFIX, NONE,
     }
     tokenizer->end_tag = false;
     tokenizer->state = STATE_NAME_BEGIN;
+    if (LXA_HTML_BORROW_TREE_INPUT && prepaid && !tokenizer->utf8_pending
+        && c >= 'a' && c <= 'z') {
+        /* Retain both reconsume charges before entering NAME directly. */
+        result = charge_work(tokenizer, 1);
+        if (result != LXA_HTML_OK) goto fail;
+        tokenizer->state = STATE_NAME;
+        result = charge_work(tokenizer, 1);
+        if (result != LXA_HTML_OK) goto fail;
+        goto name_run;
+    }
     break;
 )
 LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX, NONE,
@@ -584,6 +594,7 @@ LXA_HTML_STATE(NAME_BEGIN, 20, TAG_PREFIX, NONE,
     break;
 )
 LXA_HTML_STATE(NAME, 21, TAG, NAME,
+name_run:
     if (!tokenizer->utf8_pending) {
         size_t start = i, count;
         lxa_span_t run = {input.data + i, input.length - i};
@@ -599,6 +610,26 @@ LXA_HTML_STATE(NAME, 21, TAG, NAME,
                 result = account_run(tokenizer, i - accepted);
                 if (result != LXA_HTML_OK) goto fail;
                 accepted = i;
+            }
+            if (LXA_HTML_BORROW_TREE_INPUT && prepaid
+                && tokenizer->name.length == 0
+                && i < input.length && input.data[i] == '>') {
+                lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+                lxa_status_t status = lxa_budget_check_item_impl(tokenizer->budget,
+                    LXA_BUDGET_NAME_BYTES, count, &reason);
+                if (status == LXA_OK)
+                    status = lxa_budget_check_item_impl(tokenizer->budget,
+                        LXA_BUDGET_TOKEN_BYTES, count, &reason);
+                result = budget_result(tokenizer, status, reason);
+                if (result != LXA_HTML_OK) goto fail;
+                result = charge_work(tokenizer, 1);
+                if (result != LXA_HTML_OK) goto fail;
+                accepted = i + 1;
+                result = emit_tag_named(tokenizer, false, tokenizer->offset + i,
+                    (lxa_span_t){input.data + start, count});
+                if (result != LXA_HTML_OK) goto fail;
+                i++;
+                break;
             }
             result = buffer_append(tokenizer, &tokenizer->name,
                 (lxa_span_t) {input.data + start, count}, LXA_BUDGET_NAME_BYTES);
