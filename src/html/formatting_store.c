@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include "base/vector_internal.h"
+#include "base/budget_internal.h"
 #include "html/formatting_store.h"
 #include "html/formatting_list.h"
 #include "html/formatting_marker.h"
@@ -97,7 +98,7 @@ overlaps_store(lxa_span_t span, const lxa_html_formatting_store_t *store)
 static lxa_status_t
 copy_work(lxa_html_formatting_store_t *store, size_t length)
 {
-    return lxa_budget_charge(store->budget, LXA_BUDGET_WORK,
+    return lxa_budget_charge_impl(store->budget, LXA_BUDGET_WORK,
         length / 8 + (length % 8 != 0), &store->limit_reason);
 }
 
@@ -134,10 +135,10 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (overlaps_store(token_storage, store) || overlaps_store(token->name, store)
         || overlaps_store(descriptors, store))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_check_item(store->budget, LXA_BUDGET_NAME_BYTES,
+    status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_NAME_BYTES,
                                    token->name.length, &store->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_check_item(store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+        status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
                                        token->attribute_count, &store->limit_reason);
     if (status != LXA_OK) return status;
     size_t count, attributes, total;
@@ -155,11 +156,11 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (status != LXA_OK) return status;
     for (size_t i = 0; i < token->attribute_count; ++i) {
         const lxa_html_attribute_t *attribute = &token->attributes[i];
-        status = lxa_budget_charge(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
+        status = lxa_budget_charge_impl(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
         if (status != LXA_OK) return status;
         if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))
             return LXA_ERROR_ARGUMENT;
-        status = lxa_budget_check_item(store->budget, LXA_BUDGET_NAME_BYTES,
+        status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_NAME_BYTES,
                                        attribute->name.length, &store->limit_reason);
         if (status == LXA_OK) status = lxa_size_add(total, attribute->name.length, &total);
         if (status == LXA_OK) status = lxa_size_add(total, attribute->value.length, &total);
@@ -170,7 +171,7 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
         if (status == LXA_OK) status = copy_work(store, attribute->value.length);
         if (status != LXA_OK) return status;
     }
-    status = lxa_budget_check(store->budget, LXA_BUDGET_STRINGS,
+    status = lxa_budget_check_impl(store->budget, LXA_BUDGET_STRINGS,
                               total - old_bytes, &store->limit_reason);
     if (status != LXA_OK) return status;
     status = reserve_status(store, lxa_vector_reserve(&store->snapshots, count));
@@ -179,7 +180,7 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (status == LXA_OK)
         status = reserve_status(store, lxa_buffer_reserve(&store->bytes, total));
     if (status == LXA_OK)
-        status = lxa_budget_check(store->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_check_impl(store->budget, LXA_BUDGET_STRINGS,
                                   total - old_bytes, &store->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_formatting_snapshot_t snapshot = {
@@ -200,7 +201,7 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     }
     if (status == LXA_OK) status = lxa_vector_push(&store->snapshots, &snapshot);
     if (status == LXA_OK)
-        status = lxa_budget_charge(store->budget, LXA_BUDGET_STRINGS,
+        status = lxa_budget_charge_impl(store->budget, LXA_BUDGET_STRINGS,
                                    total - old_bytes, &store->limit_reason);
     if (status != LXA_OK) {
         (void) rollback(store, old_snapshots, old_attributes, old_bytes);
@@ -262,7 +263,7 @@ lxa_html_formatting_store_get(lxa_html_formatting_store_t *store,
     const lxa_html_formatting_snapshot_t *snapshot;
     status = snapshot_get(store, reference, &snapshot);
     if (status == LXA_OK)
-        status = lxa_budget_charge(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
+        status = lxa_budget_charge_impl(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
     if (status == LXA_OK) {
         *name = (lxa_span_t){store->bytes.data + snapshot->name_offset, snapshot->name_length};
         *attribute_count = snapshot->attribute_count;
@@ -282,7 +283,7 @@ lxa_html_formatting_store_attribute(lxa_html_formatting_store_t *store,
     status = snapshot_get(store, reference, &snapshot);
     if (status != LXA_OK) return status;
     if (index >= snapshot->attribute_count) return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_charge(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
+    status = lxa_budget_charge_impl(store->budget, LXA_BUDGET_WORK, 1, &store->limit_reason);
     return status == LXA_OK ? attribute_get(store, snapshot, index, out) : status;
 }
 
@@ -527,12 +528,12 @@ list_append(lxa_html_formatting_list_t *list, size_t snapshot, uint64_t identity
         sizeof(lxa_html_formatting_item_t)), required;
     status = lxa_size_add(index, 1, &required);
     if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                   &list->store->limit_reason);
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
     if (status == LXA_OK)
-        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+        status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_formatting_item_t item = {snapshot, identity, list->marker};
@@ -567,7 +568,7 @@ lxa_html_formatting_list_remove(lxa_html_formatting_list_t *list, size_t index)
         sizeof(lxa_html_formatting_item_t));
     if (!lxa_html_formatting_entry_removable(length, list->marker, index))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, length - index,
+    status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_WORK, length - index,
                                &list->store->limit_reason);
     if (status != LXA_OK) return status;
     status = lxa_vector_erase(&list->entries, index, 1);
@@ -588,7 +589,7 @@ lxa_html_formatting_list_move(lxa_html_formatting_list_t *list, size_t from, siz
         return LXA_ERROR_ARGUMENT;
     if (from == to) return LXA_OK;
     size_t low = from < to ? from : to, high = from < to ? to : from;
-    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, high - low + 1,
+    status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_WORK, high - low + 1,
                                &list->store->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_formatting_item_t *items =
@@ -637,7 +638,7 @@ lxa_html_formatting_list_get(lxa_html_formatting_list_t *list,
     if (status != LXA_OK) return status;
     if (out == NULL || index >= lxa_vector_length_sized(&list->entries,
         sizeof(lxa_html_formatting_item_t))) return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, 1,
+    status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_WORK, 1,
                                &list->store->limit_reason);
     if (status != LXA_OK) return status;
     const lxa_html_formatting_item_t *item = &list_items(list)[index];
@@ -1165,10 +1166,10 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
     size_t additional = drop == SIZE_MAX ? 1 : 0;
     lxa_status_t status = lxa_size_add(length, additional, &required);
     if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
                                   additional, &list->store->limit_reason);
     if (status == LXA_OK && drop != SIZE_MAX)
-        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, length - drop,
+        status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_WORK, length - drop,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
     size_t old_snapshots = list->store->snapshots.bytes.length;
@@ -1180,7 +1181,7 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
     /* Copy token views before either membership or open storage can move. */
     status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
     if (status == LXA_OK)
-        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+        status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
                                    additional, &list->store->limit_reason);
     bool charged = status == LXA_OK;
     uint64_t opened;
@@ -1244,7 +1245,7 @@ list_plan_add(const formatting_stack_view_t *view, const lxa_html_token_t *token
         status = lxa_size_add(lxa_vector_length_sized(&list->entries,
             sizeof(lxa_html_formatting_item_t)), additional, &required);
     if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
                                   additional, &list->store->limit_reason);
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
@@ -1314,10 +1315,10 @@ reserve_marker(lxa_html_formatting_list_t *list, bool open)
     lxa_status_t status = lxa_size_add(lxa_vector_length_sized(&list->entries,
         sizeof(lxa_html_formatting_item_t)), 1, &required);
     if (status == LXA_OK)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                   &list->store->limit_reason);
     if (status == LXA_OK && open)
-        status = lxa_budget_check(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
                                   &list->store->limit_reason);
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
@@ -1348,7 +1349,7 @@ lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
         sizeof(lxa_html_formatting_item_t));
     status = reserve_marker(list, true);
     if (status == LXA_OK)
-        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+        status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
     uint64_t opened;
@@ -1385,10 +1386,10 @@ lxa_html_formatting_list_start_intake(lxa_html_formatting_list_t *list,
     if (start_alias((lxa_span_t){(const uint8_t *) token, sizeof(*token)}, &view)
         || start_alias(token->name, &view) || start_alias(descriptors, &view))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_budget_check_item(list->store->budget, LXA_BUDGET_NAME_BYTES,
+    status = lxa_budget_check_item_impl(list->store->budget, LXA_BUDGET_NAME_BYTES,
                                    token->name.length, &list->store->limit_reason);
     if (status == LXA_OK)
-        status = lxa_budget_check_item(list->store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+        status = lxa_budget_check_item_impl(list->store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
                                        token->attribute_count, &list->store->limit_reason);
     const lxa_html_formatting_view_t attributes = {
         token->name, token->attributes, token->attribute_count,
@@ -1396,7 +1397,7 @@ lxa_html_formatting_list_start_intake(lxa_html_formatting_list_t *list,
     };
     for (size_t i = 0; status == LXA_OK && i < token->attribute_count; ++i) {
         lxa_span_t name, value;
-        status = lxa_budget_charge(list->store->budget, LXA_BUDGET_WORK, 1,
+        status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_WORK, 1,
                                    &list->store->limit_reason);
         if (status == LXA_OK)
             status = lxa_html_formatting_view_read(&attributes, i + 1, &name, &value);
