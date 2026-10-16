@@ -192,7 +192,13 @@ lxa_html_tree_tag_id(lxa_span_t name, lxa_dom_namespace_t ns)
         return 0;
     if (name.data == NULL || name.length == 0 || name.length > LIBLEXA_HTML_TAG_NAME_MAX)
         return (uint16_t) ns;
-    size_t first = 4, end = LIBLEXA_HTML_TAG_METADATA_COUNT;
+    unsigned initial = name.data[0];
+    if (initial < LIBLEXA_HTML_TAG_INITIAL_MIN || initial > LIBLEXA_HTML_TAG_INITIAL_MAX)
+        return (uint16_t) ns;
+    const liblexa_html_tag_initial_range *range =
+        &liblexa_html_tag_initial_ranges[(unsigned) ns - LXA_DOM_NS_HTML]
+                                       [initial - LIBLEXA_HTML_TAG_INITIAL_MIN];
+    size_t first = range->first, end = first + range->count;
     while (first < end) {
         size_t middle = first + (end - first) / 2;
         const liblexa_html_tag_metadata *tag = &liblexa_html_tag_metadata_table[middle];

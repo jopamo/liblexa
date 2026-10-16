@@ -131,6 +131,43 @@ static const liblexa_html_tag_metadata liblexa_html_tag_metadata_table[] = {
 };
 #define LIBLEXA_HTML_TAG_METADATA_COUNT 116
 #define LIBLEXA_HTML_TAG_NAME_MAX 14
+typedef struct { uint16_t first, count; } liblexa_html_tag_initial_range;
+#define LIBLEXA_HTML_TAG_INITIAL_MIN 97
+#define LIBLEXA_HTML_TAG_INITIAL_MAX 120
+#define LIBLEXA_HTML_TAG_INITIAL_COUNT 24
+static const liblexa_html_tag_initial_range liblexa_html_tag_initial_ranges[3][LIBLEXA_HTML_TAG_INITIAL_COUNT] = {
+    {
+        [0] = {4, 6},
+        [1] = {10, 9},
+        [2] = {19, 5},
+        [3] = {24, 6},
+        [4] = {30, 2},
+        [5] = {32, 8},
+        [7] = {40, 11},
+        [8] = {51, 4},
+        [10] = {55, 1},
+        [11] = {56, 3},
+        [12] = {59, 4},
+        [13] = {63, 5},
+        [14] = {68, 4},
+        [15] = {72, 4},
+        [17] = {76, 4},
+        [18] = {80, 11},
+        [19] = {91, 12},
+        [20] = {103, 2},
+        [22] = {105, 1},
+        [23] = {106, 1},
+    },
+    {
+        [0] = {107, 1},
+        [12] = {108, 5},
+    },
+    {
+        [3] = {113, 1},
+        [5] = {114, 1},
+        [19] = {115, 1},
+    },
+};
 #define LIBLEXA_HTML_SPECIAL_COUNT 92
 #define LIBLEXA_HTML_SCOPE_BOUNDARY_COUNT 22
 static const char *const liblexa_html_formatting_tags[] = {
