@@ -3,6 +3,7 @@
 #include "base/vector_internal.h"
 #include "base/budget_internal.h"
 #include "html/root_context.h"
+#include "html/control_stack_internal.h"
 #include "html/tree_categories.h"
 
 static lxa_status_t
@@ -16,7 +17,7 @@ begin(lxa_html_root_context_t *context)
         return LXA_ERROR_INTERNAL;
     }
     lxa_dom_namespace_t ns;
-    return lxa_html_control_stack_current_namespace(context->stack, 0, &ns);
+    return lxa_html_control_stack_current_namespace_impl(context->stack, 0, &ns);
 }
 
 static lxa_status_t
