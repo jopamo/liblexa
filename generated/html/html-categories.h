@@ -6,6 +6,7 @@
 #define LIBLEXA_GENERATED_HTML_CATEGORIES_H
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 /* IDs 0..3: invalid and unknown HTML/MathML/SVG names. Known IDs
  * follow namespace/name order. Scope: normal=1, list=2, button=4, table=8. */
 typedef struct { const char *tag;
@@ -170,23 +171,70 @@ static const liblexa_html_tag_initial_range liblexa_html_tag_initial_ranges[3][L
 };
 #define LIBLEXA_HTML_SPECIAL_COUNT 92
 #define LIBLEXA_HTML_SCOPE_BOUNDARY_COUNT 22
-static const char *const liblexa_html_formatting_tags[] = {
-    "a",
-    "b",
-    "big",
-    "code",
-    "em",
-    "font",
-    "i",
-    "nobr",
-    "s",
-    "small",
-    "strike",
-    "strong",
-    "tt",
-    "u",
-};
-#define LIBLEXA_HTML_FORMATTING_COUNT 14
+static inline bool
+liblexa_html_formatting_tag(const uint8_t *name, size_t length)
+{
+    if (name == NULL) return false;
+    switch (length) {
+    case 1:
+        switch (name[0]) {
+        case 97:
+            return true;
+        case 98:
+            return true;
+        case 105:
+            return true;
+        case 115:
+            return true;
+        case 117:
+            return true;
+        default: return false;
+        }
+    case 2:
+        switch (name[0]) {
+        case 101:
+            return name[1] == 109;
+        case 116:
+            return name[1] == 116;
+        default: return false;
+        }
+    case 3:
+        return name[0] == 98 && name[1] == 105 && name[2] == 103;
+    case 4:
+        switch (name[0]) {
+        case 99:
+            return name[1] == 111 && name[2] == 100 && name[3] == 101;
+        case 102:
+            return name[1] == 111 && name[2] == 110 && name[3] == 116;
+        case 110:
+            return name[1] == 111 && name[2] == 98 && name[3] == 114;
+        default: return false;
+        }
+    case 5:
+        return name[0] == 115 && name[1] == 109 && name[2] == 97 && name[3] == 108 && name[4] == 108;
+    case 6:
+        switch (name[0]) {
+        case 115:
+            switch (name[1]) {
+            case 116:
+                switch (name[2]) {
+                case 114:
+                    switch (name[3]) {
+                    case 105:
+                        return name[4] == 107 && name[5] == 101;
+                    case 111:
+                        return name[4] == 110 && name[5] == 103;
+                    default: return false;
+                    }
+                default: return false;
+                }
+            default: return false;
+            }
+        default: return false;
+        }
+    default: return false;
+    }
+}
 /* kind: MathML text=1, HTML=2. HTML annotation-xml requires encoding\n * equal, ASCII case-insensitively, to text/html or application/xhtml+xml. */
 typedef struct { const char *namespace_name, *tag; unsigned kind, check_encoding; } liblexa_html_integration_point;
 static const liblexa_html_integration_point liblexa_html_integration_points[] = {

@@ -236,11 +236,7 @@ lxa_html_tree_cached_tag_id(uint16_t id, lxa_span_t name, lxa_dom_namespace_t ns
 static inline bool
 lxa_html_tree_formatting_tag(lxa_span_t name)
 {
-    for (size_t i = 0; i < LIBLEXA_HTML_FORMATTING_COUNT; ++i) {
-        const char *tag = liblexa_html_formatting_tags[i];
-        if (lxa_html_tree_name_equals(name, tag, strlen(tag))) return true;
-    }
-    return false;
+    return liblexa_html_formatting_tag(name.data, name.length);
 }
 
 static inline bool
