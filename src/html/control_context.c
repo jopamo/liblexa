@@ -300,6 +300,19 @@ control_intake_text(control_intake_view_t *view, const lxa_html_token_t *token)
 #undef LXA_TOKEN_INTAKE_FLUSH
 #undef LXA_TOKEN_INTAKE_NEWLINE
 
+static lxa_status_t
+control_intake_checked(control_intake_view_t *view,
+    const lxa_html_token_t **token, lxa_html_token_t *adjusted, bool *handled)
+{
+    lxa_html_control_context_t *context = view->context;
+    lxa_status_t status = control_execute_intake(view, token, adjusted, handled);
+    if (status != LXA_OK && context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->root.failure == status ? context->root.limit_reason : LXA_BUDGET_COUNT;
+    }
+    return status;
+}
+
 lxa_status_t
 lxa_html_control_context_intake(lxa_html_control_context_t *context,
     const lxa_html_token_t *token, const lxa_html_control_intake_sink_t *sink,
@@ -319,12 +332,8 @@ lxa_html_control_context_intake(lxa_html_control_context_t *context,
     control_intake_view_t view = {context, sink == NULL ? &discard : sink};
     lxa_html_token_t adjusted;
     bool handled;
-    lxa_status_t status = control_execute_intake(&view, &token, &adjusted, &handled);
+    lxa_status_t status = control_intake_checked(&view, &token, &adjusted, &handled);
     if (status == LXA_OK) *result = (lxa_html_control_intake_result_t){handled, *token};
-    else if (context->failure == LXA_OK) {
-        context->failure = status;
-        context->limit_reason = context->root.failure == status ? context->root.limit_reason : LXA_BUDGET_COUNT;
-    }
     return status;
 }
 
@@ -1779,12 +1788,12 @@ static lxa_status_t
 control_token_intake(control_token_view_t *view,
     const lxa_html_token_t **token, lxa_html_token_t *adjusted, bool *handled)
 {
-    lxa_html_control_intake_result_t out;
-    lxa_status_t status = lxa_html_control_context_intake(view->context, *token, view->intake, &out);
+    /* on_token validates these inputs before any effects. */
+    control_intake_view_t intake = {view->context, view->intake};
+    lxa_status_t status = control_intake_checked(&intake, token, adjusted, handled);
     if (status == LXA_OK) {
-        *adjusted = out.token;
+        *adjusted = **token;
         *token = adjusted;
-        *handled = out.handled;
     }
     return status;
 }
