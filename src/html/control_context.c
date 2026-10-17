@@ -1620,11 +1620,10 @@ control_root_html_dispatch(control_root_dispatch_view_t *view, const lxa_html_to
 #undef LXA_ROOT_DISPATCH_INITIAL
 #undef LXA_ROOT_DISPATCH_HTML
 
-lxa_status_t
-lxa_html_control_context_root_dispatch(lxa_html_control_context_t *context,
+static lxa_status_t
+control_root_dispatch_begin(lxa_html_control_context_t *context,
     lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
-    bool has_patch, const lxa_html_control_root_sink_t *sink,
-    lxa_html_control_root_dispatch_result_t *result)
+    bool has_patch, const lxa_html_control_root_dispatch_result_t *result)
 {
     if (context == NULL || context->stack.budget == NULL) return LXA_ERROR_ARGUMENT;
     if (context->failure != LXA_OK) return context->failure;
@@ -1642,18 +1641,39 @@ lxa_html_control_context_root_dispatch(lxa_html_control_context_t *context,
         context->limit_reason = LXA_BUDGET_COUNT;
         return context->failure;
     }
+    return LXA_OK;
+}
+
+static lxa_status_t
+control_root_dispatch_checked(control_root_dispatch_view_t *view,
+    const lxa_html_token_t **token, lxa_html_token_t *adjusted)
+{
+    lxa_html_control_context_t *context = view->context;
+    lxa_status_t status = control_dispatch_root(view, token, adjusted);
+    if (status != LXA_OK && context->failure == LXA_OK) {
+        context->failure = status;
+        context->limit_reason = context->root.limit_reason;
+    }
+    return status;
+}
+
+lxa_status_t
+lxa_html_control_context_root_dispatch(lxa_html_control_context_t *context,
+    lxa_html_tokenizer_t *tokenizer, const lxa_html_token_t *token,
+    bool has_patch, const lxa_html_control_root_sink_t *sink,
+    lxa_html_control_root_dispatch_result_t *result)
+{
+    lxa_status_t status = control_root_dispatch_begin(context, tokenizer, token,
+        has_patch, result);
+    if (status != LXA_OK) return status;
     const lxa_html_control_root_sink_t discard = {0};
     lxa_html_control_root_dispatch_result_t out = {0};
     control_root_dispatch_view_t view = {context, tokenizer, sink == NULL ? &discard : sink, &out};
     lxa_html_token_t adjusted;
-    lxa_status_t status = control_dispatch_root(&view, &token, &adjusted);
+    status = control_root_dispatch_checked(&view, &token, &adjusted);
     if (status == LXA_OK) {
         out.token = *token;
         *result = out;
-    }
-    else if (context->failure == LXA_OK) {
-        context->failure = status;
-        context->limit_reason = context->root.limit_reason;
     }
     return status;
 }
@@ -1823,9 +1843,14 @@ control_token_root(control_token_view_t *view,
     const lxa_html_token_t **token, lxa_html_token_t *adjusted)
 {
     (void) adjusted;
-    lxa_html_control_root_dispatch_result_t out;
-    return lxa_html_control_context_root_dispatch(view->context, view->tokenizer,
-        *token, false, view->root, &out);
+    lxa_html_control_root_dispatch_result_t out = {0};
+    lxa_status_t status = control_root_dispatch_begin(view->context, view->tokenizer,
+        *token, false, &out);
+    if (status != LXA_OK) return status;
+    control_root_dispatch_view_t dispatch = {view->context, view->tokenizer, view->root, &out};
+    const lxa_html_token_t *selected = *token;
+    lxa_html_token_t root_adjusted;
+    return control_root_dispatch_checked(&dispatch, &selected, &root_adjusted);
 }
 
 #define LXA_TOKEN_EXEC_NAME control_execute_token
