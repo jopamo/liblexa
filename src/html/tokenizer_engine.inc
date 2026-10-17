@@ -719,8 +719,24 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
         }
     }
     if (!tokenizer->end_tag) {
+#if LXA_HTML_BORROW_TREE_INPUT
         lxa_vector_clear(&tokenizer->attribute_views);
+#else
+        _Static_assert(sizeof(attribute_slot_t) == sizeof(lxa_html_attribute_t),
+            "attribute offsets and published spans share storage");
+        if (count != 0) {
+            bool valid_storage = tokenizer->attribute_slots.element_size == sizeof(attribute_slot_t)
+                && tokenizer->attribute_slots.bytes.length % sizeof(attribute_slot_t) == 0
+                && tokenizer->attribute_slots.bytes.length <= tokenizer->attribute_slots.bytes.capacity
+                && tokenizer->attribute_slots.bytes.data != NULL;
+            assert(valid_storage);
+            if (!valid_storage) return LXA_HTML_INTERNAL;
+        }
+        /* Conversion ends offset use. Failed publication latches the tokenizer
+         * until reset clears these slots; successful publication clears below. */
+#endif
         for (i = 0; i < count; i++) {
+#if LXA_HTML_BORROW_TREE_INPUT
             attribute_slot_t *slot;
             lxa_html_attribute_t view;
             lxa_status_t status = lxa_vector_at(&tokenizer->attribute_slots,
@@ -728,21 +744,34 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
             if (status != LXA_OK) {
                 return budget_result(tokenizer, status, LXA_BUDGET_COUNT);
             }
+#else
+            attribute_slot_t *slot =
+                (attribute_slot_t *) tokenizer->attribute_slots.bytes.data + i;
+            lxa_html_attribute_t view;
+#endif
             view.name.data = tokenizer->attribute_bytes.data + slot->name_start;
             view.name.length = slot->name_length;
             view.value.data = slot->value_start != SIZE_MAX
                 ? tokenizer->attribute_bytes.data + slot->value_start : NULL;
             view.value.length = slot->value_start != SIZE_MAX ? slot->value_length : 0;
+#if LXA_HTML_BORROW_TREE_INPUT
             status = lxa_vector_push(&tokenizer->attribute_views, &view);
             if (status != LXA_OK) {
                 return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
                      : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
             }
+#else
+            memcpy(slot, &view, sizeof(view));
+#endif
         }
         token.attribute_count = count;
         if (count != 0) {
             token.attributes = (const lxa_html_attribute_t *)
+#if LXA_HTML_BORROW_TREE_INPUT
                                tokenizer->attribute_views.bytes.data;
+#else
+                               tokenizer->attribute_slots.bytes.data;
+#endif
             if (tokenizer->source_ranges) {
                 bool valid = lxa_vector_length(&tokenizer->attribute_sources) == count;
                 assert(valid);
@@ -765,7 +794,9 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
         lxa_buffer_clear(&tokenizer->name);
         lxa_buffer_clear(&tokenizer->attribute_bytes);
         lxa_vector_clear(&tokenizer->attribute_slots);
+#if LXA_HTML_BORROW_TREE_INPUT
         lxa_vector_clear(&tokenizer->attribute_views);
+#endif
         lxa_vector_clear(&tokenizer->attribute_sources);
         tokenizer->source_attribute_count = 0;
         tokenizer->omitted_value_bytes = 0;
@@ -1515,7 +1546,9 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
         lxa_buffer_clear(&tokenizer->name);
         lxa_buffer_clear(&tokenizer->attribute_bytes);
         lxa_vector_clear(&tokenizer->attribute_slots);
+#if LXA_HTML_BORROW_TREE_INPUT
         lxa_vector_clear(&tokenizer->attribute_views);
+#endif
         tokenizer->attribute_state = ATTRIBUTE_NONE;
         tokenizer->source_attribute_count = 0;
         tokenizer->omitted_value_bytes = 0;
