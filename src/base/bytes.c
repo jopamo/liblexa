@@ -4,18 +4,13 @@
 
 #include "liblexa/base.h"
 #include "base/budget_internal.h"
+#include "base/bytes_internal.h"
 
-static int
-valid_allocator(const lxa_allocator_t *allocator)
-{
-    return allocator != NULL && allocator->allocate != NULL
-           && allocator->resize != NULL && allocator->release != NULL;
-}
 
 lxa_status_t
 lxa_buffer_init(lxa_buffer_t *buffer, const lxa_allocator_t *allocator)
 {
-    if (buffer == NULL || !valid_allocator(allocator)) {
+    if (buffer == NULL || !lxa_buffer_allocator_valid(allocator)) {
         return LXA_ERROR_ARGUMENT;
     }
     buffer->data = NULL;
@@ -30,7 +25,7 @@ lxa_status_t
 lxa_buffer_bind_budget(lxa_buffer_t *buffer, lxa_budget_t *budget)
 {
     if (buffer == NULL || budget == NULL
-        || !valid_allocator(&buffer->allocator)
+        || !lxa_buffer_allocator_valid(&buffer->allocator)
         || buffer->budget != NULL || buffer->data != NULL
         || buffer->capacity != 0 || buffer->length != 0) {
         return LXA_ERROR_ARGUMENT;
@@ -72,7 +67,7 @@ lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity)
 {
     void *storage;
     lxa_status_t status;
-    if (buffer == NULL || !valid_allocator(&buffer->allocator)) {
+    if (buffer == NULL || !lxa_buffer_allocator_valid(&buffer->allocator)) {
         return LXA_ERROR_ARGUMENT;
     }
     if (capacity <= buffer->capacity) {
@@ -105,43 +100,13 @@ lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity)
 lxa_status_t
 lxa_buffer_reserve(lxa_buffer_t *buffer, size_t minimum_capacity)
 {
-    size_t capacity;
-    if (buffer == NULL || !valid_allocator(&buffer->allocator)) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    if (minimum_capacity <= buffer->capacity) {
-        return LXA_OK;
-    }
-    capacity = buffer->capacity > 0 ? buffer->capacity : 16;
-    while (capacity < minimum_capacity) {
-        if (capacity > SIZE_MAX / 2) {
-            capacity = minimum_capacity;
-            break;
-        }
-        capacity *= 2;
-    }
-    return lxa_buffer_reserve_exact(buffer, capacity);
+    return lxa_buffer_reserve_impl(buffer, minimum_capacity);
 }
 
 lxa_status_t
 lxa_buffer_append(lxa_buffer_t *buffer, lxa_span_t bytes)
 {
-    size_t length;
-    lxa_status_t status;
-    if (buffer == NULL || (bytes.length != 0 && bytes.data == NULL)) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    status = lxa_size_add(buffer->length, bytes.length, &length);
-    if (status != LXA_OK || bytes.length == 0) {
-        return status;
-    }
-    status = lxa_buffer_reserve(buffer, length);
-    if (status != LXA_OK) {
-        return status;
-    }
-    memcpy(buffer->data + buffer->length, bytes.data, bytes.length);
-    buffer->length = length;
-    return LXA_OK;
+    return lxa_buffer_append_impl(buffer, bytes);
 }
 
 lxa_status_t

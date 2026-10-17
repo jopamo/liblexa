@@ -1,4 +1,5 @@
 #include "base/budget_internal.h"
+#include "base/bytes_internal.h"
 #include "encoding/stream_internal.h"
 #include "liblexa/html_rewrite.h"
 #include "html/source_consumer.h"
@@ -27,7 +28,7 @@ append(rewrite_t *owner, lxa_span_t bytes)
     lxa_status_t status = lxa_budget_charge_impl(&owner->budget, LXA_BUDGET_STRINGS,
                                             bytes.length, &owner->reason);
     if (status == LXA_OK)
-        status = lxa_buffer_append(&owner->syntax, bytes);
+        status = lxa_buffer_append_impl(&owner->syntax, bytes);
     if (status == LXA_ERROR_LIMIT && owner->reason == LXA_BUDGET_COUNT)
         owner->reason = LXA_BUDGET_MEMORY;
     return status;
