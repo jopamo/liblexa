@@ -35,6 +35,8 @@ typedef struct {
     lxa_handle_t handle;
     uint32_t actual_depth, depth_revision;
     uint16_t tag_id; /* immutable element metadata; zero requires checked lookup */
+    uint16_t button_flags;
+    uint32_t button_stop; /* one past nearest p/boundary in this stack prefix */
 } lxa_html_open_entry_t;
 
 enum {

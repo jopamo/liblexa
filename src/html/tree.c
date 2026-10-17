@@ -22,6 +22,34 @@ literal(const char *text)
  * time instead of rediscovering them for every token and open-stack probe. */
 #define named(name, text) lxa_html_tree_name_equals((name), (text), sizeof(text) - 1)
 
+enum {
+    BUTTON_KNOWN = 1,
+    BUTTON_PARAGRAPH = 2,
+    BUTTON_BOUNDARY = 4,
+    BUTTON_PREFIX = 8
+};
+
+/* Only stack membership matters. Rebuild the suffix after non-LIFO edits;
+ * ordinary pops expose an already computed prefix. No store pointers survive. */
+static void
+repair_button_prefix(lxa_html_open_entry_t *entries, size_t start, size_t length)
+{
+    for (size_t i = start; i < length; ++i) {
+        lxa_html_open_entry_t *entry = &entries[i];
+        entry->button_flags &= ~BUTTON_PREFIX;
+        entry->button_stop = 0;
+        if (i >= UINT32_MAX || !(entry->button_flags & BUTTON_KNOWN))
+            continue;
+        if (entry->button_flags & (BUTTON_PARAGRAPH | BUTTON_BOUNDARY)) {
+            entry->button_stop = (uint32_t) i + 1;
+            entry->button_flags |= BUTTON_PREFIX;
+        } else if (i == 0 || (entries[i - 1].button_flags & BUTTON_PREFIX)) {
+            if (i != 0) entry->button_stop = entries[i - 1].button_stop;
+            entry->button_flags |= BUTTON_PREFIX;
+        }
+    }
+}
+
 static lxa_status_t
 make_open_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
     lxa_html_open_entry_t *out)
@@ -55,7 +83,15 @@ make_element_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
     lxa_dom_namespace_t ns;
     if (status == LXA_OK)
         status = lxa_dom_nodes_element_read(tree->nodes, ref, &name, &ns);
-    if (status == LXA_OK) out->tag_id = lxa_html_tree_tag_id(name, ns);
+    if (status == LXA_OK) {
+        out->tag_id = lxa_html_tree_tag_id(name, ns);
+        out->button_flags = BUTTON_KNOWN;
+        if (ns == LXA_DOM_NS_HTML && named(name, "p"))
+            out->button_flags |= BUTTON_PARAGRAPH;
+        else if (liblexa_html_tag_metadata_table[out->tag_id].scope_mask
+                 & LXA_HTML_SCOPE_BUTTON)
+            out->button_flags |= BUTTON_BOUNDARY;
+    }
     return status;
 }
 
@@ -64,7 +100,13 @@ push_open_entry(lxa_html_tree_t *tree, lxa_vector_t *elements, lxa_dom_ref_t ref
 {
     lxa_html_open_entry_t entry;
     lxa_status_t status = make_element_entry(tree, ref, &entry);
-    return status == LXA_OK ? lxa_vector_push(elements, &entry) : status;
+    if (status == LXA_OK) status = lxa_vector_push(elements, &entry);
+    if (status == LXA_OK) {
+        size_t length = lxa_vector_length(elements);
+        repair_button_prefix((lxa_html_open_entry_t *) elements->bytes.data,
+                             length - 1, length);
+    }
+    return status;
 }
 
 static lxa_html_open_entry_t *
@@ -140,6 +182,8 @@ remember_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
             lxa_status_t status = make_open_entry(tree, parent, &repaired);
             if (status == LXA_OK) {
                 repaired.tag_id = entry->tag_id;
+                repaired.button_flags = entry->button_flags;
+                repaired.button_stop = entry->button_stop;
                 *entry = repaired;
             }
             return status;
@@ -422,6 +466,9 @@ remove_open_element(lxa_html_tree_t *tree, lxa_vector_t *elements, size_t index)
         status = lxa_dom_nodes_maybe_clone_selected_option(tree->nodes, ref);
     if (status != LXA_OK) return status;
     status = lxa_vector_erase(elements, index, 1);
+    if (status == LXA_OK)
+        repair_button_prefix((lxa_html_open_entry_t *) elements->bytes.data,
+                             index, lxa_vector_length(elements));
     if (status == LXA_OK)
         status = lxa_budget_release(tree->nodes->budget,
                                    LXA_BUDGET_OPEN_ELEMENTS, 1);
@@ -1376,6 +1423,28 @@ find_scoped_end_target(lxa_html_tree_t *tree, const lxa_vector_t *elements,
         tree, (const lxa_html_open_entry_t *) elements->bytes.data,
         lxa_vector_length(elements)
     };
+    if (scope == LXA_HTML_SCOPE_BUTTON && named(target, "p")
+        && boundary < view.length && view.length <= UINT32_MAX
+        && tree->document.document == tree->nodes
+        && tree->document.epoch == tree->nodes->epoch
+        && (view.entries[view.length - 1].button_flags & BUTTON_PREFIX)) {
+        size_t stop = view.entries[view.length - 1].button_stop;
+        if (stop <= view.length) {
+            size_t first = stop > boundary ? stop - 1 : boundary;
+            size_t work = view.length - first;
+            /* Aggregate only a wholly accepted search. The checked walk
+             * retains ordered partial WORK charges when a quota is short. */
+            if (lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_WORK,
+                                      work, NULL) == LXA_OK) {
+                lxa_status_t status = lxa_budget_charge_work(
+                    tree->nodes->budget, work, &tree->nodes->limit_reason);
+                *index = stop > boundary
+                    && (view.entries[stop - 1].button_flags & BUTTON_PARAGRAPH)
+                    ? stop - 1 : view.length;
+                return status;
+            }
+        }
+    }
     return tree_scope_search(&view, boundary, target, scope, index);
 }
 
@@ -1778,6 +1847,8 @@ tree_adoption_inner(tree_adoption_view_t *view, size_t entry, size_t node,
     status = make_element_entry(view->tree, clone, &replacement);
     if (status != LXA_OK) return status;
     ((lxa_html_open_entry_t *) view->elements->bytes.data)[node] = replacement;
+    repair_button_prefix((lxa_html_open_entry_t *) view->elements->bytes.data,
+                         node, lxa_vector_length(view->elements));
     status = lxa_dom_nodes_reparent_constructed_child(view->tree->nodes, clone, last);
     if (status == LXA_OK) *identity = clone;
     return status;
@@ -1839,11 +1910,16 @@ tree_adoption_commit(tree_adoption_view_t *view, lxa_dom_ref_t clone, size_t for
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
+    repair_button_prefix((lxa_html_open_entry_t *) view->elements->bytes.data,
+                         stack_index, lxa_vector_length(view->elements));
     /* Removing formatting shifts furthest up by one. Insert below it. */
     lxa_html_open_entry_t open_entry;
     status = make_element_entry(tree, clone, &open_entry);
     if (status == LXA_OK)
         status = lxa_vector_insert(view->elements, furthest_index, &open_entry);
+    if (status == LXA_OK)
+        repair_button_prefix((lxa_html_open_entry_t *) view->elements->bytes.data,
+                             furthest_index, lxa_vector_length(view->elements));
     if (status != LXA_OK) {
         lxa_status_t released = lxa_budget_release(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS, 1);
         if (released != LXA_OK) {
