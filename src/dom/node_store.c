@@ -1544,18 +1544,16 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     attr.value_length = value.length;
     attr.owner = attr.next = LXA_ID_NONE;
     attr.namespace_id = ns;
-    status = name_self ? lxa_buffer_append_self(&nodes->strings,
-                                                 name_source, name.length)
-                       : lxa_buffer_append(&nodes->strings, name);
-    if (status == LXA_OK) {
-        status = value_self ? lxa_buffer_append_self(&nodes->strings,
-                                                      value_source, value.length)
-                            : lxa_buffer_append(&nodes->strings, value);
-    }
-    if (status != LXA_OK) {
-        lxa_buffer_truncate(&nodes->strings, attr.name_offset);
-        return status;
-    }
+    /* Both sources were bounded before reserve; restore self spans after
+     * growth. No callbacks or fallible work intervene between these copies. */
+    memcpy(nodes->strings.data + attr.name_offset,
+           name_self ? nodes->strings.data + name_source : name.data,
+           name.length);
+    if (value.length != 0)
+        memcpy(nodes->strings.data + attr.value_offset,
+               value_self ? nodes->strings.data + value_source : value.data,
+               value.length);
+    nodes->strings.length = total;
     status = lxa_vector_push_sized(&nodes->attributes, &attr, sizeof(attr));
     if (status != LXA_OK) {
         lxa_buffer_truncate(&nodes->strings, attr.name_offset);
