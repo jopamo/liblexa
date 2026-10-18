@@ -1564,36 +1564,24 @@ static lxa_status_t
 insert_text(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
             lxa_dom_ref_t before, lxa_span_t bytes)
 {
-    lxa_dom_ref_t previous, child, actual;
-    lxa_dom_record_t record;
-    lxa_status_t status;
     if (bytes.length == 0) return LXA_OK;
-    status = resolve_template_location(tree, &parent, &before);
-    if (status == LXA_OK)
-        status = lxa_dom_nodes_last_child(tree->nodes, parent, &previous);
-    if (status == LXA_OK && before.handle != LXA_HANDLE_NONE) {
-        status = lxa_dom_nodes_parent(tree->nodes, before, &actual);
-        if (status == LXA_OK && actual.handle != parent.handle)
-            return LXA_ERROR_ARGUMENT;
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_prev_sibling(tree->nodes, before, &previous);
+    lxa_dom_builder_location_t location = {
+        parent, before, tree->template_fragment.handle, &tree->template_patch
+    };
+    lxa_dom_insertion_depth_t depth = tree->insertion_depth;
+    lxa_dom_ref_t actual = parent;
+    if (tree->template_patch.target.handle != LXA_HANDLE_NONE
+        && parent.handle == tree->template_fragment.handle)
+        actual = tree->template_patch.target;
+    use_insertion_depth(tree, actual, &depth);
+    bool inserted;
+    lxa_status_t status = lxa_dom_nodes_insert_text(tree->nodes, &location,
+        &depth, bytes, &inserted);
+    if (status == LXA_OK && inserted) {
+        tree->insertion_depth = depth;
+        status = remember_insertion_depth(tree, location.parent);
     }
-    if (status != LXA_OK) return status;
-    if (previous.handle != LXA_HANDLE_NONE) {
-        status = lxa_dom_nodes_read(tree->nodes, previous, &record);
-        if (status != LXA_OK) return status;
-        if (record.parent != (lxa_id_t) parent.handle
-            || record.next != (before.handle == LXA_HANDLE_NONE
-                              ? LXA_ID_NONE : (lxa_id_t) before.handle))
-            return LXA_ERROR_ARGUMENT;
-        if (record.kind == LXA_DOM_KIND_TEXT)
-            return lxa_dom_nodes_append_text_data(tree->nodes, previous, bytes);
-    }
-    status = lxa_dom_nodes_append_character(
-        tree->nodes, LXA_DOM_KIND_TEXT, bytes, &child);
-    if (status != LXA_OK) return status;
-    return insert_constructed(tree, parent,
-        child, before);
+    return status;
 }
 
 static lxa_status_t

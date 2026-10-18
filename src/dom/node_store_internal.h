@@ -211,6 +211,15 @@ lxa_status_t lxa_dom_nodes_build_insert_element(lxa_dom_nodes_t *nodes,
     const lxa_dom_builder_element_t *input, lxa_dom_builder_location_t *location,
     lxa_dom_insertion_depth_t *depth, lxa_dom_ref_t *out);
 
+/* Coalesce with preceding TEXT or construct and link a fresh leaf. Reuse record
+ * copies only within this call; allocator reentry remains forbidden. Preserve
+ * location checks, accepted charges and a detached leaf after linking failure.
+ * Input must not alias store storage. inserted distinguishes linking from a
+ * coalesced or empty run; only successful linking publishes depth proof. */
+lxa_status_t lxa_dom_nodes_insert_text(lxa_dom_nodes_t *nodes,
+    lxa_dom_builder_location_t *location, lxa_dom_insertion_depth_t *depth,
+    lxa_span_t bytes, bool *inserted);
+
 lxa_status_t lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out);
 /* Read name and namespace after one reference/payload check.

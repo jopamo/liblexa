@@ -595,9 +595,10 @@ lxa_dom_nodes_parent(lxa_dom_nodes_t *nodes, lxa_dom_ref_t child,
     return read_relation(nodes, child, out, LXA_REL_PARENT);
 }
 
-lxa_status_t
-lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
-                               lxa_span_t text, lxa_dom_ref_t *out)
+static lxa_status_t
+append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
+                 lxa_span_t text, lxa_dom_ref_t *out,
+                 lxa_dom_record_t *owned)
 {
     size_t total, next;
     lxa_id_t payload_id, node_id;
@@ -713,7 +714,15 @@ lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     out->document = nodes;
     out->epoch = nodes->epoch;
     out->handle = packed;
+    if (owned != NULL) *owned = record;
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
+                               lxa_span_t text, lxa_dom_ref_t *out)
+{
+    return append_character(nodes, kind, text, out, NULL);
 }
 
 lxa_status_t
@@ -771,9 +780,9 @@ string_source(const lxa_dom_nodes_t *nodes, lxa_span_t span,
     return LXA_OK;
 }
 
-lxa_status_t
-lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
-                               lxa_span_t bytes)
+static lxa_status_t
+append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
+                 lxa_span_t bytes, const lxa_dom_record_t *owned)
 {
     lxa_dom_record_t record;
     lxa_dom_character_t old, *characters;
@@ -785,7 +794,12 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     }
     if (nodes == NULL || (bytes.data == NULL && bytes.length != 0))
         return LXA_ERROR_ARGUMENT;
-    status = lxa_dom_nodes_read(nodes, text, &record);
+    if (owned != NULL) {
+        record = *owned;
+        status = LXA_OK;
+    } else {
+        status = lxa_dom_nodes_read(nodes, text, &record);
+    }
     if (status != LXA_OK) return status;
     if (record.kind != LXA_DOM_KIND_TEXT
         || record.payload >= lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t)))
@@ -844,6 +858,13 @@ lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
         nodes->charged_string_bytes = total;
     }
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
+                               lxa_span_t bytes)
+{
+    return append_text_data(nodes, text, bytes, NULL);
 }
 
 static lxa_status_t
@@ -3751,6 +3772,53 @@ lxa_dom_nodes_build_insert_element(lxa_dom_nodes_t *nodes,
         ((const lxa_dom_record_t *) nodes->records.bytes.data)[(lxa_id_t) out->handle];
     return construct_child(nodes, location->parent, *out, location->before,
         depth, &leaf);
+}
+
+lxa_status_t
+lxa_dom_nodes_insert_text(lxa_dom_nodes_t *nodes,
+    lxa_dom_builder_location_t *location, lxa_dom_insertion_depth_t *depth,
+    lxa_span_t bytes, bool *inserted)
+{
+    lxa_dom_ref_t previous, child, actual;
+    lxa_dom_record_t record;
+    lxa_status_t status;
+    if (inserted != NULL) *inserted = false;
+    if (inserted == NULL || location == NULL) {
+        if (nodes != NULL) nodes->limit_reason = LXA_BUDGET_COUNT;
+        return LXA_ERROR_ARGUMENT;
+    }
+    if (bytes.length == 0) return LXA_OK;
+    status = lxa_dom_nodes_resolve_content_location(nodes, location->fragment,
+        location->patch, &location->parent, &location->before);
+    if (status == LXA_OK)
+        status = lxa_dom_nodes_last_child(nodes, location->parent, &previous);
+    if (status == LXA_OK && location->before.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_parent(nodes, location->before, &actual);
+        if (status == LXA_OK && actual.handle != location->parent.handle)
+            return LXA_ERROR_ARGUMENT;
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_prev_sibling(nodes, location->before, &previous);
+    }
+    if (status != LXA_OK) return status;
+    if (previous.handle != LXA_HANDLE_NONE) {
+        status = lxa_dom_nodes_read(nodes, previous, &record);
+        if (status != LXA_OK) return status;
+        if (record.parent != (lxa_id_t) location->parent.handle
+            || record.next != (location->before.handle == LXA_HANDLE_NONE
+                              ? LXA_ID_NONE : (lxa_id_t) location->before.handle))
+            return LXA_ERROR_ARGUMENT;
+        if (record.kind == LXA_DOM_KIND_TEXT)
+            return append_text_data(nodes, previous, bytes, &record);
+    }
+    status = append_character(nodes, LXA_DOM_KIND_TEXT, bytes, &child, &record);
+    if (status != LXA_OK) return status;
+    status = lxa_dom_nodes_resolve_content_location(nodes, location->fragment,
+        location->patch, &location->parent, &location->before);
+    if (status == LXA_OK)
+        status = construct_child(nodes, location->parent, child,
+            location->before, depth, &record);
+    if (status == LXA_OK) *inserted = true;
+    return status;
 }
 
 static lxa_status_t
