@@ -218,19 +218,15 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
                 case LXA_DOM_KIND_TEXT:
                     status = lxa_dom_nodes_character_read(nodes, current, &bytes);
                     if (status == LXA_OK && record.parent != LXA_ID_NONE) {
-                        lxa_id_t parent_id = record.parent;
-                        if (parent_id < nodes->retired
-                            || parent_id >= lxa_dom_nodes_length(nodes))
-                            return LXA_ERROR_ARGUMENT;
-                        parent = ((const lxa_dom_record_t *)
-                                  nodes->records.bytes.data)[parent_id];
+                        lxa_dom_ref_t owner = current;
+                        status = lxa_handle_pack(record.parent, nodes->generation,
+                                                 &owner.handle);
+                        if (status == LXA_OK)
+                            status = lxa_dom_nodes_read(nodes, owner, &parent);
+                        if (status != LXA_OK) return status;
                         if (parent.kind == LXA_DOM_KIND_ELEMENT) {
-                            lxa_dom_ref_t owner = current;
-                            status = lxa_handle_pack(parent_id, nodes->generation,
-                                                      &owner.handle);
-                            if (status == LXA_OK)
-                                status = lxa_dom_nodes_element_name(nodes, owner,
-                                                                    &name);
+                            status = lxa_dom_nodes_element_name(nodes, owner,
+                                                                &name);
                             if (status != LXA_OK) return status;
                             status = lxa_dom_nodes_element_namespace(nodes,
                                                                       owner, &ns);
@@ -289,14 +285,14 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             entering = true;
             continue;
         }
-        if (record.parent < nodes->retired
-            || record.parent >= lxa_dom_nodes_length(nodes))
-            return LXA_ERROR_ARGUMENT;
-        parent = ((const lxa_dom_record_t *) nodes->records.bytes.data)[record.parent];
+        next = current;
+        status = lxa_handle_pack(record.parent, nodes->generation, &next.handle);
+        if (status != LXA_OK) return status;
+        status = lxa_dom_nodes_read(nodes, next, &parent);
+        if (status != LXA_OK) return status;
         if (parent.last_child != (lxa_id_t) current.handle)
             return LXA_ERROR_ARGUMENT;
-        status = lxa_handle_pack(record.parent, nodes->generation, &current.handle);
-        if (status != LXA_OK) return status;
+        current = next;
         entering = false;
     }
 }
