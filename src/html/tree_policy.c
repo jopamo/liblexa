@@ -73,9 +73,14 @@ lxa_html_tree_queue_table_text(lxa_buffer_t *pending, lxa_span_t bytes,
     if (status == LXA_OK)
         status = lxa_budget_charge(pending->budget, LXA_BUDGET_WORK, bytes.length, reason);
     if (status == LXA_OK) {
-        status = lxa_buffer_append(pending, bytes);
+        status = lxa_buffer_reserve(pending, combined);
         if (status == LXA_ERROR_LIMIT && reason != NULL) *reason = LXA_BUDGET_MEMORY;
     }
+    if (status == LXA_OK)
+        status = lxa_budget_check_item(pending->budget, LXA_BUDGET_TOKEN_BYTES, combined, reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check(pending->budget, LXA_BUDGET_WORK, 0, reason);
+    if (status == LXA_OK) status = lxa_buffer_append(pending, bytes);
     return status;
 }
 
