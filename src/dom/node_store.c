@@ -478,87 +478,35 @@ typedef enum {
     LXA_REL_FIRST, LXA_REL_NEXT, LXA_REL_LAST, LXA_REL_PREV, LXA_REL_PARENT
 } lxa_relation_t;
 
-static lxa_status_t
-read_relation(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
-              lxa_dom_ref_t *out, lxa_relation_t relation)
-{
-    lxa_dom_record_t record;
-    const lxa_dom_record_t *records;
-    lxa_id_t id, source_id;
-    lxa_status_t status;
-    if (nodes != NULL) {
-        nodes->limit_reason = LXA_BUDGET_COUNT;
-    }
-    if (out == NULL) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    memset(out, 0, sizeof(*out));
-    status = lxa_dom_nodes_read(nodes, source, &record);
-    if (status != LXA_OK) {
-        return status;
-    }
-    switch (relation) {
-        case LXA_REL_FIRST: id = record.first_child; break;
-        case LXA_REL_NEXT: id = record.next; break;
-        case LXA_REL_LAST: id = record.last_child; break;
-        case LXA_REL_PREV: id = record.prev; break;
-        case LXA_REL_PARENT: id = record.parent; break;
-        default: return LXA_ERROR_ARGUMENT;
-    }
-    if ((relation == LXA_REL_FIRST || relation == LXA_REL_LAST)
-        && record.kind != LXA_DOM_KIND_DOCUMENT
-        && record.kind != LXA_DOM_KIND_ELEMENT
-        && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    if ((relation == LXA_REL_FIRST || relation == LXA_REL_LAST)
-        && (record.first_child == LXA_ID_NONE)
-           != (record.last_child == LXA_ID_NONE)) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    if (id == LXA_ID_NONE) {
-        return LXA_OK;
-    }
-    status = lxa_budget_charge_work(nodes->budget, 1,
-                               &nodes->limit_reason);
-    if (status != LXA_OK) {
-        return status;
-    }
-    if (id < nodes->retired || id >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    source_id = (lxa_id_t) source.handle;
-    records = (const lxa_dom_record_t *) nodes->records.bytes.data;
-    if (records[id].generation != nodes->generation) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    if ((relation == LXA_REL_FIRST
-         && (records[id].parent != source_id
-             || records[id].prev != LXA_ID_NONE))
-        || (relation == LXA_REL_LAST
-            && (records[id].parent != source_id
-                || records[id].next != LXA_ID_NONE))
-        || (relation == LXA_REL_NEXT
-            && (record.parent == LXA_ID_NONE
-                || records[id].parent != record.parent
-                || records[id].prev != source_id))
-        || (relation == LXA_REL_PREV
-            && (record.parent == LXA_ID_NONE
-                || records[id].parent != record.parent
-                || records[id].next != source_id))
-        || (relation == LXA_REL_PARENT
-            && (record.prev == LXA_ID_NONE
-                ? records[id].first_child != source_id
-                : (record.prev < nodes->retired
-                   || record.prev >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
-                   || records[record.prev].next != source_id
-                   || records[record.prev].parent != id)))) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    out->document = nodes;
-    out->epoch = nodes->epoch;
-    return lxa_handle_pack(id, nodes->generation, &out->handle);
-}
+#define LXA_RELATION_NAME read_relation
+#define LXA_RELATION_PARAMETERS , lxa_relation_t relation
+#define LXA_RELATION_SETUP
+#define LXA_RELATION_FINISH \
+    return lxa_handle_pack(id, nodes->generation, &out->handle)
+#include "dom/read_relation.inc"
+#undef LXA_RELATION_NAME
+#undef LXA_RELATION_PARAMETERS
+#undef LXA_RELATION_SETUP
+#undef LXA_RELATION_FINISH
+
+#define LXA_RELATION_PARAMETERS , lxa_dom_record_t *related
+#define LXA_RELATION_FINISH do { \
+    status = lxa_handle_pack(id, nodes->generation, &out->handle); \
+    if (status == LXA_OK) *related = records[id]; \
+    return status; \
+} while (0)
+#define LXA_RELATION_NAME read_last_record
+#define LXA_RELATION_SETUP const lxa_relation_t relation = LXA_REL_LAST;
+#include "dom/read_relation.inc"
+#undef LXA_RELATION_NAME
+#undef LXA_RELATION_SETUP
+#define LXA_RELATION_NAME read_previous_record
+#define LXA_RELATION_SETUP const lxa_relation_t relation = LXA_REL_PREV;
+#include "dom/read_relation.inc"
+#undef LXA_RELATION_NAME
+#undef LXA_RELATION_SETUP
+#undef LXA_RELATION_PARAMETERS
+#undef LXA_RELATION_FINISH
 
 lxa_status_t
 lxa_dom_nodes_first_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
@@ -3791,18 +3739,16 @@ lxa_dom_nodes_insert_text(lxa_dom_nodes_t *nodes,
     status = lxa_dom_nodes_resolve_content_location(nodes, location->fragment,
         location->patch, &location->parent, &location->before);
     if (status == LXA_OK)
-        status = lxa_dom_nodes_last_child(nodes, location->parent, &previous);
+        status = read_last_record(nodes, location->parent, &previous, &record);
     if (status == LXA_OK && location->before.handle != LXA_HANDLE_NONE) {
         status = lxa_dom_nodes_parent(nodes, location->before, &actual);
         if (status == LXA_OK && actual.handle != location->parent.handle)
             return LXA_ERROR_ARGUMENT;
         if (status == LXA_OK)
-            status = lxa_dom_nodes_prev_sibling(nodes, location->before, &previous);
+            status = read_previous_record(nodes, location->before, &previous, &record);
     }
     if (status != LXA_OK) return status;
     if (previous.handle != LXA_HANDLE_NONE) {
-        status = lxa_dom_nodes_read(nodes, previous, &record);
-        if (status != LXA_OK) return status;
         if (record.parent != (lxa_id_t) location->parent.handle
             || record.next != (location->before.handle == LXA_HANDLE_NONE
                               ? LXA_ID_NONE : (lxa_id_t) location->before.handle))
