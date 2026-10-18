@@ -885,11 +885,16 @@ LXA_HTML_STATE(ATTRIBUTE_VALUE_DOUBLE, 26, TAG, VALUE_DOUBLE,)
 LXA_HTML_STATE(ATTRIBUTE_VALUE_SINGLE, 27, TAG, VALUE_SINGLE,)
 LXA_HTML_STATE(ATTRIBUTE_VALUE_UNQUOTED, 28, TAG, VALUE_UNQUOTED,
     if (!tokenizer->utf8_pending) {
-        size_t start = i;
-        size_t count;
-        result = scan_run(tokenizer->state, (lxa_span_t) {
-            input.data + i, input.length - i
-        }, &count);
+        size_t start = i, count, total;
+        lxa_span_t run = {input.data + i, input.length - i};
+        if (lxa_size_add(tokenizer->attribute_bytes.length,
+                         tokenizer->omitted_value_bytes, &total) != LXA_OK
+            || lxa_size_add(total, tokenizer->name.length, &total) != LXA_OK) {
+            result = LXA_HTML_OVERFLOW;
+            goto fail;
+        }
+        run = limit_run(run, tokenizer->budget->limits.max_token_bytes, total);
+        result = scan_run(tokenizer->state, run, &count);
         if (result != LXA_HTML_OK) {
             goto fail;
         }
