@@ -97,6 +97,55 @@ scalar(rewrite_t *owner, uint32_t cp)
     return ascii(owner, reference);
 }
 
+enum { DECODE_BATCH = 32 };
+
+static size_t
+ordinary_ascii_prefix(const uint32_t *scalars, size_t count, bool value,
+                      uint8_t *bytes)
+{
+    if (count < 2) return 0;
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t cp = scalars[i];
+        if (cp < 0x20 || cp >= 0x80
+            || (value && (cp == '&' || cp == '"' || cp == '<')))
+            return i;
+        bytes[i] = (uint8_t) cp;
+    }
+    return count;
+}
+
+static lxa_status_t
+encode_ascii_batch(rewrite_t *owner, lxa_span_t bytes)
+{
+    for (size_t i = 0; i < bytes.length;) {
+        size_t length = 0;
+        if (owner->syntax.data != NULL
+            && owner->syntax.length <= owner->syntax.capacity
+            && lxa_buffer_allocator_valid(&owner->syntax.allocator)) {
+            length = owner->syntax.capacity - owner->syntax.length;
+            if (length > bytes.length - i) length = bytes.length - i;
+        }
+        lxa_status_t status;
+        if (length > 1
+            && lxa_budget_check_impl(&owner->budget, LXA_BUDGET_WORK,
+                                      length, NULL) == LXA_OK
+            && lxa_budget_check_impl(&owner->budget, LXA_BUDGET_STRINGS,
+                                      length, NULL) == LXA_OK) {
+            /* Capacity and both quotas fit; no callback can observe
+             * intermediate charges. Retain scalar failure boundaries below. */
+            status = lxa_budget_charge_work(&owner->budget, length, &owner->reason);
+            if (status == LXA_OK)
+                status = append(owner, (lxa_span_t){bytes.data + i, length});
+        } else {
+            length = 1;
+            status = encode(owner, bytes.data[i]);
+        }
+        if (status != LXA_OK) return status;
+        i += length;
+    }
+    return LXA_OK;
+}
+
 static lxa_status_t
 decode(rewrite_t *owner, lxa_span_t input, bool value)
 {
@@ -108,7 +157,7 @@ decode(rewrite_t *owner, lxa_span_t input, bool value)
         return status;
     lxa_decoder_reset(owner->decoder);
     while (input.length != 0) {
-        uint32_t scalars[32];
+        uint32_t scalars[DECODE_BATCH];
         lxa_encoding_progress_t progress;
         lxa_encoding_result_t result =
             lxa_decoder_feed(owner->decoder, input, scalars,
@@ -118,7 +167,16 @@ decode(rewrite_t *owner, lxa_span_t input, bool value)
         if ((result != LXA_ENCODING_OK && result != LXA_ENCODING_OUTPUT_FULL) ||
             (progress.consumed == 0 && progress.produced == 0))
             return LXA_ERROR_INTERNAL;
-        for (size_t i = 0; i < progress.produced; ++i) {
+        uint8_t bytes[DECODE_BATCH];
+        size_t prefix = owner->utf8
+            ? ordinary_ascii_prefix(scalars, progress.produced, value, bytes) : 0;
+        size_t i = 0;
+        if (prefix > 1) {
+            status = encode_ascii_batch(owner, (lxa_span_t){bytes, prefix});
+            if (status != LXA_OK) return status;
+            i = prefix;
+        }
+        for (; i < progress.produced; ++i) {
             status = value ? scalar(owner, scalars[i]) : encode(owner, scalars[i]);
             if (status != LXA_OK)
                 return status;
