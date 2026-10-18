@@ -1288,12 +1288,28 @@ tree_pop_table(lxa_html_tree_t *tree, size_t keep, bool template_context)
 #undef LXA_BODY_END_LENGTH
 #undef LXA_BODY_END_POP
 
+static inline lxa_status_t
+open_entry_namespace(const lxa_html_tree_t *tree,
+    const lxa_html_open_entry_t *entry, lxa_dom_namespace_t *out)
+{
+    uint16_t id = entry->tag_id;
+    /* Element identity is immutable within the stack's captured store epoch.
+     * Unknown metadata and expired ownership still use the checked reader. */
+    if (out != NULL && id != 0 && id < LIBLEXA_HTML_TAG_METADATA_COUNT
+        && tree->document.document == tree->nodes
+        && tree->document.epoch == tree->nodes->epoch) {
+        *out = (lxa_dom_namespace_t) liblexa_html_tag_metadata_table[id].namespace_id;
+        return LXA_OK;
+    }
+    return lxa_dom_nodes_element_namespace(tree->nodes,
+        lxa_html_open_ref(tree, entry), out);
+}
+
 #define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
 #define LXA_CURRENT_NAMESPACE_VIEW lxa_html_tree_scope_view_t
 #define LXA_CURRENT_NAMESPACE_LENGTH(view) ((view)->length)
 #define LXA_CURRENT_NAMESPACE_READ(view, index, ns) \
-    lxa_dom_nodes_element_namespace((view)->tree->nodes, \
-        lxa_html_open_ref((view)->tree, &(view)->entries[index]), ns)
+    open_entry_namespace((view)->tree, &(view)->entries[index], ns)
 #include "html/current_namespace.inc"
 #undef LXA_CURRENT_NAMESPACE_NAME
 #undef LXA_CURRENT_NAMESPACE_VIEW
@@ -2473,8 +2489,11 @@ root_foreign_route(tree_foreign_execute_view_t *view, const lxa_html_token_t *to
         *route = LXA_HTML_FOREIGN_ROOT_HTML;
         return LXA_OK;
     }
-    lxa_status_t status = lxa_dom_nodes_element_namespace(tree->nodes,
-        current_element(tree), &view->namespace_id);
+    size_t length = lxa_vector_length_sized(&tree->open_elements,
+                                            sizeof(lxa_html_open_entry_t));
+    const lxa_html_open_entry_t *entries = (const void *) tree->open_elements.bytes.data;
+    lxa_status_t status = open_entry_namespace(tree, &entries[length - 1],
+                                              &view->namespace_id);
     if (status != LXA_OK) return status;
     lxa_html_foreign_context_t integration = LXA_HTML_FOREIGN_NONE;
     if (view->namespace_id != LXA_DOM_NS_HTML
