@@ -932,7 +932,11 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         }
         return status;
     }
-    status = check_new_slot(nodes, &nodes->limit_reason);
+    status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
+                                   name.length, &nodes->limit_reason);
+    if (status == LXA_OK) {
+        status = check_new_slot(nodes, &nodes->limit_reason);
+    }
     if (status == LXA_OK && total > nodes->charged_string_bytes) {
         status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
@@ -965,6 +969,9 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         atom->offset = nodes->strings.length;
         atom->length = name.length;
         atom->id = atom_id;
+        status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
+                                       name.length, &nodes->limit_reason);
+        if (status != LXA_OK) goto rollback;
         status = self ? lxa_buffer_append_self(&nodes->strings,
                                                 self_offset, name.length)
                       : lxa_buffer_append(&nodes->strings, name);
@@ -1494,7 +1501,11 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         }
         return status;
     }
-    status = check_new_slot(nodes, &nodes->limit_reason);
+    status = lxa_budget_check_item(nodes->budget, LXA_BUDGET_NAME_BYTES,
+                                   name.length, &nodes->limit_reason);
+    if (status == LXA_OK) {
+        status = check_new_slot(nodes, &nodes->limit_reason);
+    }
     if (status == LXA_OK && lxa_vector_length_sized(&nodes->attributes, sizeof(lxa_dom_attr_t))
                             >= nodes->charged_attrs) {
         status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_ATTRIBUTES, 1,

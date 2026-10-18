@@ -400,6 +400,11 @@ lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
             goto fail;
         }
     }
+    status = lxa_budget_check_item(table->budget, LXA_BUDGET_NAME_BYTES,
+                                   key.length, &table->reason);
+    if (status != LXA_OK) {
+        goto fail;
+    }
     table->used += !table->slots[index].used;
     table->slots[index] = (slot_t) {copy, key.length, hash, value, true, true};
     ++table->count;
