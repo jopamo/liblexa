@@ -604,13 +604,20 @@ static lxa_status_t
 reserve_open_elements(lxa_html_tree_t *tree, size_t count)
 {
     size_t required;
+    bool may_grow = false;
     lxa_status_t status = lxa_budget_check_impl(tree->nodes->budget,
         LXA_BUDGET_OPEN_ELEMENTS, count, &tree->nodes->limit_reason);
     if (status == LXA_OK)
         status = lxa_size_add(lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)),
                               count, &required);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = required > tree->open_elements.bytes.capacity
+                              / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->open_elements, required);
+    }
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, count, &tree->nodes->limit_reason);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
