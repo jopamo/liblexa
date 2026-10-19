@@ -898,6 +898,7 @@ static lxa_status_t
 reserve_formatting_elements(lxa_html_tree_t *tree, size_t count)
 {
     size_t required;
+    bool may_grow = false;
     lxa_status_t status;
     if (tree->mode != LXA_TREE_TEMPLATE_TEXT)
         return reserve_open_elements(tree, count);
@@ -908,8 +909,16 @@ reserve_formatting_elements(lxa_html_tree_t *tree, size_t count)
     if (status == LXA_OK)
         status = lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                                    count, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = required > tree->template_elements.bytes.capacity
+                              / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->template_elements, required);
+    }
+    if (status == LXA_OK && may_grow)
+        status = check_template_elements(tree, required);
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, count, &tree->nodes->limit_reason);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3716,6 +3725,7 @@ template_open_foreign(lxa_html_tree_t *tree,
     lxa_dom_ref_t child;
     lxa_span_t name = token->name;
     size_t count;
+    bool may_grow = false;
     lxa_status_t status = lxa_size_add(
         lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), 1, &count);
     if (status == LXA_OK)
@@ -3726,8 +3736,16 @@ template_open_foreign(lxa_html_tree_t *tree,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = count > tree->template_elements.bytes.capacity
+                           / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->template_elements, count);
+    }
+    if (status == LXA_OK && may_grow)
+        status = check_template_elements(tree, count);
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
     if (status == LXA_OK && ns == LXA_DOM_NS_SVG)
         status = lxa_html_svg_tag_name(name, &name);
     if (status == LXA_ERROR_LIMIT
