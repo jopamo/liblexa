@@ -25,8 +25,21 @@ typedef struct {
 static lxa_status_t
 append(rewrite_t *owner, lxa_span_t bytes)
 {
+    size_t length;
     lxa_status_t status = lxa_budget_charge_impl(&owner->budget, LXA_BUDGET_STRINGS,
                                             bytes.length, &owner->reason);
+    if (status == LXA_OK && bytes.length != 0) {
+        status = lxa_size_add(owner->syntax.length, bytes.length, &length);
+        if (status == LXA_OK && length > owner->syntax.capacity) {
+            status = lxa_buffer_reserve_impl(&owner->syntax, length);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(&owner->budget, LXA_BUDGET_WORK,
+                                               0, &owner->reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(&owner->budget, LXA_BUDGET_STRINGS,
+                                               0, &owner->reason);
+        }
+    }
     if (status == LXA_OK)
         status = lxa_buffer_append_impl(&owner->syntax, bytes);
     if (status == LXA_ERROR_LIMIT && owner->reason == LXA_BUDGET_COUNT)
