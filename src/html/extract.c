@@ -100,6 +100,10 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
         if (status != LXA_OK)
             return status;
     }
+    status = lxa_budget_check_item(owner->budget, LXA_BUDGET_NAME_BYTES,
+                                   name.length, &owner->reason);
+    if (status != LXA_OK)
+        return status;
     lxa_decoder_reset(*decoder);
     while (name.length != 0) {
         uint32_t scalars[32];
