@@ -99,8 +99,16 @@ static lxa_status_t
 push_open_entry(lxa_html_tree_t *tree, lxa_vector_t *elements, lxa_dom_ref_t ref)
 {
     lxa_html_open_entry_t entry;
+    bool may_grow = elements->bytes.length > elements->bytes.capacity
+        || elements->bytes.capacity - elements->bytes.length < sizeof(entry);
     lxa_status_t status = make_element_entry(tree, ref, &entry);
     if (status == LXA_OK) status = lxa_vector_push(elements, &entry);
+    if (status == LXA_OK && may_grow) {
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, 0, &tree->nodes->limit_reason);
+        if (status != LXA_OK)
+            (void) lxa_vector_erase(elements, lxa_vector_length(elements) - 1, 1);
+    }
     if (status == LXA_OK) {
         size_t length = lxa_vector_length(elements);
         repair_button_prefix((lxa_html_open_entry_t *) elements->bytes.data,
