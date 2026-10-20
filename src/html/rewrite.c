@@ -29,6 +29,8 @@ append(rewrite_t *owner, lxa_span_t bytes)
     lxa_status_t status = lxa_budget_charge_impl(&owner->budget, LXA_BUDGET_STRINGS,
                                             bytes.length, &owner->reason);
     if (status == LXA_OK && bytes.length != 0) {
+        if (bytes.data == NULL)
+            return LXA_ERROR_ARGUMENT;
         status = lxa_size_add(owner->syntax.length, bytes.length, &length);
         if (status == LXA_OK && length > owner->syntax.capacity) {
             status = lxa_buffer_reserve_impl(&owner->syntax, length);
