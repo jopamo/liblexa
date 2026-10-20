@@ -180,6 +180,9 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (status == LXA_OK)
         status = reserve_status(store, lxa_buffer_reserve(&store->bytes, total));
     if (status == LXA_OK)
+        status = lxa_budget_check_impl(store->budget, LXA_BUDGET_WORK,
+                                  0, &store->limit_reason);
+    if (status == LXA_OK)
         status = lxa_budget_check_impl(store->budget, LXA_BUDGET_STRINGS,
                                   total - old_bytes, &store->limit_reason);
     if (status != LXA_OK) return status;
