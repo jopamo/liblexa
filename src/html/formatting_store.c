@@ -183,6 +183,15 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
         status = lxa_budget_check_impl(store->budget, LXA_BUDGET_WORK,
                                   0, &store->limit_reason);
     if (status == LXA_OK)
+        status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_NAME_BYTES,
+                                      token->name.length, &store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
+                                      token->attribute_count, &store->limit_reason);
+    for (size_t i = 0; status == LXA_OK && i < token->attribute_count; ++i)
+        status = lxa_budget_check_item_impl(store->budget, LXA_BUDGET_NAME_BYTES,
+                                      token->attributes[i].name.length, &store->limit_reason);
+    if (status == LXA_OK)
         status = lxa_budget_check_impl(store->budget, LXA_BUDGET_STRINGS,
                                   total - old_bytes, &store->limit_reason);
     if (status != LXA_OK) return status;
