@@ -127,6 +127,9 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
     status = lxa_budget_check_item(stack->budget, LXA_BUDGET_NAME_BYTES,
                                    name.length, &stack->limit_reason);
     if (status == LXA_OK) status = check_push(stack, total);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_WORK,
+                                      0, &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t element = {
         .name_offset = stack->names.length, .name_length = name.length,
