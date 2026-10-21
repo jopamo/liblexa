@@ -328,6 +328,11 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         result = input_status(status);
         goto done;
     }
+    status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+    if (status != LXA_OK) {
+        result = input_status(status);
+        goto done;
+    }
     if (mapping != NULL) {
         lxa_html_input_mapping_t first = {.raw_end = prefix_length};
         status = lxa_vector_init(&temporary_mapping, &mapping->bytes.allocator,
@@ -339,6 +344,11 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         if (status != LXA_OK) {
             if (status == LXA_ERROR_LIMIT && reason != NULL)
                 *reason = LXA_BUDGET_MEMORY;
+            result = input_status(status);
+            goto done;
+        }
+        status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+        if (status != LXA_OK) {
             result = input_status(status);
             goto done;
         }
