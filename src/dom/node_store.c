@@ -1518,6 +1518,9 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
         status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_STRINGS,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     }
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+            0, &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
     }
