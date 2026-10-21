@@ -141,6 +141,10 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
     if (status == LXA_OK && ascii) {
         lxa_html_input_mapping_t point = {.raw_end = prefix};
         status = lxa_vector_reserve(&offsets, length == 0 ? 1 : 2);
+        if (status == LXA_ERROR_LIMIT && reason != NULL)
+            *reason = LXA_BUDGET_MEMORY;
+        if (status == LXA_OK)
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
         if (status == LXA_OK) status = lxa_vector_push(&offsets, &point);
         if (status == LXA_OK && length != 0) {
             point = (lxa_html_input_mapping_t){
@@ -149,8 +153,6 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
             };
             status = lxa_vector_push(&offsets, &point);
         }
-        if (status == LXA_ERROR_LIMIT && reason != NULL)
-            *reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK)
             status = lxa_budget_charge_work(budget, (uint64_t)length * 2, reason);
         borrowed = status == LXA_OK;
