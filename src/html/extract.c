@@ -307,6 +307,10 @@ lxa_html_extract_attributes_with_budget(const lxa_allocator_t *allocator, lxa_bu
             owner.reason = LXA_BUDGET_MEMORY;
         goto done;
     }
+    status = lxa_budget_check_impl(owner.budget, LXA_BUDGET_INPUT, 0,
+                                   &owner.reason);
+    if (status != LXA_OK)
+        goto done;
     result =
         count == 0 ? LXA_HTML_OK : lxa_html_tokenizer_enable_source_ranges(tokenizer);
     if (result == LXA_HTML_OK)
