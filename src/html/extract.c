@@ -105,6 +105,9 @@ static lxa_status_t name_check(lxa_span_t name, bool empty,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(owner->budget, LXA_BUDGET_WORK,
                                        0, &owner->reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(owner->budget, LXA_BUDGET_INPUT,
+                                       0, &owner->reason);
     if (status != LXA_OK)
         return status;
     lxa_decoder_reset(*decoder);
