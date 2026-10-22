@@ -50,6 +50,8 @@ control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
         if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_MEMORY;
     }
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
     if (status == LXA_OK) {
         lxa_html_result_t result = lxa_html_tokenizer_filter_attribute_values(
             tokenizer, control_input_value, NULL);
@@ -75,6 +77,8 @@ control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
             *reason = meta.reason != LXA_BUDGET_COUNT ? meta.reason
                 : result == LXA_HTML_LIMIT ? lxa_html_tokenizer_limit_reason(tokenizer)
                 : control.limit_reason;
+        if (status == LXA_OK)
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
         if (status == LXA_OK && control.mode != LXA_TREE_DONE)
             status = LXA_ERROR_INTERNAL;
     }
