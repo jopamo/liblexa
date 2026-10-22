@@ -399,6 +399,7 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             result = input_status(status);
             goto done;
         }
+        size_t capacity_before = temporary.capacity;
         if (ascii != 0) {
             status = lxa_budget_charge_work(budget, ascii, reason);
             result = status == LXA_OK
@@ -413,11 +414,26 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         if (result != LXA_HTML_INPUT_OK) {
             goto done;
         }
+        if (temporary.capacity != capacity_before) {
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status != LXA_OK) {
+                result = input_status(status);
+                goto done;
+            }
+        }
         if (mapping != NULL && progress.produced != 0) {
+            capacity_before = temporary_mapping.bytes.capacity;
             result = map_scalar(&temporary_mapping, bytes, &temporary,
                 decoded_start, offset - lxa_decoder_pending_bytes(decoder),
                 reason);
             if (result != LXA_HTML_INPUT_OK) goto done;
+            if (temporary_mapping.bytes.capacity != capacity_before) {
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+                if (status != LXA_OK) {
+                    result = input_status(status);
+                    goto done;
+                }
+            }
         }
         if (decode_result != LXA_ENCODING_OK
             && decode_result != LXA_ENCODING_OUTPUT_FULL) {
@@ -427,6 +443,7 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
     } while (offset != bytes.length || decode_result == LXA_ENCODING_OUTPUT_FULL);
     do {
         size_t decoded_start = temporary.length;
+        size_t capacity_before = temporary.capacity;
         decode_result = lxa_decoder_finish(decoder, scalars,
                                             mapping == NULL ? 256 : 1,
                                             &progress);
@@ -435,11 +452,26 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         if (result != LXA_HTML_INPUT_OK) {
             goto done;
         }
+        if (temporary.capacity != capacity_before) {
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status != LXA_OK) {
+                result = input_status(status);
+                goto done;
+            }
+        }
         if (mapping != NULL && progress.produced != 0) {
+            capacity_before = temporary_mapping.bytes.capacity;
             result = map_scalar(&temporary_mapping, bytes, &temporary,
                 decoded_start, offset - lxa_decoder_pending_bytes(decoder),
                 reason);
             if (result != LXA_HTML_INPUT_OK) goto done;
+            if (temporary_mapping.bytes.capacity != capacity_before) {
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+                if (status != LXA_OK) {
+                    result = input_status(status);
+                    goto done;
+                }
+            }
         }
         if (decode_result != LXA_ENCODING_OK
             && decode_result != LXA_ENCODING_OUTPUT_FULL) {
