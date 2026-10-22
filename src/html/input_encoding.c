@@ -107,6 +107,11 @@ report_malformed(lxa_span_t bytes, const lxa_encoding_t *encoding,
         }
         return input_status(status);
     }
+    status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+    if (status != LXA_OK) {
+        result = input_status(status);
+        goto done;
+    }
     for (i = prefix_length; i < bytes.length; i++) {
         size_t before = lxa_decoder_error_count(decoder);
         size_t errors, j;
