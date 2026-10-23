@@ -411,6 +411,9 @@ lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_WORK,
                                        0, &table->reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(table->budget, LXA_BUDGET_MEMORY,
+                                       0, &table->reason);
     if (status != LXA_OK) {
         goto fail;
     }
