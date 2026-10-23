@@ -204,6 +204,12 @@ lxa_table_create_with_budget(const lxa_allocator_t *allocator,
         lxa_budget_release(budget, LXA_BUDGET_MEMORY, sizeof(*table));
         return status;
     }
+    status = lxa_budget_check_impl(budget, LXA_BUDGET_MEMORY, 0, NULL);
+    if (status != LXA_OK) {
+        lxa_free(allocator, table);
+        lxa_budget_release(budget, LXA_BUDGET_MEMORY, sizeof(*table));
+        return status;
+    }
     table->allocator = *allocator;
     table->owned_budget = local;
     table->budget = budget == &local ? &table->owned_budget : budget;
