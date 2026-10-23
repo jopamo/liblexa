@@ -131,7 +131,7 @@ prepare_slots(lxa_table_t *table, size_t capacity, slot_t **out,
 
 /* Rebuild privately. No old slot or key moves until all work is charged. */
 static lxa_status_t
-grow(lxa_table_t *table, size_t capacity)
+grow(lxa_table_t *table, size_t capacity, size_t key_length)
 {
     slot_t *next = NULL;
     size_t bytes, i, old_bytes;
@@ -164,6 +164,13 @@ grow(lxa_table_t *table, size_t capacity)
                 break;
             }
         }
+    }
+    status = lxa_budget_check_item(table->budget, LXA_BUDGET_NAME_BYTES,
+                                   key_length, &table->reason);
+    if (status != LXA_OK) {
+        lxa_free(&table->allocator, next);
+        release_memory(table, bytes);
+        return status;
     }
     old_bytes = table->capacity * sizeof(slot_t);
     lxa_free(&table->allocator, table->slots);
@@ -405,7 +412,7 @@ lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
             }
             capacity *= 2;
         }
-        status = grow(table, capacity);
+        status = grow(table, capacity, key.length);
         if (status != LXA_OK) {
             goto fail;
         }
