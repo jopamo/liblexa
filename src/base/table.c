@@ -118,6 +118,9 @@ prepare_slots(lxa_table_t *table, size_t capacity, slot_t **out,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_MEMORY,
                                        0, &table->reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(table->budget, LXA_BUDGET_WORK,
+                                       0, &table->reason);
     if (status != LXA_OK) {
         lxa_free(&table->allocator, *out);
         *out = NULL;
