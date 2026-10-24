@@ -334,6 +334,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         goto done;
     }
     status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
     if (status != LXA_OK) {
         result = input_status(status);
         goto done;
@@ -353,6 +355,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             goto done;
         }
         status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+        if (status == LXA_OK)
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
         if (status != LXA_OK) {
             result = input_status(status);
             goto done;
@@ -421,6 +425,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         }
         if (temporary.capacity != capacity_before) {
             status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
             if (status != LXA_OK) {
                 result = input_status(status);
                 goto done;
@@ -434,6 +440,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             if (result != LXA_HTML_INPUT_OK) goto done;
             if (temporary_mapping.bytes.capacity != capacity_before) {
                 status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+                if (status == LXA_OK)
+                    status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
                 if (status != LXA_OK) {
                     result = input_status(status);
                     goto done;
@@ -459,6 +467,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
         }
         if (temporary.capacity != capacity_before) {
             status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
             if (status != LXA_OK) {
                 result = input_status(status);
                 goto done;
@@ -472,6 +482,8 @@ decode_input(lxa_span_t bytes, const lxa_encoding_t *encoding,
             if (result != LXA_HTML_INPUT_OK) goto done;
             if (temporary_mapping.bytes.capacity != capacity_before) {
                 status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+                if (status == LXA_OK)
+                    status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
                 if (status != LXA_OK) {
                     result = input_status(status);
                     goto done;
