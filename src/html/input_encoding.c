@@ -138,6 +138,13 @@ report_malformed(lxa_span_t bytes, const lxa_encoding_t *encoding,
                 result = LXA_HTML_INPUT_CALLBACK_FAILURE;
                 goto done;
             }
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
+            if (status != LXA_OK) {
+                result = input_status(status);
+                goto done;
+            }
             reported++;
         }
         if (progress.produced != 0) {
@@ -178,6 +185,13 @@ report_malformed(lxa_span_t bytes, const lxa_encoding_t *encoding,
                     *callback_status = status;
                 }
                 result = LXA_HTML_INPUT_CALLBACK_FAILURE;
+                goto done;
+            }
+            status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check_impl(budget, LXA_BUDGET_WORK, 0, reason);
+            if (status != LXA_OK) {
+                result = input_status(status);
                 goto done;
             }
             reported++;
