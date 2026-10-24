@@ -174,6 +174,21 @@ static lxa_status_t retain_value(void *context, lxa_span_t tag,
     return status;
 }
 
+static lxa_status_t check_callback_budget(extraction_t *owner)
+{
+    static const lxa_budget_kind_t live[] = {
+        LXA_BUDGET_INPUT, LXA_BUDGET_WORK, LXA_BUDGET_MEMORY,
+        LXA_BUDGET_STRINGS, LXA_BUDGET_OPEN_ELEMENTS,
+        LXA_BUDGET_ACTIVE_FORMATTING, LXA_BUDGET_TOKENS
+    };
+    for (size_t i = 0; i < sizeof(live) / sizeof(*live); i++) {
+        lxa_status_t status =
+            lxa_budget_check_impl(owner->budget, live[i], 0, &owner->reason);
+        if (status != LXA_OK) return status;
+    }
+    return LXA_OK;
+}
+
 static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                             const lxa_html_token_t *token)
 {
@@ -225,11 +240,7 @@ static lxa_status_t observe(void *context, lxa_html_tokenizer_t *tokenizer,
                     owner->reason = LXA_BUDGET_COUNT;
                     return status;
                 }
-                status = lxa_budget_check_impl(owner->budget, LXA_BUDGET_INPUT,
-                                               0, &owner->reason);
-                if (status == LXA_OK)
-                    status = lxa_budget_check_impl(owner->budget, LXA_BUDGET_WORK,
-                                                   0, &owner->reason);
+                status = check_callback_budget(owner);
                 if (status != LXA_OK)
                     return status;
             }
