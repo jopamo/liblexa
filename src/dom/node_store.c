@@ -966,6 +966,13 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
                                    sizeof(*block));
                 return status;
             }
+            status = check_new_slot(nodes, &nodes->limit_reason);
+            if (status != LXA_OK) {
+                lxa_free(&nodes->allocator, block);
+                lxa_budget_release(nodes->budget, LXA_BUDGET_MEMORY,
+                                   sizeof(*block));
+                return status;
+            }
             block->next = nodes->atom_blocks;
             nodes->atom_blocks = block;
             new_block = true;
@@ -1004,6 +1011,8 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
             }
             inserted = true;
         }
+        status = check_new_slot(nodes, &nodes->limit_reason);
+        if (status != LXA_OK) goto rollback;
         status = lxa_vector_push_sized(&nodes->atoms, &atom, sizeof(atom));
         if (status != LXA_OK) {
             goto rollback;
