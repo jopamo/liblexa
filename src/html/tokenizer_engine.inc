@@ -106,6 +106,21 @@ account_run(lxa_html_tokenizer_t *tokenizer, size_t bytes)
     return budget_result(tokenizer, status, reason);
 }
 
+static lxa_html_result_t
+check_callback_budget(lxa_html_tokenizer_t *tokenizer)
+{
+    static const lxa_budget_kind_t live[] = {
+        LXA_BUDGET_INPUT, LXA_BUDGET_WORK, LXA_BUDGET_MEMORY, LXA_BUDGET_TOKENS
+    };
+    for (size_t i = 0; i < sizeof(live) / sizeof(*live); i++) {
+        lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+        lxa_status_t status = lxa_budget_check_impl(tokenizer->budget, live[i], 0, &reason);
+        if (status != LXA_OK)
+            return budget_result(tokenizer, status, reason);
+    }
+    return LXA_HTML_OK;
+}
+
 #define LXA_HTML_CONSUMER_HOOK(name, parameters, ...) \
     static lxa_html_result_t name parameters { __VA_ARGS__ }
 #include "html/tokenizer_consumer.def"

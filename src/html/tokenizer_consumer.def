@@ -14,7 +14,7 @@ LXA_HTML_CONSUMER_HOOK(emit,
         tokenizer->callback_status = status;
         return LXA_HTML_CALLBACK_FAILURE;
     }
-    return LXA_HTML_OK;
+    return check_callback_budget(tokenizer);
 )
 LXA_HTML_CONSUMER_HOOK(filter_value,
     (lxa_html_tokenizer_t *tokenizer),
@@ -38,6 +38,9 @@ LXA_HTML_CONSUMER_HOOK(filter_value,
         tokenizer->callback_status = status;
         return LXA_HTML_CALLBACK_FAILURE;
     }
+    lxa_html_result_t checked = check_callback_budget(tokenizer);
+    if (checked != LXA_HTML_OK)
+        return checked;
     if (!retain)
         tokenizer->attribute.value_start = SIZE_MAX;
     return LXA_HTML_OK;
@@ -60,5 +63,5 @@ LXA_HTML_CONSUMER_HOOK(emit_error,
         tokenizer->callback_status = status;
         return LXA_HTML_CALLBACK_FAILURE;
     }
-    return LXA_HTML_OK;
+    return check_callback_budget(tokenizer);
 )
