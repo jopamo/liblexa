@@ -1765,6 +1765,11 @@ lxa_dom_nodes_attribute_set_value(lxa_dom_nodes_t *nodes,
             return status;
         }
     }
+    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+                                   0, &nodes->limit_reason);
+    if (status != LXA_OK) {
+        return status;
+    }
     status = self ? lxa_buffer_append_self(&nodes->strings, self_offset,
                                             value.length)
                   : lxa_buffer_append(&nodes->strings, value);
