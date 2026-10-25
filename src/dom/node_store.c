@@ -617,6 +617,10 @@ append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
                                   total - nodes->charged_string_bytes,
                                   &nodes->limit_reason);
     }
+    if (status == LXA_OK) {
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+            0, &nodes->limit_reason);
+    }
     if (status != LXA_OK) {
         return status;
     }
@@ -787,6 +791,9 @@ append_text_data(lxa_dom_nodes_t *nodes, lxa_dom_ref_t text,
     }
     status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
         0, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+            0, &nodes->limit_reason);
     if (status != LXA_OK) return status;
     if (!extend)
         status = lxa_buffer_append_self(&nodes->strings, old.offset, old.length);
