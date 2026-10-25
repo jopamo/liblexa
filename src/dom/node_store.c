@@ -5631,6 +5631,12 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
             lxa_budget_release(budget, LXA_BUDGET_MEMORY, scratch);
             return status;
         }
+        status = lxa_budget_check_impl(budget, LXA_BUDGET_MEMORY, 0, NULL);
+        if (status != LXA_OK) {
+            lxa_free(&nodes->allocator, seen);
+            lxa_budget_release(budget, LXA_BUDGET_MEMORY, scratch);
+            return status;
+        }
     }
     records = (const lxa_dom_record_t *) nodes->records.bytes.data;
     payloads = (const lxa_dom_character_t *) nodes->characters.bytes.data;
