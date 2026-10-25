@@ -1880,6 +1880,10 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
         status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
             0, &nodes->limit_reason);
     }
+    if (status == LXA_OK) {
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+            0, &nodes->limit_reason);
+    }
     if (status != LXA_OK) {
         return status;
     }
@@ -2076,6 +2080,9 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
             total - nodes->charged_string_bytes, &nodes->limit_reason);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+            0, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
             0, &nodes->limit_reason);
     if (status != LXA_OK) return status;
     for (i = 0; i < 2; ++i) {
