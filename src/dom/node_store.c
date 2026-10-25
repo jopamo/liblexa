@@ -410,6 +410,9 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
         return status;
     }
     status = check_new_slot(nodes, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+            0, &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
     }
