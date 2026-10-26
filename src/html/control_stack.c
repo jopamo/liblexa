@@ -130,6 +130,9 @@ lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_WORK,
                                       0, &stack->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_MEMORY,
+                                      0, &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t element = {
         .name_offset = stack->names.length, .name_length = name.length,
