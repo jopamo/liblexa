@@ -194,6 +194,9 @@ lxa_html_formatting_store_capture(lxa_html_formatting_store_t *store,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(store->budget, LXA_BUDGET_STRINGS,
                                   total - old_bytes, &store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(store->budget, LXA_BUDGET_MEMORY,
+                                  0, &store->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_formatting_snapshot_t snapshot = {
         old_bytes, token->name.length, lxa_vector_length_sized(&store->attributes,
