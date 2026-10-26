@@ -548,6 +548,12 @@ list_append(lxa_html_formatting_list_t *list, size_t snapshot, uint64_t identity
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
     if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_MEMORY, 0,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
         status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
