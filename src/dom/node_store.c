@@ -5430,7 +5430,15 @@ collect_nonprimary_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
                 break;
             }
             if (first) first = false;
-            else status = lxa_vector_push(targets, &cursor);
+            else {
+                status = lxa_vector_push(targets, &cursor);
+                if (status == LXA_OK)
+                    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+                                                   0, &nodes->limit_reason);
+                if (status == LXA_OK)
+                    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+                                                   0, &nodes->limit_reason);
+            }
             if (status != LXA_OK) break;
         }
         status = next_descendant(nodes, select, cursor, tag != SELECT_LEAF,
