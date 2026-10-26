@@ -595,8 +595,17 @@ lxa_html_tree_filter_spaces(lxa_span_t data, lxa_buffer_t *spaces,
     while (i < data.length && status == LXA_OK) {
         size_t start = i;
         while (i < data.length && lxa_html_byte_tree_space(data.data[i])) ++i;
-        if (i != start)
-            status = lxa_buffer_append(spaces, (lxa_span_t){data.data + start, i - start});
+        if (i != start) {
+            size_t combined;
+            status = lxa_size_add(spaces->length, i - start, &combined);
+            if (status == LXA_OK) status = lxa_buffer_reserve(spaces, combined);
+            if (status == LXA_OK)
+                status = lxa_budget_check(spaces->budget, LXA_BUDGET_WORK, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_budget_check(spaces->budget, LXA_BUDGET_MEMORY, 0, reason);
+            if (status == LXA_OK)
+                status = lxa_buffer_append(spaces, (lxa_span_t){data.data + start, i - start});
+        }
         if (i < data.length) ++i;
     }
     if (status == LXA_ERROR_LIMIT && reason != NULL && *reason == LXA_BUDGET_COUNT)
