@@ -1270,6 +1270,12 @@ list_plan_add(const formatting_stack_view_t *view, const lxa_html_token_t *token
                                   additional, &list->store->limit_reason);
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING,
+                                  additional, &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_MEMORY,
+                                  0, &list->store->limit_reason);
     if (status == LXA_OK) *drop = planned;
     return status;
 }
@@ -1343,6 +1349,15 @@ reserve_marker(lxa_html_formatting_list_t *list, bool open)
                                   &list->store->limit_reason);
     if (status == LXA_OK)
         status = reserve_status(list->store, lxa_vector_reserve(&list->entries, required));
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK && open)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_OPEN_ELEMENTS, 1,
+                                  &list->store->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_MEMORY, 0,
+                                  &list->store->limit_reason);
     return status;
 }
 
