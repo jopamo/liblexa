@@ -5524,6 +5524,14 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
                 break;
             }
             status = lxa_buffer_append(output, text);
+            if (status == LXA_OK) {
+                status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+                                               0, &nodes->limit_reason);
+            }
+            if (status == LXA_OK) {
+                status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+                                               0, &nodes->limit_reason);
+            }
             if (status != LXA_OK) {
                 break;
             }
