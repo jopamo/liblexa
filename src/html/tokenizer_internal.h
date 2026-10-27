@@ -90,6 +90,21 @@ budget_result(lxa_html_tokenizer_t *tokenizer, lxa_status_t status,
          : LXA_HTML_BAD_ARGUMENT;
 }
 
+static inline lxa_html_result_t
+check_callback_budget(lxa_html_tokenizer_t *tokenizer)
+{
+    static const lxa_budget_kind_t live[] = {
+        LXA_BUDGET_INPUT, LXA_BUDGET_WORK, LXA_BUDGET_MEMORY, LXA_BUDGET_TOKENS
+    };
+    for (size_t i = 0; i < sizeof(live) / sizeof(*live); i++) {
+        lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+        lxa_status_t status = lxa_budget_check_impl(tokenizer->budget, live[i], 0, &reason);
+        if (status != LXA_OK)
+            return budget_result(tokenizer, status, reason);
+    }
+    return LXA_HTML_OK;
+}
+
 /* Append after the caller has checked token/name sizes. */
 static inline lxa_html_result_t
 buffer_append_storage(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
@@ -111,6 +126,7 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
 {
     lxa_status_t status;
     size_t length;
+    bool grew = false;
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     status = lxa_size_add(buffer->length, bytes.length, &length);
     if (status != LXA_OK) {
@@ -141,8 +157,14 @@ recheck:
         if (status != LXA_OK)
             return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
                 : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+        grew = true;
         /* Capacity now fits. Repeat the ordered checks after allocator effects. */
         goto recheck;
+    }
+    if (grew) {
+        lxa_html_result_t result = check_callback_budget(tokenizer);
+        if (result != LXA_HTML_OK)
+            return result;
     }
     return buffer_append_storage(tokenizer, buffer, bytes);
 }

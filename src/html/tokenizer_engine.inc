@@ -106,21 +106,6 @@ account_run(lxa_html_tokenizer_t *tokenizer, size_t bytes)
     return budget_result(tokenizer, status, reason);
 }
 
-static lxa_html_result_t
-check_callback_budget(lxa_html_tokenizer_t *tokenizer)
-{
-    static const lxa_budget_kind_t live[] = {
-        LXA_BUDGET_INPUT, LXA_BUDGET_WORK, LXA_BUDGET_MEMORY, LXA_BUDGET_TOKENS
-    };
-    for (size_t i = 0; i < sizeof(live) / sizeof(*live); i++) {
-        lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
-        lxa_status_t status = lxa_budget_check_impl(tokenizer->budget, live[i], 0, &reason);
-        if (status != LXA_OK)
-            return budget_result(tokenizer, status, reason);
-    }
-    return LXA_HTML_OK;
-}
-
 #define LXA_HTML_CONSUMER_HOOK(name, parameters, ...) \
     static lxa_html_result_t name parameters { __VA_ARGS__ }
 #include "html/tokenizer_consumer.def"
@@ -136,6 +121,7 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     lxa_buffer_t *target = public_id ? &tokenizer->public_id
                                      : &tokenizer->system_id;
     size_t total;
+    bool grew = false;
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status = lxa_size_add(tokenizer->name.length,
                                        tokenizer->public_id.length, &total);
@@ -159,7 +145,13 @@ recheck:
         if (status != LXA_OK)
             return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
                 : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+        grew = true;
         goto recheck;
+    }
+    if (grew) {
+        lxa_html_result_t result = check_callback_budget(tokenizer);
+        if (result != LXA_HTML_OK)
+            return result;
     }
     return buffer_append_storage(tokenizer, target, bytes);
 }
@@ -936,6 +928,9 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
                                                component_length, &reason);
         if (status != LXA_OK)
             return budget_result(tokenizer, status, reason);
+        lxa_html_result_t result = check_callback_budget(tokenizer);
+        if (result != LXA_HTML_OK)
+            return result;
     }
     {
         lxa_html_result_t result = buffer_append_storage(tokenizer,
