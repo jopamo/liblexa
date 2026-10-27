@@ -647,6 +647,12 @@ push_attribute_descriptor(lxa_html_tokenizer_t *tokenizer,
              : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
     if (vector->bytes.capacity != capacity) {
         lxa_html_result_t result = check_callback_budget(tokenizer);
+        if (result == LXA_HTML_OK) {
+            lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+            status = lxa_budget_check_item_impl(tokenizer->budget,
+                LXA_BUDGET_ATTRS_PER_ELEMENT, tokenizer->source_attribute_count, &reason);
+            result = budget_result(tokenizer, status, reason);
+        }
         if (result != LXA_HTML_OK) {
             status = lxa_vector_erase(vector, lxa_vector_length(vector) - 1, 1);
             assert(status == LXA_OK);
