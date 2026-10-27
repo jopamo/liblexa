@@ -1807,6 +1807,8 @@ lxa_html_template_context_enter(lxa_html_template_context_t *context,
     if (status == LXA_OK)
         status = check_depth(context, root, returning, required, 0);
     if (status == LXA_OK) status = lxa_vector_reserve(&context->frames, required);
+    if (status == LXA_OK)
+        status = check_depth(context, root, returning, required, 0);
     if (status != LXA_OK) {
         if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
             context->limit_reason = LXA_BUDGET_MEMORY;
