@@ -615,10 +615,22 @@ emit_doctype(lxa_html_tokenizer_t *tokenizer)
 }
 
 static lxa_html_result_t
+check_attribute_budget(lxa_html_tokenizer_t *tokenizer)
+{
+    lxa_html_result_t result = check_callback_budget(tokenizer);
+    if (result != LXA_HTML_OK)
+        return result;
+    lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
+    lxa_status_t status = lxa_budget_check_item_impl(tokenizer->budget,
+        LXA_BUDGET_ATTRS_PER_ELEMENT, tokenizer->source_attribute_count, &reason);
+    return budget_result(tokenizer, status, reason);
+}
+
+static lxa_html_result_t
 attribute_table_result(lxa_html_tokenizer_t *tokenizer, lxa_status_t status)
 {
     switch (status) {
-    case LXA_OK: return LXA_HTML_OK;
+    case LXA_OK: return check_attribute_budget(tokenizer);
     case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
     case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
     case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
@@ -646,13 +658,7 @@ push_attribute_descriptor(lxa_html_tokenizer_t *tokenizer,
         return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
              : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
     if (vector->bytes.capacity != capacity) {
-        lxa_html_result_t result = check_callback_budget(tokenizer);
-        if (result == LXA_HTML_OK) {
-            lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
-            status = lxa_budget_check_item_impl(tokenizer->budget,
-                LXA_BUDGET_ATTRS_PER_ELEMENT, tokenizer->source_attribute_count, &reason);
-            result = budget_result(tokenizer, status, reason);
-        }
+        lxa_html_result_t result = check_attribute_budget(tokenizer);
         if (result != LXA_HTML_OK) {
             status = lxa_vector_erase(vector, lxa_vector_length(vector) - 1, 1);
             assert(status == LXA_OK);
