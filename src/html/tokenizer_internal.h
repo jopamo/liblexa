@@ -116,6 +116,7 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
+recheck:
     status = lxa_budget_check_item_impl(tokenizer->budget, kind, length, &reason);
     if (status == LXA_OK && buffer == &tokenizer->name) {
         status = lxa_budget_check_item_impl(tokenizer->budget,
@@ -134,6 +135,14 @@ buffer_append(lxa_html_tokenizer_t *tokenizer, lxa_buffer_t *buffer,
     }
     if (status != LXA_OK) {
         return budget_result(tokenizer, status, reason);
+    }
+    if (length > buffer->capacity) {
+        status = lxa_buffer_reserve(buffer, length);
+        if (status != LXA_OK)
+            return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+                : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+        /* Capacity now fits. Repeat the ordered checks after allocator effects. */
+        goto recheck;
     }
     return buffer_append_storage(tokenizer, buffer, bytes);
 }

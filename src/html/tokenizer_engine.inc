@@ -148,11 +148,20 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
+recheck:
     status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
                                    total, &reason);
-    return status == LXA_OK
-           ? buffer_append_storage(tokenizer, target, bytes)
-           : budget_result(tokenizer, status, reason);
+    if (status != LXA_OK)
+        return budget_result(tokenizer, status, reason);
+    size_t length = target->length + bytes.length;
+    if (length > target->capacity) {
+        status = lxa_buffer_reserve(target, length);
+        if (status != LXA_OK)
+            return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+                : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+        goto recheck;
+    }
+    return buffer_append_storage(tokenizer, target, bytes);
 }
 
 static lxa_html_result_t
