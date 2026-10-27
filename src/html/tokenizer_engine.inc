@@ -914,6 +914,20 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
         slot->value_length = component_length;
         return LXA_HTML_OK;
     }
+    if (length > tokenizer->attribute_bytes.capacity) {
+        status = lxa_buffer_reserve(&tokenizer->attribute_bytes, length);
+        if (status != LXA_OK)
+            return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+                : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+        /* Reservation can change shared item limits before byte publication. */
+        status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
+                                           total, &reason);
+        if (status == LXA_OK && name)
+            status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
+                                               component_length, &reason);
+        if (status != LXA_OK)
+            return budget_result(tokenizer, status, reason);
+    }
     {
         lxa_html_result_t result = buffer_append_storage(tokenizer,
                                       &tokenizer->attribute_bytes, bytes);
