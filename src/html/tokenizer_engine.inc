@@ -633,6 +633,30 @@ attribute_table_result(lxa_html_tokenizer_t *tokenizer, lxa_status_t status)
 }
 
 static lxa_html_result_t
+push_attribute_descriptor(lxa_html_tokenizer_t *tokenizer,
+    lxa_vector_t *vector, const void *descriptor)
+{
+    size_t capacity = vector->bytes.capacity;
+    lxa_status_t status = lxa_vector_push(vector, descriptor);
+    if (status == LXA_ERROR_ARGUMENT || status == LXA_ERROR_INTERNAL) {
+        assert(false);
+        return LXA_HTML_INTERNAL;
+    }
+    if (status != LXA_OK)
+        return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
+             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+    if (vector->bytes.capacity != capacity) {
+        lxa_html_result_t result = check_callback_budget(tokenizer);
+        if (result != LXA_HTML_OK) {
+            status = lxa_vector_erase(vector, lxa_vector_length(vector) - 1, 1);
+            assert(status == LXA_OK);
+            return status == LXA_OK ? result : LXA_HTML_INTERNAL;
+        }
+    }
+    return LXA_HTML_OK;
+}
+
+static lxa_html_result_t
 finish_attribute(lxa_html_tokenizer_t *tokenizer)
 {
     lxa_status_t status;
@@ -653,25 +677,22 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
     else if (tokenizer->attribute_state == ATTRIBUTE_KEEP) {
         bool source = tokenizer->source_ranges && !tokenizer->end_tag;
         if (source) {
-            status = lxa_vector_push(&tokenizer->attribute_sources,
-                                      &tokenizer->attribute_source);
-            if (status != LXA_OK) {
-                if (status == LXA_ERROR_ARGUMENT || status == LXA_ERROR_INTERNAL) {
-                    assert(false);
-                    return LXA_HTML_INTERNAL;
-                }
-                return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                     : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
-            }
+            lxa_html_result_t result = push_attribute_descriptor(tokenizer,
+                &tokenizer->attribute_sources, &tokenizer->attribute_source);
+            if (result != LXA_HTML_OK)
+                return result;
         }
-        status = lxa_vector_push(&tokenizer->attribute_slots,
-                                  &tokenizer->attribute);
-        if (status != LXA_OK && source) {
+        lxa_html_result_t result = push_attribute_descriptor(tokenizer,
+            &tokenizer->attribute_slots, &tokenizer->attribute);
+        if (result != LXA_HTML_OK && source) {
             lxa_status_t erased = lxa_vector_erase(&tokenizer->attribute_sources,
                 lxa_vector_length(&tokenizer->attribute_sources) - 1, 1);
             assert(erased == LXA_OK);
             if (erased != LXA_OK) return LXA_HTML_INTERNAL;
         }
+        if (result != LXA_HTML_OK)
+            return result;
+        status = LXA_OK;
     }
     else {
         assert(false);
@@ -771,11 +792,10 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
                 ? tokenizer->attribute_bytes.data + slot->value_start : NULL;
             view.value.length = slot->value_start != SIZE_MAX ? slot->value_length : 0;
 #if LXA_HTML_BORROW_TREE_INPUT
-            status = lxa_vector_push(&tokenizer->attribute_views, &view);
-            if (status != LXA_OK) {
-                return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                     : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
-            }
+            result = push_attribute_descriptor(tokenizer,
+                &tokenizer->attribute_views, &view);
+            if (result != LXA_HTML_OK)
+                return result;
 #else
             memcpy(slot, &view, sizeof(view));
 #endif
