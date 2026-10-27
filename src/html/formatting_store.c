@@ -1211,7 +1211,7 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
         status = snapshot_get(list->store, snapshot, &stored);
         if (status == LXA_OK) {
             lxa_span_t name = {list->store->bytes.data + stored->name_offset, stored->name_length};
-            status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &opened);
+            status = lxa_html_control_stack_push_formatting(stack, name, &opened);
             if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
         }
         else status = internal(status);
@@ -1389,7 +1389,7 @@ lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
     uint64_t opened;
-    status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &opened);
+    status = lxa_html_control_stack_push_formatting(stack, name, &opened);
     if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
     if (status != LXA_OK) {
         (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1));
