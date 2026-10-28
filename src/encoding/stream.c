@@ -242,6 +242,11 @@ lxa_decoder_create_with_budget(const lxa_encoding_t *encoding,
         }
     }
     status = lxa_alloc(allocator, sizeof(*decoder), (void **) &decoder);
+    if (status == LXA_OK && budget != NULL) {
+        status = lxa_budget_check(budget, LXA_BUDGET_MEMORY, 0, NULL);
+        if (status != LXA_OK)
+            lxa_free(allocator, decoder);
+    }
     if (status != LXA_OK) {
         if (budget != NULL) {
             lxa_status_t released = lxa_budget_release(
@@ -294,6 +299,11 @@ lxa_encoder_create_with_budget(const lxa_encoding_t *encoding,
         }
     }
     status = lxa_alloc(allocator, sizeof(*encoder), (void **) &encoder);
+    if (status == LXA_OK && budget != NULL) {
+        status = lxa_budget_check(budget, LXA_BUDGET_MEMORY, 0, NULL);
+        if (status != LXA_OK)
+            lxa_free(allocator, encoder);
+    }
     if (status != LXA_OK) {
         if (budget != NULL) {
             lxa_status_t released = lxa_budget_release(
