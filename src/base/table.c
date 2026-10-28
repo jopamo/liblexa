@@ -3,6 +3,7 @@
 #include <string.h>
 #include "liblexa/base.h"
 #include "base/budget_internal.h"
+#include "base/table_internal.h"
 
 typedef struct {
     uint8_t *key;
@@ -355,14 +356,15 @@ lxa_table_find(const lxa_table_t *table, lxa_span_t key,
 }
 
 lxa_status_t
-lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
-              bool *replaced, void **previous)
+lxa_table_set_with_rollback(lxa_table_t *table, lxa_span_t key, void *value,
+    bool *replaced, void **previous, lxa_table_insert_t *inserted)
 {
     size_t index, bytes, capacity;
     uint64_t hash;
     bool exists;
     uint8_t *copy = NULL;
     lxa_status_t status;
+    if (inserted != NULL) *inserted = (lxa_table_insert_t){0};
     if (replaced != NULL) {
         *replaced = false;
     }
@@ -435,6 +437,8 @@ lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
     table->used += !table->slots[index].used;
     table->slots[index] = (slot_t) {copy, key.length, hash, value, true, true};
     ++table->count;
+    if (inserted != NULL)
+        *inserted = (lxa_table_insert_t){table, index, copy, value};
     return LXA_OK;
 fail:
     lxa_free(&table->allocator, copy);
@@ -443,10 +447,42 @@ fail:
 }
 
 lxa_status_t
+lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
+              bool *replaced, void **previous)
+{
+    return lxa_table_set_with_rollback(table, key, value, replaced, previous, NULL);
+}
+
+static void
+erase_slot(lxa_table_t *table, size_t index)
+{
+    size_t bytes = table->slots[index].length != 0 ? table->slots[index].length : 1;
+    lxa_free(&table->allocator, table->slots[index].key);
+    release_memory(table, bytes);
+    table->slots[index].key = NULL;
+    table->slots[index].live = false;
+    --table->count;
+}
+
+lxa_status_t
+lxa_table_rollback_insert(lxa_table_t *table, lxa_table_insert_t *inserted)
+{
+    if (table == NULL || inserted == NULL || inserted->owner != table
+        || inserted->slot >= table->capacity)
+        return LXA_ERROR_ARGUMENT;
+    const slot_t *slot = &table->slots[inserted->slot];
+    if (!slot->live || slot->key != inserted->key || slot->value != inserted->value)
+        return LXA_ERROR_ARGUMENT;
+    erase_slot(table, inserted->slot);
+    *inserted = (lxa_table_insert_t){0};
+    return LXA_OK;
+}
+
+lxa_status_t
 lxa_table_delete(lxa_table_t *table, lxa_span_t key,
                  bool *found, void **previous)
 {
-    size_t index, bytes;
+    size_t index;
     uint64_t hash;
     bool exists;
     lxa_status_t status;
@@ -473,12 +509,7 @@ lxa_table_delete(lxa_table_t *table, lxa_span_t key,
     if (previous != NULL) {
         *previous = table->slots[index].value;
     }
-    bytes = table->slots[index].length != 0 ? table->slots[index].length : 1;
-    lxa_free(&table->allocator, table->slots[index].key);
-    release_memory(table, bytes);
-    table->slots[index].key = NULL;
-    table->slots[index].live = false;
-    --table->count;
+    erase_slot(table, index);
     return LXA_OK;
 }
 

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "liblexa/dom.h"
 #include "base/budget_internal.h"
+#include "base/table_internal.h"
 #include "base/vector_internal.h"
 #include "dom/node_store_internal.h"
 #include "dom/content_patch.h"
@@ -832,6 +833,7 @@ static lxa_status_t
 append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     lxa_dom_namespace_t ns, html_name_kind_t kind, lxa_dom_ref_t *out)
 {
+    lxa_table_insert_t insertion = {0};
     lxa_dom_element_t element;
     lxa_dom_record_t record;
     lxa_dom_atom_t *atom = NULL;
@@ -1013,8 +1015,8 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
             /* The map does all fallible work before publishing its key.
              * No node or atom index is visible to allocator callbacks.
              */
-            status = lxa_table_set(nodes->atom_lookup, owned, atom,
-                                    &replaced, NULL);
+            status = lxa_table_set_with_rollback(nodes->atom_lookup, owned, atom,
+                &replaced, NULL, &insertion);
             if (status != LXA_OK || replaced) {
                 if (status == LXA_OK) {
                     status = LXA_ERROR_ARGUMENT;
@@ -1076,10 +1078,9 @@ rollback:
         lxa_status_t undone = lxa_table_delete(nodes->atom_lookup, key,
                                                  NULL, NULL);
         if (undone != LXA_OK) {
-            /* Pushes above cannot fail after the checked reserves unless
-             * shared state was modified reentrantly. Retain the owned atom
-             * rather than leave a table pointing at freed storage. */
-            return undone;
+            /* A failed admission must not require more WORK to release its key. */
+            undone = lxa_table_rollback_insert(nodes->atom_lookup, &insertion);
+            if (undone != LXA_OK) return undone;
         }
     }
     if (appended_atom) {
