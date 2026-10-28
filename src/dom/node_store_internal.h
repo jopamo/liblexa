@@ -248,7 +248,8 @@ lxa_status_t lxa_dom_nodes_replace_children_with_clones(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t target, lxa_dom_ref_t source);
 /* Parser-only association. The fragment remains detached from the tree and
  * is owned by the same document as its HTML template element. Bind once,
- * before inserting content; zero on lookup means no association. */
+ * before inserting content; zero on lookup means no association. Failure
+ * preserves bindings and depth proofs, but may retain reserved capacity. */
 lxa_status_t lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_ref_t fragment);
 lxa_status_t lxa_dom_nodes_template_contents(lxa_dom_nodes_t *nodes,

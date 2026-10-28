@@ -1304,7 +1304,7 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     lxa_dom_namespace_t ns;
     lxa_dom_template_t pair;
     lxa_span_t name;
-    size_t i;
+    size_t i, next;
     lxa_status_t status;
     if (nodes == NULL)
         return LXA_ERROR_ARGUMENT;
@@ -1339,9 +1339,20 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
             || entries[i].fragment == pair.fragment)
             return LXA_ERROR_ARGUMENT;
     }
-    status = lxa_vector_push_sized(&nodes->templates, &pair, sizeof(pair));
+    status = lxa_size_add(i, 1, &next);
+    if (status == LXA_OK) status = lxa_vector_reserve(&nodes->templates, next);
+    /* Reservation callbacks can lower shared limits before binding publication. */
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_WORK,
+            0, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+            0, &nodes->limit_reason);
+    if (status == LXA_OK)
+        status = lxa_vector_push_sized(&nodes->templates, &pair, sizeof(pair));
     if (status == LXA_OK) invalidate_depth(nodes);
-    if (status == LXA_ERROR_LIMIT) nodes->limit_reason = LXA_BUDGET_MEMORY;
+    if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
+        nodes->limit_reason = LXA_BUDGET_MEMORY;
     return status;
 }
 
