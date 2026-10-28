@@ -356,9 +356,11 @@ lxa_html_template_context_admit_formatting(lxa_html_template_context_t *context,
         || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_formatting_tag(token->name))
         return LXA_ERROR_ARGUMENT;
-    status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    size_t depth;
+    status = check_depth_at(context, lxa_vector_length(&context->stack->elements),
+        context->root_length, context->return_mode, count, 1, &depth);
     if (status == LXA_OK)
-        status = lxa_html_formatting_list_admit(context->formatting, context->stack, token, identity);
+        status = lxa_html_formatting_list_admit(context->formatting, context->stack, token, depth, identity);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->formatting->store->limit_reason;
     return finish(context, status);
@@ -1798,15 +1800,16 @@ lxa_html_template_context_start_formatting(lxa_html_template_context_t *context,
     status = lxa_html_formatting_list_start_intake(context->formatting, context->stack,
         view.boundary, token);
     if (status == LXA_ERROR_ARGUMENT) return status;
-    size_t drop;
+    size_t drop, depth;
     if (status == LXA_OK) status = context_prepare_start(&view, token, &drop);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->formatting->store->limit_reason;
     if (status == LXA_OK)
-        status = check_depth(context, context->root_length, context->return_mode, count, 1);
+        status = check_depth_at(context, lxa_vector_length(&context->stack->elements),
+            context->root_length, context->return_mode, count, 1, &depth);
     if (status == LXA_OK)
         status = lxa_html_formatting_list_admit_planned(context->formatting, context->stack,
-            token, drop, identity);
+            token, drop, depth, identity);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->formatting->store->limit_reason;
     return finish(context, status);

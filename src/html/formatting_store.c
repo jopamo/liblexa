@@ -1180,7 +1180,7 @@ lxa_html_formatting_list_adopt(lxa_html_formatting_list_t *list,
 
 static lxa_status_t
 list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *stack,
-    const lxa_html_token_t *token, size_t drop, uint64_t *identity)
+    const lxa_html_token_t *token, size_t drop, size_t required_depth, uint64_t *identity)
 {
     size_t required, length = lxa_vector_length_sized(&list->entries,
         sizeof(lxa_html_formatting_item_t));
@@ -1211,7 +1211,7 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
         status = snapshot_get(list->store, snapshot, &stored);
         if (status == LXA_OK) {
             lxa_span_t name = {list->store->bytes.data + stored->name_offset, stored->name_length};
-            status = lxa_html_control_stack_push_formatting(stack, name, 0, &opened);
+            status = lxa_html_control_stack_push_formatting(stack, name, required_depth, &opened);
             if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
         }
         else status = internal(status);
@@ -1241,7 +1241,8 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
 
 lxa_status_t
 lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity)
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
+    size_t required_depth, uint64_t *identity)
 {
     if (identity != NULL) *identity = 0;
     lxa_status_t status = list_begin(list);
@@ -1252,7 +1253,7 @@ lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
         return LXA_ERROR_ARGUMENT;
     size_t drop;
     status = list_noah_plan(list, list_start(list), token, &drop);
-    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, identity) : status;
+    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, required_depth, identity) : status;
 }
 
 static lxa_status_t
@@ -1463,7 +1464,7 @@ lxa_html_formatting_list_plan_add(lxa_html_formatting_list_t *list,
 lxa_status_t
 lxa_html_formatting_list_admit_planned(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
-    size_t drop, uint64_t *identity)
+    size_t drop, size_t required_depth, uint64_t *identity)
 {
     if (identity != NULL) *identity = 0;
     formatting_stack_view_t view;
@@ -1474,7 +1475,7 @@ lxa_html_formatting_list_admit_planned(lxa_html_formatting_list_t *list,
         || (drop != SIZE_MAX && (drop < list_start(list)
             || drop >= lxa_vector_length_sized(&list->entries,
                 sizeof(lxa_html_formatting_item_t))))) return LXA_ERROR_ARGUMENT;
-    return list_admit_planned(list, stack, token, drop, identity);
+    return list_admit_planned(list, stack, token, drop, required_depth, identity);
 }
 
 lxa_status_t
@@ -1488,5 +1489,5 @@ lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
     formatting_stack_view_t view = {list, stack, boundary};
     size_t drop;
     if (status == LXA_OK) status = list_prepare_start(&view, token, &drop);
-    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, identity) : status;
+    return status == LXA_OK ? list_admit_planned(list, stack, token, drop, 0, identity) : status;
 }

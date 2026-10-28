@@ -932,11 +932,12 @@ context_root_formatting_admit(root_formatting_start_view_t *view,
 {
     lxa_html_root_context_t *context = view->recovery.context;
     lxa_html_formatting_list_t *formatting = view->recovery.formatting;
+    size_t depth;
     lxa_status_t status = check_body_child_depth(context, lxa_vector_length_sized(&context->stack->elements,
-        sizeof(lxa_html_control_element_t)), NULL);
+        sizeof(lxa_html_control_element_t)), &depth);
     if (status == LXA_OK)
         status = lxa_html_formatting_list_admit_planned(formatting, context->stack,
-            token, drop, view->identity);
+            token, drop, depth, view->identity);
     return status;
 }
 
@@ -1022,7 +1023,7 @@ context_foster_html_admit(root_formatting_start_view_t *view,
         sizeof(lxa_html_control_element_t)), &depth);
     if (status != LXA_OK) return status;
     if (formatting) status = lxa_html_formatting_list_admit_planned(list,
-        context->stack, token, drop, view->identity);
+        context->stack, token, drop, depth, view->identity);
     else if (marker) status = lxa_html_formatting_list_admit_marker(list,
         context->stack, token->name, depth, view->identity);
     else return root_start_stack_status(&view->recovery,

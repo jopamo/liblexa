@@ -155,14 +155,17 @@ lxa_status_t lxa_html_formatting_list_adopt(lxa_html_formatting_list_t *list,
  * enforce Noah removal,
  * capture its effective attributes, push an HTML open identity and append
  * membership. The engine owns anchor/nobr preprocessing, reconstruction
- * scheduling, insertion effects and virtual depth admission.
+ * scheduling, insertion effects and virtual depth admission. Recheck nonzero
+ * required_depth after capture/reservation and before assigning an identity;
+ * zero leaves depth policy with the caller.
  * Clear identity on failure. Ordinary failure preserves prior snapshots,
  * membership and open identities, but reserves may retain capacity and
  * cumulative WORK/STRINGS charges are not refunded. Source views must obey
  * capture's non-alias contract; no token views survive this call.
  */
 lxa_status_t lxa_html_formatting_list_admit(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, const lxa_html_token_t *token, uint64_t *identity);
+    lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
+    size_t required_depth, uint64_t *identity);
 
 /* Preprocess an accepted effective HTML formatting start, then admit it.
  * Share canonical anchor/nobr recovery, reconstruction and Noah ordering.
@@ -180,7 +183,8 @@ lxa_status_t lxa_html_formatting_list_start(lxa_html_formatting_list_t *list,
  * Intake validates non-aliasing token views before preprocessing effects.
  * Plan checks ACTIVE and reserves membership. Reconstruction may change open
  * identities, but membership and snapshots must remain unchanged before
- * admitting the saved drop index. Do not repeat the Noah scan.
+ * admitting the saved drop index. Do not repeat the Noah scan. Planned admission
+ * rechecks nonzero required_depth at the same boundaries as ordinary admission.
  */
 lxa_status_t lxa_html_formatting_list_start_intake(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, size_t boundary, const lxa_html_token_t *token);
@@ -189,6 +193,6 @@ lxa_status_t lxa_html_formatting_list_plan_add(lxa_html_formatting_list_t *list,
     const lxa_html_token_t *token, size_t *drop);
 lxa_status_t lxa_html_formatting_list_admit_planned(lxa_html_formatting_list_t *list,
     lxa_html_control_stack_t *stack, const lxa_html_token_t *token,
-    size_t drop, uint64_t *identity);
+    size_t drop, size_t required_depth, uint64_t *identity);
 
 #endif
