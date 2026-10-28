@@ -106,7 +106,7 @@ lxa_html_template_context_namespace_feedback(lxa_html_template_context_t *contex
 
 static lxa_status_t
 check_depth_at(lxa_html_template_context_t *context, size_t length, size_t root,
-    lxa_html_root_mode_t returning, size_t templates, size_t extra)
+    lxa_html_root_mode_t returning, size_t templates, size_t extra, size_t *required)
 {
     size_t count = lxa_vector_length(&context->frames);
     if (root > length || count > length - root
@@ -117,7 +117,7 @@ check_depth_at(lxa_html_template_context_t *context, size_t length, size_t root,
     if (status == LXA_OK)
         status = lxa_html_tree_template_depth_check(context->stack->budget,
             returning == LXA_TREE_IN_BODY ? root - 1 : 0,
-            templates, elements, &context->limit_reason);
+            templates, elements, required, &context->limit_reason);
     return status;
 }
 
@@ -126,7 +126,7 @@ check_depth(lxa_html_template_context_t *context, size_t root,
     lxa_html_root_mode_t returning, size_t templates, size_t extra)
 {
     return check_depth_at(context, lxa_vector_length(&context->stack->elements),
-        root, returning, templates, extra);
+        root, returning, templates, extra, NULL);
 }
 
 static lxa_status_t
@@ -138,7 +138,7 @@ prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t ex
     lxa_status_t status = lxa_size_add(keep, extra, &after);
     if (status == LXA_OK)
         status = check_depth_at(context, keep, context->root_length, context->return_mode,
-            count, extra);
+            count, extra, NULL);
     if (status == LXA_OK && extra > length - keep)
         status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
             extra - (length - keep), &context->limit_reason);
@@ -149,7 +149,7 @@ prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t ex
     }
     if (status == LXA_OK && may_grow)
         status = check_depth_at(context, keep, context->root_length, context->return_mode,
-            count, extra);
+            count, extra, NULL);
     if (status == LXA_OK && may_grow && extra > length - keep)
         status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
             extra - (length - keep), &context->limit_reason);
@@ -306,10 +306,12 @@ lxa_html_template_context_admit_marker(lxa_html_template_context_t *context,
         || token->kind != LXA_HTML_START_TAG
         || !lxa_html_tree_formatting_marker_tag(token->name))
         return LXA_ERROR_ARGUMENT;
-    status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    size_t depth;
+    status = check_depth_at(context, lxa_vector_length(&context->stack->elements),
+        context->root_length, context->return_mode, count, 1, &depth);
     if (status == LXA_OK)
         status = lxa_html_formatting_list_admit_marker(context->formatting, context->stack,
-            token->name, identity);
+            token->name, depth, identity);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->formatting->store->limit_reason;
     return finish(context, status);
@@ -1823,10 +1825,10 @@ lxa_html_template_context_enter(lxa_html_template_context_t *context,
         return LXA_ERROR_ARGUMENT;
     size_t root = count == 0 ? length : context->root_length;
     lxa_html_root_mode_t returning = count == 0 ? mode : context->return_mode;
-    size_t required;
+    size_t required, depth;
     status = lxa_size_add(count, 1, &required);
     if (status == LXA_OK)
-        status = check_depth(context, root, returning, required, 0);
+        status = check_depth_at(context, length, root, returning, required, 0, &depth);
     if (status == LXA_OK) status = lxa_vector_reserve(&context->frames, required);
     if (status == LXA_OK)
         status = check_depth(context, root, returning, required, 0);
@@ -1838,7 +1840,7 @@ lxa_html_template_context_enter(lxa_html_template_context_t *context,
     uint64_t identity;
     static const uint8_t name[] = "template";
     status = lxa_html_formatting_list_admit_marker(context->formatting, context->stack,
-        (lxa_span_t){name, sizeof(name) - 1}, &identity);
+        (lxa_span_t){name, sizeof(name) - 1}, depth, &identity);
     if (status == LXA_ERROR_LIMIT)
         context->limit_reason = context->formatting->store->limit_reason;
     if (status != LXA_OK) return finish(context, status);

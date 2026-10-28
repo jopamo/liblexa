@@ -47,10 +47,11 @@ lxa_status_t lxa_html_control_stack_push(lxa_html_control_stack_t *stack,
     uint64_t *identity);
 /* Push an HTML owner after its caller charges pending formatting membership.
  * Recheck that live charge after allocation, before assigning an identity.
- * The caller releases its pending charge on failure.
+ * Recheck nonzero required_depth at the same boundary. The caller owns that
+ * logical depth and releases its pending charge on failure.
  */
 lxa_status_t lxa_html_control_stack_push_formatting(lxa_html_control_stack_t *stack,
-    lxa_span_t name, uint64_t *identity);
+    lxa_span_t name, size_t required_depth, uint64_t *identity);
 /* Capture an effective start token after the caller decides to keep it open.
  * Adjust SVG names and resolve MathML annotation encoding without retaining
  * attribute views. This does not choose namespace, insertion or text modes.

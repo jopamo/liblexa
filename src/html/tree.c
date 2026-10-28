@@ -886,7 +886,7 @@ check_template_depth(lxa_html_tree_t *tree, size_t templates, size_t elements,
         ancestors = root - 1;
     }
     return lxa_html_tree_template_depth_check(tree->nodes->budget, ancestors,
-        templates, elements, &tree->nodes->limit_reason);
+        templates, elements, NULL, &tree->nodes->limit_reason);
 }
 
 static lxa_status_t

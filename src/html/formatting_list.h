@@ -40,10 +40,13 @@ lxa_status_t lxa_html_formatting_list_reserve_marker(lxa_html_formatting_list_t 
  * Share the stack's operation budget; the name must not alias owner storage.
  * Clear identity on failure. Ordinary failure preserves both memberships and
  * identity assignment; capacity and cumulative WORK may remain. No snapshot
- * capture or attribute processing. Engines own depth, context and DOM effects.
+ * capture or attribute processing. Engines supply nonzero required_depth when
+ * admission owns a logical-depth requirement; recheck it after allocation.
+ * Zero leaves depth policy with the caller. Context and DOM effects stay external.
  */
 lxa_status_t lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, lxa_span_t name, uint64_t *identity);
+    lxa_html_control_stack_t *stack, lxa_span_t name, size_t required_depth,
+    uint64_t *identity);
 /* Remove only after the last marker. Charge one WORK unit per removed/shifted
  * slot before mutation. Clear removes the last marker and its suffix (or all
  * entries when no marker exists), without scanning or copying retained slots.

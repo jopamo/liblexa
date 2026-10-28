@@ -1211,7 +1211,7 @@ list_admit_planned(lxa_html_formatting_list_t *list, lxa_html_control_stack_t *s
         status = snapshot_get(list->store, snapshot, &stored);
         if (status == LXA_OK) {
             lxa_span_t name = {list->store->bytes.data + stored->name_offset, stored->name_length};
-            status = lxa_html_control_stack_push_formatting(stack, name, &opened);
+            status = lxa_html_control_stack_push_formatting(stack, name, 0, &opened);
             if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
         }
         else status = internal(status);
@@ -1370,7 +1370,8 @@ lxa_html_formatting_list_reserve_marker(lxa_html_formatting_list_t *list)
 
 lxa_status_t
 lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, lxa_span_t name, uint64_t *identity)
+    lxa_html_control_stack_t *stack, lxa_span_t name, size_t required_depth,
+    uint64_t *identity)
 {
     if (identity != NULL) *identity = 0;
     formatting_stack_view_t view;
@@ -1384,12 +1385,15 @@ lxa_html_formatting_list_admit_marker(lxa_html_formatting_list_t *list,
     size_t index = lxa_vector_length_sized(&list->entries,
         sizeof(lxa_html_formatting_item_t));
     status = reserve_marker(list, true);
+    if (status == LXA_OK && required_depth != 0)
+        status = lxa_budget_check_impl(list->store->budget, LXA_BUDGET_TREE_DEPTH,
+            required_depth, &list->store->limit_reason);
     if (status == LXA_OK)
         status = lxa_budget_charge_impl(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1,
                                    &list->store->limit_reason);
     if (status != LXA_OK) return status;
     uint64_t opened;
-    status = lxa_html_control_stack_push_formatting(stack, name, &opened);
+    status = lxa_html_control_stack_push_formatting(stack, name, required_depth, &opened);
     if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
     if (status != LXA_OK) {
         (void) internal(lxa_budget_release(list->store->budget, LXA_BUDGET_ACTIVE_FORMATTING, 1));

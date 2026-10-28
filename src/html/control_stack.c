@@ -82,7 +82,8 @@ check_push(lxa_html_control_stack_t *stack, size_t total)
 
 static lxa_status_t
 push(lxa_html_control_stack_t *stack, lxa_span_t name,
-    lxa_dom_namespace_t ns, bool annotation_html, bool formatting, uint64_t *identity)
+    lxa_dom_namespace_t ns, bool annotation_html, bool formatting,
+    size_t required_depth, uint64_t *identity)
 {
     if (identity != NULL) *identity = 0;
     lxa_status_t status = begin(stack);
@@ -136,6 +137,9 @@ push(lxa_html_control_stack_t *stack, lxa_span_t name,
     if (status == LXA_OK && formatting)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_ACTIVE_FORMATTING,
                                       0, &stack->limit_reason);
+    if (status == LXA_OK && required_depth != 0)
+        status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_TREE_DEPTH,
+                                      required_depth, &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t element = {
         .name_offset = stack->names.length, .name_length = name.length,
@@ -175,14 +179,14 @@ lxa_status_t
 lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
     lxa_dom_namespace_t ns, bool annotation_html, uint64_t *identity)
 {
-    return push(stack, name, ns, annotation_html, false, identity);
+    return push(stack, name, ns, annotation_html, false, 0, identity);
 }
 
 lxa_status_t
 lxa_html_control_stack_push_formatting(lxa_html_control_stack_t *stack,
-    lxa_span_t name, uint64_t *identity)
+    lxa_span_t name, size_t required_depth, uint64_t *identity)
 {
-    return push(stack, name, LXA_DOM_NS_HTML, false, true, identity);
+    return push(stack, name, LXA_DOM_NS_HTML, false, true, required_depth, identity);
 }
 
 lxa_status_t

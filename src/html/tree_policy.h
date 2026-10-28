@@ -417,10 +417,11 @@ bool lxa_html_tree_token_shape_valid(const lxa_html_token_t *token);
  * (element and virtual content root), and retained content elements. For a body
  * context, root_ancestors is the root open-stack length minus its body entry;
  * head contexts use zero. Check the predicted depth without charging live quota.
+ * Optional required receives the admitted depth on success, zero on failure.
  */
 lxa_status_t
 lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
-    size_t templates, size_t elements, lxa_limit_reason_t *reason);
+    size_t templates, size_t elements, size_t *required, lxa_limit_reason_t *reason);
 
 /* Select the mode for an accepted start in an active template context.
  * Head-rule starts retain INITIAL; table parts choose their virtual table

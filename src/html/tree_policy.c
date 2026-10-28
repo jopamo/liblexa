@@ -952,8 +952,9 @@ lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,
 
 lxa_status_t
 lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
-    size_t templates, size_t elements, lxa_limit_reason_t *reason)
+    size_t templates, size_t elements, size_t *required, lxa_limit_reason_t *reason)
 {
+    if (required != NULL) *required = 0;
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
     if (budget == NULL || templates == 0) return LXA_ERROR_ARGUMENT;
     size_t depth;
@@ -963,6 +964,7 @@ lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
     if (status == LXA_OK) status = lxa_size_add(depth, root_ancestors, &depth);
     if (status == LXA_OK)
         status = lxa_budget_check(budget, LXA_BUDGET_TREE_DEPTH, depth, reason);
+    if (status == LXA_OK && required != NULL) *required = depth;
     return status;
 }
 
