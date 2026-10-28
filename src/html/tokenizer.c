@@ -88,6 +88,11 @@ lxa_html_tokenizer_create_with_budget(
         return status;
     }
     status = lxa_alloc(allocator, sizeof(*tokenizer), (void **) &tokenizer);
+    if (status == LXA_OK) {
+        status = lxa_budget_check(budget, LXA_BUDGET_MEMORY, 0, NULL);
+        if (status != LXA_OK)
+            lxa_free(allocator, tokenizer);
+    }
     if (status != LXA_OK) {
         lxa_status_t released = lxa_budget_release(
             budget, LXA_BUDGET_MEMORY, sizeof(*tokenizer));
