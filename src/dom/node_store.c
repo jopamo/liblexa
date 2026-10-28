@@ -1037,6 +1037,10 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
         }
         appended_atom = true;
     }
+    /* Reused atoms bypass the table's post-allocation memory check. */
+    status = lxa_budget_check_impl(nodes->budget, LXA_BUDGET_MEMORY,
+                                   0, &nodes->limit_reason);
+    if (status != LXA_OK) goto rollback;
     element.atom = atom->id;
     element.namespace_id = ns;
     element.first_attr = LXA_ID_NONE;
