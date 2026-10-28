@@ -443,6 +443,9 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
         if (created != LXA_OK)
             return created == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
                 : budget_result(tokenizer, created, LXA_BUDGET_MEMORY);
+        result = check_callback_budget(tokenizer);
+        if (result != LXA_HTML_OK)
+            return result;
     }
     size_t errors = lxa_decoder_error_count(tokenizer->decoder);
     status = lxa_decoder_feed(tokenizer->decoder, byte, &cp, 1, &progress);
