@@ -3135,6 +3135,7 @@ root_frameset_prepare(root_frameset_view_t *view)
 {
     lxa_html_tree_t *tree = view->tree;
     lxa_budget_t after = *tree->nodes->budget;
+    bool may_grow = false;
     size_t pop_count = view->replace_body
         ? lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t)) : 0;
     size_t needed = 1;
@@ -3148,8 +3149,20 @@ root_frameset_prepare(root_frameset_view_t *view)
     if (status == LXA_OK)
         status = lxa_budget_check_impl(tree->nodes->budget,
             LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = tree->open_elements.bytes.capacity < sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->open_elements, 1);
+    }
+    if (status == LXA_OK && may_grow) {
+        after = *tree->nodes->budget;
+        status = lxa_budget_release(&after, LXA_BUDGET_OPEN_ELEMENTS, pop_count);
+        if (status != LXA_OK) return LXA_ERROR_INTERNAL;
+        status = lxa_budget_check_impl(&after, LXA_BUDGET_OPEN_ELEMENTS, 1,
+            &tree->nodes->limit_reason);
+        if (status == LXA_OK)
+            status = lxa_budget_check_impl(tree->nodes->budget,
+                LXA_BUDGET_NODES, needed, &tree->nodes->limit_reason);
+    }
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3487,6 +3500,7 @@ template_foster_element(lxa_html_tree_t *tree,
         status = template_insertion_location(tree, &parent, &before);
     if (status != LXA_OK) return status;
     if (keep_open) {
+        bool may_grow = false;
         status = lxa_size_add(
             lxa_vector_length_sized(&tree->template_elements, sizeof(lxa_html_open_entry_t)), 1, &after);
         if (status == LXA_OK)
@@ -3494,8 +3508,16 @@ template_foster_element(lxa_html_tree_t *tree,
         if (status == LXA_OK)
             status = lxa_budget_check_impl(tree->nodes->budget,
                 LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
-        if (status == LXA_OK)
+        if (status == LXA_OK) {
+            may_grow = after > tree->template_elements.bytes.capacity
+                               / sizeof(lxa_html_open_entry_t);
             status = lxa_vector_reserve(&tree->template_elements, after);
+        }
+        if (status == LXA_OK && may_grow)
+            status = check_template_elements(tree, after);
+        if (status == LXA_OK && may_grow)
+            status = lxa_budget_check_impl(tree->nodes->budget,
+                LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
         if (status == LXA_ERROR_LIMIT
             && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
             tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3819,6 +3841,7 @@ template_open_table_part(lxa_html_tree_t *tree,
             return LXA_ERROR_INTERNAL;
     }
     size_t keep = plan.insertion.keep, extra = plan.insertion.extra, after;
+    bool may_grow = false;
     bool implied_section = plan.insertion.implied_section;
     bool implied_row = plan.insertion.implied_row;
     status = lxa_size_add(keep, extra, &after);
@@ -3831,8 +3854,20 @@ template_open_table_part(lxa_html_tree_t *tree,
         status = lxa_budget_check_impl(tree->nodes->budget,
             LXA_BUDGET_OPEN_ELEMENTS, extra - (length - keep),
             &tree->nodes->limit_reason);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = after > tree->template_elements.bytes.capacity
+                           / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->template_elements, after);
+    }
+    if (status == LXA_OK && may_grow)
+        status = check_template_elements(tree, after);
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_NODES,
+            extra + column, &tree->nodes->limit_reason);
+    if (status == LXA_OK && may_grow && extra > length - keep)
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, extra - (length - keep),
+            &tree->nodes->limit_reason);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3900,6 +3935,7 @@ template_open_column(lxa_html_tree_t *tree,
             return LXA_ERROR_INTERNAL;
     }
     bool add_group = plan.action == LXA_HTML_COLUMN_START_IMPLY_GROUP;
+    bool may_grow = false;
     size_t count;
     count = add_group ? 2 : 1;
     status = lxa_size_add(length, count, &after);
@@ -3911,8 +3947,19 @@ template_open_column(lxa_html_tree_t *tree,
     if (status == LXA_OK && add_group)
         status = lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
                                    1, &tree->nodes->limit_reason);
-    if (status == LXA_OK && add_group)
+    if (status == LXA_OK && add_group) {
+        may_grow = after - 1 > tree->template_elements.bytes.capacity
+                               / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->template_elements, after - 1);
+    }
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_NODES,
+            count, &tree->nodes->limit_reason);
+    if (status == LXA_OK && may_grow)
+        status = check_template_elements(tree, after);
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget, LXA_BUDGET_OPEN_ELEMENTS,
+            1, &tree->nodes->limit_reason);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -5460,6 +5507,7 @@ tree_template_ordinary_start(tree_template_table_start_view_t *start,
         return LXA_ERROR_INTERNAL;
     }
     size_t count, close_at, drop = SIZE_MAX;
+    bool may_grow = false;
     lxa_dom_ref_t parent, child, before = {0};
     bool formatting = lxa_html_tree_formatting_tag(token->name);
     bool marker = lxa_html_tree_formatting_marker_tag(token->name);
@@ -5494,8 +5542,16 @@ tree_template_ordinary_start(tree_template_table_start_view_t *start,
     if (status == LXA_OK)
         status = lxa_budget_check_impl(tree->nodes->budget,
             LXA_BUDGET_NODES, 1, &tree->nodes->limit_reason);
-    if (status == LXA_OK)
+    if (status == LXA_OK) {
+        may_grow = count > tree->template_elements.bytes.capacity
+                           / sizeof(lxa_html_open_entry_t);
         status = lxa_vector_reserve(&tree->template_elements, count);
+    }
+    if (status == LXA_OK && may_grow)
+        status = check_template_elements(tree, count);
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(tree->nodes->budget,
+            LXA_BUDGET_OPEN_ELEMENTS, 1, &tree->nodes->limit_reason);
     if (status == LXA_ERROR_LIMIT
         && tree->nodes->limit_reason == LXA_BUDGET_COUNT)
         tree->nodes->limit_reason = LXA_BUDGET_MEMORY;

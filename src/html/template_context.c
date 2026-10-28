@@ -134,6 +134,7 @@ prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t ex
 {
     size_t count = lxa_vector_length(&context->frames);
     size_t length = lxa_vector_length(&context->stack->elements), after;
+    bool may_grow = false;
     lxa_status_t status = lxa_size_add(keep, extra, &after);
     if (status == LXA_OK)
         status = check_depth_at(context, keep, context->root_length, context->return_mode,
@@ -141,7 +142,17 @@ prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t ex
     if (status == LXA_OK && extra > length - keep)
         status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
             extra - (length - keep), &context->limit_reason);
-    if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, after);
+    if (status == LXA_OK) {
+        may_grow = after > context->stack->elements.bytes.capacity
+                           / sizeof(lxa_html_control_element_t);
+        status = lxa_vector_reserve(&context->stack->elements, after);
+    }
+    if (status == LXA_OK && may_grow)
+        status = check_depth_at(context, keep, context->root_length, context->return_mode,
+            count, extra);
+    if (status == LXA_OK && may_grow && extra > length - keep)
+        status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+            extra - (length - keep), &context->limit_reason);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = LXA_BUDGET_MEMORY;
     return status;
@@ -1631,6 +1642,7 @@ start_column(lxa_html_template_context_t *context,
             default: return finish(context, internal());
         }
         bool group = plan.action == LXA_HTML_COLUMN_START_IMPLY_GROUP;
+        bool may_grow = false;
         status = check_depth(context, context->root_length, context->return_mode, count,
             group ? 2 : 1);
         if (status == LXA_OK && group)
@@ -1639,9 +1651,18 @@ start_column(lxa_html_template_context_t *context,
         if (status == LXA_OK && group) {
             size_t required;
             status = lxa_size_add(lxa_vector_length(&context->stack->elements), 1, &required);
-            if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, required);
+            if (status == LXA_OK) {
+                may_grow = required > context->stack->elements.bytes.capacity
+                                      / sizeof(lxa_html_control_element_t);
+                status = lxa_vector_reserve(&context->stack->elements, required);
+            }
             if (status == LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_MEMORY;
         }
+        if (status == LXA_OK && may_grow)
+            status = check_depth(context, context->root_length, context->return_mode, count, 2);
+        if (status == LXA_OK && may_grow)
+            status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                1, &context->limit_reason);
         if (status == LXA_OK && group) {
             lxa_html_token_t implied = {.kind = LXA_HTML_START_TAG,
                 .name = {(const uint8_t *) "colgroup", 8}};

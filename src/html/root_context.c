@@ -42,15 +42,21 @@ static lxa_status_t
 reserve_open_slots(lxa_html_root_context_t *context, size_t additional)
 {
     size_t count;
+    bool may_grow = false;
     lxa_status_t status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
         additional, &context->limit_reason);
     if (status == LXA_OK)
         status = lxa_size_add(lxa_vector_length_sized(&context->stack->elements,
             sizeof(lxa_html_control_element_t)), additional, &count);
     if (status == LXA_OK) {
+        may_grow = count > context->stack->elements.bytes.capacity
+                           / sizeof(lxa_html_control_element_t);
         status = lxa_vector_reserve(&context->stack->elements, count);
         if (status == LXA_ERROR_LIMIT) context->limit_reason = LXA_BUDGET_MEMORY;
     }
+    if (status == LXA_OK && may_grow)
+        status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+            additional, &context->limit_reason);
     return status;
 }
 
@@ -504,6 +510,7 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
         size_t length = lxa_vector_length_sized(&context->stack->elements,
             sizeof(lxa_html_control_element_t));
         size_t retained = length - group, count;
+        bool may_grow = false;
         status = check_body_child_depth(context, retained);
         if (status == LXA_OK)
             status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
@@ -512,7 +519,19 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
             status = lxa_budget_check_item_impl(context->stack->budget, LXA_BUDGET_NAME_BYTES,
                 token->name.length, &context->limit_reason);
         if (status == LXA_OK) status = lxa_size_add(retained, 1, &count);
-        if (status == LXA_OK) status = lxa_vector_reserve(&context->stack->elements, count);
+        if (status == LXA_OK) {
+            may_grow = count > context->stack->elements.bytes.capacity
+                               / sizeof(lxa_html_control_element_t);
+            status = lxa_vector_reserve(&context->stack->elements, count);
+        }
+        if (status == LXA_OK && may_grow)
+            status = check_body_child_depth(context, retained);
+        if (status == LXA_OK && may_grow)
+            status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
+                group ? 0 : 1, &context->limit_reason);
+        if (status == LXA_OK && may_grow)
+            status = lxa_budget_check_item_impl(context->stack->budget, LXA_BUDGET_NAME_BYTES,
+                token->name.length, &context->limit_reason);
         if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
             context->limit_reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK && group)
