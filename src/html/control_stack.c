@@ -191,7 +191,8 @@ lxa_html_control_stack_push_formatting(lxa_html_control_stack_t *stack,
 
 lxa_status_t
 lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
-    const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity)
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns,
+    size_t required_depth, uint64_t *identity)
 {
     if (identity != NULL) *identity = 0;
     lxa_status_t status = begin(stack);
@@ -213,7 +214,7 @@ lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
             &annotation_html);
     }
     return status == LXA_OK
-        ? lxa_html_control_stack_push(stack, name, ns, annotation_html, identity)
+        ? push(stack, name, ns, annotation_html, false, required_depth, identity)
         : status;
 }
 

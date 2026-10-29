@@ -502,7 +502,7 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
         || !body_start_mode_valid(context, *mode))
         return LXA_ERROR_ARGUMENT;
     status = context_ensure_body(context);
-    size_t keep;
+    size_t keep, depth;
     if (status == LXA_OK)
         status = lxa_html_control_stack_scope_find(context->stack, 0,
             (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
@@ -515,7 +515,7 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
             sizeof(lxa_html_control_element_t));
         size_t retained = length - group, count;
         bool may_grow = false;
-        status = check_body_child_depth(context, retained, NULL);
+        status = check_body_child_depth(context, retained, &depth);
         if (status == LXA_OK)
             status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
                 group ? 0 : 1, &context->limit_reason);
@@ -542,7 +542,7 @@ lxa_html_root_context_start_plaintext(lxa_html_root_context_t *context,
             status = lxa_html_control_stack_pop_to(context->stack, retained);
     }
     if (status == LXA_OK)
-        status = lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, identity);
+        status = lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, depth, identity);
     if (status == LXA_OK) {
         *mode = LXA_TREE_IN_BODY;
         status = lxa_html_tree_text_start_feedback(tokenizer, token->name, &context->limit_reason);
@@ -1027,7 +1027,7 @@ context_foster_html_admit(root_formatting_start_view_t *view,
     else if (marker) status = lxa_html_formatting_list_admit_marker(list,
         context->stack, token->name, depth, view->identity);
     else return root_start_stack_status(&view->recovery,
-        lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, view->identity));
+        lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, depth, view->identity));
     if (status == LXA_ERROR_LIMIT) context->limit_reason = list->store->limit_reason;
     return status;
 }
@@ -1091,10 +1091,11 @@ context_foreign_insert(root_start_view_t *view, const lxa_html_token_t *token,
 {
     lxa_html_root_context_t *context = view->context;
     uint64_t identity;
+    size_t depth;
     lxa_status_t status = check_body_child_depth(context,
-        lxa_vector_length_sized(&context->stack->elements, sizeof(lxa_html_control_element_t)), NULL);
+        lxa_vector_length_sized(&context->stack->elements, sizeof(lxa_html_control_element_t)), &depth);
     return status == LXA_OK
-        ? lxa_html_control_stack_push_token(context->stack, token, ns, &identity) : status;
+        ? lxa_html_control_stack_push_token(context->stack, token, ns, depth, &identity) : status;
 }
 
 #define LXA_ROOT_FOREIGN_START_NAME context_start_foreign
@@ -1561,7 +1562,7 @@ context_container_insert(root_container_start_view_t *view, const lxa_html_token
     return view->marker
         ? lxa_html_formatting_list_admit_marker(view->formatting, context->stack,
             token->name, depth, view->identity)
-        : lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, view->identity);
+        : lxa_html_control_stack_push_token(context->stack, token, LXA_DOM_NS_HTML, depth, view->identity);
 }
 
 #define LXA_ROOT_CONTAINER_START_NAME context_start_container
@@ -3479,13 +3480,14 @@ static lxa_status_t
 context_foreign_start(root_foreign_execute_view_t *view, const lxa_html_token_t *token)
 {
     lxa_html_root_context_t *context = view->context;
+    size_t depth;
     lxa_status_t status = reserve_open_slot(context);
     if (status == LXA_OK)
         status = check_body_child_depth(context, lxa_vector_length_sized(&context->stack->elements,
-            sizeof(lxa_html_control_element_t)), NULL);
+            sizeof(lxa_html_control_element_t)), &depth);
     if (status == LXA_OK)
         status = lxa_html_control_stack_push_token(context->stack, token, view->namespace_id,
-            &view->result->identity);
+            depth, &view->result->identity);
     return status;
 }
 

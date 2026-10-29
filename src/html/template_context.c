@@ -130,7 +130,8 @@ check_depth(lxa_html_template_context_t *context, size_t root,
 }
 
 static lxa_status_t
-prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t extra)
+prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t extra,
+    size_t *depth)
 {
     size_t count = lxa_vector_length(&context->frames);
     size_t length = lxa_vector_length(&context->stack->elements), after;
@@ -138,7 +139,7 @@ prepare_replacement(lxa_html_template_context_t *context, size_t keep, size_t ex
     lxa_status_t status = lxa_size_add(keep, extra, &after);
     if (status == LXA_OK)
         status = check_depth_at(context, keep, context->root_length, context->return_mode,
-            count, extra, NULL);
+            count, extra, depth);
     if (status == LXA_OK && extra > length - keep)
         status = lxa_budget_check(context->stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
             extra - (length - keep), &context->limit_reason);
@@ -181,9 +182,11 @@ lxa_html_template_context_push_token(lxa_html_template_context_t *context,
         || token->kind != LXA_HTML_START_TAG
         || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
         return LXA_ERROR_ARGUMENT;
-    status = check_depth(context, context->root_length, context->return_mode, count, 1);
+    size_t depth;
+    status = check_depth_at(context, lxa_vector_length(&context->stack->elements),
+        context->root_length, context->return_mode, count, 1, &depth);
     if (status == LXA_OK)
-        status = lxa_html_control_stack_push_token(context->stack, token, ns, identity);
+        status = lxa_html_control_stack_push_token(context->stack, token, ns, depth, identity);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->stack->limit_reason;
     return finish(context, status);
@@ -205,13 +208,14 @@ lxa_html_template_context_replace_token(lxa_html_template_context_t *context,
         (const lxa_html_template_control_frame_t *) context->frames.bytes.data;
     if (keep < frames[count - 1].boundary
         || keep > lxa_vector_length(&context->stack->elements)) return LXA_ERROR_ARGUMENT;
-    status = prepare_replacement(context, keep, 1);
+    size_t depth;
+    status = prepare_replacement(context, keep, 1, &depth);
     if (status == LXA_OK)
         status = lxa_budget_check_item(context->stack->budget, LXA_BUDGET_NAME_BYTES,
             token->name.length, &context->limit_reason);
     if (status == LXA_OK) status = lxa_html_control_stack_pop_to(context->stack, keep);
     if (status == LXA_OK)
-        status = lxa_html_control_stack_push_token(context->stack, token, ns, identity);
+        status = lxa_html_control_stack_push_token(context->stack, token, ns, depth, identity);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->stack->limit_reason;
     return finish(context, status);
@@ -1507,7 +1511,7 @@ start_table_part(lxa_html_template_context_t *context,
         size_t keep = plan.insertion.keep;
         if (keep < boundary || keep > length) { status = internal(); break; }
         if (plan.action == LXA_HTML_TABLE_START_INSERT) {
-            status = prepare_replacement(context, keep, plan.insertion.extra);
+            status = prepare_replacement(context, keep, plan.insertion.extra, NULL);
             if (status != LXA_OK) break;
             status = lxa_html_template_context_pop_table(context, keep);
             if (status != LXA_OK) break;

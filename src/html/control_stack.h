@@ -55,9 +55,12 @@ lxa_status_t lxa_html_control_stack_push_formatting(lxa_html_control_stack_t *st
 /* Capture an effective start token after the caller decides to keep it open.
  * Adjust SVG names and resolve MathML annotation encoding without retaining
  * attribute views. This does not choose namespace, insertion or text modes.
+ * Recheck nonzero required_depth after allocation, before assigning identity;
+ * zero leaves logical depth policy with the caller.
  */
 lxa_status_t lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
-    const lxa_html_token_t *token, lxa_dom_namespace_t ns, uint64_t *identity);
+    const lxa_html_token_t *token, lxa_dom_namespace_t ns,
+    size_t required_depth, uint64_t *identity);
 lxa_status_t lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack,
     size_t keep);
 /* Remove one entry without changing surviving identities or name offsets.
