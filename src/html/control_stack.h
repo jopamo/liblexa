@@ -41,10 +41,12 @@ void lxa_html_control_stack_destroy(lxa_html_control_stack_t *stack);
  * Failure preserves live elements and identities, but may retain capacity.
  * All mutation attempts invalidate borrowed name views. Identities are
  * nonzero and never reused within an initialized stack, including after pop.
+ * Recheck nonzero required_depth after allocation, before assigning identity;
+ * zero leaves logical depth policy with the caller.
  */
 lxa_status_t lxa_html_control_stack_push(lxa_html_control_stack_t *stack,
     lxa_span_t name, lxa_dom_namespace_t ns, bool annotation_html,
-    uint64_t *identity);
+    size_t required_depth, uint64_t *identity);
 /* Push an HTML owner after its caller charges pending formatting membership.
  * Recheck that live charge after allocation, before assigning an identity.
  * Recheck nonzero required_depth at the same boundary. The caller owns that

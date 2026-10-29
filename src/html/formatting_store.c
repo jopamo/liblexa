@@ -909,7 +909,7 @@ reconstruct_suffix(const formatting_stack_view_t *view, size_t start)
         if (status != LXA_OK) return internal(status);
         lxa_span_t name = {list->store->bytes.data + snapshot->name_offset, snapshot->name_length};
         uint64_t identity;
-        status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, &identity);
+        status = lxa_html_control_stack_push(stack, name, LXA_DOM_NS_HTML, false, 0, &identity);
         if (status == LXA_ERROR_LIMIT) list->store->limit_reason = stack->limit_reason;
         if (status != LXA_OK) return status;
         item->identity = identity;

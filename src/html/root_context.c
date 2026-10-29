@@ -171,7 +171,7 @@ open_body(lxa_html_root_context_t *context)
 {
     uint64_t identity;
     lxa_status_t status = lxa_html_control_stack_push(context->stack,
-        (lxa_span_t){(const uint8_t *) "body", 4}, LXA_DOM_NS_HTML, false, &identity);
+        (lxa_span_t){(const uint8_t *) "body", 4}, LXA_DOM_NS_HTML, false, 2, &identity);
     if (status == LXA_OK) context->body_identity = identity;
     return status;
 }
@@ -1415,7 +1415,7 @@ context_form_open(root_form_view_t *view, const lxa_html_token_t *token)
 {
     (void) token;
     lxa_html_root_context_t *context = view->context;
-    size_t keep;
+    size_t keep, depth;
     uint64_t identity;
     lxa_status_t status = lxa_html_control_stack_scope_find(context->stack, 0,
         (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, &keep);
@@ -1423,10 +1423,10 @@ context_form_open(root_form_view_t *view, const lxa_html_token_t *token)
     if (status == LXA_OK) status = reserve_open_slot(context);
     if (status == LXA_OK)
         status = check_body_child_depth(context, lxa_vector_length_sized(&context->stack->elements,
-            sizeof(lxa_html_control_element_t)), NULL);
+            sizeof(lxa_html_control_element_t)), &depth);
     if (status == LXA_OK)
         status = lxa_html_control_stack_push(context->stack,
-            (lxa_span_t){(const uint8_t *) "form", 4}, LXA_DOM_NS_HTML, false, &identity);
+            (lxa_span_t){(const uint8_t *) "form", 4}, LXA_DOM_NS_HTML, false, depth, &identity);
     if (status == LXA_OK) {
         *view->owner = identity;
         view->action = LXA_HTML_ROOT_FORM_OPEN;
@@ -2551,6 +2551,7 @@ typedef struct {
     lxa_html_root_mode_t *mode;
     uint64_t *identity;
     bool replace_body;
+    size_t depth;
 } root_frameset_control_view_t;
 
 static lxa_status_t
@@ -2587,7 +2588,7 @@ frameset_admit(root_frameset_control_view_t *view, const lxa_html_token_t *token
         status = check_body_child_depth(context,
             *view->mode == LXA_TREE_IN_FRAMESET
                 ? lxa_vector_length_sized(&context->stack->elements,
-                    sizeof(lxa_html_control_element_t)) : 0, NULL);
+                    sizeof(lxa_html_control_element_t)) : 0, &view->depth);
     if (status == LXA_OK && view->replace_body) {
         lxa_html_control_stack_t *stack = context->stack;
         if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
@@ -2626,7 +2627,7 @@ frameset_replace(root_frameset_control_view_t *view)
 #define LXA_FRAMESET_START_ADMIT frameset_admit
 #define LXA_FRAMESET_START_REPLACE frameset_replace
 #define LXA_FRAMESET_START_PUSH(view) lxa_html_control_stack_push((view)->context->stack, \
-    (lxa_span_t){(const uint8_t *) "frameset", 8}, LXA_DOM_NS_HTML, false, (view)->identity)
+    (lxa_span_t){(const uint8_t *) "frameset", 8}, LXA_DOM_NS_HTML, false, (view)->depth, (view)->identity)
 #define LXA_FRAMESET_START_MODE(view) (*(view)->mode)
 #include "html/frameset_start.inc"
 #undef LXA_FRAMESET_START_NAME
@@ -2659,7 +2660,7 @@ lxa_html_root_context_start_frameset(lxa_html_root_context_t *context,
         status = lxa_html_root_context_frameset_body(context, *mode, &eligible);
         if (status != LXA_OK || !eligible) return status;
     }
-    root_frameset_control_view_t view = {context, mode, identity, replace};
+    root_frameset_control_view_t view = {context, mode, identity, replace, 0};
     status = root_start_frameset(&view, token);
     if (status != LXA_OK) *identity = 0;
     return finish(context, status);
@@ -2862,7 +2863,7 @@ lxa_html_root_context_start_prelude(lxa_html_root_context_t *context,
         if (plan.action != LXA_HTML_HEAD_NOSCRIPT_CONTINUE) return LXA_ERROR_ARGUMENT;
     }
     lxa_html_root_start_prelude_result_t out = {LXA_HTML_ROOT_PRELUDE_CONTINUE, 0};
-    root_frameset_control_view_t view = {context, mode, &out.identity, true};
+    root_frameset_control_view_t view = {context, mode, &out.identity, true, 0};
     status = context_start_prelude(&view, token, &out.action);
     if (status == LXA_OK) *result = out;
     return finish(context, status);

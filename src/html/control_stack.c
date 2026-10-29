@@ -177,9 +177,10 @@ push(lxa_html_control_stack_t *stack, lxa_span_t name,
 
 lxa_status_t
 lxa_html_control_stack_push(lxa_html_control_stack_t *stack, lxa_span_t name,
-    lxa_dom_namespace_t ns, bool annotation_html, uint64_t *identity)
+    lxa_dom_namespace_t ns, bool annotation_html, size_t required_depth,
+    uint64_t *identity)
 {
-    return push(stack, name, ns, annotation_html, false, 0, identity);
+    return push(stack, name, ns, annotation_html, false, required_depth, identity);
 }
 
 lxa_status_t
