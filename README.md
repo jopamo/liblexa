@@ -1,68 +1,89 @@
 # Liblexa
 
-HTML and CSS parsing for C programs that don't need to become a browser.
+CSS and HTML parsing libraries for C17.
 
-Liblexa provides the machinery to read a stylesheet, inspect a recovered HTML
-tree, or extract and rewrite HTML attributes. Your application keeps control of
-allocation, resource limits, and what happens with the result. No JavaScript
-engine comes along for the ride.
+Liblexa provides CSS tokenization and syntax parsing, HTML document parsing,
+DOM traversal, serialization, and source-level attribute extraction and
+rewriting. Callers control allocation, resource limits, and I/O.
 
-## What you can do with it
+## Features
 
-**Read CSS syntax.** Tokenize UTF-8 input, walk balanced blocks and functions,
-and parse rules, declarations, and selector ranges. Tokens retain original byte
-offsets alongside decoded text. This is syntax machinery, not a cascade,
-selector matcher, or property validator.
+### CSS
 
-**Build an HTML tree.** Parse a complete document with scripting disabled,
-then use checked node references to traverse elements, attributes, and text.
-Tree construction handles malformed markup, foreign content, and templates.
-The HTML library also provides document serialization.
+- UTF-8 tokenization with original byte offsets and decoded text
+- Balanced block and function parsing
+- Rule, declaration, and selector-range parsing
+- Syntax traversal without constructing a CSS object model
 
-**Leave the tree out of it.** Extract selected attributes in source order or
-rewrite their values without constructing a DOM. Rewriting preserves bytes
-outside replaced attribute spans; a keep-only pass reproduces the original
-input. That's useful when changing a link should not also redecorate the page.
-URL resolution and fetching remain your application's job.
+CSS support does not include selector matching, cascading, or property
+validation.
 
-The public interfaces live in [`include/liblexa/`](include/liblexa/):
+### HTML
+
+- Complete-document parsing with scripting disabled
+- Tree construction with malformed-markup recovery
+- Foreign content and template handling
+- Checked node references for element, attribute, and text traversal
+- Document serialization
+
+### Source processing
+
+- Attribute extraction in source order without building a DOM
+- Attribute value replacement while preserving surrounding source bytes
+- Byte-identical output when all attributes are kept unchanged
+
+URL resolution and resource fetching are left to the caller.
+
+## Public API
+
+Headers are located in [`include/liblexa/`](include/liblexa/).
 
 | Header | Purpose |
 | --- | --- |
-| [`css.h`](include/liblexa/css.h) | CSS tokens, blocks, and syntax helpers |
-| [`html.h`](include/liblexa/html.h) | Complete-document HTML parsing |
+| [`css.h`](include/liblexa/css.h) | CSS tokens, blocks, and syntax parsing |
+| [`html.h`](include/liblexa/html.h) | HTML document parsing |
 | [`dom.h`](include/liblexa/dom.h) | Node storage and checked traversal |
 | [`html_source.h`](include/liblexa/html_source.h) | Source attribute extraction |
 | [`html_rewrite.h`](include/liblexa/html_rewrite.h) | Source attribute replacement |
-| [`serialize.h`](include/liblexa/serialize.h) | HTML output and escaping |
-| [`base.h`](include/liblexa/base.h) | Allocators, buffers, statuses, and budgets |
+| [`serialize.h`](include/liblexa/serialize.h) | HTML serialization and escaping |
+| [`base.h`](include/liblexa/base.h) | Allocation, buffers, status codes, and resource budgets |
 
-## Know the boundaries
+## Resource handling
 
-Liblexa is a library, not a browser or an HTML-cleaning policy. It does not
-render pages, run scripts, load resources, or decide which URLs and CSS
-properties an application should accept.
+Liblexa supports memory, input, work, and parser-specific limits.
+Allocation failures, exceeded limits, and unsupported input are reported
+separately.
 
-Resource budgets cover memory, input, work, and parser-specific limits.
-Allocation failures, exceeded limits, and unsupported input have distinct
-results. Ownership and borrowed-view lifetimes are documented in the headers.
-Callbacks and output sinks can fail after producing effects, so callers that
-need all-or-nothing output must stage it themselves.
+Ownership rules and borrowed-view lifetimes are documented in the headers.
 
-**HTML is still a candidate implementation.** It ships as
-`liblexa-html-candidate`, separately from the core/CSS library. Qualification
-and performance work remain open; the candidate name is intentional.
-The public HTML parser accepts complete documents, not incremental feeds or
-fragment contexts. Do not read the feature list as a claim of complete browser
-conformance or a settled HTML ABI.
+Callbacks and output sinks may fail after producing partial output.
+Callers requiring atomic output must buffer or stage it before committing.
 
-## Build
+## Limitations
 
-You need a C17 compiler, Meson 1.1 or newer, and Ninja. Generated tables are
-checked in; building the library does not require downloading a parser or
-running the table generators.
+Liblexa does not render HTML, execute scripts, fetch resources, sanitize
+documents, or enforce URL and CSS security policies.
 
-From this checkout:
+**HTML support is experimental.** It is provided through
+`liblexa-html-candidate`, separately from the core/CSS library.
+
+Current HTML limitations:
+
+- Complete documents only; no incremental parsing or fragment contexts
+- Browser-level conformance is not guaranteed
+- HTML ABI stability is not guaranteed
+- Qualification and performance testing are ongoing
+
+## Building
+
+Requirements:
+
+- C17 compiler
+- Meson 1.1 or newer
+- Ninja
+
+Generated tables are included in the repository. Building does not require
+running generators or downloading parser dependencies.
 
 ```sh
 meson setup build --buildtype=release --prefix="$HOME/.local" --libdir=lib
@@ -71,20 +92,31 @@ meson install -C build
 ```
 
 The build installs shared and static libraries, headers, and pkg-config files.
-For a core/CSS-only build, add `-Dcandidate_html=false` to `meson setup`.
 
-Link a CSS consumer with `liblexa`, or an HTML consumer with
-`liblexa-html-candidate`:
+To build only the core/CSS library:
+
+```sh
+meson setup build -Dcandidate_html=false --buildtype=release
+meson compile -C build
+```
+
+### Linking
+
+Use `liblexa` for CSS or `liblexa-html-candidate` for HTML.
+
+For an installation under `$HOME/.local`:
 
 ```sh
 export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 cc app.c -o app $(pkg-config --cflags --libs liblexa-html-candidate)
 ```
 
-For shared libraries installed in a private prefix, also configure your
-platform's runtime library search path.
+Shared libraries installed in a private prefix may also require runtime
+library search path configuration.
 
 ## License
 
-Liblexa's authored code is MIT licensed. Generated standards and Unicode data
-carry their own notices, included in [`LICENSE`](LICENSE).
+Liblexa's authored code is MIT licensed. Generated standards and Unicode
+data retain their respective notices.
+
+See [LICENSE](LICENSE) for details.
