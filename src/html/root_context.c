@@ -581,7 +581,7 @@ context_reconstruct(lxa_html_root_context_t *context,
         status = lxa_budget_check_impl(context->stack->budget, LXA_BUDGET_TREE_DEPTH,
             depth, &context->limit_reason);
     if (status == LXA_OK)
-        status = lxa_html_formatting_list_reconstruct_planned(formatting, context->stack, 0, start);
+        status = lxa_html_formatting_list_reconstruct_planned(formatting, context->stack, 0, start, depth);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = formatting->store->limit_reason;
     return finish(context, status);

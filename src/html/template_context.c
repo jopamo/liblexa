@@ -1718,10 +1718,12 @@ lxa_html_template_context_reconstruct(lxa_html_template_context_t *context)
     size_t length = lxa_vector_length(&context->formatting->entries);
     if (start == length) return LXA_OK;
     if (start > length) return finish(context, internal());
-    status = check_depth(context, context->root_length, context->return_mode, count, length - start);
+    size_t depth;
+    status = check_depth_at(context, lxa_vector_length(&context->stack->elements),
+        context->root_length, context->return_mode, count, length - start, &depth);
     if (status == LXA_OK)
         status = lxa_html_formatting_list_reconstruct_planned(context->formatting, context->stack,
-            boundary, start);
+            boundary, start, depth);
     if (status == LXA_ERROR_LIMIT && context->limit_reason == LXA_BUDGET_COUNT)
         context->limit_reason = context->formatting->store->limit_reason;
     return finish(context, status);

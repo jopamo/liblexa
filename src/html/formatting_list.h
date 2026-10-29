@@ -111,9 +111,11 @@ lxa_status_t lxa_html_formatting_list_reconstruct(lxa_html_formatting_list_t *li
  * must remain unchanged between planning and execution; callers serialize
  * access and preflight context depth before this call. Validate the retained
  * marker boundary; completed pushes remain published on failure.
+ * Recheck nonzero required_depth for the complete suffix after allocation at
+ * each stack publication. Zero leaves logical depth policy with the caller.
  */
 lxa_status_t lxa_html_formatting_list_reconstruct_planned(lxa_html_formatting_list_t *list,
-    lxa_html_control_stack_t *stack, size_t boundary, size_t start);
+    lxa_html_control_stack_t *stack, size_t boundary, size_t start, size_t required_depth);
 
 /* Select one canonical adoption outer round in the same identity domain.
  * Exclude entries before the last marker and open identities before boundary.
