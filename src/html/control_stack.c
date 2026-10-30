@@ -554,8 +554,11 @@ control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *n
 }
 
 #define LXA_SCOPE_NAME control_stack_scope_search
+#define LXA_SCOPE_FIRST_NAME control_stack_scope_search_first
 #define LXA_ORDINARY_NAME control_stack_ordinary_search
+#define LXA_ORDINARY_FIRST_NAME control_stack_ordinary_search_first
 #define LXA_COLUMN_GROUP_NAME control_stack_column_group
+#define LXA_COLUMN_GROUP_READ_NAME control_stack_column_group_read
 #define LXA_SCOPE_PLAN_NAME control_stack_scope_plan
 #define LXA_ORDINARY_PLAN_NAME control_stack_ordinary_plan
 #define LXA_OPEN_REFERENCE_NAME control_stack_open_reference
@@ -595,8 +598,11 @@ control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *n
 #undef LXA_SCOPE_LENGTH
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
+#undef LXA_SCOPE_FIRST_NAME
 #undef LXA_ORDINARY_NAME
+#undef LXA_ORDINARY_FIRST_NAME
 #undef LXA_COLUMN_GROUP_NAME
+#undef LXA_COLUMN_GROUP_READ_NAME
 #undef LXA_SCOPE_PLAN_NAME
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME

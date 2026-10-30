@@ -1,9 +1,9 @@
 #include "base/budget_internal.h"
 
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,TAG_ID,NAMESPACE,PLAN_NAME,IDENTITY},
- * LXA_ORDINARY_{NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
- * LXA_COLUMN_GROUP_NAME and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
+ * LXA_SCOPE_{NAME,FIRST_NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,TAG_ID,NAMESPACE,PLAN_NAME,IDENTITY},
+ * LXA_ORDINARY_{NAME,FIRST_NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
+ * LXA_COLUMN_GROUP_{NAME,READ_NAME} and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN,MATHML_TABLE}_PLAN_NAME,
  * LXA_FOSTERED_SUFFIX_CHECK_NAME, LXA_VIRTUAL_TABLE_SUFFIX_CHECK_NAME,
  * LXA_VIRTUAL_TABLE_ITEM_PLAN_NAME, LXA_TEMPLATE_TABLE_START_PLAN_NAME,
@@ -500,8 +500,9 @@ publish:
 }
 
 static inline lxa_status_t
-LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
-    lxa_html_scope_kind_t scope, size_t *index)
+LXA_SCOPE_FIRST_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
+    lxa_html_scope_kind_t scope, size_t *index,
+    const lxa_span_t *first_name, lxa_dom_namespace_t first_ns)
 {
     bool any_heading = lxa_html_tree_heading(target);
     size_t i = LXA_SCOPE_LENGTH(view);
@@ -512,7 +513,14 @@ LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
         lxa_status_t status = lxa_budget_charge_work(
             LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
-        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        --i;
+        if (first_name != NULL) {
+            name = *first_name;
+            ns = first_ns;
+            first_name = NULL;
+        } else {
+            status = LXA_SCOPE_READ(view, i, &name, &ns);
+        }
         if (status != LXA_OK) return status;
         if (ns == LXA_DOM_NS_HTML
             && (any_heading ? lxa_html_tree_heading(name)
@@ -528,19 +536,35 @@ LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
 }
 
 static inline lxa_status_t
-LXA_COLUMN_GROUP_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, bool *found)
+LXA_SCOPE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
+    lxa_html_scope_kind_t scope, size_t *index)
+{
+    return LXA_SCOPE_FIRST_NAME(view, boundary, target, scope, index, NULL, 0);
+}
+
+static inline lxa_status_t
+LXA_COLUMN_GROUP_READ_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, bool *found,
+    lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
     size_t length = LXA_SCOPE_LENGTH(view);
     *found = false;
+    *name = (lxa_span_t) {0};
+    *ns = 0;
     if (length > boundary) {
-        lxa_span_t name;
-        lxa_dom_namespace_t ns;
-        lxa_status_t status = LXA_SCOPE_READ(view, length - 1, &name, &ns);
+        lxa_status_t status = LXA_SCOPE_READ(view, length - 1, name, ns);
         if (status != LXA_OK) return status;
-        *found = ns == LXA_DOM_NS_HTML
-            && lxa_html_tree_name_equals(name, "colgroup", 8);
+        *found = *ns == LXA_DOM_NS_HTML
+            && lxa_html_tree_name_equals(*name, "colgroup", 8);
     }
     return LXA_OK;
+}
+
+static inline lxa_status_t
+LXA_COLUMN_GROUP_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, bool *found)
+{
+    lxa_span_t name;
+    lxa_dom_namespace_t ns;
+    return LXA_COLUMN_GROUP_READ_NAME(view, boundary, found, &name, &ns);
 }
 
 static inline lxa_status_t
@@ -550,12 +574,18 @@ LXA_SCOPE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t targ
     LXA_SCOPE_VIEW search = *view;
     lxa_html_end_target_plan_t plan;
     bool column_group;
-    lxa_status_t status = LXA_COLUMN_GROUP_NAME(view, boundary, &column_group);
+    lxa_span_t first_name;
+    lxa_dom_namespace_t first_ns;
+    lxa_status_t status = LXA_COLUMN_GROUP_READ_NAME(view, boundary, &column_group,
+        &first_name, &first_ns);
     if (status != LXA_OK) return status;
     column_group = column_group && !lxa_html_tree_name_equals(target, "colgroup", 8);
     if (column_group) --LXA_SCOPE_LENGTH(&search);
     plan.search_length = LXA_SCOPE_LENGTH(&search);
-    status = LXA_SCOPE_NAME(&search, boundary, target, scope, &plan.index);
+    /* The view stays read-only until the plan is published. Excluding a column
+     * group changes the first index, so its metadata cannot seed the search. */
+    status = LXA_SCOPE_FIRST_NAME(&search, boundary, target, scope, &plan.index,
+        column_group ? NULL : &first_name, first_ns);
     if (status == LXA_OK && column_group)
         status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
             1, LXA_SCOPE_REASON(view));
@@ -612,8 +642,8 @@ LXA_SCOPED_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
 }
 
 static inline lxa_status_t
-LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
-    size_t *index)
+LXA_ORDINARY_FIRST_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
+    size_t *index, const lxa_span_t *first_name, lxa_dom_namespace_t first_ns)
 {
     size_t i = LXA_SCOPE_LENGTH(view);
     *index = i;
@@ -623,7 +653,14 @@ LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target
         lxa_status_t status = lxa_budget_charge_work(
             LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
-        status = LXA_SCOPE_READ(view, --i, &name, &ns);
+        --i;
+        if (first_name != NULL) {
+            name = *first_name;
+            ns = first_ns;
+            first_name = NULL;
+        } else {
+            status = LXA_SCOPE_READ(view, i, &name, &ns);
+        }
         if (status != LXA_OK) return status;
         if (ns == LXA_DOM_NS_HTML && name.length == target.length) {
             size_t blocks = name.length / 8 + (name.length % 8 != 0);
@@ -643,17 +680,28 @@ LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target
 }
 
 static inline lxa_status_t
+LXA_ORDINARY_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t target,
+    size_t *index)
+{
+    return LXA_ORDINARY_FIRST_NAME(view, boundary, target, index, NULL, 0);
+}
+
+static inline lxa_status_t
 LXA_ORDINARY_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
     lxa_span_t target, lxa_html_end_target_plan_t *out)
 {
     LXA_SCOPE_VIEW search = *view;
     lxa_html_end_target_plan_t plan;
     bool column_group;
-    lxa_status_t status = LXA_COLUMN_GROUP_NAME(view, boundary, &column_group);
+    lxa_span_t first_name;
+    lxa_dom_namespace_t first_ns;
+    lxa_status_t status = LXA_COLUMN_GROUP_READ_NAME(view, boundary, &column_group,
+        &first_name, &first_ns);
     if (status != LXA_OK) return status;
     if (column_group) --LXA_SCOPE_LENGTH(&search);
     plan.search_length = LXA_SCOPE_LENGTH(&search);
-    status = LXA_ORDINARY_NAME(&search, boundary, target, &plan.index);
+    status = LXA_ORDINARY_FIRST_NAME(&search, boundary, target, &plan.index,
+        column_group ? NULL : &first_name, first_ns);
     if (status == LXA_OK && column_group)
         status = lxa_budget_charge_work(LXA_SCOPE_BUDGET(view),
             1, LXA_SCOPE_REASON(view));

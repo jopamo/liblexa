@@ -83,8 +83,11 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 }
 
 #define LXA_SCOPE_NAME lxa_html_control_scope_search
+#define LXA_SCOPE_FIRST_NAME lxa_html_control_scope_search_first
 #define LXA_ORDINARY_NAME lxa_html_control_ordinary_end_search
+#define LXA_ORDINARY_FIRST_NAME lxa_html_control_ordinary_end_search_first
 #define LXA_COLUMN_GROUP_NAME lxa_html_control_column_group
+#define LXA_COLUMN_GROUP_READ_NAME lxa_html_control_column_group_read
 #define LXA_SCOPE_PLAN_NAME lxa_html_control_scope_plan_search
 #define LXA_ORDINARY_PLAN_NAME lxa_html_control_ordinary_plan_search
 #define LXA_OPEN_REFERENCE_NAME lxa_html_control_open_reference_search
@@ -124,8 +127,11 @@ lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
 #undef LXA_SCOPE_LENGTH
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
+#undef LXA_SCOPE_FIRST_NAME
 #undef LXA_ORDINARY_NAME
+#undef LXA_ORDINARY_FIRST_NAME
 #undef LXA_COLUMN_GROUP_NAME
+#undef LXA_COLUMN_GROUP_READ_NAME
 #undef LXA_SCOPE_PLAN_NAME
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME

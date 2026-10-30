@@ -1191,8 +1191,11 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SPECIAL_REASON
 
 #define LXA_SCOPE_NAME tree_scope_search
+#define LXA_SCOPE_FIRST_NAME tree_scope_search_first
 #define LXA_ORDINARY_NAME tree_ordinary_end_search
+#define LXA_ORDINARY_FIRST_NAME tree_ordinary_end_search_first
 #define LXA_COLUMN_GROUP_NAME tree_current_column_group
+#define LXA_COLUMN_GROUP_READ_NAME tree_current_column_group_read
 #define LXA_SCOPE_PLAN_NAME tree_scope_plan
 #define LXA_ORDINARY_PLAN_NAME tree_ordinary_end_plan
 #define LXA_OPEN_REFERENCE_NAME tree_open_reference_search
@@ -1236,8 +1239,11 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #undef LXA_SCOPE_LENGTH
 #undef LXA_SCOPE_VIEW
 #undef LXA_SCOPE_NAME
+#undef LXA_SCOPE_FIRST_NAME
 #undef LXA_ORDINARY_NAME
+#undef LXA_ORDINARY_FIRST_NAME
 #undef LXA_COLUMN_GROUP_NAME
+#undef LXA_COLUMN_GROUP_READ_NAME
 #undef LXA_SCOPE_PLAN_NAME
 #undef LXA_ORDINARY_PLAN_NAME
 #undef LXA_OPEN_REFERENCE_NAME
