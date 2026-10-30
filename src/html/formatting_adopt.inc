@@ -1,5 +1,5 @@
 /* Select one adoption outer round; owners apply the selected mutations.
- * LXA_ADOPT_{NAME,VIEW,FORMATTING_LENGTH,OPEN_LENGTH,FIND,REFERENCE,OPEN,SCOPED,SPECIAL}
+ * LXA_ADOPT_{NAME,VIEW,FORMATTING_LENGTH,OPEN_LENGTH,FIND,REFERENCE,OPEN,SCOPED,SPECIAL,IDENTITY_TYPE}
  * belong to the includer. Queries own their WORK charges.
  */
 static inline lxa_status_t
@@ -7,7 +7,7 @@ LXA_ADOPT_NAME(const LXA_ADOPT_VIEW *view, lxa_span_t subject,
     lxa_html_formatting_adopt_plan_t *out)
 {
     size_t length = LXA_ADOPT_OPEN_LENGTH(view), scoped;
-    uint64_t identity;
+    LXA_ADOPT_IDENTITY_TYPE identity;
     lxa_html_formatting_adopt_plan_t plan = {
         LXA_HTML_FORMATTING_ADOPT_ORDINARY, LXA_ADOPT_FORMATTING_LENGTH(view), length, length};
     lxa_status_t status = LXA_ADOPT_FIND(view, subject, &plan.formatting);

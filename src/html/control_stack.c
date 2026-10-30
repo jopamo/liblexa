@@ -589,7 +589,9 @@ control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *n
 #define LXA_SCOPE_READ control_stack_read
 #define LXA_SCOPE_TAG_ID control_stack_tag_id
 #define LXA_SCOPE_READ_NAME control_stack_name
+#define LXA_SCOPE_IDENTITY_TYPE uint64_t
 #include "html/end_target_find.inc"
+#undef LXA_SCOPE_IDENTITY_TYPE
 #undef LXA_SCOPE_READ
 #undef LXA_SCOPE_TAG_ID
 #undef LXA_SCOPE_READ_NAME
@@ -999,7 +1001,9 @@ lxa_html_control_stack_form_end_plan(lxa_html_control_stack_t *stack,
 #define LXA_FORM_END_CLEAR(view, owner) (*(owner) = 0)
 #define LXA_FORM_END_POP(view, keep) lxa_html_control_stack_pop_to((view)->stack, keep)
 #define LXA_FORM_END_REMOVE(view, index) lxa_html_control_stack_remove((view)->stack, index)
+#define LXA_FORM_END_IDENTITY_TYPE uint64_t
 #include "html/form_end.inc"
+#undef LXA_FORM_END_IDENTITY_TYPE
 #undef LXA_FORM_END_EXECUTE_NAME
 #undef LXA_FORM_END_VIEW
 #undef LXA_FORM_END_PLAN

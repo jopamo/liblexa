@@ -13,6 +13,9 @@
  * frames save fragment, patch references, open-element boundary and insertion
  * mode; nodes and attributes belong to the store. Token callbacks update
  * text/CDATA feedback.
+ * The store must outlive the tree. Record growth preserves borrowed pointers;
+ * reset invalidates the tree. Check the captured epoch before record access
+ * and after token effects, including allocator and metadata callbacks.
  * The first failure is latched. Successful EOF completes construction and
  * subsequent tokens are rejected. No fragment-context or script-execution API.
  */
@@ -24,15 +27,15 @@ typedef struct {
 } lxa_html_template_frame_t;
 
 typedef struct {
-    lxa_dom_ref_t element; /* marker entries identify their open owner */
+    lxa_dom_record_t *element; /* marker entries identify their open owner */
     size_t previous_marker; /* read only through the marker index chain */
 } lxa_html_formatting_entry_t;
 
-/* Open stacks belong to one parser document/epoch. Keep only the packed handle
- * per entry; reconstruct checked references from that captured context.
+/* Open stacks borrow stable records from one parser document/epoch.
+ * Reset/reuse invalidates every entry, even when its address is retained.
  * Zero depth is unknown; a stale revision requires checked ancestry repair. */
 typedef struct {
-    lxa_handle_t handle;
+    lxa_dom_record_t *node;
     uint32_t actual_depth, depth_revision;
     uint16_t tag_id; /* immutable element metadata; zero requires checked lookup */
     uint16_t button_flags;
@@ -74,10 +77,40 @@ typedef struct {
     lxa_status_t failure;
 } lxa_html_tree_t;
 
+static inline bool
+lxa_html_tree_epoch_valid(const lxa_html_tree_t *tree)
+{
+    return tree->nodes != NULL && tree->document.document == tree->nodes
+        && tree->document.epoch == tree->nodes->epoch;
+}
+
+/* Only records acquired by this tree may enter. Do not dereference a retained
+ * record after a callback or external reset invalidates the captured epoch. */
+static inline lxa_dom_ref_t
+lxa_html_tree_ref(const lxa_html_tree_t *tree, const lxa_dom_record_t *node)
+{
+    lxa_dom_ref_t ref = {tree->nodes, tree->document.epoch, LXA_HANDLE_NONE};
+    if (node != NULL && lxa_html_tree_epoch_valid(tree))
+        (void) lxa_handle_pack(node->id, node->generation, &ref.handle);
+    return ref;
+}
+
 static inline lxa_dom_ref_t
 lxa_html_open_ref(const lxa_html_tree_t *tree, const lxa_html_open_entry_t *entry)
 {
-    return (lxa_dom_ref_t) {tree->nodes, tree->document.epoch, entry->handle};
+    return lxa_html_tree_ref(tree, entry->node);
+}
+
+static inline lxa_status_t
+lxa_html_tree_read_element(const lxa_html_tree_t *tree,
+    const lxa_dom_record_t *node, lxa_span_t *name, lxa_dom_namespace_t *ns)
+{
+    if (!lxa_html_tree_epoch_valid(tree)) {
+        if (name != NULL) *name = (lxa_span_t) {0};
+        if (ns != NULL) *ns = 0;
+        return LXA_ERROR_ARGUMENT;
+    }
+    return lxa_dom_element_read_owned(tree->nodes, node, name, ns);
 }
 
 lxa_status_t lxa_html_tree_init(

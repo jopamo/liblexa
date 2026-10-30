@@ -514,16 +514,16 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
 }
 
 lxa_status_t
-lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
-    lxa_dom_record_t *out)
+lxa_dom_nodes_resolve(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
+    lxa_dom_record_t **out)
 {
-    const lxa_dom_record_t *entry;
+    lxa_dom_record_t *entry;
     lxa_id_t index;
     uint32_t generation;
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
-    memset(out, 0, sizeof(*out));
+    *out = NULL;
     if (nodes == NULL || handle.document != nodes || handle.epoch != nodes->epoch
         || lxa_handle_unpack(handle.handle, &index, &generation) != LXA_OK) {
         return LXA_ERROR_ARGUMENT;
@@ -536,8 +536,20 @@ lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
     if (entry->id != index || entry->generation != generation) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = *entry;
+    *out = entry;
     return LXA_OK;
+}
+
+lxa_status_t
+lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t handle,
+    lxa_dom_record_t *out)
+{
+    if (out == NULL) return LXA_ERROR_ARGUMENT;
+    memset(out, 0, sizeof(*out));
+    lxa_dom_record_t *record;
+    lxa_status_t status = lxa_dom_nodes_resolve(nodes, handle, &record);
+    if (status == LXA_OK) *out = *record;
+    return status;
 }
 
 lxa_status_t
@@ -1200,21 +1212,15 @@ lxa_dom_nodes_append_namespaced_element(lxa_dom_nodes_t *nodes,
 }
 
 static lxa_status_t
-element_payload(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
+element_payload(const lxa_dom_nodes_t *nodes, const lxa_dom_record_t *record,
     const lxa_dom_element_t **out)
 {
-    lxa_dom_record_t record;
-    lxa_status_t status;
-    status = lxa_dom_nodes_read(nodes, element, &record);
-    if (status != LXA_OK) {
-        return status;
-    }
-    if (record.kind != LXA_DOM_KIND_ELEMENT
+    if (nodes == NULL || record == NULL || record->kind != LXA_DOM_KIND_ELEMENT
         || nodes->elements.element_size != sizeof(lxa_dom_element_t)
-        || record.payload >= nodes->elements.bytes.length / sizeof(lxa_dom_element_t)) {
+        || record->payload >= nodes->elements.bytes.length / sizeof(lxa_dom_element_t)) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = (const lxa_dom_element_t *) nodes->elements.bytes.data + record.payload;
+    *out = (const lxa_dom_element_t *) nodes->elements.bytes.data + record->payload;
     return LXA_OK;
 }
 
@@ -1248,42 +1254,53 @@ element_namespace(const lxa_dom_element_t *payload, lxa_dom_namespace_t *out)
 }
 
 lxa_status_t
+lxa_dom_element_read_owned(const lxa_dom_nodes_t *nodes,
+    const lxa_dom_record_t *record, lxa_span_t *name, lxa_dom_namespace_t *ns)
+{
+    const lxa_dom_element_t *payload;
+    lxa_dom_namespace_t namespace_id = 0;
+    if (name != NULL) *name = (lxa_span_t){0};
+    if (ns != NULL) *ns = 0;
+    if (name == NULL && ns == NULL) return LXA_ERROR_ARGUMENT;
+    lxa_status_t status = element_payload(nodes, record, &payload);
+    if (status == LXA_OK && ns != NULL) status = element_namespace(payload, &namespace_id);
+    if (status == LXA_OK && name != NULL) status = element_name(nodes, payload, name);
+    if (status == LXA_OK && ns != NULL) *ns = namespace_id;
+    return status;
+}
+
+lxa_status_t
 lxa_dom_nodes_element_name(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_span_t *out)
 {
-    const lxa_dom_element_t *payload;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = (lxa_span_t){0};
-    lxa_status_t status = element_payload(nodes, element, &payload);
-    return status == LXA_OK ? element_name(nodes, payload, out) : status;
+    lxa_dom_record_t *record;
+    lxa_status_t status = lxa_dom_nodes_resolve(nodes, element, &record);
+    return status == LXA_OK ? lxa_dom_element_read_owned(nodes, record, out, NULL) : status;
 }
 
 lxa_status_t
 lxa_dom_nodes_element_namespace(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t element, lxa_dom_namespace_t *out)
 {
-    const lxa_dom_element_t *payload;
     if (out == NULL) return LXA_ERROR_ARGUMENT;
     *out = 0;
-    if (element_payload(nodes, element, &payload) != LXA_OK)
-        return LXA_ERROR_ARGUMENT;
-    return element_namespace(payload, out);
+    lxa_dom_record_t *record;
+    lxa_status_t status = lxa_dom_nodes_resolve(nodes, element, &record);
+    return status == LXA_OK ? lxa_dom_element_read_owned(nodes, record, NULL, out) : status;
 }
 
 lxa_status_t
 lxa_dom_nodes_element_read(const lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
-    const lxa_dom_element_t *payload;
-    lxa_dom_namespace_t namespace_id;
     if (name != NULL) *name = (lxa_span_t){0};
     if (ns != NULL) *ns = 0;
     if (name == NULL || ns == NULL) return LXA_ERROR_ARGUMENT;
-    lxa_status_t status = element_payload(nodes, element, &payload);
-    if (status == LXA_OK) status = element_namespace(payload, &namespace_id);
-    if (status == LXA_OK) status = element_name(nodes, payload, name);
-    if (status == LXA_OK) *ns = namespace_id;
-    return status;
+    lxa_dom_record_t *record;
+    lxa_status_t status = lxa_dom_nodes_resolve(nodes, element, &record);
+    return status == LXA_OK ? lxa_dom_element_read_owned(nodes, record, name, ns) : status;
 }
 
 /* Treat a bound fragment's template as its virtual parent. Physical links

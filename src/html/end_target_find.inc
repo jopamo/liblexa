@@ -1,7 +1,7 @@
 #include "base/budget_internal.h"
 
 /* Instantiate end-target searches with a borrowed stack and static access.
- * LXA_SCOPE_{NAME,FIRST_NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,TAG_ID,NAMESPACE,PLAN_NAME,IDENTITY},
+ * LXA_SCOPE_{NAME,FIRST_NAME,VIEW,LENGTH,BUDGET,REASON,READ,READ_NAME,TAG_ID,NAMESPACE,PLAN_NAME,IDENTITY,IDENTITY_TYPE},
  * LXA_ORDINARY_{NAME,FIRST_NAME,PLAN_NAME}, LXA_{OPEN,SCOPED}_REFERENCE_NAME and
  * LXA_COLUMN_GROUP_{NAME,READ_NAME} and LXA_{IMPLIED,RUBY,SELECT,TABLE_CONTEXT,LIST_ITEM}_PLAN_NAME
  * and LXA_TEMPLATE_{MISSING_TABLE,END,TABLE_SCAN,MATHML_TABLE}_PLAN_NAME,
@@ -595,12 +595,12 @@ LXA_SCOPE_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary, lxa_span_t targ
 
 static inline lxa_status_t
 LXA_OPEN_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
-    uint64_t target, size_t *index)
+    LXA_SCOPE_IDENTITY_TYPE target, size_t *index)
 {
     size_t length = LXA_SCOPE_LENGTH(view);
     *index = length;
     for (size_t i = boundary; i < length; ++i) {
-        uint64_t identity;
+        LXA_SCOPE_IDENTITY_TYPE identity;
         lxa_status_t status = lxa_budget_charge_work(
             LXA_SCOPE_BUDGET(view), 1, LXA_SCOPE_REASON(view));
         if (status != LXA_OK) return status;
@@ -616,12 +616,12 @@ LXA_OPEN_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
 
 static inline lxa_status_t
 LXA_SCOPED_REFERENCE_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
-    uint64_t target, size_t *index)
+    LXA_SCOPE_IDENTITY_TYPE target, size_t *index)
 {
     size_t i = LXA_SCOPE_LENGTH(view);
     *index = i;
     while (i > boundary) {
-        uint64_t identity;
+        LXA_SCOPE_IDENTITY_TYPE identity;
         lxa_span_t name;
         lxa_dom_namespace_t ns;
         lxa_status_t status = lxa_budget_charge_work(
@@ -974,7 +974,7 @@ LXA_TABLE_CONTEXT_PLAN_NAME(const LXA_SCOPE_VIEW *view, size_t boundary,
 }
 
 static inline lxa_status_t
-LXA_FORM_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, uint64_t identity,
+LXA_FORM_END_PLAN_NAME(const LXA_SCOPE_VIEW *view, LXA_SCOPE_IDENTITY_TYPE identity,
     lxa_html_form_end_plan_t *out)
 {
     bool column_group;

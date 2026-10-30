@@ -1,6 +1,6 @@
 /* Instantiate accepted root form-end effects over a prepared owner/view. */
 static inline lxa_status_t
-LXA_FORM_END_EXECUTE_NAME(const LXA_FORM_END_VIEW *view, uint64_t *owner)
+LXA_FORM_END_EXECUTE_NAME(const LXA_FORM_END_VIEW *view, LXA_FORM_END_IDENTITY_TYPE *owner)
 {
     lxa_html_form_end_plan_t plan;
     lxa_status_t status = LXA_FORM_END_PLAN(view, *owner, &plan);

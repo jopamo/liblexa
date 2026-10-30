@@ -30,7 +30,7 @@ enum {
 };
 
 /* Only stack membership matters. Rebuild the suffix after non-LIFO edits;
- * ordinary pops expose an already computed prefix. No store pointers survive. */
+ * ordinary pops expose an already computed prefix. This does not inspect nodes. */
 static void
 repair_button_prefix(lxa_html_open_entry_t *entries, size_t start, size_t length)
 {
@@ -59,7 +59,8 @@ make_open_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    out->handle = ref.handle;
+    lxa_status_t status = lxa_dom_nodes_resolve(tree->nodes, ref, &out->node);
+    if (status != LXA_OK) return status;
     const lxa_dom_insertion_depth_t *proof = &tree->insertion_depth;
     if (proof->owner == tree->nodes && proof->epoch == ref.epoch
         && proof->revision != 0 && proof->revision == tree->nodes->depth_revision) {
@@ -82,7 +83,7 @@ make_element_entry(const lxa_html_tree_t *tree, lxa_dom_ref_t ref,
     lxa_span_t name;
     lxa_dom_namespace_t ns;
     if (status == LXA_OK)
-        status = lxa_dom_nodes_element_read(tree->nodes, ref, &name, &ns);
+        status = lxa_html_tree_read_element(tree, out->node, &name, &ns);
     if (status == LXA_OK) {
         out->tag_id = lxa_html_tree_tag_id(name, ns);
         out->button_flags = BUTTON_KNOWN;
@@ -135,7 +136,7 @@ remember_fixed_depth(lxa_html_tree_t *tree, lxa_dom_ref_t ref)
 {
     lxa_html_open_entry_t *entry = fixed_depth_entry(tree, ref);
     if (entry == NULL) return LXA_OK;
-    if (entry->handle == ref.handle && entry->actual_depth != 0
+    if (lxa_html_open_ref(tree, entry).handle == ref.handle && entry->actual_depth != 0
         && entry->depth_revision == tree->nodes->depth_revision)
         return LXA_OK;
     return make_open_entry(tree, ref, entry);
@@ -153,22 +154,22 @@ use_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent,
         if (length == 0) continue;
         const lxa_html_open_entry_t *entry =
             (const lxa_html_open_entry_t *) stacks[i]->bytes.data + length - 1;
-        if (entry->handle == parent.handle && entry->actual_depth != 0
+        if (lxa_html_open_ref(tree, entry).handle == parent.handle && entry->actual_depth != 0
             && entry->depth_revision != 0
             && entry->depth_revision == tree->nodes->depth_revision) {
             *depth = (lxa_dom_insertion_depth_t){
                 tree->nodes, tree->document.epoch, entry->depth_revision,
-                entry->handle, LXA_HANDLE_NONE, entry->actual_depth};
+                lxa_html_open_ref(tree, entry).handle, LXA_HANDLE_NONE, entry->actual_depth};
             return;
         }
     }
     const lxa_html_open_entry_t *entry = fixed_depth_entry(tree, parent);
-    if (entry != NULL && entry->handle == parent.handle
+    if (entry != NULL && lxa_html_open_ref(tree, entry).handle == parent.handle
         && entry->actual_depth != 0 && entry->depth_revision != 0
         && entry->depth_revision == tree->nodes->depth_revision)
         *depth = (lxa_dom_insertion_depth_t){
             tree->nodes, tree->document.epoch, entry->depth_revision,
-            entry->handle, LXA_HANDLE_NONE, entry->actual_depth};
+            lxa_html_open_ref(tree, entry).handle, LXA_HANDLE_NONE, entry->actual_depth};
 }
 
 static lxa_status_t
@@ -180,7 +181,7 @@ remember_insertion_depth(lxa_html_tree_t *tree, lxa_dom_ref_t parent)
         if (length == 0) continue;
         lxa_html_open_entry_t *entry =
             (lxa_html_open_entry_t *) stacks[i]->bytes.data + length - 1;
-        if (entry->handle == parent.handle) {
+        if (lxa_html_open_ref(tree, entry).handle == parent.handle) {
             if (entry->actual_depth != 0
                 && entry->depth_revision == tree->nodes->depth_revision)
                 return LXA_OK;
@@ -525,17 +526,16 @@ pop_table_elements(lxa_html_tree_t *tree, size_t keep)
     return tree_pop_table(tree, keep, false);
 }
 
-static lxa_status_t find_open_reference(lxa_html_tree_t *,
-    const lxa_vector_t *, size_t, lxa_dom_ref_t, size_t *);
+static lxa_status_t find_open_node(lxa_html_tree_t *,
+    const lxa_vector_t *, size_t, lxa_dom_record_t *, size_t *);
 
 static lxa_status_t
-reference_is_open(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool *found)
+reference_is_open(lxa_html_tree_t *tree, lxa_dom_record_t *node, bool *found)
 {
     size_t index;
     lxa_vector_t *elements = formatting_elements(tree);
-    lxa_status_t status = find_open_reference(tree, elements,
-        formatting_boundary(tree),
-        ref, &index);
+    lxa_status_t status = find_open_node(tree, elements,
+        formatting_boundary(tree), node, &index);
     if (status == LXA_OK)
         *found = index != lxa_vector_length(elements);
     return status;
@@ -661,11 +661,11 @@ remove_formatting(lxa_html_tree_t *tree, size_t index)
 }
 
 static inline lxa_status_t
-formatting_reference(const lxa_html_tree_t *tree, size_t index, uint64_t *identity)
+formatting_reference(const lxa_html_tree_t *tree, size_t index, lxa_dom_record_t **identity)
 {
     const lxa_html_formatting_entry_t *entries =
         (const lxa_html_formatting_entry_t *) tree->formatting.bytes.data;
-    *identity = entries[index].element.handle;
+    *identity = entries[index].element;
     return LXA_OK;
 }
 
@@ -675,7 +675,9 @@ formatting_reference(const lxa_html_tree_t *tree, size_t index, uint64_t *identi
 #define LXA_FORMATTING_REFERENCE_READ formatting_reference
 #define LXA_FORMATTING_REFERENCE_BUDGET(view) ((view)->nodes->budget)
 #define LXA_FORMATTING_REFERENCE_REASON(view) (&(view)->nodes->limit_reason)
+#define LXA_FORMATTING_REFERENCE_TYPE lxa_dom_record_t *
 #include "html/formatting_reference.inc"
+#undef LXA_FORMATTING_REFERENCE_TYPE
 #undef LXA_FORMATTING_REFERENCE_NAME
 #undef LXA_FORMATTING_REFERENCE_VIEW
 #undef LXA_FORMATTING_REFERENCE_LENGTH
@@ -686,7 +688,11 @@ formatting_reference(const lxa_html_tree_t *tree, size_t index, uint64_t *identi
 static lxa_status_t
 find_formatting_reference(lxa_html_tree_t *tree, lxa_dom_ref_t ref, size_t *index)
 {
-    return tree_find_formatting_reference(tree, formatting_start(tree), ref.handle, index);
+    lxa_dom_record_t *node;
+    lxa_status_t status = lxa_dom_nodes_resolve(tree->nodes, ref, &node);
+    return status == LXA_OK
+        ? tree_find_formatting_reference(tree, formatting_start(tree), node, index)
+        : status;
 }
 
 static lxa_status_t
@@ -716,16 +722,17 @@ reserve_formatting(lxa_html_tree_t *tree, size_t count)
 static lxa_status_t
 append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
 {
-    lxa_html_formatting_entry_t entry = {
-        .element = ref, .previous_marker = tree->formatting_marker};
+    lxa_html_formatting_entry_t entry = {.previous_marker = tree->formatting_marker};
     size_t index = lxa_vector_length(&tree->formatting);
     lxa_status_t status;
     if (!lxa_html_formatting_marker_valid(index, entry.previous_marker)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    status = lxa_budget_charge_impl(tree->nodes->budget,
-        LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
+    status = lxa_dom_nodes_resolve(tree->nodes, ref, &entry.element);
+    if (status == LXA_OK)
+        status = lxa_budget_charge_impl(tree->nodes->budget,
+            LXA_BUDGET_ACTIVE_FORMATTING, 1, &tree->nodes->limit_reason);
     if (status == LXA_OK) {
         status = lxa_vector_push(&tree->formatting, &entry);
         if (status != LXA_OK)
@@ -738,20 +745,20 @@ append_formatting(lxa_html_tree_t *tree, lxa_dom_ref_t ref, bool marker)
 
 typedef struct {
     lxa_html_tree_t *tree;
-    lxa_dom_ref_t element;
+    lxa_dom_record_t *element;
 } tree_formatting_view_t;
 
 static inline lxa_status_t
 tree_formatting_name(const tree_formatting_view_t *view, lxa_span_t *name)
 {
-    return lxa_dom_nodes_element_name(view->tree->nodes, view->element, name);
+    return lxa_html_tree_read_element(view->tree, view->element, name, NULL);
 }
 
 static inline lxa_status_t
 tree_formatting_next(const tree_formatting_view_t *view, lxa_dom_ref_t cursor,
     lxa_dom_ref_t *out)
 {
-    return lxa_dom_nodes_attribute_next(view->tree->nodes, view->element, cursor, out);
+    return lxa_dom_nodes_attribute_next(view->tree->nodes, lxa_html_tree_ref(view->tree, view->element), cursor, out);
 }
 
 static inline lxa_status_t
@@ -796,8 +803,8 @@ static inline lxa_status_t
 tree_formatting_list_name(const tree_formatting_list_view_t *view, size_t index,
     lxa_span_t *name)
 {
-    return lxa_dom_nodes_element_name(view->tree->nodes,
-        formatting_entries(view->tree)[index].element, name);
+    return lxa_html_tree_read_element(view->tree,
+        formatting_entries(view->tree)[index].element, name, NULL);
 }
 
 static inline lxa_status_t
@@ -949,8 +956,9 @@ reconstruct_formatting(lxa_html_tree_t *tree)
             &parent, &before);
         if (status == LXA_OK)
             status = reconstruct_element_at(tree, formatting_elements(tree),
-                formatting_entries(tree)[i].element, parent, before, &clone);
-        if (status == LXA_OK) formatting_entries(tree)[i++].element = clone;
+                lxa_html_tree_ref(tree, formatting_entries(tree)[i].element), parent, before, &clone);
+        if (status == LXA_OK)
+            status = lxa_dom_nodes_resolve(tree->nodes, clone, &formatting_entries(tree)[i++].element);
     }
     return status;
 }
@@ -1094,8 +1102,7 @@ static inline lxa_status_t
 tree_scope_read(const lxa_html_tree_scope_view_t *view, size_t index,
     lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
-    return lxa_dom_nodes_element_read(
-        view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name, ns);
+    return lxa_html_tree_read_element(view->tree, view->entries[index].node, name, ns);
 }
 
 static inline uint16_t
@@ -1107,9 +1114,9 @@ tree_scope_tag_id(const lxa_html_tree_scope_view_t *view, size_t index,
 
 static inline lxa_status_t
 tree_scope_identity(const lxa_html_tree_scope_view_t *view, size_t index,
-    uint64_t *identity)
+    lxa_dom_record_t **identity)
 {
-    *identity = view->entries[index].handle;
+    *identity = view->entries[index].node;
     return LXA_OK;
 }
 
@@ -1117,10 +1124,9 @@ static inline lxa_status_t
 tree_root_table_read(const lxa_html_tree_scope_view_t *view, size_t index,
     lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
-    lxa_status_t status = lxa_dom_nodes_element_namespace(view->tree->nodes,
-        lxa_html_open_ref(view->tree, &view->entries[index]), ns);
+    lxa_status_t status = lxa_html_tree_read_element(view->tree, view->entries[index].node, NULL, ns);
     if (status == LXA_OK && *ns == LXA_DOM_NS_HTML)
-        status = lxa_dom_nodes_element_name(view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name);
+        status = lxa_html_tree_read_element(view->tree, view->entries[index].node, name, NULL);
     return status;
 }
 
@@ -1142,8 +1148,7 @@ static inline lxa_status_t
 tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
     lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
-    return lxa_dom_nodes_element_read(
-        view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name, ns);
+    return lxa_html_tree_read_element(view->tree, view->entries[index].node, name, ns);
 }
 
 #define LXA_ROOT_PART_CLOSE_NAME tree_root_table_part_close_plan
@@ -1230,7 +1235,9 @@ tree_root_part_close_read(const lxa_html_tree_scope_view_t *view, size_t index,
 #define LXA_SCOPE_READ_NAME(view, index, name) \
     lxa_dom_nodes_element_name((view)->tree->nodes, \
         lxa_html_open_ref((view)->tree, &(view)->entries[index]), name)
+#define LXA_SCOPE_IDENTITY_TYPE lxa_dom_record_t *
 #include "html/end_target_find.inc"
+#undef LXA_SCOPE_IDENTITY_TYPE
 #undef LXA_SCOPE_READ
 #undef LXA_SCOPE_TAG_ID
 #undef LXA_SCOPE_READ_NAME
@@ -1300,7 +1307,9 @@ tree_pop_table(lxa_html_tree_t *tree, size_t keep, bool template_context)
     pop_elements((view)->tree, &(view)->tree->open_elements, keep)
 #define LXA_FORM_END_REMOVE(view, index) \
     remove_open_element((view)->tree, &(view)->tree->open_elements, index)
+#define LXA_FORM_END_IDENTITY_TYPE lxa_dom_record_t *
 #include "html/form_end.inc"
+#undef LXA_FORM_END_IDENTITY_TYPE
 #undef LXA_FORM_END_EXECUTE_NAME
 #undef LXA_FORM_END_VIEW
 #undef LXA_FORM_END_PLAN
@@ -1334,8 +1343,7 @@ open_entry_namespace(const lxa_html_tree_t *tree,
         *out = (lxa_dom_namespace_t) liblexa_html_tag_metadata_table[id].namespace_id;
         return LXA_OK;
     }
-    return lxa_dom_nodes_element_namespace(tree->nodes,
-        lxa_html_open_ref(tree, entry), out);
+    return lxa_html_tree_read_element(tree, entry->node, NULL, out);
 }
 
 #define LXA_CURRENT_NAMESPACE_NAME tree_current_namespace
@@ -1360,7 +1368,7 @@ static inline lxa_status_t
 tree_foreign_name(const lxa_html_tree_scope_view_t *view, size_t index,
     lxa_span_t *name)
 {
-    return lxa_dom_nodes_element_name(view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name);
+    return lxa_html_tree_read_element(view->tree, view->entries[index].node, name, NULL);
 }
 
 static inline lxa_status_t
@@ -1391,13 +1399,22 @@ tree_foreign_breakout_boundary(const lxa_html_tree_scope_view_t *view,
 #undef LXA_FOREIGN_BREAKOUT_PLAN_NAME
 
 static lxa_status_t
-find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
-    size_t boundary, lxa_dom_ref_t ref, size_t *index)
+find_open_node(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+    size_t boundary, lxa_dom_record_t *node, size_t *index)
 {
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) elements->bytes.data,
         lxa_vector_length(elements)};
-    return tree_open_reference_search(&view, boundary, ref.handle, index);
+    return tree_open_reference_search(&view, boundary, node, index);
+}
+
+static lxa_status_t
+find_open_reference(lxa_html_tree_t *tree, const lxa_vector_t *elements,
+    size_t boundary, lxa_dom_ref_t ref, size_t *index)
+{
+    lxa_dom_record_t *node;
+    lxa_status_t status = lxa_dom_nodes_resolve(tree->nodes, ref, &node);
+    return status == LXA_OK ? find_open_node(tree, elements, boundary, node, index) : status;
 }
 
 static lxa_status_t
@@ -1783,7 +1800,7 @@ typedef struct {
 } tree_adopt_view_t;
 
 static inline lxa_status_t
-tree_adopt_reference(const tree_adopt_view_t *view, size_t index, uint64_t *identity)
+tree_adopt_reference(const tree_adopt_view_t *view, size_t index, lxa_dom_record_t **identity)
 {
     return formatting_reference(view->tree, index, identity);
 }
@@ -1799,7 +1816,9 @@ tree_adopt_reference(const tree_adopt_view_t *view, size_t index, uint64_t *iden
 #define LXA_ADOPT_SCOPED(view, identity, index) \
     tree_scoped_reference_search(&(view)->open, (view)->boundary, identity, index)
 #define LXA_ADOPT_SPECIAL(view, start, index) tree_special_find(&(view)->open, start, index)
+#define LXA_ADOPT_IDENTITY_TYPE lxa_dom_record_t *
 #include "html/formatting_adopt.inc"
+#undef LXA_ADOPT_IDENTITY_TYPE
 #undef LXA_ADOPT_NAME
 #undef LXA_ADOPT_VIEW
 #undef LXA_ADOPT_FORMATTING_LENGTH
@@ -1836,7 +1855,7 @@ tree_adoption_open_identity(const tree_adoption_view_t *view, size_t index, lxa_
 static inline lxa_status_t
 tree_adoption_identity(const tree_adoption_view_t *view, size_t index, lxa_dom_ref_t *identity)
 {
-    *identity = formatting_entries(view->tree)[index].element;
+    *identity = lxa_html_tree_ref(view->tree, formatting_entries(view->tree)[index].element);
     return LXA_OK;
 }
 
@@ -1869,7 +1888,8 @@ tree_adoption_inner(tree_adoption_view_t *view, size_t entry, size_t node,
     if (status == LXA_OK)
         status = insert_constructed(view->tree, view->common, clone, (lxa_dom_ref_t){0});
     if (status != LXA_OK) return status;
-    formatting_entries(view->tree)[entry].element = clone;
+    status = lxa_dom_nodes_resolve(view->tree->nodes, clone, &formatting_entries(view->tree)[entry].element);
+    if (status != LXA_OK) return status;
     lxa_html_open_entry_t replacement;
     status = make_element_entry(view->tree, clone, &replacement);
     if (status != LXA_OK) return status;
@@ -1917,7 +1937,9 @@ tree_adoption_commit(tree_adoption_view_t *view, lxa_dom_ref_t clone, size_t for
     lxa_html_tree_t *tree = view->tree;
     lxa_status_t status = remove_formatting(tree, formatting_index);
     if (status != LXA_OK) return status;
-    lxa_html_formatting_entry_t entry = {.element = clone};
+    lxa_html_formatting_entry_t entry = {0};
+    status = lxa_dom_nodes_resolve(tree->nodes, clone, &entry.element);
+    if (status != LXA_OK) return status;
     status = lxa_budget_charge_impl(tree->nodes->budget, LXA_BUDGET_ACTIVE_FORMATTING,
         1, &tree->nodes->limit_reason);
     if (status != LXA_OK) return status;
@@ -4045,7 +4067,7 @@ template_plan_paragraph_close(lxa_html_tree_t *tree, size_t *index)
 static lxa_status_t
 template_container_read(const lxa_html_tree_scope_view_t *view, size_t index, lxa_span_t *name)
 {
-    return lxa_dom_nodes_element_name(view->tree->nodes, lxa_html_open_ref(view->tree, &view->entries[index]), name);
+    return lxa_html_tree_read_element(view->tree, view->entries[index].node, name, NULL);
 }
 
 #define LXA_TEMPLATE_CONTAINER_NAME tree_template_container_plan
@@ -4515,7 +4537,10 @@ tree_body_end_form(lxa_html_tree_t *tree)
     const lxa_html_tree_scope_view_t view = {
         tree, (const lxa_html_open_entry_t *) tree->open_elements.bytes.data,
         lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t))};
-    return tree_end_form(&view, &tree->form.handle);
+    lxa_dom_record_t *owner = NULL;
+    lxa_status_t status = tree->form.handle == LXA_HANDLE_NONE ? LXA_OK
+                                                               : lxa_dom_nodes_resolve(tree->nodes, tree->form, &owner);
+    return status == LXA_OK ? tree_end_form(&view, &owner) : status;
 }
 
 static lxa_status_t
@@ -4744,7 +4769,7 @@ tree_start_frameset_eligible(tree_foster_text_view_t *view, bool *eligible)
     const lxa_html_open_entry_t *open = (const lxa_html_open_entry_t *) tree->open_elements.bytes.data;
     size_t length = lxa_vector_length_sized(&tree->open_elements, sizeof(lxa_html_open_entry_t));
     *eligible = lxa_html_tree_frameset_body_eligible(tree->frameset_ok,
-        tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : open[0].handle);
+        tree->body.handle, length, length == 0 ? LXA_HANDLE_NONE : lxa_html_open_ref(tree, &open[0]).handle);
     return LXA_OK;
 }
 
@@ -5727,6 +5752,10 @@ lxa_html_tree_on_token(void *context,
         return tree->failure;
     }
     if (tree->mode == LXA_TREE_DONE) return LXA_ERROR_ARGUMENT;
+    if (!lxa_html_tree_epoch_valid(tree)) {
+        tree->failure = LXA_ERROR_INTERNAL;
+        return tree->failure;
+    }
     if ((lxa_html_tree_mode_has_template(tree->mode, tree->text_context.return_mode)
             != (tree->template_fragment.handle != LXA_HANDLE_NONE))
         || (unsigned) tree->document_mode > LXA_HTML_QUIRKS
@@ -5748,6 +5777,8 @@ lxa_html_tree_on_token(void *context,
         return tree->failure;
     }
     tree->failure = consume(tree, tokenizer, token);
+    if (tree->failure == LXA_OK && !lxa_html_tree_epoch_valid(tree))
+        tree->failure = LXA_ERROR_INTERNAL;
     if (tree->failure == LXA_OK && tokenizer != NULL
         && token != NULL && token->kind != LXA_HTML_EOF) {
         bool in_template = tree->template_fragment.handle != LXA_HANDLE_NONE;

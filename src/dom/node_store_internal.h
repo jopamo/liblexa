@@ -71,6 +71,16 @@ lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
 
 typedef char lxa_dom_record_size_matches_fields[sizeof(lxa_dom_record_t) == 16 + 5 * sizeof(lxa_dom_record_t *) ? 1 : -1];
 
+/* Resolve a checked handle. The owned pointer survives growth, not reset/reuse
+ * or destruction. No payload address is retained. Failure clears out. */
+lxa_status_t lxa_dom_nodes_resolve(const lxa_dom_nodes_t *nodes,
+    lxa_dom_ref_t handle, lxa_dom_record_t **out);
+/* The caller proves record belongs to the active store epoch. Read name and/or
+ * namespace without resolving a handle again. Name spans expire on string growth.
+ * No callbacks or allocation occur during this read. */
+lxa_status_t lxa_dom_element_read_owned(const lxa_dom_nodes_t *nodes,
+    const lxa_dom_record_t *record, lxa_span_t *name, lxa_dom_namespace_t *ns);
+
 /* Copies a checked record. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t handle,

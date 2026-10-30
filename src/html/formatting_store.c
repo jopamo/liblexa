@@ -710,7 +710,9 @@ list_reference(const lxa_html_formatting_list_t *list, size_t index, uint64_t *i
 #define LXA_FORMATTING_REFERENCE_READ list_reference
 #define LXA_FORMATTING_REFERENCE_BUDGET(view) ((view)->store->budget)
 #define LXA_FORMATTING_REFERENCE_REASON(view) (&(view)->store->limit_reason)
+#define LXA_FORMATTING_REFERENCE_TYPE uint64_t
 #include "html/formatting_reference.inc"
+#undef LXA_FORMATTING_REFERENCE_TYPE
 #undef LXA_FORMATTING_REFERENCE_NAME
 #undef LXA_FORMATTING_REFERENCE_VIEW
 #undef LXA_FORMATTING_REFERENCE_LENGTH
@@ -967,7 +969,9 @@ adopt_reference(const formatting_stack_view_t *view, size_t index, uint64_t *ide
     lxa_html_control_stack_scoped_reference_find((view)->stack, (view)->boundary, identity, index))
 #define LXA_ADOPT_SPECIAL(view, start, index) adopt_stack_status(view, \
     lxa_html_control_stack_special_find((view)->stack, start, index))
+#define LXA_ADOPT_IDENTITY_TYPE uint64_t
 #include "html/formatting_adopt.inc"
+#undef LXA_ADOPT_IDENTITY_TYPE
 #undef LXA_ADOPT_NAME
 #undef LXA_ADOPT_VIEW
 #undef LXA_ADOPT_FORMATTING_LENGTH
