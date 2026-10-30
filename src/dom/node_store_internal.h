@@ -99,7 +99,7 @@ lxa_status_t lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t text, lxa_span_t bytes);
 
 typedef struct {
-    lxa_id_t element, fragment;
+    lxa_dom_record_t *element, *fragment;
 } lxa_dom_template_t;
 
 /* Private store layout, shared with DOM code and invariant tests.
@@ -213,8 +213,9 @@ typedef struct {
  * The descriptor and borrowed input spans must outlive the call and must not
  * alias store storage. The private attribute reader only resolves input:
  * it must not access/mutate the store, allocate, or call external observers.
- * Allocator reentry remains forbidden. IDs, never array pointers, cross grows;
- * the ownership window ends on return, including failure. No cached proof
+ * Allocator reentry remains forbidden. Owned record pointers and payload
+ * offsets cross grows, never payload pointers. The ownership window ends
+ * on return, including failure. No cached proof
  * survives linking, external mutation, deletion, reset or a later operation.
  * Publish out when the element is created. Later failure retains that element,
  * earlier attributes and all accepted charges, as the separate checked calls do.
