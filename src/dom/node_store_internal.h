@@ -9,7 +9,8 @@
 
 /* The engine record contains IDs only. Drafts have no published links or
  * payload; typed payload construction and tree publication are separate.
- * No caller may retain an address into the growing node array.
+ * Record addresses survive growth, but not reset, reuse or destruction.
+ * Typed payloads and strings still use relocatable storage.
  */
 typedef struct {
     lxa_id_t parent, first_child, last_child, prev, next;
@@ -66,7 +67,7 @@ lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
 
 typedef char lxa_dom_record_size_must_be_32[sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
 
-/* Copies the record, avoiding a pointer into a relocatable array. */
+/* Copies a checked record. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t handle,
     lxa_dom_record_t *out);
@@ -101,9 +102,14 @@ typedef struct {
  * [0, retired) contains slots retired after a generation wrap. Active
  * records occupy [retired, records.length); no retired ID is reused.
  */
+typedef struct {
+    lxa_dom_record_t *blocks[33];
+    size_t length, capacity;
+} lxa_dom_record_store_t;
+
 struct lxa_dom_nodes {
     lxa_allocator_t allocator;
-    lxa_vector_t records;
+    lxa_dom_record_store_t records;
     lxa_vector_t characters;
     lxa_vector_t pis; /* target and data spans, stored separately from text */
     lxa_vector_t elements;
@@ -125,6 +131,44 @@ struct lxa_dom_nodes {
     size_t charged_attrs;
     lxa_budget_kind_t limit_reason;
 };
+
+/* Slot zero has its own block; subsequent blocks cover [2^k, 2^(k+1)).
+ * The caller proves id is allocated and belongs to this store. */
+static inline unsigned
+lxa_dom_record_block(lxa_id_t id)
+{
+    unsigned bit = 0;
+    if (id == 0) return 0;
+    if (id >= UINT32_C(1) << 16) {
+        id >>= 16;
+        bit += 16;
+    }
+    if (id >= UINT32_C(1) << 8) {
+        id >>= 8;
+        bit += 8;
+    }
+    if (id >= UINT32_C(1) << 4) {
+        id >>= 4;
+        bit += 4;
+    }
+    if (id >= UINT32_C(1) << 2) {
+        id >>= 2;
+        bit += 2;
+    }
+    if (id >= UINT32_C(1) << 1) ++bit;
+    return bit + 1;
+}
+
+static inline lxa_dom_record_t *
+lxa_dom_record_at(const lxa_dom_nodes_t *nodes, lxa_id_t id)
+{
+    unsigned block = lxa_dom_record_block(id);
+    lxa_id_t base = block == 0 ? 0 : UINT32_C(1) << (block - 1);
+    return nodes->records.blocks[block] + (id - base);
+}
+
+/* Reserve without publishing records. Earlier blocks remain owned on failure. */
+lxa_status_t lxa_dom_nodes_reserve_records(lxa_dom_nodes_t *nodes, size_t count);
 
 typedef enum {
     LXA_DOM_ATTR_NS_NONE,
