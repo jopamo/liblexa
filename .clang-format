@@ -1,0 +1,28 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
+# Retain manual line wrapping.
+ColumnLimit: 0
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+BreakAfterReturnType: AllDefinitions
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: false
+IndentCaseLabels: true
+IndentGotoLabels: false
+AlignAfterOpenBracket: false
+AlignOperands: DontAlign
+AlignEscapedNewlines: DontAlign
+AlignTrailingComments:
+  Kind: Never
+BreakBeforeBinaryOperators: NonAssignment
+SpaceAfterCStyleCast: true
+SortIncludes:
+  Enabled: false
+ReflowComments: Never
+BreakStringLiterals: false

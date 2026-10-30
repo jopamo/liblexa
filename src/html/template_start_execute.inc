@@ -20,13 +20,13 @@ LXA_TEMPLATE_START_NAME(LXA_TEMPLATE_START_VIEW *view,
     out = handled ? LXA_HTML_TEMPLATE_START_CONSUMED : LXA_HTML_TEMPLATE_START_CONTINUE;
 done:
     switch (out) {
-    case LXA_HTML_TEMPLATE_START_CONTINUE:
-    case LXA_HTML_TEMPLATE_START_CONSUMED:
-    case LXA_HTML_TEMPLATE_START_REPROCESS:
-        *action = out;
-        return LXA_OK;
-    default:
-        assert(false);
-        return LXA_ERROR_INTERNAL;
+        case LXA_HTML_TEMPLATE_START_CONTINUE:
+        case LXA_HTML_TEMPLATE_START_CONSUMED:
+        case LXA_HTML_TEMPLATE_START_REPROCESS:
+            *action = out;
+            return LXA_OK;
+        default:
+            assert(false);
+            return LXA_ERROR_INTERNAL;
     }
 }

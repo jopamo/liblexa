@@ -26,7 +26,7 @@ typedef enum {
 
 /* Malformed raw-input byte offset; a non-OK return aborts publication. */
 typedef lxa_status_t (*lxa_html_input_error_callback_t)(void *context,
-                                                         size_t offset);
+    size_t offset);
 
 /* Private consumer candidate. A successful parse owns
  * one ID store; all returned references and borrowed spans expire at destroy.

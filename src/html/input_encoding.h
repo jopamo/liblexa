@@ -10,15 +10,15 @@
  * owns the bytes and checks its input-size limit before decoding.
  */
 lxa_status_t lxa_html_input_bom(lxa_span_t bytes,
-                                const lxa_encoding_t **encoding,
-                                size_t *prefix_length);
+    const lxa_encoding_t **encoding,
+    size_t *prefix_length);
 
 /* Prescan only the first 1024 bytes for <meta charset> or a pragma-qualified
  * <meta content>. The returned label borrows the input; found distinguishes
  * an empty label from no declaration.
  */
 lxa_status_t lxa_html_input_meta_charset(lxa_span_t bytes,
-                                         bool *found, lxa_span_t *label);
+    bool *found, lxa_span_t *label);
 
 /* Extract the same borrowed label from a meta content attribute used by
  * the bounded prescan. The caller must first confirm a real meta element
@@ -28,7 +28,7 @@ lxa_status_t lxa_html_input_meta_charset(lxa_span_t bytes,
  * found distinguishes a missing label from an empty one.
  */
 lxa_status_t lxa_html_input_content_charset(lxa_span_t content,
-                                             bool *found, lxa_span_t *label);
+    bool *found, lxa_span_t *label);
 
 /* WHATWG HTML's case-sensitive <?xml ... encoding="..."> fallback is
  * considered only when the meta prescan found nothing. The borrowed label
@@ -37,7 +37,7 @@ lxa_status_t lxa_html_input_content_charset(lxa_span_t content,
  * the selector checks the raw-input limit before calling it.
  */
 lxa_status_t lxa_html_input_xml_encoding(lxa_span_t bytes,
-                                         bool *found, lxa_span_t *label);
+    bool *found, lxa_span_t *label);
 
 typedef enum {
     LXA_HTML_INPUT_OK,

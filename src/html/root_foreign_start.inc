@@ -9,7 +9,8 @@ LXA_ROOT_FOREIGN_START_NAME(LXA_ROOT_FOREIGN_START_VIEW *view,
     if (status != LXA_OK) return status;
     *mode = LXA_TREE_IN_BODY;
     lxa_dom_namespace_t ns = lxa_html_tree_name_equals(token->name, "svg", 3)
-        ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
+        ? LXA_DOM_NS_SVG
+        : LXA_DOM_NS_MATHML;
     status = LXA_ROOT_FOREIGN_START_INSERT(view, token, ns);
     if (status == LXA_OK && token->self_closing) status = LXA_ROOT_FOREIGN_START_POP(view);
     return status;

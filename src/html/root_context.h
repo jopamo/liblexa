@@ -397,7 +397,9 @@ lxa_status_t lxa_html_root_context_end_formatting(lxa_html_root_context_t *conte
 lxa_status_t lxa_html_root_context_end_form(lxa_html_root_context_t *context,
     uint64_t *owner, lxa_html_root_mode_t mode);
 typedef enum {
-    LXA_HTML_ROOT_FORM_IGNORE, LXA_HTML_ROOT_FORM_OPEN, LXA_HTML_ROOT_FORM_CLOSED
+    LXA_HTML_ROOT_FORM_IGNORE,
+    LXA_HTML_ROOT_FORM_OPEN,
+    LXA_HTML_ROOT_FORM_CLOSED
 } lxa_html_root_form_action_t;
 /* Accepted form start after earlier routing. Borrow the engine's stable owner
  * scalar and publish action only on success. Table forms reserve a closed key
@@ -438,7 +440,8 @@ lxa_status_t lxa_html_root_context_special_start_token(lxa_html_root_context_t *
     lxa_html_root_special_start_result_t *result);
 
 typedef enum {
-    LXA_HTML_ROOT_START_RESULT_ACCEPT, LXA_HTML_ROOT_START_RESULT_IGNORE,
+    LXA_HTML_ROOT_START_RESULT_ACCEPT,
+    LXA_HTML_ROOT_START_RESULT_IGNORE,
     LXA_HTML_ROOT_START_RESULT_TEMPLATE
 } lxa_html_root_start_result_action_t;
 typedef struct {
@@ -463,7 +466,8 @@ lxa_status_t lxa_html_root_context_start_token(lxa_html_root_context_t *context,
     bool *pending_newline, lxa_html_root_start_result_t *result);
 
 typedef enum {
-    LXA_HTML_ROOT_END_RESULT_ACCEPT, LXA_HTML_ROOT_END_RESULT_IGNORE,
+    LXA_HTML_ROOT_END_RESULT_ACCEPT,
+    LXA_HTML_ROOT_END_RESULT_IGNORE,
     LXA_HTML_ROOT_END_RESULT_BR
 } lxa_html_root_end_result_action_t;
 typedef struct {

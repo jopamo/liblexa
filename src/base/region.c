@@ -47,12 +47,12 @@ static int
 valid_allocator(const lxa_allocator_t *allocator)
 {
     return allocator != NULL && allocator->allocate != NULL
-           && allocator->resize != NULL && allocator->release != NULL;
+        && allocator->resize != NULL && allocator->release != NULL;
 }
 
 lxa_status_t
 lxa_arena_create(const lxa_allocator_t *allocator, size_t minimum_chunk_size,
-                 lxa_arena_t **out)
+    lxa_arena_t **out)
 {
     lxa_arena_t *arena;
     lxa_status_t status;
@@ -97,7 +97,8 @@ lxa_arena_alloc(lxa_arena_t *arena, size_t size, void **out)
     chunk = arena->chunks;
     if (chunk == NULL || aligned > chunk->capacity - chunk->used) {
         capacity = aligned > arena->minimum_chunk_size
-                   ? aligned : arena->minimum_chunk_size;
+            ? aligned
+            : arena->minimum_chunk_size;
         status = lxa_size_add(sizeof(*chunk), capacity, &bytes);
         if (status != LXA_OK) {
             return status;
@@ -210,8 +211,7 @@ lxa_pool_free(lxa_pool_t *pool, void *ptr)
     block = (lxa_pool_block_t *) ptr - 1;
     if (block->prev == NULL) {
         pool->blocks = block->next;
-    }
-    else {
+    } else {
         block->prev->next = block->next;
     }
     if (block->next != NULL) {
@@ -230,7 +230,7 @@ lxa_pool_compatible(const lxa_pool_t *destination, const lxa_pool_t *source)
     a = &destination->allocator;
     b = &source->allocator;
     return a->context == b->context && a->allocate == b->allocate
-           && a->resize == b->resize && a->release == b->release;
+        && a->resize == b->resize && a->release == b->release;
 }
 
 lxa_status_t
@@ -246,8 +246,7 @@ lxa_pool_transfer(lxa_pool_t *destination, lxa_pool_t *source, void *ptr)
     block = (lxa_pool_block_t *) ptr - 1;
     if (block->prev == NULL) {
         source->blocks = block->next;
-    }
-    else {
+    } else {
         block->prev->next = block->next;
     }
     if (block->next != NULL) {

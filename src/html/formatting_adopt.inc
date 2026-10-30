@@ -4,13 +4,12 @@
  */
 static inline lxa_status_t
 LXA_ADOPT_NAME(const LXA_ADOPT_VIEW *view, lxa_span_t subject,
-               lxa_html_formatting_adopt_plan_t *out)
+    lxa_html_formatting_adopt_plan_t *out)
 {
     size_t length = LXA_ADOPT_OPEN_LENGTH(view), scoped;
     uint64_t identity;
     lxa_html_formatting_adopt_plan_t plan = {
-        LXA_HTML_FORMATTING_ADOPT_ORDINARY, LXA_ADOPT_FORMATTING_LENGTH(view), length, length
-    };
+        LXA_HTML_FORMATTING_ADOPT_ORDINARY, LXA_ADOPT_FORMATTING_LENGTH(view), length, length};
     lxa_status_t status = LXA_ADOPT_FIND(view, subject, &plan.formatting);
     if (status != LXA_OK) return status;
     if (plan.formatting == LXA_ADOPT_FORMATTING_LENGTH(view)) goto publish;
@@ -30,7 +29,8 @@ LXA_ADOPT_NAME(const LXA_ADOPT_VIEW *view, lxa_span_t subject,
     status = LXA_ADOPT_SPECIAL(view, plan.open + 1, &plan.furthest);
     if (status != LXA_OK) return status;
     plan.action = plan.furthest == length
-        ? LXA_HTML_FORMATTING_ADOPT_POP : LXA_HTML_FORMATTING_ADOPT_REPAIR;
+        ? LXA_HTML_FORMATTING_ADOPT_POP
+        : LXA_HTML_FORMATTING_ADOPT_REPAIR;
 publish:
     *out = plan;
     return LXA_OK;

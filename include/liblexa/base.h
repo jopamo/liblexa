@@ -10,23 +10,23 @@
  * implementation without changing callers.
  */
 #if !defined(LXA_PORTABLE_CHECKED_ARITHMETIC)
-# if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-#  if defined(__has_include)
-#   if __has_include(<stdckdint.h>)
-#    include <stdckdint.h>
-#    define LXA_USE_CKD_ARITHMETIC 1
-#   endif
-#  endif
-# endif
-# if !defined(LXA_USE_CKD_ARITHMETIC)
-#  if defined(__has_builtin)
-#   if __has_builtin(__builtin_add_overflow) && __has_builtin(__builtin_mul_overflow)
-#    define LXA_USE_BUILTIN_ARITHMETIC 1
-#   endif
-#  elif defined(__GNUC__) && __GNUC__ >= 5
-#   define LXA_USE_BUILTIN_ARITHMETIC 1
-#  endif
-# endif
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#if defined(__has_include)
+#if __has_include(<stdckdint.h>)
+#include <stdckdint.h>
+#define LXA_USE_CKD_ARITHMETIC 1
+#endif
+#endif
+#endif
+#if !defined(LXA_USE_CKD_ARITHMETIC)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_add_overflow) && __has_builtin(__builtin_mul_overflow)
+#define LXA_USE_BUILTIN_ARITHMETIC 1
+#endif
+#elif defined(__GNUC__) && __GNUC__ >= 5
+#define LXA_USE_BUILTIN_ARITHMETIC 1
+#endif
+#endif
 #endif
 
 /* Return nonzero on overflow; callers commit *out only on success. */
@@ -63,7 +63,6 @@ lxa_checked_mul_size(size_t a, size_t b, size_t *out)
 }
 
 /* Canonical allocation and region lifetime contract. */
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -123,14 +122,14 @@ lxa_allocator_t lxa_allocator_default(void);
  * lxa_free requires a valid descriptor when ptr is non-NULL.
  */
 lxa_status_t lxa_alloc(const lxa_allocator_t *allocator, size_t size,
-                       void **out);
+    void **out);
 lxa_status_t lxa_calloc(const lxa_allocator_t *allocator, size_t count,
-                        size_t size, void **out);
+    size_t size, void **out);
 /* On failure *ptr still owns the original allocation. NULL *ptr is allowed. */
 lxa_status_t lxa_resize(const lxa_allocator_t *allocator, void **ptr,
-                        size_t size);
+    size_t size);
 lxa_status_t lxa_resize_array(const lxa_allocator_t *allocator, void **ptr,
-                              size_t count, size_t item_size);
+    size_t count, size_t item_size);
 void lxa_free(const lxa_allocator_t *allocator, void *ptr);
 
 typedef struct lxa_arena lxa_arena_t;
@@ -144,7 +143,7 @@ typedef struct lxa_pool lxa_pool_t;
  * is published until its entire backing storage is ready.
  */
 lxa_status_t lxa_arena_create(const lxa_allocator_t *allocator,
-                              size_t minimum_chunk_size, lxa_arena_t **out);
+    size_t minimum_chunk_size, lxa_arena_t **out);
 lxa_status_t lxa_arena_alloc(lxa_arena_t *arena, size_t size, void **out);
 
 /*
@@ -158,7 +157,7 @@ void lxa_arena_reset(lxa_arena_t *arena);
 void lxa_arena_destroy(lxa_arena_t *arena);
 
 lxa_status_t lxa_pool_create(const lxa_allocator_t *allocator,
-                             lxa_pool_t **out);
+    lxa_pool_t **out);
 lxa_status_t lxa_pool_alloc(lxa_pool_t *pool, size_t size, void **out);
 
 /*
@@ -183,10 +182,10 @@ void lxa_pool_destroy(lxa_pool_t *pool);
  * No allocation, callback, or client destructor is involved.
  */
 lxa_status_t lxa_pool_transfer(lxa_pool_t *destination, lxa_pool_t *source,
-                               void *ptr);
+    void *ptr);
 /* Preflight a batch of transfers before changing any ownership. */
 int lxa_pool_compatible(const lxa_pool_t *destination,
-                        const lxa_pool_t *source);
+    const lxa_pool_t *source);
 
 /*
  * Regions are confined to one thread at a time. A caller may use distinct
@@ -398,7 +397,7 @@ typedef struct {
 lxa_limits_t lxa_limits_default(void);
 lxa_limits_t lxa_limits_unbounded(void);
 lxa_status_t lxa_budget_init(lxa_budget_t *budget,
-                             const lxa_limits_t *limits);
+    const lxa_limits_t *limits);
 /* Reset only after releasing all retained storage and ending its readers. */
 void lxa_budget_reset(lxa_budget_t *budget);
 /* Start a new owned parse session after its readers have ended. Reset only
@@ -420,29 +419,29 @@ void lxa_budget_reset_session(lxa_budget_t *budget);
  * leaves all counters unchanged.
  */
 lxa_status_t lxa_budget_check(const lxa_budget_t *budget,
-                              lxa_budget_kind_t kind, uint64_t amount,
-                              lxa_budget_kind_t *reason);
+    lxa_budget_kind_t kind, uint64_t amount,
+    lxa_budget_kind_t *reason);
 lxa_status_t lxa_budget_charge(lxa_budget_t *budget,
-                               lxa_budget_kind_t kind, uint64_t amount,
-                               lxa_budget_kind_t *reason);
+    lxa_budget_kind_t kind, uint64_t amount,
+    lxa_budget_kind_t *reason);
 /* Input is accepted once per byte, regardless of chunk boundaries. The
  * operation atomically checks the input limit and earns work credit:
  * initial_work_credit + accepted_bytes * work_per_input_byte.
  * A failed call changes neither counter. Only call for accepted bytes.
  */
 lxa_status_t lxa_budget_accept_input(lxa_budget_t *budget, size_t bytes,
-                                     lxa_budget_kind_t *reason);
+    lxa_budget_kind_t *reason);
 /* Enforce a single object's size, without charging aggregate capacity. */
 lxa_status_t lxa_budget_check_item(const lxa_budget_t *budget,
-                                   lxa_budget_kind_t kind, uint64_t size,
-                                   lxa_budget_kind_t *reason);
+    lxa_budget_kind_t kind, uint64_t size,
+    lxa_budget_kind_t *reason);
 /* Only live stack/depth charges can be released. Input and work are
  * cumulative; nodes, strings, attributes and tokens charge retained storage
  * capacity, so removing a live item does not release their charges. MEMORY
  * is released on backing free or when a failed resize cancels its reservation.
  */
 lxa_status_t lxa_budget_release(lxa_budget_t *budget,
-                                lxa_budget_kind_t kind, uint64_t amount);
+    lxa_budget_kind_t kind, uint64_t amount);
 
 #ifdef __cplusplus
 }
@@ -499,13 +498,13 @@ typedef struct {
 } lxa_buffer_t;
 
 lxa_status_t lxa_buffer_init(lxa_buffer_t *buffer,
-                             const lxa_allocator_t *allocator);
+    const lxa_allocator_t *allocator);
 /* Bind before any allocation. The budget outlives the buffer and cannot
  * reset while its backing allocation exists. All growth paths charge the
  * actual capacity delta against MEMORY; destroy releases that charge.
  */
 lxa_status_t lxa_buffer_bind_budget(lxa_buffer_t *buffer,
-                                    lxa_budget_t *budget);
+    lxa_budget_t *budget);
 void lxa_buffer_destroy(lxa_buffer_t *buffer);
 void lxa_buffer_clear(lxa_buffer_t *buffer);
 lxa_status_t lxa_buffer_reserve(lxa_buffer_t *buffer, size_t minimum_capacity);
@@ -514,10 +513,10 @@ lxa_status_t lxa_buffer_reserve(lxa_buffer_t *buffer, size_t minimum_capacity);
  */
 lxa_status_t lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity);
 lxa_status_t lxa_buffer_append(lxa_buffer_t *buffer,
-                               lxa_span_t bytes);
+    lxa_span_t bytes);
 /* Append a range of this buffer's current logical bytes. */
 lxa_status_t lxa_buffer_append_self(lxa_buffer_t *buffer, size_t offset,
-                                    size_t length);
+    size_t length);
 lxa_status_t lxa_buffer_truncate(lxa_buffer_t *buffer, size_t length);
 /* Ensure data[length] == 0 without increasing length; binary data may have
  * embedded NULs, so the caller must still use length for parsing.
@@ -546,13 +545,13 @@ extern "C" {
  * quality are caller-owned. NULL uses the platform's OS entropy source.
  */
 typedef lxa_status_t (*lxa_entropy_callback_t)(void *context,
-                                                uint8_t key[16]);
+    uint8_t key[16]);
 
 /* Initialize a new per-document/hash-domain key. Failed initialization
  * clears the key; no clock, address or fixed-key fallback exists.
  */
 lxa_status_t lxa_entropy_key(uint8_t key[16],
-                              lxa_entropy_callback_t callback, void *context);
+    lxa_entropy_callback_t callback, void *context);
 
 #ifdef __cplusplus
 }
@@ -568,7 +567,7 @@ extern "C" {
  * On invalid arguments *out is zero.
  */
 lxa_status_t lxa_siphash24(const uint8_t key[16], const uint8_t *data,
-                           size_t length, uint64_t *out);
+    size_t length, uint64_t *out);
 
 #ifdef __cplusplus
 }
@@ -595,11 +594,11 @@ typedef struct {
 } lxa_vector_t;
 
 lxa_status_t lxa_vector_init(lxa_vector_t *vector,
-                             const lxa_allocator_t *allocator,
-                             size_t element_size);
+    const lxa_allocator_t *allocator,
+    size_t element_size);
 /* Bind the underlying buffer before first reserve/push. */
 lxa_status_t lxa_vector_bind_budget(lxa_vector_t *vector,
-                                    lxa_budget_t *budget);
+    lxa_budget_t *budget);
 void lxa_vector_destroy(lxa_vector_t *vector);
 void lxa_vector_clear(lxa_vector_t *vector);
 size_t lxa_vector_length(const lxa_vector_t *vector);
@@ -608,13 +607,13 @@ lxa_status_t lxa_vector_reserve(lxa_vector_t *vector, size_t element_count);
  * bytes. For self-insertion, copy it out before calling insert.
  */
 lxa_status_t lxa_vector_insert(lxa_vector_t *vector, size_t index,
-                               const void *value);
+    const void *value);
 lxa_status_t lxa_vector_push(lxa_vector_t *vector, const void *value);
 /* On failure out is set to NULL when non-NULL. The result is borrowed. */
 lxa_status_t lxa_vector_at(lxa_vector_t *vector, size_t index, void **out);
 /* Erase count elements beginning at index; count=0 accepts index==length. */
 lxa_status_t lxa_vector_erase(lxa_vector_t *vector, size_t index,
-                              size_t count);
+    size_t count);
 
 /*
  * Index and byte-count arithmetic are checked before any mutation. An
@@ -642,7 +641,7 @@ typedef struct lxa_table lxa_table_t;
  * The table copies its allocator descriptor; its context must outlive it.
  */
 lxa_status_t lxa_table_create(const lxa_allocator_t *allocator,
-                              lxa_table_t **out);
+    lxa_table_t **out);
 /* budget is borrowed and must outlive the table. NULL uses a private bounded
  * default. A NULL entropy callback uses OS entropy and never falls back to
  * a predictable key. Budget WORK charges each hashed block, compared
@@ -651,10 +650,10 @@ lxa_status_t lxa_table_create(const lxa_allocator_t *allocator,
  * charges any separate document-level string/atom quotas.
  */
 lxa_status_t lxa_table_create_with_budget(const lxa_allocator_t *allocator,
-                                           lxa_budget_t *budget,
-                                           lxa_entropy_callback_t entropy,
-                                           void *entropy_context,
-                                           lxa_table_t **out);
+    lxa_budget_t *budget,
+    lxa_entropy_callback_t entropy,
+    void *entropy_context,
+    lxa_table_t **out);
 lxa_budget_kind_t lxa_table_limit_reason(const lxa_table_t *table);
 void lxa_table_destroy(lxa_table_t *table);
 /*
@@ -682,11 +681,11 @@ size_t lxa_table_length(const lxa_table_t *table);
  * is never refunded. find is logically const but charges the table's budget.
  */
 lxa_status_t lxa_table_find(const lxa_table_t *table, lxa_span_t key,
-                            bool *found, void **value);
+    bool *found, void **value);
 lxa_status_t lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
-                           bool *replaced, void **previous);
+    bool *replaced, void **previous);
 lxa_status_t lxa_table_delete(lxa_table_t *table, lxa_span_t key,
-                              bool *found, void **previous);
+    bool *found, void **previous);
 
 /*
  * The callback receives borrowed key bytes and value pointers. It may
@@ -695,9 +694,9 @@ lxa_status_t lxa_table_delete(lxa_table_t *table, lxa_span_t key,
  * order is guaranteed; any mutation invalidates borrowed key views.
  */
 typedef lxa_status_t (*lxa_table_visit_f)(void *context, lxa_span_t key,
-                                          void *value);
+    void *value);
 lxa_status_t lxa_table_each(const lxa_table_t *table,
-                            lxa_table_visit_f visit, void *context);
+    lxa_table_visit_f visit, void *context);
 
 #ifdef __cplusplus
 }

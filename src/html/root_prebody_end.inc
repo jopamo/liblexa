@@ -13,8 +13,7 @@ LXA_ROOT_END_NAME(LXA_ROOT_END_VIEW *view, lxa_html_prebody_end_action_t action,
         status = LXA_ROOT_END_BODY(view);
         if (status != LXA_OK) return status;
         *mode = LXA_TREE_IN_BODY;
-    }
-    else {
+    } else {
         status = LXA_ROOT_END_HEAD(view);
         if (status != LXA_OK) return status;
         *mode = LXA_TREE_IN_HEAD;

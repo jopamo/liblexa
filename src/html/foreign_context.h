@@ -17,10 +17,12 @@ static inline lxa_status_t
 lxa_html_foreign_annotation_encoding(lxa_span_t value, lxa_budget_t *budget,
     lxa_limit_reason_t *reason, bool *html)
 {
-    static const struct {const char *name; size_t length;} encodings[] = {
+    static const struct {
+        const char *name;
+        size_t length;
+    } encodings[] = {
         {"text/html", sizeof("text/html") - 1},
-        {"application/xhtml+xml", sizeof("application/xhtml+xml") - 1}
-    };
+        {"application/xhtml+xml", sizeof("application/xhtml+xml") - 1}};
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
     if (html == NULL) return LXA_ERROR_ARGUMENT;
     *html = false;
@@ -33,7 +35,7 @@ lxa_html_foreign_annotation_encoding(lxa_span_t value, lxa_budget_t *budget,
             if (status != LXA_OK) return status;
         }
         if (lxa_html_tree_ascii_case_equals(value, encodings[i].name,
-                                            encodings[i].length)) {
+                encodings[i].length)) {
             *html = true;
             break;
         }
@@ -55,7 +57,7 @@ lxa_html_foreign_annotation_attributes(const lxa_html_attribute_t *attributes,
         || count > SIZE_MAX / sizeof(*attributes))
         return LXA_ERROR_ARGUMENT;
     lxa_status_t status = lxa_budget_check_item(budget, LXA_BUDGET_ATTRS_PER_ELEMENT,
-                                               count, reason);
+        count, reason);
     if (status != LXA_OK) return status;
     for (size_t i = 0; i < count; ++i) {
         status = lxa_budget_charge(budget, LXA_BUDGET_WORK, 1, reason);
@@ -65,7 +67,7 @@ lxa_html_foreign_annotation_attributes(const lxa_html_attribute_t *attributes,
             return LXA_ERROR_ARGUMENT;
         if (lxa_html_tree_name_equals(attributes[i].name, "encoding", 8))
             return lxa_html_foreign_annotation_encoding(attributes[i].value,
-                                                        budget, reason, html);
+                budget, reason, html);
     }
     return LXA_OK;
 }
@@ -120,7 +122,7 @@ lxa_html_foreign_html_start_breakout(lxa_span_t name)
 
 static inline lxa_html_foreign_context_t
 lxa_html_foreign_context(lxa_dom_namespace_t ns, lxa_span_t name,
-                         bool annotation_html)
+    bool annotation_html)
 {
 #define LXA_FOREIGN_NAMED(text) lxa_html_foreign_named(name, text, sizeof(text) - 1)
     if (ns == LXA_DOM_NS_SVG
@@ -150,17 +152,17 @@ lxa_html_foreign_integration(lxa_html_foreign_context_t context)
 
 static inline bool
 lxa_html_foreign_annotation_svg(lxa_html_foreign_context_t context,
-                                const lxa_html_token_t *token)
+    const lxa_html_token_t *token)
 {
     return (context == LXA_HTML_FOREIGN_ANNOTATION_HTML
-            || context == LXA_HTML_FOREIGN_ANNOTATION_OTHER)
+               || context == LXA_HTML_FOREIGN_ANNOTATION_OTHER)
         && token->kind == LXA_HTML_START_TAG
         && lxa_html_foreign_named(token->name, "svg", sizeof("svg") - 1);
 }
 
 static inline bool
 lxa_html_foreign_uses_html(lxa_html_foreign_context_t context,
-                           const lxa_html_token_t *token)
+    const lxa_html_token_t *token)
 {
     if (token->kind == LXA_HTML_EOF) return true;
     if (token->kind == LXA_HTML_TEXT)
@@ -169,14 +171,15 @@ lxa_html_foreign_uses_html(lxa_html_foreign_context_t context,
     if (context == LXA_HTML_FOREIGN_MATHML_TEXT
         && (lxa_html_foreign_named(token->name, "mglyph", sizeof("mglyph") - 1)
             || lxa_html_foreign_named(token->name, "malignmark",
-                                      sizeof("malignmark") - 1)))
+                sizeof("malignmark") - 1)))
         return false;
     return lxa_html_foreign_integration(context)
         || lxa_html_foreign_annotation_svg(context, token);
 }
 
 typedef enum {
-    LXA_HTML_FOREIGN_ROOT_HTML, LXA_HTML_FOREIGN_ROOT_CONSUME,
+    LXA_HTML_FOREIGN_ROOT_HTML,
+    LXA_HTML_FOREIGN_ROOT_CONSUME,
     LXA_HTML_FOREIGN_ROOT_BREAKOUT
 } lxa_html_foreign_root_route_t;
 
@@ -207,11 +210,12 @@ lxa_html_foreign_root_plan(lxa_dom_namespace_t ns, lxa_html_foreign_context_t co
         if (status != LXA_OK) return status;
     }
     bool breakout = (token->kind == LXA_HTML_END_TAG
-        && (lxa_html_foreign_named(token->name, "br", 2) || lxa_html_foreign_named(token->name, "p", 1)))
+                        && (lxa_html_foreign_named(token->name, "br", 2) || lxa_html_foreign_named(token->name, "p", 1)))
         || (!owner && token->kind == LXA_HTML_START_TAG
             && (lxa_html_foreign_html_start_breakout(token->name) || font));
     *out = breakout ? LXA_HTML_FOREIGN_ROOT_BREAKOUT
-        : html ? LXA_HTML_FOREIGN_ROOT_HTML : LXA_HTML_FOREIGN_ROOT_CONSUME;
+        : html      ? LXA_HTML_FOREIGN_ROOT_HTML
+                    : LXA_HTML_FOREIGN_ROOT_CONSUME;
     return LXA_OK;
 }
 

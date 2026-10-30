@@ -2,10 +2,10 @@
 
 static lxa_status_t
 read_token(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks, size_t at,
-           lxa_css_token_t *token, lxa_span_t *text)
+    lxa_css_token_t *token, lxa_span_t *text)
 {
     lxa_status_t status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
-                                             1, &blocks->limit_reason);
+        1, &blocks->limit_reason);
     if (status != LXA_OK) {
         return status;
     }
@@ -31,8 +31,8 @@ important_name(lxa_span_t text)
 
 lxa_status_t
 lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
-                          lxa_css_blocks_t *blocks, size_t first, size_t after,
-                          lxa_css_declaration_t *out)
+    lxa_css_blocks_t *blocks, size_t first, size_t after,
+    lxa_css_declaration_t *out)
 {
     lxa_css_token_t token;
     lxa_span_t text;
@@ -46,7 +46,7 @@ lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
         || lxa_css_tokens_length(tokens) < blocks->end) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = (lxa_css_declaration_t) {0};
+    *out = (lxa_css_declaration_t){0};
     status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
@@ -107,7 +107,7 @@ lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
             value_after = previous;
             while (value_after > value_first) {
                 status = read_token(tokens, blocks, value_after - 1,
-                                    &token, &text);
+                    &token, &text);
                 if (status != LXA_OK) return status;
                 if (token.kind != LXA_CSS_WHITESPACE) break;
                 value_after--;
@@ -115,7 +115,7 @@ lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
         }
     }
     if (!custom && brace != after && significant != 1) return LXA_OK;
-    *out = (lxa_css_declaration_t) {name, value_first, value_after,
-                                    important, true};
+    *out = (lxa_css_declaration_t){name, value_first, value_after,
+        important, true};
     return LXA_OK;
 }

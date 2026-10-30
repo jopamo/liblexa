@@ -4,7 +4,9 @@
 #include "css/filter.h"
 #include "liblexa/encoding.h"
 
-enum { CSS_MAX_BYTES = 1024 * 1024 };
+enum {
+    CSS_MAX_BYTES = 1024 * 1024
+};
 
 struct lxa_css_byte_stream {
     lxa_allocator_t allocator;
@@ -62,8 +64,7 @@ accept(lxa_css_byte_stream_t *stream, uint32_t cp, size_t start, size_t end)
     if (cp == '\r') {
         stream->cr_start = start;
         stream->cr_end = end;
-    }
-    else if (!(had_cr && cp == '\n')) {
+    } else if (!(had_cr && cp == '\n')) {
         result = append(stream, output[j], start, end);
         if (result != LXA_CSS_SCAN_OK) {
             return result;
@@ -76,8 +77,8 @@ accept(lxa_css_byte_stream_t *stream, uint32_t cp, size_t start, size_t end)
 
 lxa_css_scan_result_t
 lxa_css_byte_stream_create_budget(const lxa_allocator_t *allocator,
-                                  lxa_budget_t *budget,
-                                  lxa_css_byte_stream_t **out)
+    lxa_budget_t *budget,
+    lxa_css_byte_stream_t **out)
 {
     lxa_css_byte_stream_t *stream;
     lxa_budget_t local_budget;
@@ -105,7 +106,7 @@ lxa_css_byte_stream_create_budget(const lxa_allocator_t *allocator,
         lxa_budget_release(active, LXA_BUDGET_MEMORY, sizeof(*stream));
         return lxa_css_scan_status(status);
     }
-    *stream = (lxa_css_byte_stream_t) {0};
+    *stream = (lxa_css_byte_stream_t){0};
     stream->allocator = *allocator;
     if (budget == NULL) {
         stream->local_budget = local_budget;
@@ -117,10 +118,10 @@ lxa_css_byte_stream_create_budget(const lxa_allocator_t *allocator,
     status = lxa_vector_bind_budget(&stream->units, stream->budget);
     if (status != LXA_OK) goto fail;
     lxa_css_filter_reset(&stream->filter);
-    utf8 = lxa_encoding_lookup((lxa_span_t) {(const uint8_t *) "utf-8", 5});
+    utf8 = lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-8", 5});
     status = lxa_decoder_create_with_budget(utf8, LXA_ENCODING_REPLACE,
-                                            allocator, stream->budget,
-                                            &stream->decoder);
+        allocator, stream->budget,
+        &stream->decoder);
     if (status != LXA_OK) goto fail;
     *out = stream;
     return LXA_CSS_SCAN_OK;
@@ -131,7 +132,7 @@ fail:
 
 lxa_css_scan_result_t
 lxa_css_byte_stream_create(const lxa_allocator_t *allocator,
-                           lxa_css_byte_stream_t **out)
+    lxa_css_byte_stream_t **out)
 {
     return lxa_css_byte_stream_create_budget(allocator, NULL, out);
 }
@@ -144,7 +145,7 @@ lxa_css_byte_stream_limit_reason(const lxa_css_byte_stream_t *stream)
 
 lxa_css_scan_result_t
 lxa_css_byte_stream_feed(lxa_css_byte_stream_t *stream,
-                         lxa_span_t bytes, size_t *consumed)
+    lxa_span_t bytes, size_t *consumed)
 {
     lxa_encoding_progress_t progress;
     lxa_css_scan_result_t result;
@@ -181,11 +182,12 @@ lxa_css_byte_stream_feed(lxa_css_byte_stream_t *stream,
             return lxa_css_scan_status(charge);
         }
         dec_result = lxa_decoder_feed(stream->decoder,
-            (lxa_span_t) {bytes.data + *consumed, 1}, &cp, 1, &progress);
+            (lxa_span_t){bytes.data + *consumed, 1}, &cp, 1, &progress);
         /* This owned UTF-8 replacement decoder allocates only at creation.
          * Raw malformed bytes cannot explain a rejected call or bad progress. */
         if ((dec_result != LXA_ENCODING_OK
-             && dec_result != LXA_ENCODING_OUTPUT_FULL) || progress.consumed > 1
+                && dec_result != LXA_ENCODING_OUTPUT_FULL)
+            || progress.consumed > 1
             || progress.produced > 1 || (!progress.consumed && !progress.produced)) {
             stream->closed = true;
             return lxa_css_scan_status(LXA_ERROR_INTERNAL);
@@ -264,7 +266,8 @@ lxa_css_byte_stream_seal(lxa_css_byte_stream_t *stream)
         }
     }
     if (lxa_css_filter_finish(&stream->filter, &out, 1, &filtered)
-        != LXA_CSS_FILTER_OK || filtered.produced > 1) {
+            != LXA_CSS_FILTER_OK
+        || filtered.produced > 1) {
         stream->closed = true;
         return lxa_css_scan_status(LXA_ERROR_INTERNAL);
     }
@@ -292,17 +295,17 @@ lxa_css_byte_stream_seal(lxa_css_byte_stream_t *stream)
 /* External limits apply to both stream state and caller-retained output. */
 static bool
 tokens_share_budget(const lxa_css_byte_stream_t *stream,
-                    const lxa_css_tokens_t *tokens)
+    const lxa_css_tokens_t *tokens)
 {
     return stream->budget == &stream->local_budget
-           || (tokens->text.budget == stream->budget
-               && tokens->entries.bytes.budget == stream->budget);
+        || (tokens->text.budget == stream->budget
+            && tokens->entries.bytes.budget == stream->budget);
 }
 
 lxa_css_scan_result_t
 lxa_css_byte_stream_drain(lxa_css_byte_stream_t *stream,
-                          lxa_css_tokens_t *tokens, size_t capacity,
-                          size_t *produced)
+    lxa_css_tokens_t *tokens, size_t capacity,
+    size_t *produced)
 {
     lxa_css_scan_result_t result;
     if (produced == NULL) {
@@ -331,12 +334,11 @@ lxa_css_byte_stream_drain(lxa_css_byte_stream_t *stream,
 
 lxa_css_scan_result_t
 lxa_css_byte_stream_finish(lxa_css_byte_stream_t *stream,
-                           lxa_css_tokens_t *tokens)
+    lxa_css_tokens_t *tokens)
 {
     lxa_css_scan_result_t result;
     size_t produced;
-    if (tokens == NULL || (stream != NULL
-        && !tokens_share_budget(stream, tokens))) {
+    if (tokens == NULL || (stream != NULL && !tokens_share_budget(stream, tokens))) {
         return LXA_CSS_SCAN_INVALID;
     }
     lxa_css_tokens_clear(tokens);

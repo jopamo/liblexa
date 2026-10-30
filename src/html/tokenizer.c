@@ -18,7 +18,7 @@
 
 lxa_html_result_t
 lxa_html_tokenizer_find_entity(lxa_html_tokenizer_t *tokenizer, const char *name,
-            const liblexa_html_entity_entry **entry)
+    const liblexa_html_entity_entry **entry)
 {
     size_t lo = 0, hi = LIBLEXA_HTML_ENTITY_COUNT;
     *entry = NULL;
@@ -32,11 +32,9 @@ lxa_html_tokenizer_find_entity(lxa_html_tokenizer_t *tokenizer, const char *name
         order = strcmp(name, liblexa_html_entities[mid].name);
         if (order < 0) {
             hi = mid;
-        }
-        else if (order > 0) {
+        } else if (order > 0) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             *entry = &liblexa_html_entities[mid];
             break;
         }
@@ -44,12 +42,11 @@ lxa_html_tokenizer_find_entity(lxa_html_tokenizer_t *tokenizer, const char *name
     return LXA_HTML_OK;
 }
 
-
 lxa_status_t
 lxa_html_tokenizer_create(const lxa_allocator_t *allocator,
-                          lxa_html_token_callback_t on_token,
-                          lxa_html_error_callback_t on_error, void *context,
-                          lxa_html_tokenizer_t **out)
+    lxa_html_token_callback_t on_token,
+    lxa_html_error_callback_t on_error, void *context,
+    lxa_html_tokenizer_t **out)
 {
     return lxa_html_tokenizer_create_with_budget(
         allocator, on_token, on_error, context, NULL, out);
@@ -83,7 +80,7 @@ lxa_html_tokenizer_create_with_budget(
         budget = &owned;
     }
     status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY,
-                               sizeof(*tokenizer), NULL);
+        sizeof(*tokenizer), NULL);
     if (status != LXA_OK) {
         return status;
     }
@@ -132,15 +129,15 @@ lxa_html_tokenizer_create_with_budget(
     }
     if (status == LXA_OK) {
         status = lxa_vector_init(&tokenizer->attribute_slots, allocator,
-                                 sizeof(attribute_slot_t));
+            sizeof(attribute_slot_t));
     }
     if (status == LXA_OK) {
         status = lxa_vector_init(&tokenizer->attribute_views, allocator,
-                                 sizeof(lxa_html_attribute_t));
+            sizeof(lxa_html_attribute_t));
     }
     if (status == LXA_OK) {
         status = lxa_vector_init(&tokenizer->attribute_sources, allocator,
-                                 sizeof(lxa_html_source_range_t));
+            sizeof(lxa_html_source_range_t));
     }
     if (status == LXA_OK) {
         status = lxa_buffer_bind_budget(&tokenizer->text, budget);
@@ -190,7 +187,8 @@ lxa_html_tokenizer_destroy(lxa_html_tokenizer_t *tokenizer)
     }
     allocator = tokenizer->allocator;
     external = tokenizer->budget == &tokenizer->owned_budget
-               ? NULL : tokenizer->budget;
+        ? NULL
+        : tokenizer->budget;
     lxa_table_destroy(tokenizer->attribute_names);
     lxa_decoder_destroy(tokenizer->decoder);
     lxa_vector_destroy(&tokenizer->attribute_sources);
@@ -228,7 +226,7 @@ lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer)
         lxa_vector_clear(&tokenizer->attribute_slots);
         lxa_vector_clear(&tokenizer->attribute_views);
         lxa_vector_clear(&tokenizer->attribute_sources);
-        tokenizer->attribute_source = (lxa_html_source_range_t) {0};
+        tokenizer->attribute_source = (lxa_html_source_range_t){0};
         tokenizer->attribute_state = ATTRIBUTE_NONE;
         tokenizer->source_attribute_count = 0;
         tokenizer->omitted_value_bytes = 0;
@@ -305,18 +303,16 @@ lxa_html_tokenizer_limit_reason(const lxa_html_tokenizer_t *tokenizer)
 
 lxa_html_result_t
 lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
-                                 lxa_html_text_mode_t mode,
-                                 lxa_span_t appropriate_end_tag)
+    lxa_html_text_mode_t mode,
+    lxa_span_t appropriate_end_tag)
 {
     if (tokenizer == NULL || tokenizer->in_error || tokenizer->closed
         || tokenizer->stopped != LXA_HTML_OK
-        || (appropriate_end_tag.length != 0 && appropriate_end_tag.data == NULL))
-    {
+        || (appropriate_end_tag.length != 0 && appropriate_end_tag.data == NULL)) {
         return LXA_HTML_BAD_ARGUMENT;
     }
     if (mode < LXA_HTML_DATA || mode > LXA_HTML_PLAINTEXT
-        || (mode == LXA_HTML_DATA && appropriate_end_tag.length != 0))
-    {
+        || (mode == LXA_HTML_DATA && appropriate_end_tag.length != 0)) {
         return LXA_HTML_BAD_ARGUMENT;
     }
     if (mode == LXA_HTML_DATA && appropriate_end_tag.length == 0) {
@@ -352,7 +348,7 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
             return LXA_HTML_BAD_ARGUMENT;
         }
         status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
-                                       appropriate_end_tag.length, &reason);
+            appropriate_end_tag.length, &reason);
         if (status != LXA_OK) {
             return budget_result(tokenizer, status, reason);
         }
@@ -364,7 +360,7 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
         }
         lxa_buffer_clear(&tokenizer->appropriate_end_tag);
         result = buffer_append(tokenizer, &tokenizer->appropriate_end_tag,
-                               appropriate_end_tag, LXA_BUDGET_NAME_BYTES);
+            appropriate_end_tag, LXA_BUDGET_NAME_BYTES);
         if (result != LXA_HTML_OK) {
             return result;
         }
@@ -375,8 +371,8 @@ lxa_html_tokenizer_set_text_mode(lxa_html_tokenizer_t *tokenizer,
             }
         }
         tokenizer->raw_mode = mode == LXA_HTML_RCDATA ? STATE_RCDATA
-                            : mode == LXA_HTML_SCRIPT_DATA ? STATE_SCRIPT_DATA
-                                                            : STATE_RAWTEXT;
+            : mode == LXA_HTML_SCRIPT_DATA            ? STATE_SCRIPT_DATA
+                                                      : STATE_RAWTEXT;
         tokenizer->raw_return_mode = tokenizer->raw_mode;
         tokenizer->state = tokenizer->raw_mode;
         return LXA_HTML_OK;

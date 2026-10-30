@@ -33,7 +33,8 @@ LXA_ROOT_TABLE_PART_CONTEXT_NAME(const LXA_ROOT_TABLE_PART_CONTEXT_VIEW *view,
             if (lxa_html_tree_name_equals(name, "table", 5) || section || row) {
                 lxa_html_virtual_table_start_plan_t geometry;
                 lxa_html_template_mode_t mode = section ? LXA_TEMPLATE_TABLE_BODY
-                    : row ? LXA_TEMPLATE_ROW : LXA_TEMPLATE_TABLE;
+                    : row                               ? LXA_TEMPLATE_ROW
+                                                        : LXA_TEMPLATE_TABLE;
                 status = lxa_html_tree_virtual_table_start_plan(mode, target, &geometry);
                 if (status != LXA_OK) return status;
                 plan.keep = i + 1;

@@ -17,7 +17,7 @@ lxa_html_tree_data_run(lxa_span_t bytes, size_t offset, lxa_html_data_run_t *out
         const uint8_t *start = bytes.data + offset;
         const uint8_t *nul = memchr(start, 0, bytes.length - offset);
         run.bytes = (lxa_span_t){start,
-            nul == NULL ? bytes.length - offset : (size_t)(nul - start)};
+            nul == NULL ? bytes.length - offset : (size_t) (nul - start)};
         run.nul = nul != NULL;
         run.next += run.bytes.length;
         if (run.nul) ++run.next;
@@ -130,9 +130,9 @@ lxa_html_tree_root_ordinary_start_action(lxa_span_t name, lxa_budget_t *budget,
         bool supported;
         lxa_status_t status = lxa_html_tree_supported_container(name, budget, reason, &supported);
         if (status != LXA_OK) return status;
-        action = !supported ? LXA_HTML_ROOT_ORDINARY_UNSUPPORTED
+        action = !supported                      ? LXA_HTML_ROOT_ORDINARY_UNSUPPORTED
             : lxa_html_tree_formatting_tag(name) ? LXA_HTML_ROOT_ORDINARY_FORMATTING
-            : LXA_HTML_ROOT_ORDINARY_CONTAINER;
+                                                 : LXA_HTML_ROOT_ORDINARY_CONTAINER;
     }
     *out = action;
     return LXA_OK;
@@ -240,8 +240,7 @@ lxa_html_tree_text_action(lxa_html_token_kind_t kind, lxa_span_t name,
         if (!lxa_html_tree_name_equals(name, (const char *) target.data, target.length))
             return LXA_ERROR_INTERNAL;
         action = LXA_HTML_TEXT_RETURN;
-    }
-    else return LXA_ERROR_ARGUMENT;
+    } else return LXA_ERROR_ARGUMENT;
     *out = action;
     return LXA_OK;
 }
@@ -302,7 +301,8 @@ lxa_html_tree_namespace_feedback(lxa_html_tokenizer_t *tokenizer,
     if (tokenizer == NULL || (unsigned) ns < LXA_DOM_NS_HTML || (unsigned) ns > LXA_DOM_NS_SVG)
         return LXA_ERROR_ARGUMENT;
     return lxa_html_tokenizer_allow_cdata(tokenizer, ns != LXA_DOM_NS_HTML) == LXA_HTML_OK
-        ? LXA_OK : LXA_ERROR_INTERNAL;
+        ? LXA_OK
+        : LXA_ERROR_INTERNAL;
 }
 
 lxa_status_t
@@ -350,10 +350,7 @@ doctype_token_shape_valid(const lxa_html_token_t *token)
 {
     if (token == NULL || token->kind != LXA_HTML_DOCTYPE) return false;
     const lxa_dom_doctype_data_t declaration = {
-        .name = token->name, .public_id = token->public_id, .system_id = token->system_id,
-        .has_public_id = token->has_public_id, .has_system_id = token->has_system_id,
-        .force_quirks = token->force_quirks
-    };
+        .name = token->name, .public_id = token->public_id, .system_id = token->system_id, .has_public_id = token->has_public_id, .has_system_id = token->has_system_id, .force_quirks = token->force_quirks};
     return lxa_dom_doctype_shape_valid(&declaration);
 }
 
@@ -417,8 +414,8 @@ lxa_html_tree_prebody_end_action(lxa_html_root_mode_t mode,
         || (mode != LXA_TREE_AFTER_HEAD
             && lxa_html_tree_name_equals(name, "head", 4))) {
         action = mode == LXA_TREE_BEFORE_HTML ? LXA_HTML_PREBODY_END_HTML_HEAD
-            : mode == LXA_TREE_BEFORE_HEAD ? LXA_HTML_PREBODY_END_HEAD
-            : LXA_HTML_PREBODY_END_BODY;
+            : mode == LXA_TREE_BEFORE_HEAD    ? LXA_HTML_PREBODY_END_HEAD
+                                              : LXA_HTML_PREBODY_END_BODY;
     }
     *out = action;
     return LXA_OK;
@@ -450,8 +447,7 @@ lxa_html_tree_frameset_action(lxa_html_root_mode_t mode,
             else if (lxa_html_tree_name_equals(name, "frame", 5))
                 action = LXA_HTML_FRAMESET_FRAME_START;
         }
-    }
-    else if (kind == LXA_HTML_END_TAG) {
+    } else if (kind == LXA_HTML_END_TAG) {
         if (mode == LXA_TREE_IN_FRAMESET
             && lxa_html_tree_name_equals(name, "frameset", 8))
             action = LXA_HTML_FRAMESET_END;
@@ -478,7 +474,8 @@ lxa_html_tree_root_start_action(lxa_html_root_mode_t mode, lxa_span_t name,
     else if (lxa_html_tree_name_equals(name, "body", 4)) action = LXA_HTML_ROOT_START_BODY;
     else if (lxa_html_tree_name_equals(name, "head", 4))
         action = mode == LXA_TREE_BEFORE_HTML || mode == LXA_TREE_BEFORE_HEAD
-            ? LXA_HTML_ROOT_START_HEAD : LXA_HTML_ROOT_START_IGNORE_HEAD;
+            ? LXA_HTML_ROOT_START_HEAD
+            : LXA_HTML_ROOT_START_IGNORE_HEAD;
     *out = action;
     return LXA_OK;
 }
@@ -487,8 +484,7 @@ lxa_status_t
 lxa_html_tree_root_misc_plan(lxa_html_root_mode_t mode, lxa_html_token_kind_t kind,
     lxa_html_root_misc_plan_t *out)
 {
-    if (out == NULL || (kind != LXA_HTML_COMMENT && kind != LXA_HTML_PROCESSING_INSTRUCTION
-            && kind != LXA_HTML_DOCTYPE)
+    if (out == NULL || (kind != LXA_HTML_COMMENT && kind != LXA_HTML_PROCESSING_INSTRUCTION && kind != LXA_HTML_DOCTYPE)
         || (mode != LXA_TREE_BEFORE_HTML && mode != LXA_TREE_BEFORE_HEAD
             && mode != LXA_TREE_IN_HEAD && mode != LXA_TREE_HEAD_NOSCRIPT
             && mode != LXA_TREE_AFTER_HEAD && mode != LXA_TREE_IN_BODY
@@ -503,7 +499,8 @@ lxa_html_tree_root_misc_plan(lxa_html_root_mode_t mode, lxa_html_token_kind_t ki
         else {
             plan.ensure_html = true;
             plan.destination = mode == LXA_TREE_HEAD_NOSCRIPT ? LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT
-                : mode == LXA_TREE_IN_HEAD ? LXA_HTML_ROOT_MISC_HEAD : LXA_HTML_ROOT_MISC_HTML;
+                : mode == LXA_TREE_IN_HEAD                    ? LXA_HTML_ROOT_MISC_HEAD
+                                                              : LXA_HTML_ROOT_MISC_HTML;
         }
     }
     *out = plan;
@@ -525,8 +522,7 @@ lxa_html_tree_root_special_start_action(lxa_html_root_mode_t mode, lxa_span_t na
         if (mode <= LXA_TREE_BEFORE_HEAD) action = LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD;
         else if (mode == LXA_TREE_IN_HEAD || mode == LXA_TREE_AFTER_HEAD || mode == LXA_TREE_IN_BODY)
             action = LXA_HTML_ROOT_SPECIAL_TEMPLATE;
-    }
-    else if (lxa_html_tree_name_equals(name, "noscript", 8) && mode <= LXA_TREE_IN_HEAD)
+    } else if (lxa_html_tree_name_equals(name, "noscript", 8) && mode <= LXA_TREE_IN_HEAD)
         action = LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT;
     else if (lxa_html_tree_name_equals(name, "form", 4)) action = LXA_HTML_ROOT_SPECIAL_FORM;
     else if (lxa_html_tree_returning_text_element(name)) action = LXA_HTML_ROOT_SPECIAL_TEXT;
@@ -561,10 +557,12 @@ lxa_html_tree_root_text_plan(lxa_html_root_mode_t mode, lxa_span_t name,
     bool textarea = lxa_html_tree_name_equals(name, "textarea", 8);
     bool iframe = lxa_html_tree_name_equals(name, "iframe", 6);
     if (!lxa_html_tree_returning_text_element(name)) return LXA_ERROR_ARGUMENT;
-    bool body = title_style ? mode == LXA_TREE_IN_BODY
-        : (noframes || script) ? mode > LXA_TREE_AFTER_HEAD : true;
+    bool body = title_style    ? mode == LXA_TREE_IN_BODY
+        : (noframes || script) ? mode > LXA_TREE_AFTER_HEAD
+                               : true;
     lxa_html_root_mode_t returning = body ? LXA_TREE_IN_BODY
-        : mode < LXA_TREE_IN_HEAD ? LXA_TREE_IN_HEAD : mode;
+        : mode < LXA_TREE_IN_HEAD         ? LXA_TREE_IN_HEAD
+                                          : mode;
     *out = (lxa_html_root_text_plan_t){returning, body, textarea || iframe, textarea};
     return LXA_OK;
 }
@@ -641,8 +639,7 @@ lxa_html_tree_prebody_text_plan(lxa_html_root_mode_t mode, lxa_span_t data,
         prefix + (prefix < data.length), reason);
     if (status == LXA_OK)
         *out = (lxa_html_prebody_text_plan_t){
-            prefix, !before_head && prefix != 0, before_head && prefix < data.length
-        };
+            prefix, !before_head && prefix != 0, before_head && prefix < data.length};
     return status;
 }
 
@@ -666,8 +663,7 @@ lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
             plan.action = LXA_HTML_HEAD_NOSCRIPT_CLOSE;
         else if (!lxa_html_tree_name_equals(token->name, "br", 2))
             plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
-    }
-    else if (token->kind == LXA_HTML_START_TAG) {
+    } else if (token->kind == LXA_HTML_START_TAG) {
         if (lxa_html_tree_name_equals(token->name, "head", 4)
             || lxa_html_tree_name_equals(token->name, "noscript", 8))
             plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
@@ -679,8 +675,7 @@ lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
             || lxa_html_tree_name_equals(token->name, "style", 5)
             || lxa_html_tree_name_equals(token->name, "noframes", 8))
             plan.action = LXA_HTML_HEAD_NOSCRIPT_CONTINUE;
-    }
-    else if (token->kind == LXA_HTML_TEXT) {
+    } else if (token->kind == LXA_HTML_TEXT) {
         while (plan.space_prefix < token->data.length
             && lxa_html_byte_tree_space(token->data.data[plan.space_prefix]))
             ++plan.space_prefix;
@@ -689,14 +684,14 @@ lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
         if (status != LXA_OK) return status;
         if (plan.space_prefix != 0 && plan.space_prefix == token->data.length)
             plan.action = LXA_HTML_HEAD_NOSCRIPT_IGNORE;
-    }
-    else plan.action = LXA_HTML_HEAD_NOSCRIPT_CONTINUE;
+    } else plan.action = LXA_HTML_HEAD_NOSCRIPT_CONTINUE;
     *out = plan;
     return LXA_OK;
 }
 
 typedef enum {
-    LXA_START_ATTRIBUTE_HIDDEN_INPUT, LXA_START_ATTRIBUTE_FONT_BREAKOUT
+    LXA_START_ATTRIBUTE_HIDDEN_INPUT,
+    LXA_START_ATTRIBUTE_FONT_BREAKOUT
 } start_attribute_query_t;
 
 static lxa_status_t
@@ -710,8 +705,7 @@ start_attribute_query(const lxa_html_token_t *token, lxa_budget_t *budget,
                   : lxa_html_tree_name_equals(token->name, "input", 5)))
         return LXA_ERROR_ARGUMENT;
     const lxa_html_formatting_view_t view = {
-        token->name, token->attributes, token->attribute_count, budget, reason
-    };
+        token->name, token->attributes, token->attribute_count, budget, reason};
     bool result = false;
     for (size_t i = 0; i < token->attribute_count; ++i) {
         lxa_span_t name, value;
@@ -726,8 +720,7 @@ start_attribute_query(const lxa_html_token_t *token, lxa_budget_t *budget,
                 result = true;
                 break;
             }
-        }
-        else if (lxa_html_tree_name_equals(name, "type", 4)) {
+        } else if (lxa_html_tree_name_equals(name, "type", 4)) {
             result = lxa_html_tree_ascii_case_equals(value, "hidden", 6);
             break;
         }
@@ -782,8 +775,7 @@ lxa_html_tree_virtual_table_start_plan(lxa_html_template_mode_t mode,
         plan.ignore = !cell && !(row && mode == LXA_TEMPLATE_TABLE_BODY);
         plan.implied_row = cell && mode == LXA_TEMPLATE_TABLE_BODY;
         if (plan.implied_row) plan.extra = 2;
-    }
-    else if (mode == LXA_TEMPLATE_TABLE && (row || cell)) {
+    } else if (mode == LXA_TEMPLATE_TABLE && (row || cell)) {
         plan.implied_section = true;
         plan.implied_row = cell;
         plan.extra = cell ? 3 : 2;
@@ -802,18 +794,17 @@ lxa_html_tree_prepared_table_part_plan(lxa_span_t top, lxa_span_t target,
     bool column = lxa_html_tree_name_equals(target, "col", 3);
     lxa_html_prepared_table_part_plan_t plan = {1, 1, false, false, false, column};
     if (column) {
-        if (table) { plan.implied_group = true; plan.preflight_nodes = 2; }
-        else if (lxa_html_tree_name_equals(top, "colgroup", 8)) {
+        if (table) {
+            plan.implied_group = true;
+            plan.preflight_nodes = 2;
+        } else if (lxa_html_tree_name_equals(top, "colgroup", 8)) {
             plan.extra = 0;
             plan.preflight_nodes = 0;
-        }
-        else return LXA_ERROR_ARGUMENT;
-    }
-    else if (lxa_html_tree_name_equals(target, "caption", 7)
+        } else return LXA_ERROR_ARGUMENT;
+    } else if (lxa_html_tree_name_equals(target, "caption", 7)
         || lxa_html_tree_name_equals(target, "colgroup", 8)) {
         if (!table) return LXA_ERROR_ARGUMENT;
-    }
-    else {
+    } else {
         lxa_html_template_mode_t mode;
         if (table) mode = LXA_TEMPLATE_TABLE;
         else if (lxa_html_tree_table_section(top)) mode = LXA_TEMPLATE_TABLE_BODY;
@@ -858,8 +849,7 @@ lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
     lxa_html_table_start_plan_t plan = {
         clear_ordinary ? scan->context + 1 : length, 1,
         (top_table || caption_open || scan->group_open) && (row || cell),
-        cell && (top_table || caption_open || scan->group_open || top_section)
-    };
+        cell && (top_table || caption_open || scan->group_open || top_section)};
     if (lxa_html_tree_name_equals(target, "col", 3)
         || lxa_html_tree_name_equals(target, "colgroup", 8)
         || lxa_html_tree_table_section(target))
@@ -869,22 +859,18 @@ lxa_html_tree_table_start_plan(const lxa_html_template_table_scan_t *scan,
             || top_section || top_row)
             plan.keep = scan->table + 1;
         else if (!top_table) return LXA_ERROR_INTERNAL;
-    }
-    else if (row) {
+    } else if (row) {
         if (top_table || caption_open || scan->group_open) {
             plan.extra = 2;
             if (caption_open || scan->group_open) plan.keep = scan->table + 1;
-        }
-        else if (top_row) plan.keep = clear_ordinary ? scan->context : length - 1;
+        } else if (top_row) plan.keep = clear_ordinary ? scan->context : length - 1;
         else if (scan->cell != SIZE_MAX) plan.keep = scan->cell - 1;
         else if (!top_section) return LXA_ERROR_INTERNAL;
-    }
-    else {
+    } else {
         if (top_table || caption_open || scan->group_open) {
             plan.extra = 3;
             if (caption_open || scan->group_open) plan.keep = scan->table + 1;
-        }
-        else if (top_section) plan.extra = 2;
+        } else if (top_section) plan.extra = 2;
         else if (scan->cell != SIZE_MAX) plan.keep = scan->cell;
         else if (!top_row) return LXA_ERROR_INTERNAL;
     }
@@ -970,8 +956,8 @@ lxa_html_tree_template_depth_check(lxa_budget_t *budget, size_t root_ancestors,
 
 lxa_status_t
 lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
-                           lxa_limit_reason_t *reason,
-                           lxa_html_document_mode_t *mode)
+    lxa_limit_reason_t *reason,
+    lxa_html_document_mode_t *mode)
 {
     if (reason != NULL) *reason = LXA_BUDGET_COUNT;
     if (budget == NULL || mode == NULL || !doctype_token_shape_valid(data))
@@ -993,32 +979,32 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
         lxa_span_t value;
         bool exact = false;
         switch (rule->condition) {
-        case LIBLEXA_DOCTYPE_SYSTEM_EXACT:
-            if (!data->has_system_id) continue;
-            value = data->system_id;
-            exact = true;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_EXACT:
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            exact = true;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM:
-            if (data->has_system_id && data->system_id.length != 0) continue;
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM:
-            if (!data->has_system_id || data->system_id.length == 0) continue;
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        case LIBLEXA_DOCTYPE_PUBLIC_PREFIX:
-            if (!data->has_public_id) continue;
-            value = data->public_id;
-            break;
-        default:
-            return LXA_ERROR_INTERNAL;
+            case LIBLEXA_DOCTYPE_SYSTEM_EXACT:
+                if (!data->has_system_id) continue;
+                value = data->system_id;
+                exact = true;
+                break;
+            case LIBLEXA_DOCTYPE_PUBLIC_EXACT:
+                if (!data->has_public_id) continue;
+                value = data->public_id;
+                exact = true;
+                break;
+            case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_EMPTY_SYSTEM:
+                if (data->has_system_id && data->system_id.length != 0) continue;
+                if (!data->has_public_id) continue;
+                value = data->public_id;
+                break;
+            case LIBLEXA_DOCTYPE_PUBLIC_PREFIX_NONEMPTY_SYSTEM:
+                if (!data->has_system_id || data->system_id.length == 0) continue;
+                if (!data->has_public_id) continue;
+                value = data->public_id;
+                break;
+            case LIBLEXA_DOCTYPE_PUBLIC_PREFIX:
+                if (!data->has_public_id) continue;
+                value = data->public_id;
+                break;
+            default:
+                return LXA_ERROR_INTERNAL;
         }
         if (value.length < rule->length
             || (exact && value.length != rule->length))
@@ -1039,13 +1025,14 @@ lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
     lxa_html_tree_name_equals((name), (text), sizeof(text) - 1)
 static lxa_status_t
 in_tag_table(lxa_span_t name, lxa_budget_t *budget, lxa_limit_reason_t *reason,
-             const liblexa_html_element *table, size_t count, bool *found)
+    const liblexa_html_element *table, size_t count, bool *found)
 {
     size_t lo = 0, hi = count;
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         size_t shared = name.length < table[mid].length
-                        ? name.length : table[mid].length;
+            ? name.length
+            : table[mid].length;
         int order;
         lxa_status_t status = lxa_budget_charge(budget,
             LXA_BUDGET_WORK, 1, reason);
@@ -1053,7 +1040,7 @@ in_tag_table(lxa_span_t name, lxa_budget_t *budget, lxa_limit_reason_t *reason,
         order = memcmp(name.data, table[mid].name, shared);
         if (order == 0)
             order = (name.length > table[mid].length)
-                    - (name.length < table[mid].length);
+                - (name.length < table[mid].length);
         if (order == 0) {
             *found = true;
             return LXA_OK;
@@ -1096,11 +1083,11 @@ lxa_html_tree_supported_container(lxa_span_t name, lxa_budget_t *budget,
         return LXA_OK;
     }
     status = in_tag_table(name, budget, reason, liblexa_html_elements,
-                          LIBLEXA_HTML_ELEMENT_COUNT, &known);
+        LIBLEXA_HTML_ELEMENT_COUNT, &known);
     if (status != LXA_OK) return status;
     if (!known)
         status = in_tag_table(name, budget, reason, liblexa_html_obsolete_elements,
-                              LIBLEXA_HTML_OBSOLETE_COUNT, &known);
+            LIBLEXA_HTML_OBSOLETE_COUNT, &known);
     if (status == LXA_OK) *supported = !known;
     return status;
 }

@@ -7,7 +7,8 @@ LXA_ROOT_FOSTER_FOREIGN_NAME(LXA_ROOT_FOSTER_FOREIGN_VIEW *view,
     if (status == LXA_OK) status = LXA_ROOT_FOSTER_FOREIGN_RESERVE(view);
     if (status != LXA_OK) return status;
     lxa_dom_namespace_t ns = lxa_html_tree_name_equals(token->name, "svg", 3)
-        ? LXA_DOM_NS_SVG : LXA_DOM_NS_MATHML;
+        ? LXA_DOM_NS_SVG
+        : LXA_DOM_NS_MATHML;
     status = LXA_ROOT_FOSTER_FOREIGN_INSERT(view, token, ns);
     if (status == LXA_OK && token->self_closing) status = LXA_ROOT_FOSTER_FOREIGN_POP(view);
     return status;

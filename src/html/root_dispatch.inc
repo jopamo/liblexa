@@ -23,7 +23,7 @@ LXA_ROOT_DISPATCH_NAME(LXA_ROOT_DISPATCH_VIEW *view,
     if ((*token)->kind == LXA_HTML_START_TAG
         && lxa_html_tree_name_equals((*token)->name, "image", 5)) {
         *adjusted = **token;
-        adjusted->name = (lxa_span_t){(const uint8_t *) "img", 3};
+        adjusted->name = (lxa_span_t) {(const uint8_t *) "img", 3};
         *token = adjusted;
     }
     if ((*token)->kind == LXA_HTML_DOCTYPE && LXA_ROOT_DISPATCH_MODE(view) == LXA_TREE_INITIAL)

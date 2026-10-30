@@ -25,5 +25,6 @@ LXA_ROOT_START_EXEC_NAME(LXA_ROOT_START_EXEC_VIEW *view, const lxa_html_token_t 
     status = lxa_html_tree_root_special_start_action(LXA_ROOT_START_EXEC_MODE(view), token->name, &special);
     if (status != LXA_OK) return status;
     return special != LXA_HTML_ROOT_SPECIAL_ORDINARY
-        ? LXA_ROOT_START_EXEC_SPECIAL(view, token, special) : LXA_ROOT_START_EXEC_ORDINARY(view, token);
+        ? LXA_ROOT_START_EXEC_SPECIAL(view, token, special)
+        : LXA_ROOT_START_EXEC_ORDINARY(view, token);
 }

@@ -16,17 +16,21 @@ word(lxa_span_t text, const char *ascii, size_t size)
  * query is still evaluated independently. */
 static lxa_status_t
 query(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-      size_t first, size_t after, lxa_css_media_t *out)
+    size_t first, size_t after, lxa_css_media_t *out)
 {
-    enum { QUERY_START, QUERY_TYPE, QUERY_END } state = QUERY_START;
+    enum {
+        QUERY_START,
+        QUERY_TYPE,
+        QUERY_END
+    } state = QUERY_START;
     bool negated = false, match = false;
     lxa_status_t status;
-    *out = (lxa_css_media_t) {0};
+    *out = (lxa_css_media_t){0};
     for (size_t i = first; i < after; i++) {
         lxa_css_token_t token;
         lxa_span_t text;
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
-                                   &blocks->limit_reason);
+            &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_internal_status(
             lxa_css_tokens_get(tokens, i, &token, &text));
@@ -72,13 +76,13 @@ merge(lxa_css_media_t *out, lxa_css_media_t group)
     if (group.syntax == LXA_CSS_SYNTAX_UNSUPPORTED)
         out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
     else if (group.syntax == LXA_CSS_SYNTAX_INVALID
-             && out->syntax != LXA_CSS_SYNTAX_UNSUPPORTED)
+        && out->syntax != LXA_CSS_SYNTAX_UNSUPPORTED)
         out->syntax = LXA_CSS_SYNTAX_INVALID;
 }
 
 lxa_status_t
 lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                     size_t first, size_t after, lxa_css_media_t *out)
+    size_t first, size_t after, lxa_css_media_t *out)
 {
     size_t start = first, at = first;
     lxa_css_media_t result = {.syntax = LXA_CSS_SYNTAX_SUPPORTED}, group;
@@ -87,12 +91,12 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         || first > after || after > blocks->end
         || lxa_css_tokens_length(tokens) < blocks->end)
         return LXA_ERROR_ARGUMENT;
-    *out = (lxa_css_media_t) {0};
+    *out = (lxa_css_media_t){0};
     status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     if (first == after) {
-        *out = (lxa_css_media_t) {LXA_CSS_SYNTAX_SUPPORTED, true};
+        *out = (lxa_css_media_t){LXA_CSS_SYNTAX_SUPPORTED, true};
         return LXA_OK;
     }
     while (at < after) {
@@ -100,7 +104,7 @@ lxa_css_media_screen(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         lxa_span_t text;
         lxa_css_component_range_t component;
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
-                                   &blocks->limit_reason);
+            &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_internal_status(
             lxa_css_tokens_get(tokens, at, &token, &text));

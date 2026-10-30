@@ -7,12 +7,12 @@ static lxa_status_t
 control_input_status(lxa_html_input_result_t result)
 {
     switch (result) {
-    case LXA_HTML_INPUT_OK: return LXA_OK;
-    case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
-    case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
-    case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
-    case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
-    default: return LXA_ERROR_ARGUMENT;
+        case LXA_HTML_INPUT_OK: return LXA_OK;
+        case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
+        case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
+        case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
+        case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
+        default: return LXA_ERROR_ARGUMENT;
     }
 }
 
@@ -40,8 +40,7 @@ control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
     lxa_html_control_context_t control = {0};
     lxa_html_tokenizer_t *tokenizer = NULL;
     lxa_html_input_meta_observer_t meta = {
-        .budget = budget, .reason = LXA_BUDGET_COUNT
-    };
+        .budget = budget, .reason = LXA_BUDGET_COUNT};
     lxa_status_t status = lxa_html_control_context_init(&control, allocator, budget);
     if (status == LXA_OK) {
         control.meta = (lxa_html_meta_sink_t){lxa_html_input_observe_meta, &meta};
@@ -60,23 +59,23 @@ control_input_meta(lxa_span_t decoded, const lxa_allocator_t *allocator,
         if (result == LXA_HTML_OK)
             result = lxa_html_tokenizer_finish(tokenizer);
         switch (result) {
-        case LXA_HTML_OK: break;
-        case LXA_HTML_LIMIT: status = LXA_ERROR_LIMIT; break;
-        case LXA_HTML_NO_MEMORY: status = LXA_ERROR_NO_MEMORY; break;
-        case LXA_HTML_OVERFLOW: status = LXA_ERROR_OVERFLOW; break;
-        case LXA_HTML_ENTROPY: status = LXA_ERROR_ENTROPY; break;
-        case LXA_HTML_UNSUPPORTED: status = LXA_ERROR_UNSUPPORTED; break;
-        case LXA_HTML_CALLBACK_FAILURE:
-            status = lxa_html_tokenizer_callback_status(tokenizer);
-            if (status == LXA_OK || status == LXA_ERROR_ARGUMENT)
-                status = LXA_ERROR_INTERNAL;
-            break;
-        default: status = LXA_ERROR_INTERNAL; break;
+            case LXA_HTML_OK: break;
+            case LXA_HTML_LIMIT: status = LXA_ERROR_LIMIT; break;
+            case LXA_HTML_NO_MEMORY: status = LXA_ERROR_NO_MEMORY; break;
+            case LXA_HTML_OVERFLOW: status = LXA_ERROR_OVERFLOW; break;
+            case LXA_HTML_ENTROPY: status = LXA_ERROR_ENTROPY; break;
+            case LXA_HTML_UNSUPPORTED: status = LXA_ERROR_UNSUPPORTED; break;
+            case LXA_HTML_CALLBACK_FAILURE:
+                status = lxa_html_tokenizer_callback_status(tokenizer);
+                if (status == LXA_OK || status == LXA_ERROR_ARGUMENT)
+                    status = LXA_ERROR_INTERNAL;
+                break;
+            default: status = LXA_ERROR_INTERNAL; break;
         }
         if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = meta.reason != LXA_BUDGET_COUNT ? meta.reason
-                : result == LXA_HTML_LIMIT ? lxa_html_tokenizer_limit_reason(tokenizer)
-                : control.limit_reason;
+                : result == LXA_HTML_LIMIT            ? lxa_html_tokenizer_limit_reason(tokenizer)
+                                                      : control.limit_reason;
         if (status == LXA_OK)
             status = lxa_budget_check_impl(budget, LXA_BUDGET_INPUT, 0, reason);
         if (status == LXA_OK && control.mode != LXA_TREE_DONE)
@@ -124,15 +123,15 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
         status = lxa_vector_init(&offsets, &mapping->bytes.allocator,
             sizeof(lxa_html_input_mapping_t));
     if (status == LXA_OK) status = lxa_vector_bind_budget(&offsets, budget);
-    bool prepaid = fixed == lxa_encoding_lookup(
-        (lxa_span_t){(const uint8_t *)"utf-8", 5});
+    bool prepaid = fixed == lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-8", 5});
     if (status == LXA_OK && prepaid)
         status = lxa_budget_accept_input(budget, input.length, reason);
     size_t length = input.length - prefix;
     /* Scan only affordable input; otherwise retain scalar-ordered WORK failure. */
     bool ascii = status == LXA_OK && prepaid && length <= UINT64_MAX / 2
         && lxa_budget_check_impl(budget, LXA_BUDGET_WORK,
-            (uint64_t)length * 2, NULL) == LXA_OK;
+               (uint64_t) length * 2, NULL)
+            == LXA_OK;
     if (ascii) {
         for (size_t i = prefix; i < input.length; ++i) {
             if (input.data[i] >= 0x80) {
@@ -152,29 +151,24 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
         if (status == LXA_OK) status = lxa_vector_push(&offsets, &point);
         if (status == LXA_OK && length != 0) {
             point = (lxa_html_input_mapping_t){
-                .decoded_end = length, .raw_end = input.length,
-                .identity = true
-            };
+                .decoded_end = length, .raw_end = input.length, .identity = true};
             status = lxa_vector_push(&offsets, &point);
         }
         if (status == LXA_OK)
-            status = lxa_budget_charge_work(budget, (uint64_t)length * 2, reason);
+            status = lxa_budget_charge_work(budget, (uint64_t) length * 2, reason);
         borrowed = status == LXA_OK;
-    }
-    else if (status == LXA_OK)
+    } else if (status == LXA_OK)
         status = control_input_status(prepaid
-            ? lxa_html_input_decode_mapped_prepaid(input, encoding, prefix,
-                budget, &tentative, &offsets, &malformed, reason)
-            : lxa_html_input_decode_mapped(input, encoding, prefix,
-                budget, &tentative, &offsets, &malformed, reason));
+                ? lxa_html_input_decode_mapped_prepaid(input, encoding, prefix,
+                      budget, &tentative, &offsets, &malformed, reason)
+                : lxa_html_input_decode_mapped(input, encoding, prefix,
+                      budget, &tentative, &offsets, &malformed, reason));
     if (status == LXA_OK && fixed == NULL && prefix == 0) {
         const lxa_encoding_t *declared = NULL;
         status = control_input_meta((lxa_span_t){tentative.data, tentative.length},
             &decoded->allocator, budget, &declared, reason);
-        bool utf16 = encoding == lxa_encoding_lookup(
-            (lxa_span_t){(const uint8_t *)"utf-16le", 8})
-            || encoding == lxa_encoding_lookup(
-                (lxa_span_t){(const uint8_t *)"utf-16be", 8});
+        bool utf16 = encoding == lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-16le", 8})
+            || encoding == lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-16be", 8});
         if (status == LXA_OK && !utf16 && declared != NULL && declared != encoding) {
             encoding = declared;
             lxa_buffer_destroy(&tentative);
@@ -195,14 +189,8 @@ lxa_html_control_input_prepare(lxa_span_t input, const lxa_encoding_t *fixed,
         *decoded = tentative;
         *mapping = offsets;
         *selection = (lxa_html_control_input_t){
-            .encoding = encoding, .prefix_length = prefix, .malformed = malformed,
-            .utf8 = borrowed
-                ? (lxa_span_t){input.data == NULL ? NULL : input.data + prefix,
-                    input.length - prefix}
-                : (lxa_span_t){tentative.data, tentative.length}
-        };
-    }
-    else {
+            .encoding = encoding, .prefix_length = prefix, .malformed = malformed, .utf8 = borrowed ? (lxa_span_t){input.data == NULL ? NULL : input.data + prefix, input.length - prefix} : (lxa_span_t){tentative.data, tentative.length}};
+    } else {
         lxa_buffer_destroy(&tentative);
         lxa_vector_destroy(&offsets);
     }
@@ -410,8 +398,7 @@ lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
         return context->failure;
     }
     const lxa_html_root_frameset_borrowers_t borrowers = {
-        &context->formatting, &context->text, tokenizer, &context->spaces
-    };
+        &context->formatting, &context->text, tokenizer, &context->spaces};
     lxa_html_root_frameset_result_t out;
     lxa_status_t status = lxa_html_root_context_frameset_token(&context->root,
         &borrowers, token, &context->mode, &out);
@@ -424,11 +411,11 @@ lxa_html_control_context_frameset_token(lxa_html_control_context_t *context,
         if (out.action == LXA_HTML_FRAMESET_NOFRAMES_START)
             context->pending_newline = out.skip_newline;
         *result = out;
-    }
-    else {
+    } else {
         context->failure = status;
         context->limit_reason = context->root.failure == status
-            ? context->root.limit_reason : LXA_BUDGET_COUNT;
+            ? context->root.limit_reason
+            : LXA_BUDGET_COUNT;
     }
     return status;
 }
@@ -454,8 +441,7 @@ lxa_html_control_context_template_column_group_token(lxa_html_control_context_t 
     if (status == LXA_OK) {
         if (out == LXA_HTML_COLUMN_GROUP_SPACE_TEXT) lxa_buffer_clear(&context->spaces);
         *result = out;
-    }
-    else {
+    } else {
         context->failure = status;
         context->limit_reason = context->templates.limit_reason;
     }
@@ -482,17 +468,17 @@ lxa_html_control_context_template_data_token(lxa_html_control_context_t *context
     lxa_status_t status = lxa_html_template_context_current_token(&context->templates, token, &route);
     if (status == LXA_OK) {
         switch (route.action) {
-        case LXA_HTML_TEMPLATE_CURRENT_TABLE:
-            status = lxa_html_template_context_table_data(&context->templates, token->data,
-                &context->pending_table_text, emit, user);
-            break;
-        case LXA_HTML_TEMPLATE_CURRENT_CONTINUE:
-            status = lxa_html_template_context_data_token(&context->templates, token->data,
-                &context->pending_table_text, emit, user);
-            break;
-        default:
-            assert(false);
-            status = LXA_ERROR_INTERNAL;
+            case LXA_HTML_TEMPLATE_CURRENT_TABLE:
+                status = lxa_html_template_context_table_data(&context->templates, token->data,
+                    &context->pending_table_text, emit, user);
+                break;
+            case LXA_HTML_TEMPLATE_CURRENT_CONTINUE:
+                status = lxa_html_template_context_data_token(&context->templates, token->data,
+                    &context->pending_table_text, emit, user);
+                break;
+            default:
+                assert(false);
+                status = LXA_ERROR_INTERNAL;
         }
     }
     if (status != LXA_OK) {
@@ -536,8 +522,7 @@ lxa_html_control_context_template_text_start(lxa_html_control_context_t *context
         if (!plaintext) context->mode = LXA_TREE_TEXT;
         if (newline) context->pending_newline = true;
         *identity = out;
-    }
-    else {
+    } else {
         context->failure = status;
         context->limit_reason = context->templates.limit_reason;
     }
@@ -628,19 +613,19 @@ control_template_start_route(lxa_html_control_context_t *context,
     bool out;
     lxa_status_t status;
     switch (route) {
-    case CONTROL_TEMPLATE_START_PRELUDE:
-        status = control_execute_template_html_prelude(context, token, &out);
-        break;
-    case CONTROL_TEMPLATE_START_FORM:
-        status = lxa_html_template_context_form_token(&context->templates, token, &out);
-        break;
-    case CONTROL_TEMPLATE_START_HTML_FOREIGN:
-        status = lxa_html_template_context_html_foreign_start(&context->templates, token, &out);
-        break;
-    default:
-        assert(false);
-        status = LXA_ERROR_INTERNAL;
-        break;
+        case CONTROL_TEMPLATE_START_PRELUDE:
+            status = control_execute_template_html_prelude(context, token, &out);
+            break;
+        case CONTROL_TEMPLATE_START_FORM:
+            status = lxa_html_template_context_form_token(&context->templates, token, &out);
+            break;
+        case CONTROL_TEMPLATE_START_HTML_FOREIGN:
+            status = lxa_html_template_context_html_foreign_start(&context->templates, token, &out);
+            break;
+        default:
+            assert(false);
+            status = LXA_ERROR_INTERNAL;
+            break;
     }
     if (status == LXA_OK) *handled = out;
     else {
@@ -848,7 +833,7 @@ control_template_foreign_data(control_template_foreign_view_t *view,
     return integrated
         ? lxa_html_control_context_template_data_token(view->context, token, view->emit, view->user)
         : lxa_html_template_context_emit_data(&view->context->templates,
-            token->data, view->emit, view->user);
+              token->data, view->emit, view->user);
 }
 
 static lxa_status_t
@@ -1039,8 +1024,7 @@ lxa_html_control_context_template_table_start(lxa_html_control_context_t *contex
         return context->failure;
     }
     lxa_html_control_template_table_start_result_t out = {
-        .action = LXA_HTML_TEMPLATE_START_CONTINUE, .token = *token
-    };
+        .action = LXA_HTML_TEMPLATE_START_CONTINUE, .token = *token};
     control_template_table_start_view_t view = {context, tokenizer, &out};
     lxa_status_t status = control_execute_template_current_start(&view, token, &out.action);
     if (status == LXA_OK) *result = out;
@@ -1154,19 +1138,18 @@ lxa_html_control_context_template_ordinary_start(lxa_html_control_context_t *con
                 (lxa_html_template_control_frame_t *) context->templates.frames.bytes.data;
             size_t count = lxa_vector_length(&context->templates.frames);
             if (lxa_html_tree_template_start_mode(frames[count - 1].insertion_mode,
-                token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode) != LXA_OK) {
+                    token->name, LXA_DOM_NS_HTML, &frames[count - 1].insertion_mode)
+                != LXA_OK) {
                 assert(false);
                 context->failure = LXA_ERROR_INTERNAL;
                 context->limit_reason = LXA_BUDGET_COUNT;
                 return context->failure;
             }
         }
-        if (!out.foster && (lxa_html_tree_name_equals(token->name, "pre", 3)
-            || lxa_html_tree_name_equals(token->name, "listing", 7)))
+        if (!out.foster && (lxa_html_tree_name_equals(token->name, "pre", 3) || lxa_html_tree_name_equals(token->name, "listing", 7)))
             context->pending_newline = true;
         *result = out;
-    }
-    else if (context->templates.failure != LXA_OK) {
+    } else if (context->templates.failure != LXA_OK) {
         context->failure = status;
         context->limit_reason = context->templates.limit_reason;
     }
@@ -1427,11 +1410,11 @@ lxa_html_control_context_template_token(lxa_html_control_context_t *context,
     if (status == LXA_OK) {
         out.token = *token;
         *result = out;
-    }
-    else if (context->failure == LXA_OK) {
+    } else if (context->failure == LXA_OK) {
         context->failure = status;
         context->limit_reason = status == LXA_ERROR_LIMIT
-            ? context->templates.limit_reason : LXA_BUDGET_COUNT;
+            ? context->templates.limit_reason
+            : LXA_BUDGET_COUNT;
     }
     return status;
 }
@@ -1442,8 +1425,7 @@ control_start_root(lxa_html_control_context_t *context,
     lxa_html_root_start_result_t *result)
 {
     const lxa_html_root_token_borrowers_t borrowers = {
-        &context->formatting, &context->text, tokenizer, &context->form_owner
-    };
+        &context->formatting, &context->text, tokenizer, &context->form_owner};
     lxa_html_root_start_result_t out;
     lxa_status_t status = lxa_html_root_context_start_token(&context->root, &borrowers, token,
         context->document_mode, &context->mode, &context->pending_newline, &out);
@@ -1476,8 +1458,7 @@ control_end_root(control_root_view_t *view, const lxa_html_token_t *token)
 {
     lxa_html_control_context_t *context = view->context;
     const lxa_html_root_token_borrowers_t borrowers = {
-        &context->formatting, &context->text, view->tokenizer, &context->form_owner
-    };
+        &context->formatting, &context->text, view->tokenizer, &context->form_owner};
     return lxa_html_root_context_end_token(&context->root, &borrowers, token,
         context->document_mode, &context->mode, &context->pending_newline, &view->result->value.end);
 }
@@ -1487,8 +1468,7 @@ control_root_data(control_root_view_t *view, lxa_span_t data)
 {
     lxa_html_control_context_t *context = view->context;
     const lxa_html_root_data_sink_t sink = {
-        &context->pending_table_text, view->sink->emit, view->sink->prebody_emit, view->sink->user
-    };
+        &context->pending_table_text, view->sink->emit, view->sink->prebody_emit, view->sink->user};
     return lxa_html_root_context_data_token(&context->root, &context->formatting,
         data, &context->mode, &sink);
 }
@@ -1561,8 +1541,7 @@ control_root_noscript_dispatch(control_root_dispatch_view_t *view,
     const lxa_html_token_t **token, lxa_html_token_t *adjusted, bool *handled)
 {
     control_head_noscript_view_t noscript = {
-        view->context, view->sink->prebody_emit, view->sink->user
-    };
+        view->context, view->sink->prebody_emit, view->sink->user};
     view->result->action = LXA_HTML_CONTROL_ROOT_NOSCRIPT;
     return control_dispatch_head_noscript(&noscript, token, adjusted, handled);
 }
@@ -1704,8 +1683,7 @@ lxa_html_control_context_flush_table_text(lxa_html_control_context_t *context,
         lxa_html_template_table_text_result_t result;
         status = lxa_html_template_context_table_text(&context->templates, pending, emit, user, &result);
         reason = context->templates.limit_reason;
-    }
-    else {
+    } else {
         lxa_html_root_table_text_result_t result;
         status = lxa_html_root_context_table_text(&context->root, &context->formatting,
             context->mode, pending, emit, user, &result);
@@ -1766,7 +1744,8 @@ lxa_html_control_context_finish(lxa_html_control_context_t *context)
     if (status != LXA_OK) {
         context->failure = status;
         context->limit_reason = context->templates.failure != LXA_OK
-            ? context->templates.limit_reason : context->root.limit_reason;
+            ? context->templates.limit_reason
+            : context->root.limit_reason;
     }
     return status;
 }
@@ -1897,8 +1876,7 @@ lxa_html_control_context_on_token(lxa_html_control_context_t *context,
     const lxa_html_control_root_sink_t discard_root = {0};
     control_token_view_t view = {
         context, tokenizer, intake_sink == NULL ? &discard_intake : intake_sink,
-        root_sink == NULL ? &discard_root : root_sink
-    };
+        root_sink == NULL ? &discard_root : root_sink};
     lxa_status_t status = control_execute_token(&view, token);
     return lxa_html_control_context_after_token(context, tokenizer, token->kind,
         status, context->limit_reason);

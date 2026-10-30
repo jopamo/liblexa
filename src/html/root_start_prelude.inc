@@ -19,7 +19,8 @@ LXA_ROOT_START_PRELUDE_NAME(LXA_ROOT_START_PRELUDE_VIEW *view,
             if (status == LXA_OK && eligible)
                 status = LXA_ROOT_START_PRELUDE_FRAMESET(view, token);
             if (status == LXA_OK) *result = eligible
-                ? LXA_HTML_ROOT_PRELUDE_FRAMESET : LXA_HTML_ROOT_PRELUDE_IGNORE;
+                ? LXA_HTML_ROOT_PRELUDE_FRAMESET
+                : LXA_HTML_ROOT_PRELUDE_IGNORE;
             return status;
         }
         if (lxa_html_tree_name_equals(token->name, "frame", 5)) {
@@ -30,7 +31,8 @@ LXA_ROOT_START_PRELUDE_NAME(LXA_ROOT_START_PRELUDE_VIEW *view,
     if (action != LXA_HTML_ROOT_START_OTHER) {
         status = LXA_ROOT_START_PRELUDE_ROOT(view, action, token);
         if (status == LXA_OK) *result = action == LXA_HTML_ROOT_START_IGNORE_HEAD
-            ? LXA_HTML_ROOT_PRELUDE_IGNORE : LXA_HTML_ROOT_PRELUDE_ROOT;
+            ? LXA_HTML_ROOT_PRELUDE_IGNORE
+            : LXA_HTML_ROOT_PRELUDE_ROOT;
         return status;
     }
     *result = LXA_HTML_ROOT_PRELUDE_CONTINUE;

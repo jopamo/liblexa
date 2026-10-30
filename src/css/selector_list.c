@@ -25,17 +25,15 @@ lxa_css_selector_list_create(const lxa_allocator_t *allocator,
     status = lxa_vector_bind_budget(&storage, blocks->budget);
     if (status != LXA_OK) return status;
     status = lxa_budget_charge(blocks->budget, LXA_BUDGET_MEMORY,
-                               sizeof(*list), NULL);
+        sizeof(*list), NULL);
     if (status != LXA_OK) return status;
     status = lxa_alloc(allocator, sizeof(*list), (void **) &list);
     if (status != LXA_OK) {
         lxa_budget_release(blocks->budget, LXA_BUDGET_MEMORY, sizeof(*list));
         return status;
     }
-    *list = (lxa_css_selector_list_t) {
-        .ranges = storage, .budget = blocks->budget,
-        .limit_reason = LXA_BUDGET_COUNT
-    };
+    *list = (lxa_css_selector_list_t){
+        .ranges = storage, .budget = blocks->budget, .limit_reason = LXA_BUDGET_COUNT};
     *out = list;
     return LXA_OK;
 }
@@ -60,8 +58,8 @@ lxa_css_selector_list_count_limit(const lxa_css_selector_list_t *list)
 
 lxa_status_t
 lxa_css_selector_list_build(lxa_css_selector_list_t *list,
-                            lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                            size_t first, size_t after, size_t max_count)
+    lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
+    size_t first, size_t after, size_t max_count)
 {
     size_t start = first, at = first;
     bool nonempty = false;
@@ -77,7 +75,7 @@ lxa_css_selector_list_build(lxa_css_selector_list_t *list,
     status = lxa_css_blocks_check(blocks);
     if (status == LXA_OK)
         status = lxa_css_vector_check(&list->ranges,
-                                      sizeof(lxa_css_selector_range_t));
+            sizeof(lxa_css_selector_range_t));
     if (status != LXA_OK) goto fail;
     lxa_vector_clear(&list->ranges);
     while (at < after) {
@@ -85,7 +83,7 @@ lxa_css_selector_list_build(lxa_css_selector_list_t *list,
         lxa_span_t text;
         lxa_css_component_range_t component;
         status = lxa_budget_charge(list->budget, LXA_BUDGET_WORK, 1,
-                                   &list->limit_reason);
+            &list->limit_reason);
         if (status != LXA_OK) goto fail;
         status = lxa_css_internal_status(
             lxa_css_tokens_get(tokens, at, &token, &text));
@@ -139,7 +137,7 @@ fail:
 
 lxa_status_t
 lxa_css_selector_list_get(lxa_css_selector_list_t *list, size_t index,
-                          lxa_css_selector_range_t *out)
+    lxa_css_selector_range_t *out)
 {
     void *slot;
     lxa_status_t status;

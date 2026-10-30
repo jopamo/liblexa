@@ -5,7 +5,9 @@
 #include "liblexa/base.h"
 #include "css/scan.h"
 
-enum { CSS_MAX_UNITS = 1024 * 1024 };
+enum {
+    CSS_MAX_UNITS = 1024 * 1024
+};
 
 typedef struct {
     const lxa_css_unit_t *units;
@@ -30,7 +32,7 @@ peek(scanner_t *s, size_t ahead)
         return 0xffffffffu;
     }
     s->work_status = lxa_budget_charge(s->budget, LXA_BUDGET_WORK, 1,
-                                       s->limit_reason);
+        s->limit_reason);
     if (s->work_status != LXA_OK) {
         return 0xffffffffu;
     }
@@ -47,13 +49,13 @@ static int
 name_start(uint32_t c)
 {
     return c == '_' || (c >= 'a' && c <= 'z')
-           || (c >= 'A' && c <= 'Z') || c == 0xb7
-           || (c >= 0xc0 && c <= 0xd6) || (c >= 0xd8 && c <= 0xf6)
-           || (c >= 0xf8 && c <= 0x37d) || (c >= 0x37f && c <= 0x1fff)
-           || (c >= 0x200c && c <= 0x200d) || (c >= 0x203f && c <= 0x2040)
-           || (c >= 0x2070 && c <= 0x218f) || (c >= 0x2c00 && c <= 0x2fef)
-           || (c >= 0x3001 && c <= 0xd7ff) || (c >= 0xf900 && c <= 0xfdcf)
-           || (c >= 0xfdf0 && c <= 0xfffd) || (c >= 0x10000 && c <= 0x10ffff);
+        || (c >= 'A' && c <= 'Z') || c == 0xb7
+        || (c >= 0xc0 && c <= 0xd6) || (c >= 0xd8 && c <= 0xf6)
+        || (c >= 0xf8 && c <= 0x37d) || (c >= 0x37f && c <= 0x1fff)
+        || (c >= 0x200c && c <= 0x200d) || (c >= 0x203f && c <= 0x2040)
+        || (c >= 0x2070 && c <= 0x218f) || (c >= 0x2c00 && c <= 0x2fef)
+        || (c >= 0x3001 && c <= 0xd7ff) || (c >= 0xf900 && c <= 0xfdcf)
+        || (c >= 0xfdf0 && c <= 0xfffd) || (c >= 0x10000 && c <= 0x10ffff);
 }
 
 static int
@@ -118,7 +120,8 @@ read_escape(scanner_t *s)
         s->pos++;
     }
     return c == 0 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)
-           ? 0xfffd : c;
+        ? 0xfffd
+        : c;
 }
 
 static int
@@ -126,8 +129,7 @@ ident(scanner_t *s, size_t ahead)
 {
     uint32_t a = peek(s, ahead), b = peek(s, ahead + 1);
     return name_start(a) || escape(s, ahead)
-           || (a == '-' && (name_start(b) || b == '-'
-                            || escape(s, ahead + 1)));
+        || (a == '-' && (name_start(b) || b == '-' || escape(s, ahead + 1)));
 }
 
 static int
@@ -151,19 +153,16 @@ put(scanner_t *s, uint32_t c)
     if (c < 0x80) {
         bytes[0] = (uint8_t) c;
         n = 1;
-    }
-    else if (c < 0x800) {
+    } else if (c < 0x800) {
         bytes[0] = (uint8_t) (0xc0 | c >> 6);
         bytes[1] = (uint8_t) (0x80 | (c & 0x3f));
         n = 2;
-    }
-    else if (c < 0x10000) {
+    } else if (c < 0x10000) {
         bytes[0] = (uint8_t) (0xe0 | c >> 12);
         bytes[1] = (uint8_t) (0x80 | ((c >> 6) & 0x3f));
         bytes[2] = (uint8_t) (0x80 | (c & 0x3f));
         n = 3;
-    }
-    else {
+    } else {
         bytes[0] = (uint8_t) (0xf0 | c >> 18);
         bytes[1] = (uint8_t) (0x80 | ((c >> 12) & 0x3f));
         bytes[2] = (uint8_t) (0x80 | ((c >> 6) & 0x3f));
@@ -177,13 +176,13 @@ put(scanner_t *s, uint32_t c)
             return status;
         }
         status = lxa_budget_check_item(s->budget, LXA_BUDGET_TOKEN_BYTES,
-                                       length, s->limit_reason);
+            length, s->limit_reason);
         if (status == LXA_OK && s->name_text) {
             status = lxa_budget_check_item(s->budget, LXA_BUDGET_NAME_BYTES,
-                                           length, s->limit_reason);
+                length, s->limit_reason);
         }
         if (status == LXA_OK) {
-            status = lxa_buffer_append(&s->text, (lxa_span_t) {bytes, n});
+            status = lxa_buffer_append(&s->text, (lxa_span_t){bytes, n});
             if (status == LXA_ERROR_LIMIT) {
                 *s->limit_reason = LXA_BUDGET_MEMORY;
             }
@@ -223,8 +222,7 @@ bad_url(scanner_t *s)
         }
         if (escape(s, 0)) {
             (void) read_escape(s);
-        }
-        else {
+        } else {
             s->pos++;
         }
     }
@@ -255,8 +253,7 @@ read_url(scanner_t *s, lxa_css_token_t *token)
             }
             if (peek(s, 0) == ')') {
                 s->pos++;
-            }
-            else if (s->pos < s->count) {
+            } else if (s->pos < s->count) {
                 bad_url(s);
                 token->kind = LXA_CSS_BAD_URL;
             }
@@ -269,8 +266,7 @@ read_url(scanner_t *s, lxa_css_token_t *token)
             token->kind = LXA_CSS_BAD_URL;
             break;
         }
-        status = put(s, c == '\\' ? read_escape(s)
-                           : s->units[s->pos++].value);
+        status = put(s, c == '\\' ? read_escape(s) : s->units[s->pos++].value);
         if (status != LXA_OK) {
             return status;
         }
@@ -282,7 +278,7 @@ static lxa_status_t
 emit(scanner_t *s, lxa_css_token_t token, size_t start)
 {
     size_t end = s->pos == s->count ? s->end
-                 : s->units[s->pos].offset;
+                                    : s->units[s->pos].offset;
     /* Gaps between source units belong to the preceding token only when
      * included in its last unit; do not claim unrelated source bytes. */
     if (s->pos > start) {
@@ -300,7 +296,7 @@ emit(scanner_t *s, lxa_css_token_t token, size_t start)
     }
     {
         lxa_status_t status = lxa_css_tokens_append(s->tokens, token,
-            (lxa_span_t) {s->text.data, s->text.length});
+            (lxa_span_t){s->text.data, s->text.length});
         if (status == LXA_ERROR_LIMIT) {
             *s->limit_reason = s->tokens->limit_reason;
         }
@@ -335,8 +331,7 @@ read_number(scanner_t *s, unsigned *flags)
         if (significant < 17) {
             mantissa = mantissa * 10 + d;
             significant++;
-        }
-        else {
+        } else {
             scale++;
         }
     }
@@ -348,8 +343,7 @@ read_number(scanner_t *s, unsigned *flags)
             s->pos++;
             if (mantissa == 0 && d == 0) {
                 scale--;
-            }
-            else if (significant < 17) {
+            } else if (significant < 17) {
                 mantissa = mantissa * 10 + d;
                 significant++;
                 scale--;
@@ -379,15 +373,12 @@ read_number(scanner_t *s, unsigned *flags)
     scale += negative_exponent ? -exponent : exponent;
     if (mantissa == 0 || scale < -350) {
         value = 0;
-    }
-    else if (scale > 308) {
+    } else if (scale > 308) {
         value = INFINITY;
-    }
-    else if (scale < -308) {
+    } else if (scale < -308) {
         value = mantissa * pow(10.0, -308.0);
         value *= pow(10.0, (double) (scale + 308));
-    }
-    else {
+    } else {
         value = mantissa * pow(10.0, (double) scale);
     }
     return negative ? -value : value;
@@ -409,7 +400,7 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
         if (c == '/' && peek(s, 1) == '*') {
             s->pos += 2;
             while (s->pos < s->count
-                   && !(peek(s, 0) == '*' && peek(s, 1) == '/')) {
+                && !(peek(s, 0) == '*' && peek(s, 1) == '/')) {
                 s->pos++;
             }
             if (s->work_status != LXA_OK) {
@@ -424,45 +415,40 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
             continue;
         }
         if (space(c)) {
-            do { s->pos++; } while (space(peek(s, 0)));
+            do {
+                s->pos++;
+            } while (space(peek(s, 0)));
             t.kind = LXA_CSS_WHITESPACE;
-        }
-        else if (c == '<' && peek(s, 1) == '!' && peek(s, 2) == '-'
-                 && peek(s, 3) == '-') {
+        } else if (c == '<' && peek(s, 1) == '!' && peek(s, 2) == '-'
+            && peek(s, 3) == '-') {
             s->pos += 4;
             t.kind = LXA_CSS_CDO;
-        }
-        else if (c == '-' && peek(s, 1) == '-' && peek(s, 2) == '>') {
+        } else if (c == '-' && peek(s, 1) == '-' && peek(s, 2) == '>') {
             s->pos += 3;
             t.kind = LXA_CSS_CDC;
-        }
-        else if (number_start(s)) {
+        } else if (number_start(s)) {
             t.kind = LXA_CSS_NUMBER;
             t.number = read_number(s, &t.flags);
             if (ident(s, 0)) {
                 t.kind = LXA_CSS_DIMENSION;
                 status = read_name(s);
-            }
-            else if (peek(s, 0) == '%') {
+            } else if (peek(s, 0) == '%') {
                 t.kind = LXA_CSS_PERCENTAGE;
                 t.flags &= ~LXA_CSS_INTEGER;
                 s->pos++;
             }
-        }
-        else if (c == '#' && (name(peek(s, 1)) || escape(s, 1))) {
+        } else if (c == '#' && (name(peek(s, 1)) || escape(s, 1))) {
             s->pos++;
             t.kind = LXA_CSS_HASH;
             if (ident(s, 0)) {
                 t.flags = LXA_CSS_ID_HASH;
             }
             status = read_name(s);
-        }
-        else if (c == '@' && ident(s, 1)) {
+        } else if (c == '@' && ident(s, 1)) {
             s->pos++;
             t.kind = LXA_CSS_AT_KEYWORD;
             status = read_name(s);
-        }
-        else if (ident(s, 0)) {
+        } else if (ident(s, 0)) {
             t.kind = LXA_CSS_IDENT;
             status = read_name(s);
             if (status == LXA_OK && peek(s, 0) == '(') {
@@ -478,61 +464,55 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
                     }
                     if (peek(s, 0) != '"' && peek(s, 0) != '\''
                         && !(space(peek(s, 0))
-                             && (peek(s, 1) == '"' || peek(s, 1) == '\''))) {
+                            && (peek(s, 1) == '"' || peek(s, 1) == '\''))) {
                         status = read_url(s, &t);
                     }
                 }
             }
-        }
-        else if (c == '"' || c == '\'') {
+        } else if (c == '"' || c == '\'') {
             uint32_t quote = c;
             t.kind = LXA_CSS_STRING;
             s->pos++;
             while (status == LXA_OK && s->pos < s->count
-                   && peek(s, 0) != quote && peek(s, 0) != '\n') {
+                && peek(s, 0) != quote && peek(s, 0) != '\n') {
                 if (peek(s, 0) == '\\') {
                     if (peek(s, 1) == 0xffffffffu) {
                         s->pos++;
-                    }
-                    else if (escape(s, 0)) {
+                    } else if (escape(s, 0)) {
                         status = put(s, read_escape(s));
-                    }
-                    else {
+                    } else {
                         s->pos++;
                         if (peek(s, 0) == '\n') {
                             s->pos++;
                         }
                     }
-                }
-                else {
+                } else {
                     status = put(s, s->units[s->pos++].value);
                 }
             }
             if (status == LXA_OK) {
                 if (peek(s, 0) == '\n') {
                     t.kind = LXA_CSS_BAD_STRING;
-                }
-                else if (s->pos < s->count) {
+                } else if (s->pos < s->count) {
                     s->pos++;
                 }
             }
-        }
-        else {
+        } else {
             s->pos++;
             switch (c) {
-            case ':': t.kind = LXA_CSS_COLON; break;
-            case ';': t.kind = LXA_CSS_SEMICOLON; break;
-            case ',': t.kind = LXA_CSS_COMMA; break;
-            case '(': t.kind = LXA_CSS_LEFT_PAREN; break;
-            case ')': t.kind = LXA_CSS_RIGHT_PAREN; break;
-            case '[': t.kind = LXA_CSS_LEFT_SQUARE; break;
-            case ']': t.kind = LXA_CSS_RIGHT_SQUARE; break;
-            case '{': t.kind = LXA_CSS_LEFT_BRACE; break;
-            case '}': t.kind = LXA_CSS_RIGHT_BRACE; break;
-            default:
-                t.kind = LXA_CSS_DELIM;
-                t.codepoint = c;
-                break;
+                case ':': t.kind = LXA_CSS_COLON; break;
+                case ';': t.kind = LXA_CSS_SEMICOLON; break;
+                case ',': t.kind = LXA_CSS_COMMA; break;
+                case '(': t.kind = LXA_CSS_LEFT_PAREN; break;
+                case ')': t.kind = LXA_CSS_RIGHT_PAREN; break;
+                case '[': t.kind = LXA_CSS_LEFT_SQUARE; break;
+                case ']': t.kind = LXA_CSS_RIGHT_SQUARE; break;
+                case '{': t.kind = LXA_CSS_LEFT_BRACE; break;
+                case '}': t.kind = LXA_CSS_RIGHT_BRACE; break;
+                default:
+                    t.kind = LXA_CSS_DELIM;
+                    t.codepoint = c;
+                    break;
             }
         }
         if (s->work_status != LXA_OK) {
@@ -564,14 +544,14 @@ scan(scanner_t *s, size_t capacity, size_t *produced)
 
 lxa_css_scan_result_t
 lxa_css_scan_cursor_init_budget(lxa_css_scan_cursor_t *cursor,
-                                const lxa_css_unit_t *input, size_t count,
-                                size_t source_length, lxa_budget_t *budget)
+    const lxa_css_unit_t *input, size_t count,
+    size_t source_length, lxa_budget_t *budget)
 {
     size_t prev = 0;
     if (cursor == NULL) {
         return LXA_CSS_SCAN_INVALID;
     }
-    *cursor = (lxa_css_scan_cursor_t) {0};
+    *cursor = (lxa_css_scan_cursor_t){0};
     cursor->closed = true;
     if (count > CSS_MAX_UNITS) {
         return LXA_CSS_SCAN_OVERFLOW;
@@ -584,7 +564,9 @@ lxa_css_scan_cursor_init_budget(lxa_css_scan_cursor_t *cursor,
     cursor->limit_reason = LXA_BUDGET_COUNT;
     for (size_t i = 0; i < count; i++) {
         lxa_status_t work = lxa_budget_charge(budget == NULL
-            ? &cursor->local_budget : budget, LXA_BUDGET_WORK, 1,
+                ? &cursor->local_budget
+                : budget,
+            LXA_BUDGET_WORK, 1,
             &cursor->limit_reason);
         if (work != LXA_OK) {
             return lxa_css_scan_status(work);
@@ -608,17 +590,17 @@ lxa_css_scan_cursor_init_budget(lxa_css_scan_cursor_t *cursor,
 
 lxa_css_scan_result_t
 lxa_css_scan_cursor_init(lxa_css_scan_cursor_t *cursor,
-                         const lxa_css_unit_t *input, size_t count,
-                         size_t source_length)
+    const lxa_css_unit_t *input, size_t count,
+    size_t source_length)
 {
     return lxa_css_scan_cursor_init_budget(cursor, input, count,
-                                            source_length, NULL);
+        source_length, NULL);
 }
 
 lxa_css_scan_result_t
 lxa_css_scan_cursor_batch(lxa_css_scan_cursor_t *cursor,
-                          const lxa_css_unit_t *input, lxa_css_tokens_t *tokens,
-                          size_t capacity, size_t *produced)
+    const lxa_css_unit_t *input, lxa_css_tokens_t *tokens,
+    size_t capacity, size_t *produced)
 {
     scanner_t s = {0};
     lxa_css_scan_result_t result;
@@ -660,7 +642,7 @@ lxa_css_scan_cursor_batch(lxa_css_scan_cursor_t *cursor,
 
 lxa_css_scan_result_t
 lxa_css_scan_units(const lxa_css_unit_t *input, size_t count,
-                   size_t source_length, lxa_css_tokens_t *tokens)
+    size_t source_length, lxa_css_tokens_t *tokens)
 {
     lxa_css_scan_cursor_t cursor;
     lxa_css_scan_result_t result;
@@ -672,7 +654,7 @@ lxa_css_scan_units(const lxa_css_unit_t *input, size_t count,
     result = lxa_css_scan_cursor_init(&cursor, input, count, source_length);
     if (result == LXA_CSS_SCAN_OK) {
         result = lxa_css_scan_cursor_batch(&cursor, input, tokens, count + 1,
-                                            &produced);
+            &produced);
     }
     if (result != LXA_CSS_SCAN_OK) {
         lxa_css_tokens_clear(tokens);

@@ -5,7 +5,7 @@
 
 lxa_status_t
 lxa_vector_init(lxa_vector_t *vector, const lxa_allocator_t *allocator,
-                size_t element_size)
+    size_t element_size)
 {
     lxa_status_t status;
     if (vector == NULL || element_size == 0) {
@@ -31,8 +31,8 @@ lxa_status_t
 lxa_vector_bind_budget(lxa_vector_t *vector, lxa_budget_t *budget)
 {
     return vector == NULL || vector->element_size == 0
-           ? LXA_ERROR_ARGUMENT
-           : lxa_buffer_bind_budget(&vector->bytes, budget);
+        ? LXA_ERROR_ARGUMENT
+        : lxa_buffer_bind_budget(&vector->bytes, budget);
 }
 
 void
@@ -47,7 +47,7 @@ size_t
 lxa_vector_length(const lxa_vector_t *vector)
 {
     return vector == NULL || vector->element_size == 0 ? 0
-           : vector->bytes.length / vector->element_size;
+                                                       : vector->bytes.length / vector->element_size;
 }
 
 lxa_status_t
@@ -60,7 +60,7 @@ lxa_vector_reserve(lxa_vector_t *vector, size_t element_count)
     }
     status = lxa_size_mul(element_count, vector->element_size, &bytes);
     return status == LXA_OK ? lxa_buffer_reserve(&vector->bytes, bytes)
-           : status;
+                            : status;
 }
 
 lxa_status_t
@@ -84,7 +84,7 @@ lxa_vector_insert(lxa_vector_t *vector, size_t index, const void *value)
         return status;
     }
     memmove(vector->bytes.data + offset + vector->element_size,
-            vector->bytes.data + offset, length - offset);
+        vector->bytes.data + offset, length - offset);
     memcpy(vector->bytes.data + offset, value, vector->element_size);
     vector->bytes.length = total;
     return LXA_OK;
@@ -94,7 +94,7 @@ lxa_status_t
 lxa_vector_push(lxa_vector_t *vector, const void *value)
 {
     return lxa_vector_push_impl(vector, value,
-                               vector == NULL ? 0 : vector->element_size);
+        vector == NULL ? 0 : vector->element_size);
 }
 
 lxa_status_t
@@ -129,7 +129,7 @@ lxa_vector_erase(lxa_vector_t *vector, size_t index, size_t count)
     offset = index * vector->element_size;
     removed = count * vector->element_size;
     memmove(vector->bytes.data + offset, vector->bytes.data + offset + removed,
-            vector->bytes.length - offset - removed);
+        vector->bytes.length - offset - removed);
     vector->bytes.length -= removed;
     return LXA_OK;
 }

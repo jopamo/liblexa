@@ -8,7 +8,7 @@ static inline int
 lxa_buffer_allocator_valid(const lxa_allocator_t *allocator)
 {
     return allocator != NULL && allocator->allocate != NULL
-           && allocator->resize != NULL && allocator->release != NULL;
+        && allocator->resize != NULL && allocator->release != NULL;
 }
 
 static inline lxa_status_t

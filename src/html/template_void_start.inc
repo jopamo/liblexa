@@ -5,8 +5,7 @@ LXA_TEMPLATE_VOID_NAME(LXA_TEMPLATE_VOID_VIEW *view, const lxa_html_token_t *tok
     lxa_status_t status;
     if (lxa_html_tree_head_void(token->name)) {
         status = LXA_TEMPLATE_VOID_HEAD(view, token);
-    }
-    else {
+    } else {
         if (lxa_html_tree_body_void_reconstructs(token->name)) {
             status = LXA_TEMPLATE_VOID_RECONSTRUCT(view);
             if (status != LXA_OK) return status;
@@ -24,7 +23,7 @@ LXA_TEMPLATE_VOID_NAME(LXA_TEMPLATE_VOID_VIEW *view, const lxa_html_token_t *tok
         lxa_html_token_t adjusted;
         if (lxa_html_tree_name_equals(token->name, "image", 5)) {
             adjusted = *token;
-            adjusted.name = (lxa_span_t){(const uint8_t *) "img", 3};
+            adjusted.name = (lxa_span_t) {(const uint8_t *) "img", 3};
             token = &adjusted;
         }
         status = LXA_TEMPLATE_VOID_INSERT(view, token);

@@ -72,9 +72,9 @@ typedef enum {
  * are confined to one thread; the immutable encoding identity is sharable.
  */
 lxa_status_t lxa_decoder_create(const lxa_encoding_t *encoding,
-                                lxa_encoding_error_mode_t mode,
-                                const lxa_allocator_t *allocator,
-                                lxa_decoder_t **out);
+    lxa_encoding_error_mode_t mode,
+    const lxa_allocator_t *allocator,
+    lxa_decoder_t **out);
 /* budget is borrowed until destroy. NULL leaves allocation uncharged for
  * callers that do not yet use a parse budget. The fixed object size is
  * reserved before allocating and released on allocation failure/destroy.
@@ -84,9 +84,9 @@ lxa_status_t lxa_decoder_create_with_budget(
     const lxa_allocator_t *allocator, lxa_budget_t *budget,
     lxa_decoder_t **out);
 lxa_status_t lxa_encoder_create(const lxa_encoding_t *encoding,
-                                lxa_encoding_error_mode_t mode,
-                                const lxa_allocator_t *allocator,
-                                lxa_encoder_t **out);
+    lxa_encoding_error_mode_t mode,
+    const lxa_allocator_t *allocator,
+    lxa_encoder_t **out);
 lxa_status_t lxa_encoder_create_with_budget(
     const lxa_encoding_t *encoding, lxa_encoding_error_mode_t mode,
     const lxa_allocator_t *allocator, lxa_budget_t *budget,
@@ -100,13 +100,13 @@ void lxa_encoder_destroy(lxa_encoder_t *encoder);
  */
 size_t lxa_decoder_error_count(const lxa_decoder_t *decoder);
 lxa_encoding_result_t lxa_decoder_feed(lxa_decoder_t *decoder,
-                                        lxa_span_t input, uint32_t *output,
-                                        size_t capacity,
-                                        lxa_encoding_progress_t *progress);
+    lxa_span_t input, uint32_t *output,
+    size_t capacity,
+    lxa_encoding_progress_t *progress);
 lxa_encoding_result_t lxa_encoder_feed(lxa_encoder_t *encoder,
-                                        const uint32_t *input, size_t length,
-                                        lxa_mut_span_t output,
-                                        lxa_encoding_progress_t *progress);
+    const uint32_t *input, size_t length,
+    lxa_mut_span_t output,
+    lxa_encoding_progress_t *progress);
 lxa_encoding_result_t lxa_decoder_finish(
     lxa_decoder_t *decoder, uint32_t *output, size_t capacity,
     lxa_encoding_progress_t *progress);

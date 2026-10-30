@@ -6,7 +6,6 @@
 #include "base/budget_internal.h"
 #include "base/bytes_internal.h"
 
-
 lxa_status_t
 lxa_buffer_init(lxa_buffer_t *buffer, const lxa_allocator_t *allocator)
 {
@@ -42,8 +41,8 @@ lxa_buffer_destroy(lxa_buffer_t *buffer)
         lxa_free(&buffer->allocator, buffer->data);
         if (buffer->budget != NULL && capacity != 0) {
             lxa_status_t status = lxa_budget_release(buffer->budget,
-                                                      LXA_BUDGET_MEMORY,
-                                                      capacity);
+                LXA_BUDGET_MEMORY,
+                capacity);
             assert(status == LXA_OK);
             (void) status;
         }
@@ -75,7 +74,7 @@ lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity)
     }
     if (buffer->budget != NULL) {
         status = lxa_budget_charge_impl(buffer->budget, LXA_BUDGET_MEMORY,
-                                        capacity - buffer->capacity, NULL);
+            capacity - buffer->capacity, NULL);
         if (status != LXA_OK) {
             return status;
         }
@@ -85,8 +84,8 @@ lxa_buffer_reserve_exact(lxa_buffer_t *buffer, size_t capacity)
     if (status != LXA_OK) {
         if (buffer->budget != NULL) {
             lxa_status_t canceled = lxa_budget_release(buffer->budget,
-                                   LXA_BUDGET_MEMORY,
-                                   capacity - buffer->capacity);
+                LXA_BUDGET_MEMORY,
+                capacity - buffer->capacity);
             assert(canceled == LXA_OK);
             (void) canceled;
         }
@@ -111,7 +110,7 @@ lxa_buffer_append(lxa_buffer_t *buffer, lxa_span_t bytes)
 
 lxa_status_t
 lxa_buffer_append_self(lxa_buffer_t *buffer, size_t offset,
-                       size_t length)
+    size_t length)
 {
     size_t total;
     lxa_status_t status;

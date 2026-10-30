@@ -34,14 +34,14 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     }
     if ((relation == LXA_REL_FIRST || relation == LXA_REL_LAST)
         && (record.first_child == LXA_ID_NONE)
-           != (record.last_child == LXA_ID_NONE)) {
+            != (record.last_child == LXA_ID_NONE)) {
         return LXA_ERROR_ARGUMENT;
     }
     if (id == LXA_ID_NONE) {
         return LXA_OK;
     }
     status = lxa_budget_charge_work(nodes->budget, 1,
-                               &nodes->limit_reason);
+        &nodes->limit_reason);
     if (status != LXA_OK) {
         return status;
     }
@@ -54,8 +54,8 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
         return LXA_ERROR_ARGUMENT;
     }
     if ((relation == LXA_REL_FIRST
-         && (records[id].parent != source_id
-             || records[id].prev != LXA_ID_NONE))
+            && (records[id].parent != source_id
+                || records[id].prev != LXA_ID_NONE))
         || (relation == LXA_REL_LAST
             && (records[id].parent != source_id
                 || records[id].next != LXA_ID_NONE))
@@ -69,11 +69,11 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                 || records[id].next != source_id))
         || (relation == LXA_REL_PARENT
             && (record.prev == LXA_ID_NONE
-                ? records[id].first_child != source_id
-                : (record.prev < nodes->retired
-                   || record.prev >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
-                   || records[record.prev].next != source_id
-                   || records[record.prev].parent != id)))) {
+                    ? records[id].first_child != source_id
+                    : (record.prev < nodes->retired
+                          || record.prev >= lxa_vector_length_sized(&nodes->records, sizeof(lxa_dom_record_t))
+                          || records[record.prev].next != source_id
+                          || records[record.prev].parent != id)))) {
         return LXA_ERROR_ARGUMENT;
     }
     out->document = nodes;

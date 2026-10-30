@@ -34,7 +34,7 @@ typedef enum {
 lxa_status_t lxa_write_all(lxa_span_t bytes, lxa_write_f write, void *context);
 
 lxa_status_t lxa_html_escape(lxa_span_t input, lxa_escape_context_t context,
-                             lxa_write_f write, void *write_context);
+    lxa_write_f write, void *write_context);
 
 /* Serializes the currently supported HTML document subset.
  * The caller owns the sink and bounds its output. No mutation of the store

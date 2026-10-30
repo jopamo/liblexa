@@ -20,8 +20,7 @@ lxa_limits_default(void)
         .max_tokens = 2000000,
         .initial_work_credit = UINT64_C(1000000),
         .work_per_input_byte = 128,
-        .max_work = UINT64_MAX
-    };
+        .max_work = UINT64_MAX};
     return limits;
 }
 
@@ -44,8 +43,7 @@ lxa_limits_unbounded(void)
         .max_tokens = UINT32_MAX,
         .initial_work_credit = UINT64_MAX,
         .work_per_input_byte = 0,
-        .max_work = UINT64_MAX
-    };
+        .max_work = UINT64_MAX};
     return limits;
 }
 
@@ -82,21 +80,21 @@ lxa_budget_reset_session(lxa_budget_t *budget)
 
 lxa_status_t
 lxa_budget_check(const lxa_budget_t *budget, lxa_budget_kind_t kind,
-                 uint64_t amount, lxa_budget_kind_t *reason)
+    uint64_t amount, lxa_budget_kind_t *reason)
 {
     return lxa_budget_check_impl(budget, kind, amount, reason);
 }
 
 lxa_status_t
 lxa_budget_charge(lxa_budget_t *budget, lxa_budget_kind_t kind,
-                  uint64_t amount, lxa_budget_kind_t *reason)
+    uint64_t amount, lxa_budget_kind_t *reason)
 {
     return lxa_budget_charge_impl(budget, kind, amount, reason);
 }
 
 lxa_status_t
 lxa_budget_accept_input(lxa_budget_t *budget, size_t bytes,
-                        lxa_budget_kind_t *reason)
+    lxa_budget_kind_t *reason)
 {
     lxa_status_t status;
     uint64_t credit;
@@ -114,7 +112,7 @@ lxa_budget_accept_input(lxa_budget_t *budget, size_t bytes,
     }
     if (budget->limits.work_per_input_byte != 0
         && bytes > (UINT64_MAX - budget->work_credit)
-                   / budget->limits.work_per_input_byte) {
+                / budget->limits.work_per_input_byte) {
         return LXA_ERROR_OVERFLOW;
     }
     credit = (uint64_t) bytes * budget->limits.work_per_input_byte;
@@ -125,17 +123,16 @@ lxa_budget_accept_input(lxa_budget_t *budget, size_t bytes,
 
 lxa_status_t
 lxa_budget_check_item(const lxa_budget_t *budget, lxa_budget_kind_t kind,
-                      uint64_t size, lxa_budget_kind_t *reason)
+    uint64_t size, lxa_budget_kind_t *reason)
 {
     return lxa_budget_check_item_impl(budget, kind, size, reason);
 }
 
 lxa_status_t
 lxa_budget_release(lxa_budget_t *budget, lxa_budget_kind_t kind,
-                   uint64_t amount)
+    uint64_t amount)
 {
-    if (budget == NULL || (kind != LXA_BUDGET_MEMORY
-        && (kind < LXA_BUDGET_TREE_DEPTH || kind > LXA_BUDGET_CSS_NESTING))
+    if (budget == NULL || (kind != LXA_BUDGET_MEMORY && (kind < LXA_BUDGET_TREE_DEPTH || kind > LXA_BUDGET_CSS_NESTING))
         || amount > budget->used[kind]) {
         return LXA_ERROR_ARGUMENT;
     }

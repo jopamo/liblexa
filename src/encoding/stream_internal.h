@@ -68,8 +68,7 @@ lxa_encoding_utf8_write(uint8_t *output, uint32_t scalar, size_t width)
         && width == lxa_encoding_utf8_scalar_length(scalar));
     if (width == 1) {
         output[0] = (uint8_t) scalar;
-    }
-    else {
+    } else {
         for (size_t i = width - 1; i != 0; i--) {
             output[i] = 0x80 | (scalar & 0x3f);
             scalar >>= 6;

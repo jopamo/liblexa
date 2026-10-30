@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 typedef struct {
-    lxa_span_t tag;       /* Empty matches every tokenizer tag name. */
+    lxa_span_t tag; /* Empty matches every tokenizer tag name. */
     lxa_span_t attribute; /* Nonempty normalized tokenizer attribute name. */
 } lxa_html_source_target_t;
 
@@ -24,9 +24,9 @@ typedef struct {
 typedef struct {
     lxa_span_t tag, name, value;
     size_t source_start, source_end; /* Original-byte, half-open attribute syntax. */
-    size_t target_index;             /* First matching descriptor, not event order. */
-    const lxa_encoding_t *encoding;  /* Final immutable decoder identity. */
-    size_t source_name_end;          /* Original-byte end of the raw attribute name. */
+    size_t target_index; /* First matching descriptor, not event order. */
+    const lxa_encoding_t *encoding; /* Final immutable decoder identity. */
+    size_t source_name_end; /* Original-byte end of the raw attribute name. */
 } lxa_html_source_attribute_t;
 
 typedef lxa_status_t (*lxa_html_source_attribute_callback_t)(
@@ -55,10 +55,10 @@ typedef lxa_status_t (*lxa_html_source_attribute_callback_t)(
  */
 lxa_status_t
 lxa_html_extract_attributes(const lxa_allocator_t *allocator, const lxa_limits_t *limits,
-                            lxa_span_t input, const lxa_html_extract_options_t *options,
-                            const lxa_html_source_target_t *targets, size_t count,
-                            lxa_html_source_attribute_callback_t callback, void *context,
-                            lxa_html_result_t *parser_result, lxa_limit_reason_t *reason);
+    lxa_span_t input, const lxa_html_extract_options_t *options,
+    const lxa_html_source_target_t *targets, size_t count,
+    lxa_html_source_attribute_callback_t callback, void *context,
+    lxa_html_result_t *parser_result, lxa_limit_reason_t *reason);
 
 #ifdef __cplusplus
 }

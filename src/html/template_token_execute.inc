@@ -15,15 +15,15 @@ LXA_TEMPLATE_TOKEN_NAME(LXA_TEMPLATE_TOKEN_VIEW *view,
             status = LXA_TEMPLATE_TOKEN_FOREIGN(view, *token, &foreign);
             if (status != LXA_OK) return status;
             switch (foreign) {
-            case LXA_HTML_TEMPLATE_FOREIGN_CONSUMED:
-                return LXA_OK;
-            case LXA_HTML_TEMPLATE_FOREIGN_REPROCESS:
-                goto reprocess;
-            case LXA_HTML_TEMPLATE_FOREIGN_CONTINUE:
-                break;
-            default:
-                assert(false);
-                return LXA_ERROR_INTERNAL;
+                case LXA_HTML_TEMPLATE_FOREIGN_CONSUMED:
+                    return LXA_OK;
+                case LXA_HTML_TEMPLATE_FOREIGN_REPROCESS:
+                    goto reprocess;
+                case LXA_HTML_TEMPLATE_FOREIGN_CONTINUE:
+                    break;
+                default:
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
             }
         }
         bool handled;
@@ -36,15 +36,15 @@ LXA_TEMPLATE_TOKEN_NAME(LXA_TEMPLATE_TOKEN_VIEW *view,
             status = LXA_TEMPLATE_TOKEN_START(view, token, &start);
             if (status != LXA_OK) return status;
             switch (start) {
-            case LXA_HTML_TEMPLATE_START_CONSUMED:
-                return LXA_OK;
-            case LXA_HTML_TEMPLATE_START_REPROCESS:
-                goto reprocess;
-            case LXA_HTML_TEMPLATE_START_CONTINUE:
-                return LXA_TEMPLATE_TOKEN_ORDINARY(view, *token);
-            default:
-                assert(false);
-                return LXA_ERROR_INTERNAL;
+                case LXA_HTML_TEMPLATE_START_CONSUMED:
+                    return LXA_OK;
+                case LXA_HTML_TEMPLATE_START_REPROCESS:
+                    goto reprocess;
+                case LXA_HTML_TEMPLATE_START_CONTINUE:
+                    return LXA_TEMPLATE_TOKEN_ORDINARY(view, *token);
+                default:
+                    assert(false);
+                    return LXA_ERROR_INTERNAL;
             }
         }
         if ((*token)->kind != LXA_HTML_TEXT) {

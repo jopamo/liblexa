@@ -29,14 +29,14 @@ LXA_TEMPLATE_START_ROUTE_NAME(LXA_TEMPLATE_START_ROUTE_VIEW *view,
         status = LXA_TEMPLATE_START_ROUTE_TABLE(view, token, &table);
         if (status != LXA_OK) return status;
         switch (table) {
-        case LXA_HTML_TEMPLATE_TABLE_CONTINUE: break;
-        case LXA_HTML_TEMPLATE_TABLE_IGNORE: goto consumed;
-        case LXA_HTML_TEMPLATE_TABLE_REPROCESS:
-            *action = LXA_HTML_TEMPLATE_START_REPROCESS;
-            return LXA_OK;
-        default:
-            assert(false);
-            return LXA_ERROR_INTERNAL;
+            case LXA_HTML_TEMPLATE_TABLE_CONTINUE: break;
+            case LXA_HTML_TEMPLATE_TABLE_IGNORE: goto consumed;
+            case LXA_HTML_TEMPLATE_TABLE_REPROCESS:
+                *action = LXA_HTML_TEMPLATE_START_REPROCESS;
+                return LXA_OK;
+            default:
+                assert(false);
+                return LXA_ERROR_INTERNAL;
         }
     }
     *action = LXA_HTML_TEMPLATE_START_CONTINUE;

@@ -320,8 +320,10 @@ lxa_status_t lxa_html_control_context_root_token(lxa_html_control_context_t *con
     bool has_patch, const lxa_html_control_root_sink_t *sink,
     lxa_html_control_root_result_t *result);
 typedef enum {
-    LXA_HTML_CONTROL_ROOT_NOSCRIPT, LXA_HTML_CONTROL_ROOT_FRAMESET,
-    LXA_HTML_CONTROL_ROOT_FOREIGN, LXA_HTML_CONTROL_ROOT_INITIAL,
+    LXA_HTML_CONTROL_ROOT_NOSCRIPT,
+    LXA_HTML_CONTROL_ROOT_FRAMESET,
+    LXA_HTML_CONTROL_ROOT_FOREIGN,
+    LXA_HTML_CONTROL_ROOT_INITIAL,
     LXA_HTML_CONTROL_ROOT_HTML
 } lxa_html_control_root_dispatch_action_t;
 typedef struct {

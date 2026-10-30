@@ -14,8 +14,7 @@ LXA_TEMPLATE_TABLE_TOKEN_NAME(LXA_TEMPLATE_TABLE_TOKEN_VIEW *view,
         if (index == LXA_TEMPLATE_TABLE_TOKEN_LENGTH(view)) {
             status = LXA_TEMPLATE_TABLE_TOKEN_POP(view, plan.keep);
             out = LXA_HTML_TEMPLATE_TABLE_IGNORE;
-        }
-        else {
+        } else {
             status = LXA_TEMPLATE_TABLE_TOKEN_PREFLIGHT(view);
             if (status == LXA_OK) status = LXA_TEMPLATE_TABLE_TOKEN_POP_TABLE(view, index);
             out = LXA_HTML_TEMPLATE_TABLE_REPROCESS;

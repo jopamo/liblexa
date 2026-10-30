@@ -14,10 +14,10 @@ ascii_equal(lxa_span_t text, const char *ascii, size_t size)
 
 static lxa_status_t
 read(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-     size_t at, lxa_css_token_t *token, lxa_span_t *text)
+    size_t at, lxa_css_token_t *token, lxa_span_t *text)
 {
     lxa_status_t status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK,
-                                            1, &blocks->limit_reason);
+        1, &blocks->limit_reason);
     if (status != LXA_OK) return status;
     return lxa_css_internal_status(
         lxa_css_tokens_get(tokens, at, token, text));
@@ -25,7 +25,7 @@ read(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
 
 lxa_status_t
 lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                     const lxa_css_rule_t *rule, lxa_css_import_t *out)
+    const lxa_css_rule_t *rule, lxa_css_import_t *out)
 {
     lxa_css_token_t token;
     lxa_span_t text, uri;
@@ -39,7 +39,7 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         || rule->prelude_first > rule->prelude_after
         || rule->prelude_after > blocks->end)
         return LXA_ERROR_ARGUMENT;
-    *out = (lxa_css_import_t) {0};
+    *out = (lxa_css_import_t){0};
     status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
@@ -59,9 +59,8 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
     if (token.kind == LXA_CSS_STRING || token.kind == LXA_CSS_URL) {
         uri = text;
         at++;
-    }
-    else if (token.kind == LXA_CSS_FUNCTION
-             && ascii_equal(text, "url", 3)) {
+    } else if (token.kind == LXA_CSS_FUNCTION
+        && ascii_equal(text, "url", 3)) {
         status = lxa_css_internal_status(
             lxa_css_blocks_next(blocks, at, &component));
         if (status != LXA_OK) return status;
@@ -86,8 +85,7 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             }
         }
         at = component.after;
-    }
-    else {
+    } else {
         if (token.kind == LXA_CSS_FUNCTION)
             out->syntax = LXA_CSS_SYNTAX_UNSUPPORTED;
         return LXA_OK;
@@ -102,8 +100,7 @@ lxa_css_import_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         if (token.kind != LXA_CSS_WHITESPACE) break;
         at++;
     }
-    *out = (lxa_css_import_t) {
-        uri, at, rule->prelude_after, LXA_CSS_SYNTAX_SUPPORTED
-    };
+    *out = (lxa_css_import_t){
+        uri, at, rule->prelude_after, LXA_CSS_SYNTAX_SUPPORTED};
     return LXA_OK;
 }

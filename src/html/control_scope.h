@@ -18,7 +18,7 @@ typedef struct {
 
 static inline lxa_status_t
 lxa_html_control_scope_namespace(const lxa_html_control_scope_view_t *view,
-                                 size_t index, lxa_dom_namespace_t *ns)
+    size_t index, lxa_dom_namespace_t *ns)
 {
     *ns = view->entries[index].namespace_id;
     if ((unsigned) *ns < LXA_DOM_NS_HTML || (unsigned) *ns > LXA_DOM_NS_SVG)
@@ -53,8 +53,8 @@ lxa_html_control_current_namespace(const lxa_html_scope_entry_t *entries,
 
 static inline lxa_status_t
 lxa_html_control_scope_read(const lxa_html_control_scope_view_t *view,
-                            size_t index, lxa_span_t *name,
-                            lxa_dom_namespace_t *ns)
+    size_t index, lxa_span_t *name,
+    lxa_dom_namespace_t *ns)
 {
     const lxa_html_scope_entry_t *entry = &view->entries[index];
     if (entry->name.data == NULL || entry->name.length == 0
@@ -76,7 +76,7 @@ lxa_html_control_scope_name(const lxa_html_control_scope_view_t *view,
 
 static inline lxa_status_t
 lxa_html_control_scope_identity(const lxa_html_control_scope_view_t *view,
-                                size_t index, uint64_t *identity)
+    size_t index, uint64_t *identity)
 {
     *identity = view->entries[index].identity;
     return *identity == 0 ? LXA_ERROR_ARGUMENT : LXA_OK;
@@ -160,7 +160,7 @@ lxa_html_control_scope_view_init(const lxa_html_scope_entry_t *entries,
     if (index == NULL || budget == NULL || (length != 0 && entries == NULL)
         || length > SIZE_MAX / sizeof(*entries) || boundary > length)
         return LXA_ERROR_ARGUMENT;
-    *view = (lxa_html_control_scope_view_t){entries, length, budget, reason};
+    *view = (lxa_html_control_scope_view_t) {entries, length, budget, reason};
     return LXA_OK;
 }
 
@@ -171,9 +171,9 @@ lxa_html_control_scope_view_init(const lxa_html_scope_entry_t *entries,
  */
 static inline lxa_status_t
 lxa_html_control_scope_find(const lxa_html_scope_entry_t *entries, size_t length,
-                            size_t boundary, lxa_span_t target,
-                            lxa_html_scope_kind_t scope, lxa_budget_t *budget,
-                            lxa_limit_reason_t *reason, size_t *index)
+    size_t boundary, lxa_span_t target,
+    lxa_html_scope_kind_t scope, lxa_budget_t *budget,
+    lxa_limit_reason_t *reason, size_t *index)
 {
     lxa_html_control_scope_view_t view;
     lxa_status_t status = lxa_html_control_scope_view_init(entries, length,

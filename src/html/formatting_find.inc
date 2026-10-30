@@ -3,7 +3,7 @@
  */
 static inline lxa_status_t
 LXA_FORMATTING_FIND_NAME(const LXA_FORMATTING_FIND_VIEW *view, size_t start,
-                          lxa_span_t target, size_t *out)
+    lxa_span_t target, size_t *out)
 {
     size_t i = LXA_FORMATTING_FIND_LENGTH(view), found = i;
     while (i > start) {

@@ -5,7 +5,7 @@
 
 static lxa_status_t
 adjust(lxa_span_t name, lxa_span_t *out, const liblexa_svg_tag_name *table,
-       size_t count)
+    size_t count)
 {
     size_t i;
     if (out == NULL || (name.data == NULL && name.length != 0))
@@ -27,14 +27,14 @@ lxa_status_t
 lxa_html_svg_tag_name(lxa_span_t normalized, lxa_span_t *out)
 {
     return adjust(normalized, out, liblexa_svg_tag_names,
-                  LIBLEXA_SVG_TAG_NAME_COUNT);
+        LIBLEXA_SVG_TAG_NAME_COUNT);
 }
 
 lxa_status_t
 lxa_html_svg_attribute_name(lxa_span_t normalized, lxa_span_t *out)
 {
     return adjust(normalized, out, liblexa_svg_attribute_names,
-                  LIBLEXA_SVG_ATTRIBUTE_NAME_COUNT);
+        LIBLEXA_SVG_ATTRIBUTE_NAME_COUNT);
 }
 
 lxa_status_t
@@ -48,7 +48,6 @@ lxa_html_mathml_attribute_name(lxa_span_t normalized, lxa_span_t *out)
         && memcmp(normalized.data, lower, sizeof(lower) - 1) == 0) {
         out->data = adjusted;
         out->length = sizeof(adjusted) - 1;
-    }
-    else *out = normalized;
+    } else *out = normalized;
     return LXA_OK;
 }

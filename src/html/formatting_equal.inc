@@ -4,12 +4,12 @@
  */
 static inline lxa_status_t
 LXA_FORMATTING_EQUAL_NAME(const LXA_FORMATTING_VIEW *view,
-                          const lxa_html_token_t *token, bool *out)
+    const lxa_html_token_t *token, bool *out)
 {
     if (!lxa_html_formatting_token_shape_valid(token))
         return LXA_ERROR_ARGUMENT;
     lxa_span_t name;
-    LXA_FORMATTING_CURSOR cursor = (LXA_FORMATTING_CURSOR){0};
+    LXA_FORMATTING_CURSOR cursor = (LXA_FORMATTING_CURSOR) {0};
     size_t count = 0;
     bool equal = false;
     lxa_status_t status = LXA_FORMATTING_NAME(view, &name);

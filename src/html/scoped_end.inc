@@ -8,12 +8,14 @@ LXA_SCOPED_END_NAME(const LXA_SCOPED_END_VIEW *view, lxa_span_t target,
     if (status != LXA_OK) return status;
     if (plan.index == plan.search_length) {
         return plan.search_length != LXA_SCOPED_END_LENGTH(view)
-            ? LXA_SCOPED_END_POP(view, plan.search_length) : LXA_OK;
+            ? LXA_SCOPED_END_POP(view, plan.search_length)
+            : LXA_OK;
     }
     if (scope == LXA_HTML_SCOPE_TABLE)
         return LXA_SCOPED_END_TABLE(view, plan.index);
     status = LXA_SCOPED_END_POP(view, plan.index);
     if (status != LXA_OK) return status;
     return lxa_html_tree_formatting_marker_tag(target)
-        ? LXA_SCOPED_END_CLEAR(view) : LXA_OK;
+        ? LXA_SCOPED_END_CLEAR(view)
+        : LXA_OK;
 }

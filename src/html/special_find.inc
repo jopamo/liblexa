@@ -12,8 +12,7 @@ LXA_SPECIAL_NAME(const LXA_SPECIAL_VIEW *view, size_t start, size_t *out)
             LXA_BUDGET_WORK, 1, LXA_SPECIAL_REASON(view));
         if (status == LXA_OK) status = LXA_SPECIAL_READ(view, i, &name, &ns);
         if (status != LXA_OK) return status;
-        if (liblexa_html_tag_metadata_table[
-                LXA_SPECIAL_TAG_ID(view, i, name, ns)].special != 0)
+        if (liblexa_html_tag_metadata_table[LXA_SPECIAL_TAG_ID(view, i, name, ns)].special != 0)
             break;
         ++i;
     }

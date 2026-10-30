@@ -19,8 +19,7 @@ lxa_html_control_stack_begin_impl(lxa_html_control_stack_t *stack)
         || stack->elements.bytes.budget != stack->budget
         || stack->names.budget != stack->budget
         || (stack->elements.bytes.length != 0 && stack->elements.bytes.data == NULL)
-        || (stack->names.length != 0 && stack->names.data == NULL))
-    {
+        || (stack->names.length != 0 && stack->names.data == NULL)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
@@ -34,13 +33,12 @@ typedef struct {
 
 static inline lxa_status_t
 control_stack_namespace(const control_stack_view_t *view, size_t index,
-                         lxa_dom_namespace_t *ns)
+    lxa_dom_namespace_t *ns)
 {
     const lxa_html_control_element_t *entries =
         (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
     if ((unsigned) entries[index].namespace_id < LXA_DOM_NS_HTML
-        || (unsigned) entries[index].namespace_id > LXA_DOM_NS_SVG)
-    {
+        || (unsigned) entries[index].namespace_id > LXA_DOM_NS_SVG) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
@@ -64,10 +62,8 @@ lxa_html_control_stack_current_namespace_impl(lxa_html_control_stack_t *stack,
 {
     lxa_status_t status = lxa_html_control_stack_begin_impl(stack);
     if (status != LXA_OK) return status;
-    const control_stack_view_t view = {stack, lxa_vector_length_sized(
-        &stack->elements, sizeof(lxa_html_control_element_t))};
+    const control_stack_view_t view = {stack, lxa_vector_length_sized(&stack->elements, sizeof(lxa_html_control_element_t))};
     return control_stack_current_namespace(&view, boundary, out);
 }
-
 
 #endif

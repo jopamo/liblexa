@@ -38,7 +38,7 @@ round24(uint64_t v[4])
 
 lxa_status_t
 lxa_siphash24(const uint8_t key[16], const uint8_t *data,
-              size_t length, uint64_t *out)
+    size_t length, uint64_t *out)
 {
     uint64_t v[4], k0, k1, block;
     size_t remaining = length;

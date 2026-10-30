@@ -11,8 +11,8 @@ lxa_css_filter_reset(lxa_css_filter_t *filter)
 
 lxa_css_filter_result_t
 lxa_css_filter_feed(lxa_css_filter_t *filter, const uint32_t *input,
-                    size_t length, uint32_t *output, size_t capacity,
-                    lxa_css_filter_progress_t *progress)
+    size_t length, uint32_t *output, size_t capacity,
+    lxa_css_filter_progress_t *progress)
 {
     if (progress == NULL) {
         return LXA_CSS_FILTER_INVALID_ARGUMENT;
@@ -49,8 +49,7 @@ lxa_css_filter_feed(lxa_css_filter_t *filter, const uint32_t *input,
         }
         if (cp == 0x0c) {
             cp = 0x0a;
-        }
-        else if (cp == 0 || (cp >= 0xd800 && cp <= 0xdfff)) {
+        } else if (cp == 0 || (cp >= 0xd800 && cp <= 0xdfff)) {
             cp = 0xfffd;
         }
         output[progress->produced++] = cp;
@@ -61,7 +60,7 @@ lxa_css_filter_feed(lxa_css_filter_t *filter, const uint32_t *input,
 
 lxa_css_filter_result_t
 lxa_css_filter_finish(lxa_css_filter_t *filter, uint32_t *output,
-                      size_t capacity, lxa_css_filter_progress_t *progress)
+    size_t capacity, lxa_css_filter_progress_t *progress)
 {
     if (progress == NULL) {
         return LXA_CSS_FILTER_INVALID_ARGUMENT;

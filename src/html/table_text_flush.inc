@@ -17,7 +17,7 @@ LXA_TABLE_TEXT_FLUSH_NAME(LXA_TABLE_TEXT_FLUSH_VIEW *view, lxa_span_t bytes)
         if (status != LXA_OK) return status;
         if (prefix != 0) {
             status = LXA_TABLE_TEXT_FLUSH_APPEND(view,
-                ((lxa_span_t){bytes.data, prefix}), true);
+                ((lxa_span_t) {bytes.data, prefix}), true);
             if (status != LXA_OK) return status;
         }
         status = LXA_TABLE_TEXT_FLUSH_POP(view);

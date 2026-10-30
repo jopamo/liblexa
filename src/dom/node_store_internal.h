@@ -24,7 +24,9 @@ enum {
     LXA_DOM_OPTION_DIRTY = 1u << 1
 };
 
-enum { LXA_DOM_SELECTEDCONTENT_DISABLED = 1u << 2 };
+enum {
+    LXA_DOM_SELECTEDCONTENT_DISABLED = 1u << 2
+};
 
 /* Publish post-connection state, then update/clear the nearest single select.
  * Later failure retains the state and earlier completed replacements.
@@ -60,15 +62,14 @@ lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nod
 /* Apply the nearest select's selectedness rules. Preflight all traversal and
  * allocation before changing option flags; no links or attributes change. */
 lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
-                                               lxa_dom_ref_t option);
+    lxa_dom_ref_t option);
 
-typedef char lxa_dom_record_size_must_be_32[
-    sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
+typedef char lxa_dom_record_size_must_be_32[sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
 
 /* Copies the record, avoiding a pointer into a relocatable array. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
-                                lxa_dom_ref_t handle,
-                                lxa_dom_record_t *out);
+    lxa_dom_ref_t handle,
+    lxa_dom_record_t *out);
 /* Inclusive ancestry follows actual parents and bound template-fragment hosts.
  * Failure leaves out false; traversal is WORK-bounded and allocation-free. */
 lxa_status_t lxa_dom_nodes_host_including_ancestor(lxa_dom_nodes_t *nodes,
@@ -76,8 +77,8 @@ lxa_status_t lxa_dom_nodes_host_including_ancestor(lxa_dom_nodes_t *nodes,
 /* Parser-only draft construction. A draft has no typed payload or links.
  * Failure leaves length and earlier references valid. */
 lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
-                                        lxa_dom_kind_t kind,
-                                        lxa_dom_ref_t *out);
+    lxa_dom_kind_t kind,
+    lxa_dom_ref_t *out);
 
 /* Text-only construction boundary used by DOM model tests.
  * Accept only owned TEXT/COMMENT children of a document fragment. Validate
@@ -85,8 +86,8 @@ lxa_status_t lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes,
  * On failure no link changes. No public pointers or callbacks are involved.
  */
 lxa_status_t lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
-                                              lxa_dom_ref_t parent,
-                                              lxa_dom_ref_t child);
+    lxa_dom_ref_t parent,
+    lxa_dom_ref_t child);
 /* Append to typed TEXT storage without changing its handle or links.
  * Accept string-store aliases; publish the new span only after reserve/copy. */
 lxa_status_t lxa_dom_nodes_append_text_data(lxa_dom_nodes_t *nodes,

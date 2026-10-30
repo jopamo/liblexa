@@ -15,17 +15,17 @@ static lxa_status_t
 parser_status(lxa_html_result_t result, lxa_html_tokenizer_t *tokenizer)
 {
     switch (result) {
-    case LXA_HTML_OK: return LXA_OK;
-    case LXA_HTML_OVERFLOW: return LXA_ERROR_OVERFLOW;
-    case LXA_HTML_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
-    case LXA_HTML_LIMIT: return LXA_ERROR_LIMIT;
-    case LXA_HTML_ENTROPY: return LXA_ERROR_ENTROPY;
-    case LXA_HTML_UNSUPPORTED: return LXA_ERROR_UNSUPPORTED;
-    case LXA_HTML_CALLBACK_FAILURE: {
-        lxa_status_t status = lxa_html_tokenizer_callback_status(tokenizer);
-        return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
-    }
-    default: return LXA_ERROR_INTERNAL;
+        case LXA_HTML_OK: return LXA_OK;
+        case LXA_HTML_OVERFLOW: return LXA_ERROR_OVERFLOW;
+        case LXA_HTML_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
+        case LXA_HTML_LIMIT: return LXA_ERROR_LIMIT;
+        case LXA_HTML_ENTROPY: return LXA_ERROR_ENTROPY;
+        case LXA_HTML_UNSUPPORTED: return LXA_ERROR_UNSUPPORTED;
+        case LXA_HTML_CALLBACK_FAILURE: {
+            lxa_status_t status = lxa_html_tokenizer_callback_status(tokenizer);
+            return status == LXA_ERROR_ARGUMENT ? LXA_ERROR_INTERNAL : status;
+        }
+        default: return LXA_ERROR_INTERNAL;
     }
 }
 
@@ -36,14 +36,14 @@ document_result(lxa_status_t status, lxa_html_result_t result)
      * Tree callbacks are implementation details, including their failures. */
     if (result == LXA_HTML_CALLBACK_FAILURE) return result;
     switch (status) {
-    case LXA_OK: return LXA_HTML_OK;
-    case LXA_ERROR_LIMIT: return LXA_HTML_LIMIT;
-    case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
-    case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
-    case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
-    case LXA_ERROR_UNSUPPORTED: return LXA_HTML_UNSUPPORTED;
-    case LXA_ERROR_ARGUMENT: return LXA_HTML_BAD_ARGUMENT;
-    default: return LXA_HTML_INTERNAL;
+        case LXA_OK: return LXA_HTML_OK;
+        case LXA_ERROR_LIMIT: return LXA_HTML_LIMIT;
+        case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
+        case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
+        case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
+        case LXA_ERROR_UNSUPPORTED: return LXA_HTML_UNSUPPORTED;
+        case LXA_ERROR_ARGUMENT: return LXA_HTML_BAD_ARGUMENT;
+        default: return LXA_HTML_INTERNAL;
     }
 }
 
@@ -51,12 +51,12 @@ static lxa_status_t
 input_status(lxa_html_input_result_t result)
 {
     switch (result) {
-    case LXA_HTML_INPUT_OK: return LXA_OK;
-    case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
-    case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
-    case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
-    case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
-    default: return LXA_ERROR_ARGUMENT;
+        case LXA_HTML_INPUT_OK: return LXA_OK;
+        case LXA_HTML_INPUT_LIMIT: return LXA_ERROR_LIMIT;
+        case LXA_HTML_INPUT_NO_MEMORY: return LXA_ERROR_NO_MEMORY;
+        case LXA_HTML_INPUT_OVERFLOW: return LXA_ERROR_OVERFLOW;
+        case LXA_HTML_INPUT_UNKNOWN_ENCODING: return LXA_ERROR_UNSUPPORTED;
+        default: return LXA_ERROR_ARGUMENT;
     }
 }
 
@@ -68,7 +68,7 @@ lxa_html_document_destroy(lxa_html_document_t *document)
     allocator = document->allocator;
     lxa_dom_nodes_destroy(document->nodes);
     lxa_budget_release(&document->budget, LXA_BUDGET_MEMORY,
-                       sizeof(*document));
+        sizeof(*document));
     lxa_free(&allocator, document);
 }
 
@@ -111,10 +111,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         goto report;
     }
     /* The encoding-change algorithm never replaces a UTF-16 decoder. */
-    utf16 = encoding == lxa_encoding_lookup(
-        (lxa_span_t){(const uint8_t *) "utf-16le", 8})
-        || encoding == lxa_encoding_lookup(
-            (lxa_span_t){(const uint8_t *) "utf-16be", 8});
+    utf16 = encoding == lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-16le", 8})
+        || encoding == lxa_encoding_lookup((lxa_span_t){(const uint8_t *) "utf-16be", 8});
     result = LXA_HTML_INTERNAL;
     status = lxa_alloc(allocator, sizeof(*document), (void **) &document);
     if (status != LXA_OK) goto report;
@@ -126,7 +124,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         goto report;
     }
     status = lxa_budget_charge(&document->budget, LXA_BUDGET_MEMORY,
-                               sizeof(*document), reason);
+        sizeof(*document), reason);
     if (status != LXA_OK) {
         lxa_free(allocator, document);
         goto report;
@@ -134,8 +132,7 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
     for (attempt = 0; attempt < 2; ++attempt) {
         bool retry = false;
         lxa_html_input_meta_observer_t meta = {
-            .budget = &document->budget, .reason = LXA_BUDGET_COUNT
-        };
+            .budget = &document->budget, .reason = LXA_BUDGET_COUNT};
         status = lxa_buffer_init(&decoded, allocator);
         if (status != LXA_OK) break;
         status = lxa_buffer_bind_budget(&decoded, &document->budget);
@@ -145,11 +142,11 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
         }
         selected = attempt == 0
             ? lxa_html_input_decode_report(input, encoding, prefix,
-                &document->budget, &decoded, &malformed, reason,
-                NULL, NULL, NULL)
+                  &document->budget, &decoded, &malformed, reason,
+                  NULL, NULL, NULL)
             : lxa_html_input_decode_prepaid_report(input, encoding, prefix,
-                &document->budget, &decoded, &malformed, reason,
-                NULL, NULL, NULL);
+                  &document->budget, &decoded, &malformed, reason,
+                  NULL, NULL, NULL);
         status = input_status(selected);
         if (status != LXA_OK) {
             lxa_buffer_destroy(&decoded);
@@ -184,13 +181,12 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
             status = parser_status(result, tokenizer);
             if (status == LXA_ERROR_LIMIT && reason != NULL)
                 *reason = meta.reason != LXA_BUDGET_COUNT ? meta.reason
-                        : result == LXA_HTML_LIMIT
-                          ? lxa_html_tokenizer_limit_reason(tokenizer)
-                          : lxa_dom_nodes_limit_reason(document->nodes);
+                    : result == LXA_HTML_LIMIT
+                    ? lxa_html_tokenizer_limit_reason(tokenizer)
+                    : lxa_dom_nodes_limit_reason(document->nodes);
             if (result == LXA_HTML_CALLBACK_FAILURE)
                 result = document_result(status, LXA_HTML_INTERNAL);
-        }
-        else if (status == LXA_ERROR_LIMIT && reason != NULL)
+        } else if (status == LXA_ERROR_LIMIT && reason != NULL)
             *reason = LXA_BUDGET_MEMORY;
         if (status == LXA_OK && !utf16 && meta.declared != NULL
             && meta.declared != encoding) {
@@ -202,7 +198,8 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                 prefix, malformed, &document->budget, allocator,
                 on_malformed, context, &callback_status, reason);
             status = selected == LXA_HTML_INPUT_CALLBACK_FAILURE
-                     ? callback_status : input_status(selected);
+                ? callback_status
+                : input_status(selected);
             if (selected == LXA_HTML_INPUT_CALLBACK_FAILURE)
                 result = LXA_HTML_CALLBACK_FAILURE;
         }

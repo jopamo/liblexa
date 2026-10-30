@@ -11,7 +11,7 @@ LXA_TEXT_TOKEN_NAME(LXA_TEXT_TOKEN_VIEW *view, const lxa_html_token_t *token,
     status = lxa_html_tree_text_action(token->kind, token->name, target, &action);
     if (status != LXA_OK) return status;
     status = action == LXA_HTML_TEXT_APPEND ? LXA_TEXT_TOKEN_APPEND(view, token)
-        : LXA_TEXT_TOKEN_RETURN(view, mode);
+                                            : LXA_TEXT_TOKEN_RETURN(view, mode);
     if (status == LXA_OK && out != NULL) *out = action;
     return status;
 }

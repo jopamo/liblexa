@@ -61,13 +61,13 @@ lxa_status_t lxa_unicode_normalization_properties(
  * this primitive does neither.
  */
 lxa_status_t lxa_unicode_decompose_once(uint32_t cp, bool compatibility,
-                                         uint32_t *output, size_t capacity,
-                                         size_t *required);
+    uint32_t *output, size_t capacity,
+    size_t *required);
 /* Canonical pair composition, including algorithmic Hangul. UINT32_MAX
  * means no composition; valid scalar pairs still return LXA_OK.
  */
 lxa_status_t lxa_unicode_compose_pair(uint32_t starter, uint32_t second,
-                                       uint32_t *composed);
+    uint32_t *composed);
 
 #ifdef __cplusplus
 }

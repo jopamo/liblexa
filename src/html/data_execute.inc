@@ -25,7 +25,7 @@ LXA_DATA_EXECUTE_NAME(LXA_DATA_EXECUTE_VIEW *view, lxa_span_t bytes,
         }
         if (foreign) {
             status = LXA_DATA_EXECUTE_APPEND(view,
-                ((lxa_span_t){replacement, sizeof(replacement)}), false);
+                ((lxa_span_t) {replacement, sizeof(replacement)}), false);
             if (status != LXA_OK) return status;
         }
         offset = run.next;

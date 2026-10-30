@@ -77,7 +77,7 @@ typedef struct {
 static inline lxa_dom_ref_t
 lxa_html_open_ref(const lxa_html_tree_t *tree, const lxa_html_open_entry_t *entry)
 {
-    return (lxa_dom_ref_t){tree->nodes, tree->document.epoch, entry->handle};
+    return (lxa_dom_ref_t) {tree->nodes, tree->document.epoch, entry->handle};
 }
 
 lxa_status_t lxa_html_tree_init(

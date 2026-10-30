@@ -22,11 +22,9 @@ lxa_unicode_joining_type(uint32_t cp, lxa_joining_type_t *out)
         const liblexa_joining_range *row = &liblexa_joining_ranges[mid];
         if (cp < row->first) {
             hi = mid;
-        }
-        else if (cp > row->last) {
+        } else if (cp > row->last) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             *out = (lxa_joining_type_t) row->type;
             break;
         }
@@ -41,7 +39,7 @@ lxa_unicode_idna_entry(uint32_t cp, lxa_idna_entry_t *out)
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = (lxa_idna_entry_t) {0};
+    *out = (lxa_idna_entry_t){0};
     if (cp > 0x10ffff) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -50,11 +48,9 @@ lxa_unicode_idna_entry(uint32_t cp, lxa_idna_entry_t *out)
         const liblexa_idna_range *row = &liblexa_idna_ranges[mid];
         if (cp < row->first) {
             hi = mid;
-        }
-        else if (cp > row->last) {
+        } else if (cp > row->last) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             out->status = (lxa_idna_status_t) row->status;
             out->length = row->count;
             out->idna2008 = row->idna2008;
@@ -77,7 +73,7 @@ lxa_unicode_normalization_properties(
     if (out == NULL) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = (lxa_normalization_properties_t) {0};
+    *out = (lxa_normalization_properties_t){0};
     if (cp > 0x10ffff) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -86,11 +82,9 @@ lxa_unicode_normalization_properties(
         uint32_t current = liblexa_normalization[mid].cp;
         if (cp < current) {
             hi = mid;
-        }
-        else if (cp > current) {
+        } else if (cp > current) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             out->combining_class = liblexa_normalization[mid].ccc;
             break;
         }
@@ -102,11 +96,9 @@ lxa_unicode_normalization_properties(
         uint32_t current = liblexa_quick_checks[mid].cp;
         if (cp < current) {
             hi = mid;
-        }
-        else if (cp > current) {
+        } else if (cp > current) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             out->quick_checks = liblexa_quick_checks[mid].checks;
             break;
         }
@@ -116,7 +108,7 @@ lxa_unicode_normalization_properties(
 
 lxa_status_t
 lxa_unicode_decompose_once(uint32_t cp, bool compatibility, uint32_t *output,
-                            size_t capacity, size_t *required)
+    size_t capacity, size_t *required)
 {
     const uint32_t *mapping = &cp;
     uint32_t hangul[2];
@@ -136,18 +128,15 @@ lxa_unicode_decompose_once(uint32_t cp, bool compatibility, uint32_t *output,
         hangul[1] = t != 0 ? 0x11a7 + t : 0x1161 + (s % 588) / 28;
         mapping = hangul;
         length = 2;
-    }
-    else {
+    } else {
         while (lo < hi) {
             size_t mid = lo + (hi - lo) / 2;
             const liblexa_normalization_entry *row = &liblexa_normalization[mid];
             if (cp < row->cp) {
                 hi = mid;
-            }
-            else if (cp > row->cp) {
+            } else if (cp > row->cp) {
                 lo = mid + 1;
-            }
-            else {
+            } else {
                 if (row->length != 0 && (compatibility || !row->compatibility)) {
                     mapping = liblexa_decompositions + row->offset;
                     length = row->length;
@@ -169,7 +158,7 @@ lxa_unicode_decompose_once(uint32_t cp, bool compatibility, uint32_t *output,
 
 lxa_status_t
 lxa_unicode_compose_pair(uint32_t starter, uint32_t second,
-                          uint32_t *composed)
+    uint32_t *composed)
 {
     size_t lo = 0, hi = LIBLEXA_COMPOSITION_COUNT;
     if (composed == NULL) {
@@ -184,7 +173,7 @@ lxa_unicode_compose_pair(uint32_t starter, uint32_t second,
     if (starter >= 0x1100 && starter < 0x1100 + 19
         && second >= 0x1161 && second < 0x1161 + 21) {
         *composed = 0xac00 + (starter - 0x1100) * 588
-                    + (second - 0x1161) * 28;
+            + (second - 0x1161) * 28;
         return LXA_OK;
     }
     if (starter >= 0xac00 && starter < 0xac00 + 11172
@@ -199,12 +188,10 @@ lxa_unicode_compose_pair(uint32_t starter, uint32_t second,
         if (starter < row->starter
             || (starter == row->starter && second < row->second)) {
             hi = mid;
-        }
-        else if (starter > row->starter
-                 || (starter == row->starter && second > row->second)) {
+        } else if (starter > row->starter
+            || (starter == row->starter && second > row->second)) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             *composed = row->composed;
             break;
         }

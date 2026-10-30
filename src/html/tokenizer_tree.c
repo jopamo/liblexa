@@ -4,8 +4,7 @@
 
 #define LXA_HTML_ENGINE_NAME(name) lxa_html_tree_tokenizer_##name
 #define LXA_HTML_ENGINE_ACCEPTS(tokenizer) \
-    ((tokenizer) == NULL || ((tokenizer)->on_token == lxa_html_tree_on_token \
-                            && (tokenizer)->on_error == NULL))
+    ((tokenizer) == NULL || ((tokenizer)->on_token == lxa_html_tree_on_token && (tokenizer)->on_error == NULL))
 #define LXA_HTML_EMIT_TOKEN(tokenizer, token) \
     lxa_html_tree_on_token((tokenizer)->context, tokenizer, token)
 #define LXA_HTML_HAS_DIAGNOSTICS(tokenizer) false

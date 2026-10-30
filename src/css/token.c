@@ -8,7 +8,7 @@ static lxa_status_t
 check_storage(lxa_css_tokens_t *tokens)
 {
     lxa_status_t status = lxa_css_vector_check(&tokens->entries,
-                                               sizeof(lxa_css_token_entry_t));
+        sizeof(lxa_css_token_entry_t));
     if (status != LXA_OK) return status;
     return lxa_css_invariant(tokens->text.length <= tokens->text.capacity
         && (tokens->text.capacity == 0 || tokens->text.data != NULL));
@@ -16,7 +16,7 @@ check_storage(lxa_css_tokens_t *tokens)
 
 lxa_status_t
 lxa_css_tokens_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
-                      lxa_css_tokens_t **out)
+    lxa_css_tokens_t **out)
 {
     lxa_css_tokens_t *tokens;
     lxa_buffer_t text;
@@ -33,7 +33,7 @@ lxa_css_tokens_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
         if (status == LXA_OK) status = lxa_vector_bind_budget(&entries, budget);
         if (status == LXA_OK)
             status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY,
-                                       sizeof(*tokens), NULL);
+                sizeof(*tokens), NULL);
         if (status != LXA_OK) return status;
     }
     status = lxa_alloc(allocator, sizeof(*tokens), (void **) &tokens);
@@ -42,9 +42,8 @@ lxa_css_tokens_create(const lxa_allocator_t *allocator, lxa_budget_t *budget,
             lxa_budget_release(budget, LXA_BUDGET_MEMORY, sizeof(*tokens));
         return status;
     }
-    *tokens = (lxa_css_tokens_t) {
-        .text = text, .entries = entries, .limit_reason = LXA_BUDGET_COUNT
-    };
+    *tokens = (lxa_css_tokens_t){
+        .text = text, .entries = entries, .limit_reason = LXA_BUDGET_COUNT};
     *out = tokens;
     return LXA_OK;
 }
@@ -86,7 +85,7 @@ lxa_css_tokens_length(const lxa_css_tokens_t *tokens)
 
 lxa_status_t
 lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
-                      lxa_span_t text)
+    lxa_span_t text)
 {
     size_t end, original, count;
     lxa_status_t status;
@@ -112,18 +111,14 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
     lxa_budget_t *budget = tokens->entries.bytes.budget;
     if (budget != NULL) {
         status = lxa_budget_check_item(budget, LXA_BUDGET_TOKEN_BYTES,
-                                       token.length, &tokens->limit_reason);
+            token.length, &tokens->limit_reason);
         if (status == LXA_OK) {
             status = lxa_budget_check_item(budget, LXA_BUDGET_TOKEN_BYTES,
-                                           text.length, &tokens->limit_reason);
+                text.length, &tokens->limit_reason);
         }
-        if (status == LXA_OK && (token.kind == LXA_CSS_IDENT
-            || token.kind == LXA_CSS_FUNCTION
-            || token.kind == LXA_CSS_AT_KEYWORD
-            || token.kind == LXA_CSS_HASH
-            || token.kind == LXA_CSS_DIMENSION)) {
+        if (status == LXA_OK && (token.kind == LXA_CSS_IDENT || token.kind == LXA_CSS_FUNCTION || token.kind == LXA_CSS_AT_KEYWORD || token.kind == LXA_CSS_HASH || token.kind == LXA_CSS_DIMENSION)) {
             status = lxa_budget_check_item(budget, LXA_BUDGET_NAME_BYTES,
-                                           text.length, &tokens->limit_reason);
+                text.length, &tokens->limit_reason);
         }
         if (status != LXA_OK) {
             return status;
@@ -131,8 +126,8 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
     }
     if (budget != NULL && count > tokens->charged_tokens) {
         status = lxa_budget_check(budget, LXA_BUDGET_TOKENS,
-                                  count - tokens->charged_tokens,
-                                  &tokens->limit_reason);
+            count - tokens->charged_tokens,
+            &tokens->limit_reason);
         if (status != LXA_OK) {
             return status;
         }
@@ -156,8 +151,8 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
         /* Reserve and copy may call the allocator. Check again before the
          * nonallocating push, then charge before publishing the result. */
         status = lxa_budget_check(budget, LXA_BUDGET_TOKENS,
-                                  count - tokens->charged_tokens,
-                                  &tokens->limit_reason);
+            count - tokens->charged_tokens,
+            &tokens->limit_reason);
         if (status != LXA_OK) {
             lxa_buffer_truncate(&tokens->text, original);
             return status;
@@ -171,8 +166,8 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
     }
     if (budget != NULL && count > tokens->charged_tokens) {
         status = lxa_budget_charge(budget, LXA_BUDGET_TOKENS,
-                                   count - tokens->charged_tokens,
-                                   &tokens->limit_reason);
+            count - tokens->charged_tokens,
+            &tokens->limit_reason);
         if (status != LXA_OK) {
             lxa_vector_erase(&tokens->entries, count - 1, 1);
             lxa_buffer_truncate(&tokens->text, original);
@@ -185,7 +180,7 @@ lxa_css_tokens_append(lxa_css_tokens_t *tokens, lxa_css_token_t token,
 
 lxa_status_t
 lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
-                   lxa_css_token_t *token, lxa_span_t *text)
+    lxa_css_token_t *token, lxa_span_t *text)
 {
     void *entry;
     lxa_status_t status;

@@ -16,18 +16,20 @@ LXA_ROOT_PART_START_NAME(LXA_ROOT_PART_START_VIEW *view,
         && !lxa_html_tree_name_equals(top, "colgroup", 8)) {
         status = LXA_ROOT_PART_START_CLOSE(view, LXA_HTML_TABLE_SECTION);
         if (status != LXA_OK) return status;
-        top = (lxa_span_t){(const uint8_t *) "table", 5};
+        top = (lxa_span_t) {(const uint8_t *) "table", 5};
     }
     if (lxa_html_tree_name_equals(top, "colgroup", 8)
         && !lxa_html_tree_name_equals(token->name, "col", 3)) {
         size_t needed = lxa_html_tree_name_equals(token->name, "td", 2)
-            || lxa_html_tree_name_equals(token->name, "th", 2) ? 3
-            : lxa_html_tree_name_equals(token->name, "tr", 2) ? 2 : 1;
+                || lxa_html_tree_name_equals(token->name, "th", 2)
+            ? 3
+            : lxa_html_tree_name_equals(token->name, "tr", 2) ? 2
+                                                              : 1;
         status = LXA_ROOT_PART_START_RESERVE(view, needed - 1);
         if (status == LXA_OK) status = LXA_ROOT_PART_START_NODE(view, needed);
         if (status == LXA_OK) status = LXA_ROOT_PART_START_POP(view);
         if (status != LXA_OK) return status;
-        top = (lxa_span_t){(const uint8_t *) "table", 5};
+        top = (lxa_span_t) {(const uint8_t *) "table", 5};
     }
     bool section = lxa_html_tree_table_section(token->name);
     bool row = lxa_html_tree_name_equals(token->name, "tr", 2);
@@ -37,8 +39,8 @@ LXA_ROOT_PART_START_NAME(LXA_ROOT_PART_START_VIEW *view,
         || (row && !lxa_html_tree_name_equals(top, "table", 5)
             && !lxa_html_tree_table_section(top))
         || (section && !lxa_html_tree_name_equals(top, "table", 5))) {
-        status = LXA_ROOT_PART_START_CLOSE(view, cell ? LXA_HTML_TABLE_CELL
-            : row ? LXA_HTML_TABLE_ROW : LXA_HTML_TABLE_SECTION);
+        status = LXA_ROOT_PART_START_CLOSE(view, cell ? LXA_HTML_TABLE_CELL : row ? LXA_HTML_TABLE_ROW
+                                                                                  : LXA_HTML_TABLE_SECTION);
         if (status == LXA_OK) status = LXA_ROOT_PART_START_TOP(view, &top);
         if (status != LXA_OK) return status;
     }

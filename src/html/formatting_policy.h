@@ -44,7 +44,7 @@ lxa_html_formatting_view_name(const lxa_html_formatting_view_t *view, lxa_span_t
 
 static inline lxa_status_t
 lxa_html_formatting_view_next(const lxa_html_formatting_view_t *view,
-                              size_t cursor, size_t *out)
+    size_t cursor, size_t *out)
 {
     *out = cursor == view->count ? 0 : cursor + 1;
     return LXA_OK;
@@ -52,7 +52,7 @@ lxa_html_formatting_view_next(const lxa_html_formatting_view_t *view,
 
 static inline lxa_status_t
 lxa_html_formatting_view_read(const lxa_html_formatting_view_t *view,
-                              size_t cursor, lxa_span_t *name, lxa_span_t *value)
+    size_t cursor, lxa_span_t *name, lxa_span_t *value)
 {
     const lxa_html_attribute_t *attribute = &view->attributes[cursor - 1];
     if (!lxa_dom_attribute_shape_valid(attribute->name, attribute->value))

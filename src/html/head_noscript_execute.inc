@@ -8,7 +8,7 @@ LXA_HEAD_NOSCRIPT_EXEC_NAME(LXA_HEAD_NOSCRIPT_EXEC_VIEW *view,
     if (status != LXA_OK) return status;
     if (plan.space_prefix != 0) {
         status = LXA_HEAD_NOSCRIPT_EXEC_EMIT(view,
-            ((lxa_span_t){token->data.data, plan.space_prefix}));
+            ((lxa_span_t) {token->data.data, plan.space_prefix}));
         if (status != LXA_OK) return status;
     }
     lxa_html_root_mode_t next = lxa_html_tree_head_noscript_next_mode(plan.action);

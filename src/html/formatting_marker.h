@@ -26,7 +26,7 @@ lxa_html_formatting_clear_plan(size_t length, size_t marker, size_t previous,
 {
     if (!lxa_html_formatting_marker_valid(length, marker)
         || (marker == SIZE_MAX ? previous != SIZE_MAX
-            : previous != SIZE_MAX && previous >= marker)) {
+                               : previous != SIZE_MAX && previous >= marker)) {
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
@@ -35,7 +35,7 @@ lxa_html_formatting_clear_plan(size_t length, size_t marker, size_t previous,
         assert(false);
         return LXA_ERROR_INTERNAL;
     }
-    *out = (lxa_html_formatting_clear_plan_t){keep, previous, length - keep};
+    *out = (lxa_html_formatting_clear_plan_t) {keep, previous, length - keep};
     return LXA_OK;
 }
 

@@ -8,7 +8,7 @@
 #include <windows.h>
 #include <bcrypt.h>
 #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) \
-   || defined(__NetBSD__)
+    || defined(__NetBSD__)
 #include <stdlib.h>
 #endif
 
@@ -23,17 +23,15 @@ lxa_entropy_key(uint8_t key[16], lxa_entropy_callback_t callback, void *context)
     memset(key, 0, 16);
     if (callback != NULL) {
         status = callback(context, generated);
-    }
-    else {
+    } else {
 #if defined(__linux__)
         size_t received = 0;
         while (received < sizeof(generated)) {
             ssize_t count = getrandom(generated + received,
-                                      sizeof(generated) - received, 0);
+                sizeof(generated) - received, 0);
             if (count > 0) {
                 received += (size_t) count;
-            }
-            else if (count != -1 || errno != EINTR) {
+            } else if (count != -1 || errno != EINTR) {
                 break;
             }
         }
@@ -42,19 +40,19 @@ lxa_entropy_key(uint8_t key[16], lxa_entropy_callback_t callback, void *context)
         }
 #elif defined(_WIN32)
         if (BCryptGenRandom(NULL, generated, sizeof(generated),
-                            BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0) {
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG)
+            == 0) {
             status = LXA_OK;
         }
 #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) \
-   || defined(__NetBSD__)
+    || defined(__NetBSD__)
         arc4random_buf(generated, sizeof(generated));
         status = LXA_OK;
 #endif
     }
     if (status == LXA_OK) {
         memcpy(key, generated, sizeof(generated));
-    }
-    else {
+    } else {
         memset(generated, 0, sizeof(generated));
     }
     return status;

@@ -32,8 +32,7 @@ LXA_TEMPLATE_CONTAINER_NAME(const LXA_TEMPLATE_CONTAINER_VIEW *view,
         }
         if (plan.keep == length)
             status = LXA_TEMPLATE_CONTAINER_PARAGRAPH(view, boundary, &plan.keep);
-    }
-    else if (lxa_html_tree_template_paragraph_container(name)
+    } else if (lxa_html_tree_template_paragraph_container(name)
         || lxa_html_tree_name_equals(name, "form", 4)
         || lxa_html_tree_name_equals(name, "plaintext", 9)
         || (!quirks && lxa_html_tree_name_equals(name, "table", 5))) {

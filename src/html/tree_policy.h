@@ -7,19 +7,28 @@
 #include "dom/namespace.h"
 
 typedef enum {
-    LXA_HTML_NO_QUIRKS, LXA_HTML_LIMITED_QUIRKS, LXA_HTML_QUIRKS
+    LXA_HTML_NO_QUIRKS,
+    LXA_HTML_LIMITED_QUIRKS,
+    LXA_HTML_QUIRKS
 } lxa_html_document_mode_t;
 
 typedef enum {
-    LXA_HTML_TABLE_CELL, LXA_HTML_TABLE_ROW, LXA_HTML_TABLE_SECTION
+    LXA_HTML_TABLE_CELL,
+    LXA_HTML_TABLE_ROW,
+    LXA_HTML_TABLE_SECTION
 } lxa_html_table_group_t;
 
 typedef enum {
-    LXA_HTML_ROOT_TABLE_TEMPLATE, LXA_HTML_ROOT_TABLE_TEXT_CURRENT,
-    LXA_HTML_ROOT_TABLE_PLAINTEXT, LXA_HTML_ROOT_TABLE_XMP,
-    LXA_HTML_ROOT_TABLE_TEXT_FOSTER, LXA_HTML_ROOT_TABLE_VOID,
-    LXA_HTML_ROOT_TABLE_SVG, LXA_HTML_ROOT_TABLE_MATH,
-    LXA_HTML_ROOT_TABLE_CONTAINER, LXA_HTML_ROOT_TABLE_UNSUPPORTED
+    LXA_HTML_ROOT_TABLE_TEMPLATE,
+    LXA_HTML_ROOT_TABLE_TEXT_CURRENT,
+    LXA_HTML_ROOT_TABLE_PLAINTEXT,
+    LXA_HTML_ROOT_TABLE_XMP,
+    LXA_HTML_ROOT_TABLE_TEXT_FOSTER,
+    LXA_HTML_ROOT_TABLE_VOID,
+    LXA_HTML_ROOT_TABLE_SVG,
+    LXA_HTML_ROOT_TABLE_MATH,
+    LXA_HTML_ROOT_TABLE_CONTAINER,
+    LXA_HTML_ROOT_TABLE_UNSUPPORTED
 } lxa_html_root_table_start_action_t;
 
 /* Accepted non-part/non-form start at a root HTML table context, after earlier
@@ -87,13 +96,18 @@ lxa_status_t lxa_html_tree_data_run(lxa_span_t bytes, size_t offset,
     lxa_html_data_run_t *out);
 
 typedef enum {
-    LXA_HTML_ROOT_ELEMENT_HTML, LXA_HTML_ROOT_ELEMENT_HEAD, LXA_HTML_ROOT_ELEMENT_BODY
+    LXA_HTML_ROOT_ELEMENT_HTML,
+    LXA_HTML_ROOT_ELEMENT_HEAD,
+    LXA_HTML_ROOT_ELEMENT_BODY
 } lxa_html_root_element_t;
 
 typedef enum {
-    LXA_HTML_ROOT_ORDINARY_HEAD_VOID, LXA_HTML_ROOT_ORDINARY_BODY_VOID,
-    LXA_HTML_ROOT_ORDINARY_TABLE_PART, LXA_HTML_ROOT_ORDINARY_FOREIGN,
-    LXA_HTML_ROOT_ORDINARY_FORMATTING, LXA_HTML_ROOT_ORDINARY_CONTAINER,
+    LXA_HTML_ROOT_ORDINARY_HEAD_VOID,
+    LXA_HTML_ROOT_ORDINARY_BODY_VOID,
+    LXA_HTML_ROOT_ORDINARY_TABLE_PART,
+    LXA_HTML_ROOT_ORDINARY_FOREIGN,
+    LXA_HTML_ROOT_ORDINARY_FORMATTING,
+    LXA_HTML_ROOT_ORDINARY_CONTAINER,
     LXA_HTML_ROOT_ORDINARY_UNSUPPORTED
 } lxa_html_root_ordinary_start_action_t;
 
@@ -106,8 +120,12 @@ lxa_status_t lxa_html_tree_root_ordinary_start_action(lxa_span_t name,
     lxa_html_root_ordinary_start_action_t *out);
 
 typedef enum {
-    LXA_TEMPLATE_INITIAL, LXA_TEMPLATE_TABLE, LXA_TEMPLATE_TABLE_BODY,
-    LXA_TEMPLATE_ROW, LXA_TEMPLATE_COLUMN_GROUP, LXA_TEMPLATE_BODY
+    LXA_TEMPLATE_INITIAL,
+    LXA_TEMPLATE_TABLE,
+    LXA_TEMPLATE_TABLE_BODY,
+    LXA_TEMPLATE_ROW,
+    LXA_TEMPLATE_COLUMN_GROUP,
+    LXA_TEMPLATE_BODY
 } lxa_html_template_mode_t;
 
 typedef enum {
@@ -171,26 +189,45 @@ lxa_html_tree_template_end_br_start(lxa_html_template_mode_t mode, bool has_cont
 }
 
 typedef enum {
-    LXA_TREE_INITIAL, LXA_TREE_BEFORE_HTML, LXA_TREE_BEFORE_HEAD,
-    LXA_TREE_IN_HEAD, LXA_TREE_HEAD_NOSCRIPT, LXA_TREE_TEMPLATE_TEXT,
-    LXA_TREE_AFTER_HEAD, LXA_TREE_IN_BODY,
-    LXA_TREE_TEXT, LXA_TREE_AFTER_BODY, LXA_TREE_AFTER_HTML, LXA_TREE_DONE,
-    LXA_TREE_IN_FRAMESET, LXA_TREE_AFTER_FRAMESET, LXA_TREE_AFTER_AFTER_FRAMESET
+    LXA_TREE_INITIAL,
+    LXA_TREE_BEFORE_HTML,
+    LXA_TREE_BEFORE_HEAD,
+    LXA_TREE_IN_HEAD,
+    LXA_TREE_HEAD_NOSCRIPT,
+    LXA_TREE_TEMPLATE_TEXT,
+    LXA_TREE_AFTER_HEAD,
+    LXA_TREE_IN_BODY,
+    LXA_TREE_TEXT,
+    LXA_TREE_AFTER_BODY,
+    LXA_TREE_AFTER_HTML,
+    LXA_TREE_DONE,
+    LXA_TREE_IN_FRAMESET,
+    LXA_TREE_AFTER_FRAMESET,
+    LXA_TREE_AFTER_AFTER_FRAMESET
 } lxa_html_root_mode_t;
 
 typedef enum {
-    LXA_HTML_ROOT_START_OTHER, LXA_HTML_ROOT_START_HTML,
-    LXA_HTML_ROOT_START_HEAD, LXA_HTML_ROOT_START_BODY, LXA_HTML_ROOT_START_IGNORE_HEAD
+    LXA_HTML_ROOT_START_OTHER,
+    LXA_HTML_ROOT_START_HTML,
+    LXA_HTML_ROOT_START_HEAD,
+    LXA_HTML_ROOT_START_BODY,
+    LXA_HTML_ROOT_START_IGNORE_HEAD
 } lxa_html_root_start_action_t;
 
 typedef enum {
-    LXA_HTML_ROOT_PRELUDE_CONTINUE, LXA_HTML_ROOT_PRELUDE_IGNORE,
-    LXA_HTML_ROOT_PRELUDE_ROOT, LXA_HTML_ROOT_PRELUDE_FRAMESET
+    LXA_HTML_ROOT_PRELUDE_CONTINUE,
+    LXA_HTML_ROOT_PRELUDE_IGNORE,
+    LXA_HTML_ROOT_PRELUDE_ROOT,
+    LXA_HTML_ROOT_PRELUDE_FRAMESET
 } lxa_html_root_start_prelude_action_t;
 
 typedef enum {
-    LXA_HTML_ROOT_MISC_IGNORE, LXA_HTML_ROOT_MISC_DOCUMENT, LXA_HTML_ROOT_MISC_HTML,
-    LXA_HTML_ROOT_MISC_HEAD, LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT, LXA_HTML_ROOT_MISC_CURRENT
+    LXA_HTML_ROOT_MISC_IGNORE,
+    LXA_HTML_ROOT_MISC_DOCUMENT,
+    LXA_HTML_ROOT_MISC_HTML,
+    LXA_HTML_ROOT_MISC_HEAD,
+    LXA_HTML_ROOT_MISC_HEAD_NOSCRIPT,
+    LXA_HTML_ROOT_MISC_CURRENT
 } lxa_html_root_misc_destination_t;
 typedef struct {
     lxa_html_root_misc_destination_t destination;
@@ -210,10 +247,14 @@ lxa_status_t lxa_html_tree_root_start_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_root_start_action_t *out);
 
 typedef enum {
-    LXA_HTML_ROOT_SPECIAL_ORDINARY, LXA_HTML_ROOT_SPECIAL_FRAME,
-    LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD, LXA_HTML_ROOT_SPECIAL_TEMPLATE,
-    LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT, LXA_HTML_ROOT_SPECIAL_FORM,
-    LXA_HTML_ROOT_SPECIAL_TEXT, LXA_HTML_ROOT_SPECIAL_XMP,
+    LXA_HTML_ROOT_SPECIAL_ORDINARY,
+    LXA_HTML_ROOT_SPECIAL_FRAME,
+    LXA_HTML_ROOT_SPECIAL_TEMPLATE_HEAD,
+    LXA_HTML_ROOT_SPECIAL_TEMPLATE,
+    LXA_HTML_ROOT_SPECIAL_HEAD_NOSCRIPT,
+    LXA_HTML_ROOT_SPECIAL_FORM,
+    LXA_HTML_ROOT_SPECIAL_TEXT,
+    LXA_HTML_ROOT_SPECIAL_XMP,
     LXA_HTML_ROOT_SPECIAL_PLAINTEXT
 } lxa_html_root_special_start_action_t;
 
@@ -225,7 +266,9 @@ lxa_status_t lxa_html_tree_root_special_start_action(lxa_html_root_mode_t mode,
     lxa_span_t name, lxa_html_root_special_start_action_t *out);
 
 typedef enum {
-    LXA_HTML_ROOT_END_CONTINUE, LXA_HTML_ROOT_END_IGNORE, LXA_HTML_ROOT_END_BR_START
+    LXA_HTML_ROOT_END_CONTINUE,
+    LXA_HTML_ROOT_END_IGNORE,
+    LXA_HTML_ROOT_END_BR_START
 } lxa_html_root_end_prelude_action_t;
 
 static inline bool
@@ -307,8 +350,10 @@ lxa_html_tree_space_only(lxa_span_t data)
 }
 
 typedef enum {
-    LXA_HTML_INITIAL_COMMENT, LXA_HTML_INITIAL_IGNORE,
-    LXA_HTML_INITIAL_DOCTYPE, LXA_HTML_INITIAL_QUIRKS_REPROCESS
+    LXA_HTML_INITIAL_COMMENT,
+    LXA_HTML_INITIAL_IGNORE,
+    LXA_HTML_INITIAL_DOCTYPE,
+    LXA_HTML_INITIAL_QUIRKS_REPROCESS
 } lxa_html_initial_action_t;
 
 /* Initial-mode intake after token-shape validation. Only text reads data. */
@@ -320,7 +365,7 @@ lxa_html_tree_initial_action(lxa_html_token_kind_t kind, lxa_span_t data)
     if (kind == LXA_HTML_TEXT && lxa_html_tree_space_only(data))
         return LXA_HTML_INITIAL_IGNORE;
     return kind == LXA_HTML_DOCTYPE ? LXA_HTML_INITIAL_DOCTYPE
-                                   : LXA_HTML_INITIAL_QUIRKS_REPROCESS;
+                                    : LXA_HTML_INITIAL_QUIRKS_REPROCESS;
 }
 
 typedef enum {
@@ -389,7 +434,7 @@ lxa_html_tree_heading(lxa_span_t name)
 
 static inline bool
 lxa_html_tree_ascii_case_equals(lxa_span_t value, const char *expected,
-                                size_t length)
+    size_t length)
 {
     if (value.length != length || value.data == NULL) return false;
     for (size_t i = 0; i < length; ++i) {
@@ -405,8 +450,8 @@ lxa_html_tree_ascii_case_equals(lxa_span_t value, const char *expected,
  */
 lxa_status_t
 lxa_html_tree_doctype_mode(const lxa_html_token_t *data, lxa_budget_t *budget,
-                           lxa_limit_reason_t *reason,
-                           lxa_html_document_mode_t *mode);
+    lxa_limit_reason_t *reason,
+    lxa_html_document_mode_t *mode);
 
 /* Validate the token envelope and every effective attribute before tree/control
  * effects. Budgeted attribute queries retain their separate lazy read checks.
@@ -434,7 +479,8 @@ lxa_html_tree_template_start_mode(lxa_html_template_mode_t current,
     lxa_span_t name, lxa_dom_namespace_t ns, lxa_html_template_mode_t *out);
 
 typedef enum {
-    LXA_HTML_COLUMN_GROUP_CONTINUE, LXA_HTML_COLUMN_GROUP_IGNORE,
+    LXA_HTML_COLUMN_GROUP_CONTINUE,
+    LXA_HTML_COLUMN_GROUP_IGNORE,
     LXA_HTML_COLUMN_GROUP_SPACE_TEXT
 } lxa_html_column_group_action_t;
 
@@ -462,8 +508,10 @@ bool lxa_html_tree_attribute_value_required(lxa_span_t tag, lxa_span_t name,
     bool observe_meta);
 
 typedef enum {
-    LXA_HTML_HEAD_NOSCRIPT_CONTINUE, LXA_HTML_HEAD_NOSCRIPT_IGNORE,
-    LXA_HTML_HEAD_NOSCRIPT_CLOSE, LXA_HTML_HEAD_NOSCRIPT_REPROCESS
+    LXA_HTML_HEAD_NOSCRIPT_CONTINUE,
+    LXA_HTML_HEAD_NOSCRIPT_IGNORE,
+    LXA_HTML_HEAD_NOSCRIPT_CLOSE,
+    LXA_HTML_HEAD_NOSCRIPT_REPROCESS
 } lxa_html_head_noscript_action_t;
 
 typedef struct {
@@ -475,7 +523,8 @@ static inline lxa_html_root_mode_t
 lxa_html_tree_head_noscript_next_mode(lxa_html_head_noscript_action_t action)
 {
     return action == LXA_HTML_HEAD_NOSCRIPT_CLOSE || action == LXA_HTML_HEAD_NOSCRIPT_REPROCESS
-        ? LXA_TREE_IN_HEAD : LXA_TREE_HEAD_NOSCRIPT;
+        ? LXA_TREE_IN_HEAD
+        : LXA_TREE_HEAD_NOSCRIPT;
 }
 
 /* Plan accepted head-noscript tokens after EOF/text-mode dispatch. Charge the
@@ -487,10 +536,16 @@ lxa_html_tree_head_noscript_plan(const lxa_html_token_t *token,
     lxa_html_head_noscript_plan_t *out);
 
 typedef enum {
-    LXA_HTML_FRAMESET_IGNORE, LXA_HTML_FRAMESET_EOF, LXA_HTML_FRAMESET_COMMENT,
-    LXA_HTML_FRAMESET_HTML_START, LXA_HTML_FRAMESET_TEXT,
-    LXA_HTML_FRAMESET_NOFRAMES_START, LXA_HTML_FRAMESET_HTML_END,
-    LXA_HTML_FRAMESET_START, LXA_HTML_FRAMESET_FRAME_START, LXA_HTML_FRAMESET_END
+    LXA_HTML_FRAMESET_IGNORE,
+    LXA_HTML_FRAMESET_EOF,
+    LXA_HTML_FRAMESET_COMMENT,
+    LXA_HTML_FRAMESET_HTML_START,
+    LXA_HTML_FRAMESET_TEXT,
+    LXA_HTML_FRAMESET_NOFRAMES_START,
+    LXA_HTML_FRAMESET_HTML_END,
+    LXA_HTML_FRAMESET_START,
+    LXA_HTML_FRAMESET_FRAME_START,
+    LXA_HTML_FRAMESET_END
 } lxa_html_frameset_action_t;
 
 /* Classify frameset-family dispatch without quota charges or effects. Engines
@@ -507,8 +562,10 @@ lxa_status_t lxa_html_tree_filter_spaces(lxa_span_t data, lxa_buffer_t *spaces,
     lxa_limit_reason_t *reason);
 
 typedef enum {
-    LXA_HTML_PREBODY_END_IGNORE, LXA_HTML_PREBODY_END_HTML_HEAD,
-    LXA_HTML_PREBODY_END_HEAD, LXA_HTML_PREBODY_END_BODY
+    LXA_HTML_PREBODY_END_IGNORE,
+    LXA_HTML_PREBODY_END_HTML_HEAD,
+    LXA_HTML_PREBODY_END_HEAD,
+    LXA_HTML_PREBODY_END_BODY
 } lxa_html_prebody_end_action_t;
 
 /* Classify accepted end tags before html/head or after head. Engines construct
@@ -524,8 +581,11 @@ typedef struct {
 } lxa_html_prebody_text_plan_t;
 
 typedef enum {
-    LXA_HTML_HEAD_END_IGNORE, LXA_HTML_HEAD_END_CLOSE, LXA_HTML_HEAD_END_BODY,
-    LXA_HTML_HEAD_END_HTML, LXA_HTML_HEAD_END_BR
+    LXA_HTML_HEAD_END_IGNORE,
+    LXA_HTML_HEAD_END_CLOSE,
+    LXA_HTML_HEAD_END_BODY,
+    LXA_HTML_HEAD_END_HTML,
+    LXA_HTML_HEAD_END_BR
 } lxa_html_head_end_action_t;
 
 lxa_status_t lxa_html_tree_head_end_action(lxa_span_t name,
@@ -551,7 +611,8 @@ lxa_status_t lxa_html_tree_prebody_text_plan(lxa_html_root_mode_t mode,
     lxa_html_prebody_text_plan_t *out);
 
 typedef enum {
-    LXA_HTML_AFTER_BODY_SPACE_TEXT, LXA_HTML_AFTER_BODY_HTML_START,
+    LXA_HTML_AFTER_BODY_SPACE_TEXT,
+    LXA_HTML_AFTER_BODY_HTML_START,
     LXA_HTML_AFTER_BODY_REPROCESS
 } lxa_html_after_body_action_t;
 
@@ -575,7 +636,8 @@ lxa_status_t
 lxa_html_tree_text_start_plan(lxa_span_t name, lxa_html_text_start_plan_t *out);
 
 typedef enum {
-    LXA_HTML_TEXT_APPEND, LXA_HTML_TEXT_RETURN
+    LXA_HTML_TEXT_APPEND,
+    LXA_HTML_TEXT_RETURN
 } lxa_html_text_action_t;
 
 /* Consume the accepted pre/listing/textarea newline latch after intake and

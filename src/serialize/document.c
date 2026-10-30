@@ -15,18 +15,18 @@ write_budgeted(void *context, lxa_span_t bytes)
     writer_t *writer = context;
     lxa_write_result_t result = {0, LXA_OK};
     result.status = lxa_budget_charge(writer->budget, LXA_BUDGET_WORK, 1,
-                                       writer->reason);
+        writer->reason);
     return result.status == LXA_OK ? writer->write(writer->context, bytes)
-           : result;
+                                   : result;
 }
 
 static lxa_status_t
 emit(writer_t *writer, lxa_span_t bytes)
 {
     lxa_status_t status = lxa_budget_charge(writer->budget, LXA_BUDGET_WORK,
-                                             bytes.length, writer->reason);
+        bytes.length, writer->reason);
     return status == LXA_OK ? lxa_write_all(bytes, write_budgeted, writer)
-           : status;
+                            : status;
 }
 
 static lxa_status_t
@@ -42,9 +42,10 @@ static lxa_status_t
 escaped(writer_t *writer, lxa_span_t bytes, lxa_escape_context_t mode)
 {
     lxa_status_t status = lxa_budget_charge(writer->budget, LXA_BUDGET_WORK,
-                                             bytes.length, writer->reason);
+        bytes.length, writer->reason);
     return status == LXA_OK
-           ? lxa_html_escape(bytes, mode, write_budgeted, writer) : status;
+        ? lxa_html_escape(bytes, mode, write_budgeted, writer)
+        : status;
 }
 
 static bool
@@ -68,8 +69,7 @@ is_void(lxa_span_t name)
         VOID_NAME("embed"), VOID_NAME("frame"), VOID_NAME("hr"),
         VOID_NAME("img"), VOID_NAME("input"), VOID_NAME("keygen"),
         VOID_NAME("link"), VOID_NAME("meta"), VOID_NAME("param"),
-        VOID_NAME("source"), VOID_NAME("track"), VOID_NAME("wbr")
-    };
+        VOID_NAME("source"), VOID_NAME("track"), VOID_NAME("wbr")};
     size_t i;
     for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         if (is_name_length(name, names[i].text, names[i].length)) {
@@ -81,7 +81,7 @@ is_void(lxa_span_t name)
 
 static lxa_status_t
 element_open(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element, writer_t *writer,
-             bool *void_element)
+    bool *void_element)
 {
     lxa_dom_ref_t attr = {0}, next;
     lxa_span_t name, key, value;
@@ -185,7 +185,7 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             if (entering && ns == LXA_DOM_NS_HTML && is_name(name, "template")) {
                 if (record.first_child != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
                 status = lxa_dom_nodes_template_contents(nodes, current,
-                                                           &template_fragment);
+                    &template_fragment);
                 if (status != LXA_OK) return status;
                 if (template_fragment.handle == LXA_HANDLE_NONE)
                     return LXA_ERROR_ARGUMENT;
@@ -220,22 +220,22 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
                     if (status == LXA_OK && record.parent != LXA_ID_NONE) {
                         lxa_dom_ref_t owner = current;
                         status = lxa_handle_pack(record.parent, nodes->generation,
-                                                 &owner.handle);
+                            &owner.handle);
                         if (status == LXA_OK)
                             status = lxa_dom_nodes_read(nodes, owner, &parent);
                         if (status != LXA_OK) return status;
                         if (parent.kind == LXA_DOM_KIND_ELEMENT) {
                             status = lxa_dom_nodes_element_name(nodes, owner,
-                                                                &name);
+                                &name);
                             if (status != LXA_OK) return status;
                             status = lxa_dom_nodes_element_namespace(nodes,
-                                                                      owner, &ns);
+                                owner, &ns);
                             if (status != LXA_OK) return status;
                             if (ns == LXA_DOM_NS_HTML
                                 && (is_name(name, "script") || is_name(name, "style")
-                                || is_name(name, "xmp") || is_name(name, "iframe")
-                                || is_name(name, "noembed") || is_name(name, "noframes")
-                                || is_name(name, "plaintext")))
+                                    || is_name(name, "xmp") || is_name(name, "iframe")
+                                    || is_name(name, "noembed") || is_name(name, "noframes")
+                                    || is_name(name, "plaintext")))
                                 status = emit(&writer, bytes);
                             else
                                 status = escaped(&writer, bytes, LXA_ESCAPE_TEXT);
@@ -250,7 +250,7 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             if (status != LXA_OK) return status;
             if (template_fragment.handle != LXA_HANDLE_NONE) {
                 status = lxa_dom_nodes_first_child(nodes, template_fragment,
-                                                    &next);
+                    &next);
                 if (status != LXA_OK) return status;
                 if (next.handle != LXA_HANDLE_NONE) {
                     current = template_fragment;

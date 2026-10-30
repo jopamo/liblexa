@@ -3,7 +3,7 @@
  */
 static inline lxa_status_t
 LXA_FORMATTING_REFERENCE_NAME(const LXA_FORMATTING_REFERENCE_VIEW *view, size_t start,
-                               uint64_t identity, size_t *out)
+    uint64_t identity, size_t *out)
 {
     size_t i = LXA_FORMATTING_REFERENCE_LENGTH(view), found = i;
     while (i > start) {

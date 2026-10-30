@@ -32,11 +32,11 @@ lxa_css_blocks_check(lxa_css_blocks_t *blocks)
 {
     lxa_status_t status = lxa_css_invariant(blocks->budget != NULL);
     return status == LXA_OK
-           ? lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t))
-           : status;
+        ? lxa_css_vector_check(&blocks->entries, sizeof(lxa_css_block_t))
+        : status;
 }
 
 lxa_status_t lxa_css_blocks_get(lxa_css_blocks_t *blocks, size_t index,
-                                lxa_css_block_t *out);
+    lxa_css_block_t *out);
 
 #endif

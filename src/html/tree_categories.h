@@ -48,8 +48,10 @@ typedef struct {
 } lxa_html_form_end_plan_t;
 
 typedef enum {
-    LXA_HTML_TEMPLATE_END_CONTINUE, LXA_HTML_TEMPLATE_END_IGNORE,
-    LXA_HTML_TEMPLATE_END_POP_TABLE, LXA_HTML_TEMPLATE_END_POP_MARKER
+    LXA_HTML_TEMPLATE_END_CONTINUE,
+    LXA_HTML_TEMPLATE_END_IGNORE,
+    LXA_HTML_TEMPLATE_END_POP_TABLE,
+    LXA_HTML_TEMPLATE_END_POP_MARKER
 } lxa_html_template_end_action_t;
 
 typedef struct {
@@ -74,8 +76,10 @@ typedef struct {
 } lxa_html_table_start_plan_t;
 
 typedef enum {
-    LXA_HTML_TABLE_START_INSERT, LXA_HTML_TABLE_START_IGNORE,
-    LXA_HTML_TABLE_START_POP_IGNORE, LXA_HTML_TABLE_START_POP_REPROCESS
+    LXA_HTML_TABLE_START_INSERT,
+    LXA_HTML_TABLE_START_IGNORE,
+    LXA_HTML_TABLE_START_POP_IGNORE,
+    LXA_HTML_TABLE_START_POP_REPROCESS
 } lxa_html_table_start_action_t;
 
 typedef struct {
@@ -86,9 +90,12 @@ typedef struct {
 } lxa_html_template_table_start_plan_t;
 
 typedef enum {
-    LXA_HTML_COLUMN_START_VIRTUAL, LXA_HTML_COLUMN_START_IGNORE,
-    LXA_HTML_COLUMN_START_POP_IGNORE, LXA_HTML_COLUMN_START_POP_REPROCESS,
-    LXA_HTML_COLUMN_START_TABLE_PART, LXA_HTML_COLUMN_START_APPEND,
+    LXA_HTML_COLUMN_START_VIRTUAL,
+    LXA_HTML_COLUMN_START_IGNORE,
+    LXA_HTML_COLUMN_START_POP_IGNORE,
+    LXA_HTML_COLUMN_START_POP_REPROCESS,
+    LXA_HTML_COLUMN_START_TABLE_PART,
+    LXA_HTML_COLUMN_START_APPEND,
     LXA_HTML_COLUMN_START_IMPLY_GROUP
 } lxa_html_column_start_action_t;
 
@@ -226,10 +233,11 @@ lxa_html_tree_formatting_marker_tag(lxa_span_t name)
 
 static inline bool
 lxa_html_tree_scope_boundary(lxa_span_t name, lxa_dom_namespace_t ns,
-                             lxa_html_scope_kind_t scope)
+    lxa_html_scope_kind_t scope)
 {
     return (liblexa_html_tag_metadata_table[lxa_html_tree_tag_id(name, ns)].scope_mask
-            & scope) != 0;
+               & scope)
+        != 0;
 }
 
 static inline bool
@@ -248,39 +256,37 @@ static inline bool
 lxa_html_tree_block_container(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "div") || LXA_CONTAINER_NAMED(name, "section")
-           || LXA_CONTAINER_NAMED(name, "address") || LXA_CONTAINER_NAMED(name, "dialog")
-           || LXA_CONTAINER_NAMED(name, "dir") || LXA_CONTAINER_NAMED(name, "hgroup")
-           || LXA_CONTAINER_NAMED(name, "search") || LXA_CONTAINER_NAMED(name, "summary")
-           || LXA_CONTAINER_NAMED(name, "article") || LXA_CONTAINER_NAMED(name, "main")
-           || LXA_CONTAINER_NAMED(name, "center") || LXA_CONTAINER_NAMED(name, "menu")
-           || LXA_CONTAINER_NAMED(name, "aside")
-           || LXA_CONTAINER_NAMED(name, "header") || LXA_CONTAINER_NAMED(name, "footer")
-           || LXA_CONTAINER_NAMED(name, "nav") || LXA_CONTAINER_NAMED(name, "blockquote")
-           || LXA_CONTAINER_NAMED(name, "pre") || LXA_CONTAINER_NAMED(name, "listing")
-           || LXA_CONTAINER_NAMED(name, "figure") || LXA_CONTAINER_NAMED(name, "figcaption")
-           || LXA_CONTAINER_NAMED(name, "fieldset")
-           || LXA_CONTAINER_NAMED(name, "details") || LXA_CONTAINER_NAMED(name, "button")
-           || LXA_CONTAINER_NAMED(name, "ul") || LXA_CONTAINER_NAMED(name, "ol")
-           || LXA_CONTAINER_NAMED(name, "dl");
+        || LXA_CONTAINER_NAMED(name, "address") || LXA_CONTAINER_NAMED(name, "dialog")
+        || LXA_CONTAINER_NAMED(name, "dir") || LXA_CONTAINER_NAMED(name, "hgroup")
+        || LXA_CONTAINER_NAMED(name, "search") || LXA_CONTAINER_NAMED(name, "summary")
+        || LXA_CONTAINER_NAMED(name, "article") || LXA_CONTAINER_NAMED(name, "main")
+        || LXA_CONTAINER_NAMED(name, "center") || LXA_CONTAINER_NAMED(name, "menu")
+        || LXA_CONTAINER_NAMED(name, "aside")
+        || LXA_CONTAINER_NAMED(name, "header") || LXA_CONTAINER_NAMED(name, "footer")
+        || LXA_CONTAINER_NAMED(name, "nav") || LXA_CONTAINER_NAMED(name, "blockquote")
+        || LXA_CONTAINER_NAMED(name, "pre") || LXA_CONTAINER_NAMED(name, "listing")
+        || LXA_CONTAINER_NAMED(name, "figure") || LXA_CONTAINER_NAMED(name, "figcaption")
+        || LXA_CONTAINER_NAMED(name, "fieldset")
+        || LXA_CONTAINER_NAMED(name, "details") || LXA_CONTAINER_NAMED(name, "button")
+        || LXA_CONTAINER_NAMED(name, "ul") || LXA_CONTAINER_NAMED(name, "ol")
+        || LXA_CONTAINER_NAMED(name, "dl");
 }
-
 
 static inline bool
 lxa_html_tree_inline_container(lxa_span_t name)
 {
     return lxa_html_tree_formatting_tag(name) || LXA_CONTAINER_NAMED(name, "span")
-           || LXA_CONTAINER_NAMED(name, "ins") || LXA_CONTAINER_NAMED(name, "slot")
-           || LXA_CONTAINER_NAMED(name, "label")
-           || LXA_CONTAINER_NAMED(name, "abbr") || LXA_CONTAINER_NAMED(name, "cite")
-           || LXA_CONTAINER_NAMED(name, "data") || LXA_CONTAINER_NAMED(name, "dfn")
-           || LXA_CONTAINER_NAMED(name, "mark") || LXA_CONTAINER_NAMED(name, "q")
-           || LXA_CONTAINER_NAMED(name, "time")
-           || LXA_CONTAINER_NAMED(name, "acronym") || LXA_CONTAINER_NAMED(name, "var")
-           || LXA_CONTAINER_NAMED(name, "sub") || LXA_CONTAINER_NAMED(name, "sup")
-           || LXA_CONTAINER_NAMED(name, "del")
-           || LXA_CONTAINER_NAMED(name, "samp") || LXA_CONTAINER_NAMED(name, "kbd");
+        || LXA_CONTAINER_NAMED(name, "ins") || LXA_CONTAINER_NAMED(name, "slot")
+        || LXA_CONTAINER_NAMED(name, "label")
+        || LXA_CONTAINER_NAMED(name, "abbr") || LXA_CONTAINER_NAMED(name, "cite")
+        || LXA_CONTAINER_NAMED(name, "data") || LXA_CONTAINER_NAMED(name, "dfn")
+        || LXA_CONTAINER_NAMED(name, "mark") || LXA_CONTAINER_NAMED(name, "q")
+        || LXA_CONTAINER_NAMED(name, "time")
+        || LXA_CONTAINER_NAMED(name, "acronym") || LXA_CONTAINER_NAMED(name, "var")
+        || LXA_CONTAINER_NAMED(name, "sub") || LXA_CONTAINER_NAMED(name, "sup")
+        || LXA_CONTAINER_NAMED(name, "del")
+        || LXA_CONTAINER_NAMED(name, "samp") || LXA_CONTAINER_NAMED(name, "kbd");
 }
-
 
 static inline bool
 lxa_html_tree_select_container(lxa_span_t name)
@@ -289,18 +295,16 @@ lxa_html_tree_select_container(lxa_span_t name)
         || LXA_CONTAINER_NAMED(name, "optgroup");
 }
 
-
 static inline bool
 lxa_html_tree_simple_container(lxa_span_t name)
 {
     return lxa_html_tree_block_container(name) || lxa_html_tree_inline_container(name)
-           || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "li")
-           || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
-           || LXA_CONTAINER_NAMED(name, "noscript")
-           || lxa_html_tree_select_container(name)
-           || lxa_html_tree_heading(name);
+        || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "li")
+        || LXA_CONTAINER_NAMED(name, "dt") || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "noscript")
+        || lxa_html_tree_select_container(name)
+        || lxa_html_tree_heading(name);
 }
-
 
 static inline bool
 lxa_html_tree_ruby_annotation(lxa_span_t name)
@@ -314,8 +318,8 @@ lxa_html_tree_container_reconstructs(lxa_span_t name)
 {
     return !lxa_html_tree_ruby_annotation(name)
         && (lxa_html_tree_inline_container(name) || !lxa_html_tree_simple_container(name)
-           || LXA_CONTAINER_NAMED(name, "noscript") || LXA_CONTAINER_NAMED(name, "button")
-           || lxa_html_tree_select_container(name));
+            || LXA_CONTAINER_NAMED(name, "noscript") || LXA_CONTAINER_NAMED(name, "button")
+            || lxa_html_tree_select_container(name));
 }
 
 static inline bool
@@ -332,19 +336,19 @@ static inline bool
 lxa_html_tree_head_void(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "base") || LXA_CONTAINER_NAMED(name, "basefont")
-           || LXA_CONTAINER_NAMED(name, "bgsound") || LXA_CONTAINER_NAMED(name, "link")
-           || LXA_CONTAINER_NAMED(name, "meta");
+        || LXA_CONTAINER_NAMED(name, "bgsound") || LXA_CONTAINER_NAMED(name, "link")
+        || LXA_CONTAINER_NAMED(name, "meta");
 }
 
 static inline bool
 lxa_html_tree_body_void(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "br") || LXA_CONTAINER_NAMED(name, "img")
-           || LXA_CONTAINER_NAMED(name, "input") || LXA_CONTAINER_NAMED(name, "keygen")
-           || LXA_CONTAINER_NAMED(name, "hr")
-           || LXA_CONTAINER_NAMED(name, "wbr") || LXA_CONTAINER_NAMED(name, "area")
-           || LXA_CONTAINER_NAMED(name, "embed") || LXA_CONTAINER_NAMED(name, "source")
-           || LXA_CONTAINER_NAMED(name, "track") || LXA_CONTAINER_NAMED(name, "param");
+        || LXA_CONTAINER_NAMED(name, "input") || LXA_CONTAINER_NAMED(name, "keygen")
+        || LXA_CONTAINER_NAMED(name, "hr")
+        || LXA_CONTAINER_NAMED(name, "wbr") || LXA_CONTAINER_NAMED(name, "area")
+        || LXA_CONTAINER_NAMED(name, "embed") || LXA_CONTAINER_NAMED(name, "source")
+        || LXA_CONTAINER_NAMED(name, "track") || LXA_CONTAINER_NAMED(name, "param");
 }
 
 /* Accepted body-void/image starts only; head starts dispatch separately. */
@@ -374,7 +378,7 @@ static inline bool
 lxa_html_tree_root_control_group(lxa_html_token_kind_t kind, lxa_span_t name)
 {
     return (kind == LXA_HTML_START_TAG && lxa_html_tree_body_control_start(name)
-            && !LXA_CONTAINER_NAMED(name, "html"))
+               && !LXA_CONTAINER_NAMED(name, "html"))
         || (kind == LXA_HTML_END_TAG && LXA_CONTAINER_NAMED(name, "head"));
 }
 
@@ -436,10 +440,14 @@ lxa_html_tree_root_end_scope(lxa_span_t name)
 }
 
 typedef enum {
-    LXA_HTML_ROOT_BODY_END_BODY, LXA_HTML_ROOT_BODY_END_HTML,
-    LXA_HTML_ROOT_BODY_END_COL, LXA_HTML_ROOT_BODY_END_FORMATTING,
-    LXA_HTML_ROOT_BODY_END_FORM, LXA_HTML_ROOT_BODY_END_PARAGRAPH,
-    LXA_HTML_ROOT_BODY_END_SCOPED, LXA_HTML_ROOT_BODY_END_ORDINARY
+    LXA_HTML_ROOT_BODY_END_BODY,
+    LXA_HTML_ROOT_BODY_END_HTML,
+    LXA_HTML_ROOT_BODY_END_COL,
+    LXA_HTML_ROOT_BODY_END_FORMATTING,
+    LXA_HTML_ROOT_BODY_END_FORM,
+    LXA_HTML_ROOT_BODY_END_PARAGRAPH,
+    LXA_HTML_ROOT_BODY_END_SCOPED,
+    LXA_HTML_ROOT_BODY_END_ORDINARY
 } lxa_html_root_body_end_action_t;
 
 typedef struct {
@@ -512,61 +520,61 @@ static inline bool
 lxa_html_tree_template_container_start(lxa_span_t name)
 {
     return LXA_CONTAINER_NAMED(name, "form")
-    || lxa_html_tree_template_marker_container(name)
-    || lxa_html_tree_inline_container(name)
-    || LXA_CONTAINER_NAMED(name, "plaintext")
-    || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "div")
-    || LXA_CONTAINER_NAMED(name, "address")
-    || LXA_CONTAINER_NAMED(name, "dialog")
-    || LXA_CONTAINER_NAMED(name, "details")
-    || LXA_CONTAINER_NAMED(name, "summary")
-    || LXA_CONTAINER_NAMED(name, "fieldset")
-    || lxa_html_tree_template_sectioning(name)
-    || LXA_CONTAINER_NAMED(name, "pre")
-    || LXA_CONTAINER_NAMED(name, "listing")
-    || LXA_CONTAINER_NAMED(name, "blockquote")
-    || LXA_CONTAINER_NAMED(name, "center")
-    || LXA_CONTAINER_NAMED(name, "figure")
-    || LXA_CONTAINER_NAMED(name, "figcaption")
-    || LXA_CONTAINER_NAMED(name, "datalist")
-    || LXA_CONTAINER_NAMED(name, "output")
-    || LXA_CONTAINER_NAMED(name, "progress")
-    || LXA_CONTAINER_NAMED(name, "meter")
-    || LXA_CONTAINER_NAMED(name, "hgroup")
-    || LXA_CONTAINER_NAMED(name, "search")
-    || LXA_CONTAINER_NAMED(name, "dir")
-    || LXA_CONTAINER_NAMED(name, "dl")
-    || LXA_CONTAINER_NAMED(name, "dt")
-    || LXA_CONTAINER_NAMED(name, "dd")
-    || LXA_CONTAINER_NAMED(name, "noscript")
-    || LXA_CONTAINER_NAMED(name, "ul")
-    || LXA_CONTAINER_NAMED(name, "ol")
-    || LXA_CONTAINER_NAMED(name, "menu")
-    || LXA_CONTAINER_NAMED(name, "li")
-    || LXA_CONTAINER_NAMED(name, "ruby")
-    || LXA_CONTAINER_NAMED(name, "rt")
-    || LXA_CONTAINER_NAMED(name, "rp")
-    || lxa_html_tree_heading(name)
-    || LXA_CONTAINER_NAMED(name, "table")
-    || lxa_html_tree_select_container(name)
-    || LXA_CONTAINER_NAMED(name, "span")
-    || LXA_CONTAINER_NAMED(name, "label")
-    || LXA_CONTAINER_NAMED(name, "button")
-    || LXA_CONTAINER_NAMED(name, "q")
-    || LXA_CONTAINER_NAMED(name, "cite")
-    || LXA_CONTAINER_NAMED(name, "abbr")
-    || LXA_CONTAINER_NAMED(name, "sub")
-    || LXA_CONTAINER_NAMED(name, "sup")
-    || LXA_CONTAINER_NAMED(name, "big")
-    || LXA_CONTAINER_NAMED(name, "small")
-    || LXA_CONTAINER_NAMED(name, "s")
-    || LXA_CONTAINER_NAMED(name, "strike")
-    || LXA_CONTAINER_NAMED(name, "tt")
-    || LXA_CONTAINER_NAMED(name, "u")
-    || LXA_CONTAINER_NAMED(name, "var")
-    || LXA_CONTAINER_NAMED(name, "nobr")
-    || LXA_CONTAINER_NAMED(name, "font")
-    || lxa_html_tree_formatting_tag(name);
+        || lxa_html_tree_template_marker_container(name)
+        || lxa_html_tree_inline_container(name)
+        || LXA_CONTAINER_NAMED(name, "plaintext")
+        || LXA_CONTAINER_NAMED(name, "p") || LXA_CONTAINER_NAMED(name, "div")
+        || LXA_CONTAINER_NAMED(name, "address")
+        || LXA_CONTAINER_NAMED(name, "dialog")
+        || LXA_CONTAINER_NAMED(name, "details")
+        || LXA_CONTAINER_NAMED(name, "summary")
+        || LXA_CONTAINER_NAMED(name, "fieldset")
+        || lxa_html_tree_template_sectioning(name)
+        || LXA_CONTAINER_NAMED(name, "pre")
+        || LXA_CONTAINER_NAMED(name, "listing")
+        || LXA_CONTAINER_NAMED(name, "blockquote")
+        || LXA_CONTAINER_NAMED(name, "center")
+        || LXA_CONTAINER_NAMED(name, "figure")
+        || LXA_CONTAINER_NAMED(name, "figcaption")
+        || LXA_CONTAINER_NAMED(name, "datalist")
+        || LXA_CONTAINER_NAMED(name, "output")
+        || LXA_CONTAINER_NAMED(name, "progress")
+        || LXA_CONTAINER_NAMED(name, "meter")
+        || LXA_CONTAINER_NAMED(name, "hgroup")
+        || LXA_CONTAINER_NAMED(name, "search")
+        || LXA_CONTAINER_NAMED(name, "dir")
+        || LXA_CONTAINER_NAMED(name, "dl")
+        || LXA_CONTAINER_NAMED(name, "dt")
+        || LXA_CONTAINER_NAMED(name, "dd")
+        || LXA_CONTAINER_NAMED(name, "noscript")
+        || LXA_CONTAINER_NAMED(name, "ul")
+        || LXA_CONTAINER_NAMED(name, "ol")
+        || LXA_CONTAINER_NAMED(name, "menu")
+        || LXA_CONTAINER_NAMED(name, "li")
+        || LXA_CONTAINER_NAMED(name, "ruby")
+        || LXA_CONTAINER_NAMED(name, "rt")
+        || LXA_CONTAINER_NAMED(name, "rp")
+        || lxa_html_tree_heading(name)
+        || LXA_CONTAINER_NAMED(name, "table")
+        || lxa_html_tree_select_container(name)
+        || LXA_CONTAINER_NAMED(name, "span")
+        || LXA_CONTAINER_NAMED(name, "label")
+        || LXA_CONTAINER_NAMED(name, "button")
+        || LXA_CONTAINER_NAMED(name, "q")
+        || LXA_CONTAINER_NAMED(name, "cite")
+        || LXA_CONTAINER_NAMED(name, "abbr")
+        || LXA_CONTAINER_NAMED(name, "sub")
+        || LXA_CONTAINER_NAMED(name, "sup")
+        || LXA_CONTAINER_NAMED(name, "big")
+        || LXA_CONTAINER_NAMED(name, "small")
+        || LXA_CONTAINER_NAMED(name, "s")
+        || LXA_CONTAINER_NAMED(name, "strike")
+        || LXA_CONTAINER_NAMED(name, "tt")
+        || LXA_CONTAINER_NAMED(name, "u")
+        || LXA_CONTAINER_NAMED(name, "var")
+        || LXA_CONTAINER_NAMED(name, "nobr")
+        || LXA_CONTAINER_NAMED(name, "font")
+        || lxa_html_tree_formatting_tag(name);
 }
 
 /* After earlier dispatch, for a current HTML colgroup. Start recovery also

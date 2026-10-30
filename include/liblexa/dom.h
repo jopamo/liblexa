@@ -37,7 +37,7 @@ typedef struct {
 } lxa_dom_ref_t;
 
 lxa_status_t lxa_dom_nodes_create(const lxa_allocator_t *allocator,
-                                   lxa_dom_nodes_t **out);
+    lxa_dom_nodes_t **out);
 /* Optional shared parser budget must outlive this store. A NULL budget uses
  * the default bounded profile. Limits are never reset while retained
  * allocations remain live. */
@@ -82,13 +82,13 @@ lxa_status_t lxa_dom_nodes_parent(lxa_dom_nodes_t *nodes,
  * Failure does not append any node, payload or string bytes.
  */
 lxa_status_t lxa_dom_nodes_append_character(lxa_dom_nodes_t *nodes,
-                                             lxa_dom_kind_t kind,
-                                             lxa_span_t text,
-                                             lxa_dom_ref_t *out);
+    lxa_dom_kind_t kind,
+    lxa_span_t text,
+    lxa_dom_ref_t *out);
 /* Borrowed bytes expire at the next string append/reset/destroy. */
 lxa_status_t lxa_dom_nodes_character_read(const lxa_dom_nodes_t *nodes,
-                                           lxa_dom_ref_t handle,
-                                           lxa_span_t *out);
+    lxa_dom_ref_t handle,
+    lxa_span_t *out);
 /* HTML tag names start with a lowercase ASCII letter and then contain
  * tokenizer-normalized non-delimiter bytes; the internal namespaced
  * constructor also accepts canonical mixed-case foreign names.
@@ -97,12 +97,12 @@ lxa_status_t lxa_dom_nodes_character_read(const lxa_dom_nodes_t *nodes,
  * A nonempty name outside this representation returns UNSUPPORTED.
  * No record/string length changes on failure. */
 lxa_status_t lxa_dom_nodes_append_html_element(lxa_dom_nodes_t *nodes,
-                                                lxa_span_t name,
-                                                lxa_dom_ref_t *out);
+    lxa_span_t name,
+    lxa_dom_ref_t *out);
 /* Borrowed name bytes expire at the next string append/reset/destroy. */
 lxa_status_t lxa_dom_nodes_element_name(const lxa_dom_nodes_t *nodes,
-                                         lxa_dom_ref_t element,
-                                         lxa_span_t *out);
+    lxa_dom_ref_t element,
+    lxa_span_t *out);
 /* Detached HTML attribute: normalized nonempty name excludes markup
  * delimiters and ASCII uppercase; values are binary. Both are copied into
  * document storage; input spans may alias that storage.

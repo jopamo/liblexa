@@ -10,13 +10,13 @@ static inline lxa_css_scan_result_t
 lxa_css_scan_status(lxa_status_t status)
 {
     switch (status) {
-    case LXA_OK: return LXA_CSS_SCAN_OK;
-    case LXA_ERROR_NO_MEMORY: return LXA_CSS_SCAN_NO_MEMORY;
-    case LXA_ERROR_OVERFLOW: return LXA_CSS_SCAN_OVERFLOW;
-    case LXA_ERROR_LIMIT: return LXA_CSS_SCAN_LIMIT;
-    default:
-        assert(0 && "unexpected status inside CSS scanner");
-        return LXA_CSS_SCAN_INTERNAL;
+        case LXA_OK: return LXA_CSS_SCAN_OK;
+        case LXA_ERROR_NO_MEMORY: return LXA_CSS_SCAN_NO_MEMORY;
+        case LXA_ERROR_OVERFLOW: return LXA_CSS_SCAN_OVERFLOW;
+        case LXA_ERROR_LIMIT: return LXA_CSS_SCAN_LIMIT;
+        default:
+            assert(0 && "unexpected status inside CSS scanner");
+            return LXA_CSS_SCAN_INTERNAL;
     }
 }
 

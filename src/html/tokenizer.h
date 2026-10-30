@@ -17,28 +17,28 @@ typedef enum {
 } lxa_html_token_kind_t;
 
 typedef struct {
-    lxa_span_t name;             /* ASCII-lowercased in HTML input */
-    lxa_span_t value;            /* character references already expanded */
+    lxa_span_t name; /* ASCII-lowercased in HTML input */
+    lxa_span_t value; /* character references already expanded */
 } lxa_html_attribute_t;
 
 typedef struct {
-    size_t start, end;           /* half-open range in concatenated feed bytes */
-    size_t name_end;             /* excludes the delimiter after an attribute name */
+    size_t start, end; /* half-open range in concatenated feed bytes */
+    size_t name_end; /* excludes the delimiter after an attribute name */
 } lxa_html_source_range_t;
 
 typedef struct {
     lxa_html_token_kind_t kind;
-    lxa_span_t name;             /* tag or doctype name; PI target if applicable */
-    lxa_span_t data;             /* text, comment, or PI data */
+    lxa_span_t name; /* tag or doctype name; PI target if applicable */
+    lxa_span_t data; /* text, comment, or PI data */
     const lxa_html_attribute_t *attributes; /* start tags only, source order */
     size_t attribute_count;
     const lxa_html_source_range_t *attribute_sources; /* optional parallel views */
-    lxa_span_t public_id;        /* doctype only */
-    lxa_span_t system_id;        /* doctype only */
-    bool has_public_id;          /* distinguishes absent from empty */
+    lxa_span_t public_id; /* doctype only */
+    lxa_span_t system_id; /* doctype only */
+    bool has_public_id; /* distinguishes absent from empty */
     bool has_system_id;
     bool force_quirks;
-    bool self_closing;           /* trailing solidus; tree acknowledges it */
+    bool self_closing; /* trailing solidus; tree acknowledges it */
 } lxa_html_token_t;
 
 /* Callback views (including attributes and decoded text) are owned by the
@@ -66,8 +66,8 @@ typedef lxa_status_t (*lxa_html_attribute_value_filter_f)(
  * Fatal errors return from feed/finish and stop token emission.
  */
 typedef lxa_status_t (*lxa_html_error_callback_t)(void *context,
-                                                   const char *code,
-                                                   size_t offset);
+    const char *code,
+    size_t offset);
 
 typedef enum {
     LXA_HTML_DATA,
@@ -138,7 +138,7 @@ lxa_status_t lxa_html_tokenizer_create_with_budget(
 void lxa_html_tokenizer_destroy(lxa_html_tokenizer_t *tokenizer);
 void lxa_html_tokenizer_reset(lxa_html_tokenizer_t *tokenizer);
 lxa_html_result_t lxa_html_tokenizer_feed(lxa_html_tokenizer_t *tokenizer,
-                                           lxa_span_t input);
+    lxa_span_t input);
 /* Internal complete-buffer decoder handoff. The caller already accepted the
  * bounded raw bytes into this same external budget and owns the decoded
  * UTF-8 until feed returns. Charge tokenizer work, but do not accept decoded
@@ -204,11 +204,11 @@ lxa_html_tokenizer_set_text_mode_status(lxa_html_tokenizer_t *tokenizer,
         tokenizer, mode, appropriate_end_tag);
     if (result == LXA_HTML_LIMIT && reason != NULL)
         *reason = lxa_html_tokenizer_limit_reason(tokenizer);
-    return result == LXA_HTML_OK ? LXA_OK
-         : result == LXA_HTML_LIMIT ? LXA_ERROR_LIMIT
-         : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
-         : result == LXA_HTML_OVERFLOW ? LXA_ERROR_OVERFLOW
-         : LXA_ERROR_ARGUMENT;
+    return result == LXA_HTML_OK       ? LXA_OK
+        : result == LXA_HTML_LIMIT     ? LXA_ERROR_LIMIT
+        : result == LXA_HTML_NO_MEMORY ? LXA_ERROR_NO_MEMORY
+        : result == LXA_HTML_OVERFLOW  ? LXA_ERROR_OVERFLOW
+                                       : LXA_ERROR_ARGUMENT;
 }
 
 lxa_html_result_t lxa_html_tokenizer_allow_cdata(

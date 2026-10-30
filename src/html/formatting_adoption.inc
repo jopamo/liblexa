@@ -15,7 +15,7 @@ LXA_ADOPTION_NAME(LXA_ADOPTION_VIEW *view, lxa_span_t subject)
         LXA_ADOPTION_REFERENCE current;
         size_t index;
         status = LXA_ADOPTION_READ(view, LXA_ADOPTION_LENGTH(view) - 1,
-                                   &name, &ns, &current);
+            &name, &ns, &current);
         if (status != LXA_OK) return status;
         if (ns == LXA_DOM_NS_HTML && name.length == subject.length
             && memcmp(name.data, subject.data, name.length) == 0) {
@@ -39,7 +39,8 @@ LXA_ADOPTION_NAME(LXA_ADOPTION_VIEW *view, lxa_span_t subject)
             case LXA_HTML_FORMATTING_ADOPT_POP:
                 status = LXA_ADOPTION_POP(view, plan.open);
                 return status == LXA_OK
-                    ? LXA_ADOPTION_REMOVE_FORMATTING(view, plan.formatting) : status;
+                    ? LXA_ADOPTION_REMOVE_FORMATTING(view, plan.formatting)
+                    : status;
             case LXA_HTML_FORMATTING_ADOPT_REPAIR:
                 break;
             default:
@@ -54,7 +55,7 @@ LXA_ADOPTION_NAME(LXA_ADOPTION_VIEW *view, lxa_span_t subject)
         status = LXA_ADOPTION_OPEN_IDENTITY(view, furthest_index, &furthest);
         if (status != LXA_OK) return status;
         last = furthest;
-        for (size_t inner = 1; ; ++inner) {
+        for (size_t inner = 1;; ++inner) {
             LXA_ADOPTION_REFERENCE ref;
             size_t entry;
             if (node <= plan.open) return LXA_ADOPTION_INTERNAL(view);
@@ -88,7 +89,7 @@ LXA_ADOPTION_NAME(LXA_ADOPTION_VIEW *view, lxa_span_t subject)
             return LXA_ADOPTION_INTERNAL(view);
         if (formatting_index < bookmark) --bookmark;
         status = LXA_ADOPTION_COMMIT(view, clone, formatting_index, bookmark,
-                                     plan.open, furthest_index);
+            plan.open, furthest_index);
         if (status != LXA_OK) return status;
     }
     return LXA_OK;

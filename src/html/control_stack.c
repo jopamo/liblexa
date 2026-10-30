@@ -24,7 +24,7 @@ lxa_html_control_stack_init(lxa_html_control_stack_t *stack,
     stack->limit_reason = LXA_BUDGET_COUNT;
     if (budget == NULL) return LXA_ERROR_ARGUMENT;
     lxa_status_t status = lxa_vector_init(&stack->elements, allocator,
-                                         sizeof(lxa_html_control_element_t));
+        sizeof(lxa_html_control_element_t));
     if (status == LXA_OK) status = lxa_buffer_init(&stack->names, allocator);
     if (status == LXA_OK) status = lxa_vector_bind_budget(&stack->elements, budget);
     if (status == LXA_OK) status = lxa_buffer_bind_budget(&stack->names, budget);
@@ -109,11 +109,12 @@ push(lxa_html_control_stack_t *stack, lxa_span_t name,
         self = true;
     }
     status = lxa_budget_check_item(stack->budget, LXA_BUDGET_NAME_BYTES,
-                                   name.length, &stack->limit_reason);
+        name.length, &stack->limit_reason);
     if (status == LXA_OK) status = lxa_size_add(stack->names.length, name.length, &total);
     if (status == LXA_OK)
         status = lxa_size_add(lxa_vector_length_sized(&stack->elements,
-            sizeof(lxa_html_control_element_t)), 1, &count);
+                                  sizeof(lxa_html_control_element_t)),
+            1, &count);
     if (status == LXA_OK) status = check_push(stack, total);
     if (status == LXA_OK)
         status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
@@ -126,26 +127,23 @@ push(lxa_html_control_stack_t *stack, lxa_span_t name,
         return status;
     }
     status = lxa_budget_check_item(stack->budget, LXA_BUDGET_NAME_BYTES,
-                                   name.length, &stack->limit_reason);
+        name.length, &stack->limit_reason);
     if (status == LXA_OK) status = check_push(stack, total);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_WORK,
-                                      0, &stack->limit_reason);
+            0, &stack->limit_reason);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_MEMORY,
-                                      0, &stack->limit_reason);
+            0, &stack->limit_reason);
     if (status == LXA_OK && formatting)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_ACTIVE_FORMATTING,
-                                      0, &stack->limit_reason);
+            0, &stack->limit_reason);
     if (status == LXA_OK && required_depth != 0)
         status = lxa_budget_check_impl(stack->budget, LXA_BUDGET_TREE_DEPTH,
-                                      required_depth, &stack->limit_reason);
+            required_depth, &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t element = {
-        .name_offset = stack->names.length, .name_length = name.length,
-        .identity = stack->next_identity, .namespace_id = ns,
-        .annotation_html = annotation_html
-    };
+        .name_offset = stack->names.length, .name_length = name.length, .identity = stack->next_identity, .namespace_id = ns, .annotation_html = annotation_html};
     status = self ? lxa_buffer_append_self(&stack->names, source, name.length)
                   : lxa_buffer_append(&stack->names, name);
     if (status == LXA_OK) {
@@ -161,7 +159,7 @@ push(lxa_html_control_stack_t *stack, lxa_span_t name,
     bool open_charged = status == LXA_OK;
     if (open_charged && total > stack->charged_name_bytes)
         status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_STRINGS,
-                                   total - stack->charged_name_bytes, NULL);
+            total - stack->charged_name_bytes, NULL);
     if (status != LXA_OK) {
         if (open_charged)
             (void) internal(lxa_budget_release(stack->budget, LXA_BUDGET_OPEN_ELEMENTS, 1));
@@ -207,9 +205,8 @@ lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
     bool annotation_html = false;
     if (ns == LXA_DOM_NS_SVG) {
         status = lxa_html_svg_tag_name(name, &name);
-    }
-    else if (ns == LXA_DOM_NS_MATHML
-             && lxa_html_tree_name_equals(name, "annotation-xml", 14)) {
+    } else if (ns == LXA_DOM_NS_MATHML
+        && lxa_html_tree_name_equals(name, "annotation-xml", 14)) {
         status = lxa_html_foreign_annotation_attributes(token->attributes,
             token->attribute_count, stack->budget, &stack->limit_reason,
             &annotation_html);
@@ -221,7 +218,7 @@ lxa_html_control_stack_push_token(lxa_html_control_stack_t *stack,
 
 static lxa_status_t
 read_element(const lxa_html_control_stack_t *stack, size_t index,
-              lxa_html_scope_entry_t *entry, bool *annotation_html)
+    lxa_html_scope_entry_t *entry, bool *annotation_html)
 {
     const lxa_html_control_element_t *elements =
         (const lxa_html_control_element_t *) stack->elements.bytes.data;
@@ -234,15 +231,14 @@ read_element(const lxa_html_control_stack_t *stack, size_t index,
         return internal(LXA_ERROR_INTERNAL);
     *entry = (lxa_html_scope_entry_t){
         {stack->names.data + element->name_offset, element->name_length},
-        element->namespace_id, element->identity
-    };
+        element->namespace_id, element->identity};
     if (annotation_html != NULL) *annotation_html = element->annotation_html;
     return LXA_OK;
 }
 
 static lxa_status_t
 retained_name_length(const lxa_html_control_stack_t *stack, size_t keep,
-                      size_t *length)
+    size_t *length)
 {
     if (keep == 0) {
         *length = 0;
@@ -265,8 +261,7 @@ lxa_html_control_stack_replace_identity(lxa_html_control_stack_t *stack,
     if (identity != NULL) *identity = 0;
     lxa_status_t status = begin(stack);
     if (status != LXA_OK) return status;
-    if (identity == NULL || expected == 0 || index >= lxa_vector_length_sized(
-            &stack->elements, sizeof(lxa_html_control_element_t)))
+    if (identity == NULL || expected == 0 || index >= lxa_vector_length_sized(&stack->elements, sizeof(lxa_html_control_element_t)))
         return LXA_ERROR_ARGUMENT;
     if (stack->next_identity == 0) return LXA_ERROR_OVERFLOW;
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK, 1, &stack->limit_reason);
@@ -307,7 +302,7 @@ lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t
     size_t first = low == 0 ? 0 : low - 1;
     size_t end = high + 1 < length ? high + 2 : length;
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK, end - first,
-                               &stack->limit_reason);
+        &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t *elements =
         (lxa_html_control_element_t *) stack->elements.bytes.data;
@@ -324,7 +319,7 @@ lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t
     size_t finish = elements[high].name_offset + elements[high].name_length;
     size_t bytes = finish - start;
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
-                               bytes / 8 + (bytes % 8 != 0), &stack->limit_reason);
+        bytes / 8 + (bytes % 8 != 0), &stack->limit_reason);
     if (status != LXA_OK) return status;
     lxa_html_control_element_t moved = elements[from];
     size_t pivot = from < to ? moved.name_offset + moved.name_length : moved.name_offset;
@@ -336,8 +331,7 @@ lxa_html_control_stack_move(lxa_html_control_stack_t *stack, size_t from, size_t
         memmove(elements + from, elements + from + 1, (to - from) * sizeof(*elements));
         for (size_t i = from; i < to; ++i) elements[i].name_offset -= moved.name_length;
         moved.name_offset = finish - moved.name_length;
-    }
-    else {
+    } else {
         memmove(elements + to + 1, elements + to, (from - to) * sizeof(*elements));
         for (size_t i = to + 1; i <= from; ++i) elements[i].name_offset += moved.name_length;
         moved.name_offset = start;
@@ -365,7 +359,7 @@ lxa_html_control_stack_remove(lxa_html_control_stack_t *stack, size_t index)
     if (stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS] == 0)
         return internal(LXA_ERROR_INTERNAL);
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
-                               length - index, &stack->limit_reason);
+        length - index, &stack->limit_reason);
     if (status != LXA_OK) return status;
     if (internal(lxa_vector_erase(&stack->elements, index, 1)) != LXA_OK
         || internal(lxa_buffer_truncate(&stack->names, name_length)) != LXA_OK
@@ -392,12 +386,13 @@ lxa_html_control_stack_pop_to(lxa_html_control_stack_t *stack, size_t keep)
     if (length - keep > stack->budget->used[LXA_BUDGET_OPEN_ELEMENTS])
         return internal(LXA_ERROR_INTERNAL);
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
-                               length - keep, &stack->limit_reason);
+        length - keep, &stack->limit_reason);
     if (status != LXA_OK) return status;
     if (internal(lxa_vector_erase(&stack->elements, keep, length - keep)) != LXA_OK
         || internal(lxa_buffer_truncate(&stack->names, name_length)) != LXA_OK
         || internal(lxa_budget_release(stack->budget, LXA_BUDGET_OPEN_ELEMENTS,
-                                      length - keep)) != LXA_OK)
+               length - keep))
+            != LXA_OK)
         return LXA_ERROR_INTERNAL;
     return LXA_OK;
 }
@@ -410,17 +405,16 @@ lxa_html_control_stack_get(lxa_html_control_stack_t *stack, size_t index,
     if (context != NULL) *context = LXA_HTML_FOREIGN_NONE;
     lxa_status_t status = begin(stack);
     if (status != LXA_OK) return status;
-    if (entry == NULL || index >= lxa_vector_length_sized(&stack->elements,
-            sizeof(lxa_html_control_element_t)))
+    if (entry == NULL || index >= lxa_vector_length_sized(&stack->elements, sizeof(lxa_html_control_element_t)))
         return LXA_ERROR_ARGUMENT;
     status = lxa_budget_charge_impl(stack->budget, LXA_BUDGET_WORK,
-                               1, &stack->limit_reason);
+        1, &stack->limit_reason);
     if (status != LXA_OK) return status;
     bool annotation_html;
     status = read_element(stack, index, entry, &annotation_html);
     if (status == LXA_OK && context != NULL)
         *context = lxa_html_foreign_context(entry->namespace_id, entry->name,
-                                            annotation_html);
+            annotation_html);
     return status;
 }
 
@@ -446,7 +440,7 @@ lxa_html_control_stack_current(lxa_html_control_stack_t *stack, size_t boundary,
 
 static inline lxa_status_t
 control_stack_read(const control_stack_view_t *view, size_t index,
-                    lxa_span_t *name, lxa_dom_namespace_t *ns)
+    lxa_span_t *name, lxa_dom_namespace_t *ns)
 {
     lxa_html_scope_entry_t entry;
     lxa_status_t status = read_element(view->stack, index, &entry, NULL);
@@ -468,7 +462,7 @@ control_stack_tag_id(const control_stack_view_t *view, size_t index,
 
 static inline lxa_status_t
 control_stack_identity(const control_stack_view_t *view, size_t index,
-                        uint64_t *identity)
+    uint64_t *identity)
 {
     const lxa_html_control_element_t *entries =
         (const lxa_html_control_element_t *) view->stack->elements.bytes.data;
@@ -629,7 +623,7 @@ control_stack_name(const control_stack_view_t *view, size_t index, lxa_span_t *n
 
 static inline lxa_status_t
 control_stack_breakout_boundary(const control_stack_view_t *view, size_t index,
-                                bool *boundary)
+    bool *boundary)
 {
     lxa_dom_namespace_t ns;
     lxa_status_t status = control_stack_namespace(view, index, &ns);
@@ -669,7 +663,7 @@ control_stack_breakout_boundary(const control_stack_view_t *view, size_t index,
 
 static lxa_status_t
 prepare_query(lxa_html_control_stack_t *stack, size_t boundary,
-               control_stack_view_t *view)
+    control_stack_view_t *view)
 {
     lxa_status_t status = begin(stack);
     if (status != LXA_OK) return status;
@@ -833,8 +827,7 @@ container_read(const control_stack_view_t *view, size_t index, lxa_span_t *name)
 #define LXA_TEMPLATE_CONTAINER_VIEW control_stack_view_t
 #define LXA_TEMPLATE_CONTAINER_LENGTH(view) ((view)->length)
 #define LXA_TEMPLATE_CONTAINER_RUBY(view, boundary, name, keep) \
-    control_stack_ruby_plan(view, boundary, lxa_html_tree_name_equals(name, "rp", 2) \
-        || lxa_html_tree_name_equals(name, "rt", 2), keep)
+    control_stack_ruby_plan(view, boundary, lxa_html_tree_name_equals(name, "rp", 2) || lxa_html_tree_name_equals(name, "rt", 2), keep)
 #define LXA_TEMPLATE_CONTAINER_LIST control_stack_list_item_plan
 #define LXA_TEMPLATE_CONTAINER_PARAGRAPH(view, boundary, keep) \
     control_stack_scope_search(view, boundary, (lxa_span_t){(const uint8_t *) "p", 1}, LXA_HTML_SCOPE_BUTTON, keep)
@@ -858,7 +851,8 @@ lxa_html_control_stack_template_container_plan(lxa_html_control_stack_t *stack,
     control_stack_view_t view;
     lxa_status_t status = prepare_query(stack, boundary, &view);
     return status == LXA_OK
-        ? control_stack_template_container_plan(&view, boundary, name, quirks, out) : status;
+        ? control_stack_template_container_plan(&view, boundary, name, quirks, out)
+        : status;
 }
 
 lxa_status_t

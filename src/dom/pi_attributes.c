@@ -21,11 +21,17 @@ next_scalar(lxa_span_t data, size_t *pos, uint32_t *out)
         return true;
     }
     if (c >= 0xc2 && c <= 0xdf) {
-        n = 2; cp = c & 0x1fu; minimum = 0x80;
+        n = 2;
+        cp = c & 0x1fu;
+        minimum = 0x80;
     } else if (c >= 0xe0 && c <= 0xef) {
-        n = 3; cp = c & 0x0fu; minimum = 0x800;
+        n = 3;
+        cp = c & 0x0fu;
+        minimum = 0x800;
     } else if (c >= 0xf0 && c <= 0xf4) {
-        n = 4; cp = c & 0x07u; minimum = 0x10000;
+        n = 4;
+        cp = c & 0x07u;
+        minimum = 0x10000;
     } else {
         return false;
     }
@@ -74,10 +80,13 @@ xml_reference_char(uint32_t c)
 static bool
 reference(lxa_span_t data, size_t *pos, uint32_t *out)
 {
-    static const struct { const char *text; size_t length; uint32_t cp; } named[] = {
+    static const struct {
+        const char *text;
+        size_t length;
+        uint32_t cp;
+    } named[] = {
         {"amp;", 4, '&'}, {"lt;", 3, '<'}, {"gt;", 3, '>'},
-        {"quot;", 5, '"'}, {"apos;", 5, '\''}
-    };
+        {"quot;", 5, '"'}, {"apos;", 5, '\''}};
     size_t i, start;
     uint32_t cp = 0, base = 10;
     ++*pos; /* '&' */
@@ -123,19 +132,23 @@ match_scalar(lxa_span_t value, size_t *pos, uint32_t cp)
     uint8_t bytes[4];
     size_t n;
     if (cp < 0x80) {
-        bytes[0] = (uint8_t) cp; n = 1;
+        bytes[0] = (uint8_t) cp;
+        n = 1;
     } else if (cp < 0x800) {
         bytes[0] = (uint8_t) (0xc0u | (cp >> 6));
-        bytes[1] = (uint8_t) (0x80u | (cp & 0x3fu)); n = 2;
+        bytes[1] = (uint8_t) (0x80u | (cp & 0x3fu));
+        n = 2;
     } else if (cp < 0x10000) {
         bytes[0] = (uint8_t) (0xe0u | (cp >> 12));
         bytes[1] = (uint8_t) (0x80u | ((cp >> 6) & 0x3fu));
-        bytes[2] = (uint8_t) (0x80u | (cp & 0x3fu)); n = 3;
+        bytes[2] = (uint8_t) (0x80u | (cp & 0x3fu));
+        n = 3;
     } else {
         bytes[0] = (uint8_t) (0xf0u | (cp >> 18));
         bytes[1] = (uint8_t) (0x80u | ((cp >> 12) & 0x3fu));
         bytes[2] = (uint8_t) (0x80u | ((cp >> 6) & 0x3fu));
-        bytes[3] = (uint8_t) (0x80u | (cp & 0x3fu)); n = 4;
+        bytes[3] = (uint8_t) (0x80u | (cp & 0x3fu));
+        n = 4;
     }
     if (n > value.length - *pos || memcmp(value.data + *pos, bytes, n) != 0)
         return false;
@@ -165,7 +178,7 @@ lxa_dom_nodes_pi_attribute_matches(lxa_dom_nodes_t *nodes, lxa_dom_ref_t pi,
     status = lxa_size_mul(data.length, 3, &work);
     if (status == LXA_OK)
         status = lxa_budget_charge(nodes->budget, LXA_BUDGET_WORK, work,
-                                  &nodes->limit_reason);
+            &nodes->limit_reason);
     if (status != LXA_OK) return status;
     while (pos < data.length && xml_space(data.data[pos])) ++pos;
     while (pos < data.length) {

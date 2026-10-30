@@ -20,8 +20,7 @@ LXA_ROOT_VOID_NAME(LXA_ROOT_VOID_VIEW *view, const lxa_html_token_t *token,
                 LXA_ROOT_VOID_REASON(view), &hidden);
             if (status != LXA_OK) return status;
             if (!hidden) LXA_ROOT_VOID_FRAMESET(view) = false;
-        }
-        else if (!lxa_html_tree_body_void_frameset_exempt(token->name))
+        } else if (!lxa_html_tree_body_void_frameset_exempt(token->name))
             LXA_ROOT_VOID_FRAMESET(view) = false;
     }
     bool hr = lxa_html_tree_name_equals(token->name, "hr", 2);

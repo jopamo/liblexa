@@ -1,0 +1,3 @@
+generated/**
+# Tokenizer X-macro records embed C statement bodies as arguments.
+src/html/*.def

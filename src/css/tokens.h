@@ -17,6 +17,6 @@ typedef struct {
 
 /* Scanner construction: text must not overlap this list's storage. */
 lxa_status_t lxa_css_tokens_append(lxa_css_tokens_t *tokens,
-                                   lxa_css_token_t token, lxa_span_t text);
+    lxa_css_token_t token, lxa_span_t text);
 
 #endif

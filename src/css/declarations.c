@@ -25,17 +25,15 @@ lxa_css_declarations_create(const lxa_allocator_t *allocator,
     status = lxa_vector_bind_budget(&storage, blocks->budget);
     if (status != LXA_OK) return status;
     status = lxa_budget_charge(blocks->budget, LXA_BUDGET_MEMORY,
-                               sizeof(*list), NULL);
+        sizeof(*list), NULL);
     if (status != LXA_OK) return status;
     status = lxa_alloc(allocator, sizeof(*list), (void **) &list);
     if (status != LXA_OK) {
         lxa_budget_release(blocks->budget, LXA_BUDGET_MEMORY, sizeof(*list));
         return status;
     }
-    *list = (lxa_css_declarations_t) {
-        .entries = storage, .budget = blocks->budget,
-        .limit_reason = LXA_BUDGET_COUNT
-    };
+    *list = (lxa_css_declarations_t){
+        .entries = storage, .budget = blocks->budget, .limit_reason = LXA_BUDGET_COUNT};
     *out = list;
     return LXA_OK;
 }
@@ -60,8 +58,8 @@ lxa_css_declarations_count_limit(const lxa_css_declarations_t *list)
 
 lxa_status_t
 lxa_css_declarations_build(lxa_css_declarations_t *list,
-                           lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                           size_t first, size_t after, size_t max_count)
+    lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
+    size_t first, size_t after, size_t max_count)
 {
     size_t at = first;
     lxa_status_t status = LXA_OK;
@@ -77,7 +75,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
     status = lxa_css_blocks_check(blocks);
     if (status == LXA_OK)
         status = lxa_css_vector_check(&list->entries,
-                                      sizeof(lxa_css_declaration_t));
+            sizeof(lxa_css_declaration_t));
     if (status != LXA_OK) {
         lxa_vector_clear(&list->entries);
         return status;
@@ -91,7 +89,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
         lxa_css_declaration_t decl;
         lxa_css_rule_t rule;
         status = lxa_budget_charge(list->budget, LXA_BUDGET_WORK, 1,
-                                   &list->limit_reason);
+            &list->limit_reason);
         if (status != LXA_OK) break;
         status = lxa_css_internal_status(
             lxa_css_tokens_get(tokens, at, &token, &text));
@@ -119,7 +117,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
         end = at;
         while (end < after) {
             status = lxa_budget_charge(list->budget, LXA_BUDGET_WORK, 1,
-                                       &list->limit_reason);
+                &list->limit_reason);
             if (status != LXA_OK) break;
             status = lxa_css_internal_status(
                 lxa_css_tokens_get(tokens, end, &token, &text));
@@ -171,15 +169,13 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
         }
         if (rule.has_block && rule.after > at && rule.after <= after) {
             at = rule.after;
-        }
-        else {
+        } else {
             at = end < after ? end + 1 : end;
         }
     }
     if (status != LXA_OK) {
         lxa_vector_clear(&list->entries);
-    }
-    else {
+    } else {
         list->ready = true;
     }
     return status;
@@ -187,7 +183,7 @@ lxa_css_declarations_build(lxa_css_declarations_t *list,
 
 lxa_status_t
 lxa_css_declarations_get(lxa_css_declarations_t *list, size_t at,
-                         lxa_css_declaration_t *out)
+    lxa_css_declaration_t *out)
 {
     void *slot;
     lxa_status_t status;

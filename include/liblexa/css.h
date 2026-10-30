@@ -83,7 +83,7 @@ void lxa_css_tokens_destroy(lxa_css_tokens_t *tokens);
 void lxa_css_tokens_clear(lxa_css_tokens_t *tokens);
 size_t lxa_css_tokens_length(const lxa_css_tokens_t *tokens);
 lxa_status_t lxa_css_tokens_get(lxa_css_tokens_t *tokens, size_t index,
-                                lxa_css_token_t *token, lxa_span_t *text);
+    lxa_css_token_t *token, lxa_span_t *text);
 
 /* INVALID rejects caller arguments or stream lifecycle misuse. INTERNAL
  * reports a failed private pipeline invariant (and asserts in debug builds).
@@ -152,7 +152,7 @@ void lxa_css_byte_stream_destroy(lxa_css_byte_stream_t *stream);
  * detection or incremental token publication is implied.
  */
 lxa_css_scan_result_t lxa_css_scan_bytes(lxa_span_t bytes,
-                                         lxa_css_tokens_t *tokens);
+    lxa_css_tokens_t *tokens);
 
 typedef struct lxa_css_blocks lxa_css_blocks_t;
 
@@ -176,7 +176,7 @@ lxa_budget_t *lxa_css_blocks_budget(lxa_css_blocks_t *blocks);
 lxa_budget_kind_t lxa_css_blocks_limit_reason(const lxa_css_blocks_t *blocks);
 
 lxa_status_t lxa_css_blocks_build(lxa_css_blocks_t *blocks,
-                                  lxa_css_tokens_t *tokens);
+    lxa_css_tokens_t *tokens);
 
 /* CSS Syntax component values: an opener consumes through its matching close
  * (or EOF); an ordinary token consumes one token. Indices exclude EOF. Query
@@ -191,7 +191,7 @@ typedef struct {
     bool closed; /* true only for a matching closing token */
 } lxa_css_component_range_t;
 lxa_status_t lxa_css_blocks_next(lxa_css_blocks_t *blocks, size_t from,
-                                 lxa_css_component_range_t *out);
+    lxa_css_component_range_t *out);
 void lxa_css_blocks_destroy(lxa_css_blocks_t *blocks);
 
 /* Borrowed indices into a token list, never pointers into its text storage.
@@ -212,9 +212,9 @@ typedef struct {
  * split at a top-level semicolon using the component-value index. A block
  * index built from the same immutable token list is required. */
 lxa_status_t lxa_css_declaration_parse(lxa_css_tokens_t *tokens,
-                                       lxa_css_blocks_t *blocks,
-                                       size_t first, size_t after,
-                                       lxa_css_declaration_t *out);
+    lxa_css_blocks_t *blocks,
+    size_t first, size_t after,
+    lxa_css_declaration_t *out);
 
 typedef enum {
     LXA_CSS_RULE_AT,
@@ -245,8 +245,8 @@ typedef struct {
  * for every token inspected, plus component-index probes.
  */
 lxa_status_t lxa_css_rule_parse(lxa_css_tokens_t *tokens,
-                                 lxa_css_blocks_t *blocks, size_t first,
-                                 size_t limit, lxa_css_rule_t *out);
+    lxa_css_blocks_t *blocks, size_t first,
+    size_t limit, lxa_css_rule_t *out);
 
 /* Declaration-only view of a block. Unsupported nested rules/at-rules are
  * skipped as complete component ranges; they are never published as outer
@@ -271,12 +271,12 @@ bool lxa_css_declarations_count_limit(const lxa_css_declarations_t *list);
  * any failure clears logical output while retaining charged capacity.
  * A count rejection returns LIMIT with the count_limit query true. */
 lxa_status_t lxa_css_declarations_build(lxa_css_declarations_t *list,
-                                        lxa_css_tokens_t *tokens,
-                                        lxa_css_blocks_t *blocks,
-                                        size_t first, size_t after,
-                                        size_t max_count);
+    lxa_css_tokens_t *tokens,
+    lxa_css_blocks_t *blocks,
+    size_t first, size_t after,
+    size_t max_count);
 lxa_status_t lxa_css_declarations_get(lxa_css_declarations_t *list,
-                                      size_t at, lxa_css_declaration_t *out);
+    size_t at, lxa_css_declaration_t *out);
 void lxa_css_declarations_destroy(lxa_css_declarations_t *list);
 
 /* Inspect only after an operation returns OK. UNSUPPORTED identifies a
@@ -301,9 +301,9 @@ typedef struct {
 } lxa_css_import_t;
 
 lxa_status_t lxa_css_import_parse(lxa_css_tokens_t *tokens,
-                                   lxa_css_blocks_t *blocks,
-                                   const lxa_css_rule_t *rule,
-                                   lxa_css_import_t *out);
+    lxa_css_blocks_t *blocks,
+    const lxa_css_rule_t *rule,
+    lxa_css_import_t *out);
 
 typedef struct {
     lxa_css_syntax_t syntax;
@@ -320,9 +320,9 @@ typedef struct {
  * After argument validation, failure clears out to INVALID/nonmatching.
  * No environment or resource loader lives in the parser. */
 lxa_status_t lxa_css_media_screen(lxa_css_tokens_t *tokens,
-                                   lxa_css_blocks_t *blocks,
-                                   size_t first, size_t after,
-                                   lxa_css_media_t *out);
+    lxa_css_blocks_t *blocks,
+    size_t first, size_t after,
+    lxa_css_media_t *out);
 
 /* Check normalized tag/class spans for lookup-key separator ambiguity, not
  * CSS grammar. Empty spans denote absent parts; nonempty NULL spans fail.
@@ -338,10 +338,10 @@ bool lxa_css_selector_key_names_unambiguous(lxa_span_t tag, lxa_span_t klass);
  * leave it unchanged). The caller owns an unchanged token list,
  * built block index and bound output buffer throughout the call. */
 lxa_status_t lxa_css_selector_key(lxa_css_tokens_t *tokens,
-                                   lxa_css_blocks_t *blocks,
-                                   size_t first, size_t after,
-                                   size_t max_bytes, lxa_buffer_t *output,
-                                   lxa_css_syntax_t *syntax);
+    lxa_css_blocks_t *blocks,
+    size_t first, size_t after,
+    size_t max_bytes, lxa_buffer_t *output,
+    lxa_css_syntax_t *syntax);
 
 typedef struct {
     size_t first;
@@ -383,10 +383,10 @@ void lxa_css_selector_list_destroy(lxa_css_selector_list_t *list);
  * is caller-owned, NUL-terminated, and excludes !important when the range
  * comes from lxa_css_declaration_t. Failure clears logical output. */
 lxa_status_t lxa_css_value_text(lxa_css_tokens_t *tokens,
-                                 lxa_css_blocks_t *blocks,
-                                 size_t first, size_t after,
-                                 lxa_span_t source, size_t max_bytes,
-                                 lxa_buffer_t *output);
+    lxa_css_blocks_t *blocks,
+    size_t first, size_t after,
+    lxa_span_t source, size_t max_bytes,
+    lxa_buffer_t *output);
 
 #ifdef __cplusplus
 }

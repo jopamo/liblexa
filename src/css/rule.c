@@ -2,7 +2,7 @@
 
 lxa_status_t
 lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
-                   size_t first, size_t limit, lxa_css_rule_t *out)
+    size_t first, size_t limit, lxa_css_rule_t *out)
 {
     lxa_css_token_t token;
     lxa_span_t text;
@@ -16,20 +16,21 @@ lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
         || lxa_css_tokens_length(tokens) < blocks->end) {
         return LXA_ERROR_ARGUMENT;
     }
-    *out = (lxa_css_rule_t) {0};
+    *out = (lxa_css_rule_t){0};
     status = lxa_css_blocks_check(blocks);
     if (status != LXA_OK) return status;
     blocks->limit_reason = LXA_BUDGET_COUNT;
     for (at = first; at < limit; at = range.after) {
         status = lxa_budget_charge(blocks->budget, LXA_BUDGET_WORK, 1,
-                                   &blocks->limit_reason);
+            &blocks->limit_reason);
         if (status != LXA_OK) return status;
         status = lxa_css_internal_status(
             lxa_css_tokens_get(tokens, at, &token, &text));
         if (status != LXA_OK) return status;
         if (at == first) {
             rule.kind = token.kind == LXA_CSS_AT_KEYWORD
-                        ? LXA_CSS_RULE_AT : LXA_CSS_RULE_QUALIFIED;
+                ? LXA_CSS_RULE_AT
+                : LXA_CSS_RULE_QUALIFIED;
             rule.name = rule.kind == LXA_CSS_RULE_AT ? at : 0;
             rule.prelude_first = at + (rule.kind == LXA_CSS_RULE_AT);
         }
@@ -59,9 +60,8 @@ lxa_css_rule_parse(lxa_css_tokens_t *tokens, lxa_css_blocks_t *blocks,
             && token.kind != LXA_CSS_WHITESPACE && significant < 2) {
             if (significant == 0) {
                 custom = token.kind == LXA_CSS_IDENT && text.length >= 2
-                         && text.data[0] == '-' && text.data[1] == '-';
-            }
-            else {
+                    && text.data[0] == '-' && text.data[1] == '-';
+            } else {
                 colon = token.kind == LXA_CSS_COLON;
             }
             significant++;

@@ -15,8 +15,7 @@ LXA_TEMPLATE_PREPARE_START_NAME(LXA_TEMPLATE_PREPARE_START_VIEW *view,
         }
         if (status == LXA_OK) status = LXA_TEMPLATE_PREPARE_START_MODE(view, token);
         out = true;
-    }
-    else if (lxa_html_tree_table_part(token->name)
+    } else if (lxa_html_tree_table_part(token->name)
         && !lxa_html_tree_name_equals(token->name, "table", 5)) {
         if (LXA_TEMPLATE_PREPARE_START_MODE_GET(view) == LXA_TEMPLATE_INITIAL)
             status = LXA_TEMPLATE_PREPARE_START_MODE(view, token);

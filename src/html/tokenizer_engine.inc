@@ -6,19 +6,36 @@
 #include "encoding/stream_internal.h"
 
 typedef enum {
-    EOF_TEXT, EOF_TAG_PREFIX, EOF_DECLARATION_DASH, EOF_COMMENT_OPEN,
-    EOF_DECLARATION_PREFIX, EOF_CDATA, EOF_DOCTYPE, EOF_DOCTYPE_KEYWORD,
-    EOF_BOGUS_DOCTYPE, EOF_PI, EOF_TAG, EOF_REFERENCE_MARK, EOF_REFERENCE_NAME,
-    EOF_REFERENCE_LONG_NAME, EOF_REFERENCE_NO_DIGITS, EOF_REFERENCE_NUMBER,
-    EOF_BOGUS_COMMENT, EOF_COMMENT, EOF_RAW_CANDIDATE, EOF_SCRIPT_ESCAPED,
-    EOF_SCRIPT_ESCAPE_START, EOF_INVALID
+    EOF_TEXT,
+    EOF_TAG_PREFIX,
+    EOF_DECLARATION_DASH,
+    EOF_COMMENT_OPEN,
+    EOF_DECLARATION_PREFIX,
+    EOF_CDATA,
+    EOF_DOCTYPE,
+    EOF_DOCTYPE_KEYWORD,
+    EOF_BOGUS_DOCTYPE,
+    EOF_PI,
+    EOF_TAG,
+    EOF_REFERENCE_MARK,
+    EOF_REFERENCE_NAME,
+    EOF_REFERENCE_LONG_NAME,
+    EOF_REFERENCE_NO_DIGITS,
+    EOF_REFERENCE_NUMBER,
+    EOF_BOGUS_COMMENT,
+    EOF_COMMENT,
+    EOF_RAW_CANDIDATE,
+    EOF_SCRIPT_ESCAPED,
+    EOF_SCRIPT_ESCAPE_START,
+    EOF_INVALID
 } tokenizer_eof_action_t;
 
 static tokenizer_eof_action_t
 eof_action(tokenizer_state_t state)
 {
     switch (state) {
-#define LXA_HTML_STATE(name, id, action, scan, ...) case STATE_##name: return EOF_##action;
+#define LXA_HTML_STATE(name, id, action, scan, ...) \
+    case STATE_##name: return EOF_##action;
 #include "html/tokenizer_states.def"
 #undef LXA_HTML_STATE
     }
@@ -37,7 +54,8 @@ static tokenizer_scan_class_t
 scan_class(tokenizer_state_t state)
 {
     switch (state) {
-#define LXA_HTML_STATE(name, id, action, scan, ...) case STATE_##name: return SCAN_##scan;
+#define LXA_HTML_STATE(name, id, action, scan, ...) \
+    case STATE_##name: return SCAN_##scan;
 #include "html/tokenizer_states.def"
 #undef LXA_HTML_STATE
     }
@@ -58,10 +76,11 @@ scan_run(tokenizer_state_t state, lxa_span_t input, size_t *count)
     return LXA_HTML_INTERNAL;
 
 #define LXA_HTML_SCAN_CLASS(name, predicate) \
-    scan_##name: *count = lxa_html_scan_##name(input); return LXA_HTML_OK;
+    scan_##name : *count = lxa_html_scan_##name(input); \
+    return LXA_HTML_OK;
 #include "html/tokenizer_scan.def"
 #undef LXA_HTML_SCAN_CLASS
-    scan_NONE:
+scan_NONE:
     assert(!"state has no run scanner");
     return LXA_HTML_INTERNAL;
 }
@@ -82,7 +101,7 @@ accept_input(lxa_html_tokenizer_t *tokenizer, size_t length)
 {
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status = lxa_budget_accept_input(tokenizer->budget, length,
-                                                 &reason);
+        &reason);
     return budget_result(tokenizer, status, reason);
 }
 
@@ -91,7 +110,7 @@ charge_work(lxa_html_tokenizer_t *tokenizer, size_t steps)
 {
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status = lxa_budget_charge_work(tokenizer->budget,
-                                            steps, &reason);
+        steps, &reason);
     return budget_result(tokenizer, status, reason);
 }
 
@@ -107,7 +126,10 @@ account_run(lxa_html_tokenizer_t *tokenizer, size_t bytes)
 }
 
 #define LXA_HTML_CONSUMER_HOOK(name, parameters, ...) \
-    static lxa_html_result_t name parameters { __VA_ARGS__ }
+    static lxa_html_result_t name parameters \
+    { \
+        __VA_ARGS__ \
+    }
 #include "html/tokenizer_consumer.def"
 #undef LXA_HTML_CONSUMER_HOOK
 
@@ -116,7 +138,7 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name);
 
 static lxa_html_result_t
 append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
-                  bool public_id)
+    bool public_id)
 {
     lxa_buffer_t *target = public_id ? &tokenizer->public_id
                                      : &tokenizer->system_id;
@@ -124,7 +146,7 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     bool grew = false;
     lxa_limit_reason_t reason = LXA_BUDGET_COUNT;
     lxa_status_t status = lxa_size_add(tokenizer->name.length,
-                                       tokenizer->public_id.length, &total);
+        tokenizer->public_id.length, &total);
     if (status == LXA_OK) {
         status = lxa_size_add(total, tokenizer->system_id.length, &total);
     }
@@ -136,7 +158,7 @@ append_doctype_id(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes,
     }
 recheck:
     status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
-                                   total, &reason);
+        total, &reason);
     if (status != LXA_OK)
         return budget_result(tokenizer, status, reason);
     size_t length = target->length + bytes.length;
@@ -144,7 +166,7 @@ recheck:
         status = lxa_buffer_reserve(target, length);
         if (status != LXA_OK)
             return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+                                                 : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
         grew = true;
         goto recheck;
     }
@@ -158,7 +180,7 @@ recheck:
 
 static lxa_html_result_t
 append_decoded_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp,
-                      bool in_name)
+    bool in_name)
 {
     if ((tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
             || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
@@ -176,10 +198,9 @@ append_decoded_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp,
         if (tokenizer->state == STATE_ATTRIBUTE_NAME
             || tokenizer->state == STATE_ATTRIBUTE_VALUE_DOUBLE
             || tokenizer->state == STATE_ATTRIBUTE_VALUE_SINGLE
-            || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED)
-        {
+            || tokenizer->state == STATE_ATTRIBUTE_VALUE_UNQUOTED) {
             return append_attribute(tokenizer, decoded,
-                                    tokenizer->state == STATE_ATTRIBUTE_NAME);
+                tokenizer->state == STATE_ATTRIBUTE_NAME);
         }
         if (tokenizer->state == STATE_SYSTEM_ID_DOUBLE
             || tokenizer->state == STATE_SYSTEM_ID_SINGLE) {
@@ -190,9 +211,8 @@ append_decoded_scalar(lxa_html_tokenizer_t *tokenizer, uint32_t cp,
             return append_doctype_id(tokenizer, decoded, true);
         }
         return buffer_append(tokenizer,
-                             in_name ? &tokenizer->name : &tokenizer->text,
-                             decoded, in_name ? LXA_BUDGET_NAME_BYTES
-                                              : LXA_BUDGET_TOKEN_BYTES);
+            in_name ? &tokenizer->name : &tokenizer->text,
+            decoded, in_name ? LXA_BUDGET_NAME_BYTES : LXA_BUDGET_TOKEN_BYTES);
     }
 }
 
@@ -214,9 +234,9 @@ static lxa_html_result_t
 append_reference_bytes(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes)
 {
     return reference_in_attribute(tokenizer)
-           ? append_attribute(tokenizer, bytes, false)
-           : buffer_append(tokenizer, &tokenizer->text, bytes,
-                           LXA_BUDGET_TOKEN_BYTES);
+        ? append_attribute(tokenizer, bytes, false)
+        : buffer_append(tokenizer, &tokenizer->text, bytes,
+              LXA_BUDGET_TOKEN_BYTES);
 }
 
 static lxa_html_result_t
@@ -261,7 +281,7 @@ input_scalar_error(uint32_t cp)
 
 static lxa_html_result_t
 resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
-             size_t delimiter_offset, uint8_t delimiter)
+    size_t delimiter_offset, uint8_t delimiter)
 {
     const liblexa_html_entity_entry *match = NULL;
     lxa_html_result_t result;
@@ -284,8 +304,8 @@ resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
         if (match != NULL && reference_in_attribute(tokenizer)) {
             size_t end = tokenizer->reference_length + (semicolon ? 1 : 0);
             uint8_t next = matched_length < end
-                           ? (uint8_t) tokenizer->reference_name[matched_length]
-                           : delimiter;
+                ? (uint8_t) tokenizer->reference_name[matched_length]
+                : delimiter;
             /* A legacy semicolonless name followed by an attribute-name
              * character remains literal, including when it spans feeds. */
             if (lxa_html_byte_alnum(next) || next == '=') {
@@ -298,16 +318,15 @@ resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
             /* The error belongs to the matched name, before any literal
              * suffix reconsumed after a semicolonless legacy reference. */
             result = emit_error(tokenizer,
-                                "missing-semicolon-after-character-reference",
-                                delimiter_offset
-                                - (tokenizer->reference_length - matched_length));
+                "missing-semicolon-after-character-reference",
+                delimiter_offset
+                    - (tokenizer->reference_length - matched_length));
             if (result != LXA_HTML_OK) {
                 return result;
             }
-        }
-        else if (semicolon && !ambiguous_legacy) {
+        } else if (semicolon && !ambiguous_legacy) {
             result = emit_error(tokenizer, "unknown-named-character-reference",
-                                delimiter_offset);
+                delimiter_offset);
             if (result != LXA_HTML_OK) {
                 return result;
             }
@@ -325,8 +344,7 @@ resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
         size_t end = tokenizer->reference_length + (semicolon ? 1 : 0);
         lxa_span_t rest = {
             (const uint8_t *) tokenizer->reference_name + matched_length,
-            end - matched_length
-        };
+            end - matched_length};
         result = append_reference_bytes(tokenizer, rest);
         if (result != LXA_HTML_OK) {
             return result;
@@ -340,7 +358,7 @@ resolve_name(lxa_html_tokenizer_t *tokenizer, bool semicolon,
 
 static lxa_html_result_t
 resolve_numeric(lxa_html_tokenizer_t *tokenizer, bool semicolon,
-                size_t delimiter_offset)
+    size_t delimiter_offset)
 {
     uint32_t cp = tokenizer->reference;
     const char *error = NULL;
@@ -348,8 +366,8 @@ resolve_numeric(lxa_html_tokenizer_t *tokenizer, bool semicolon,
     bool replace = false;
     if (!semicolon) {
         result = emit_error(tokenizer,
-                            "missing-semicolon-after-character-reference",
-                            delimiter_offset);
+            "missing-semicolon-after-character-reference",
+            delimiter_offset);
         if (result != LXA_HTML_OK) {
             return result;
         }
@@ -357,23 +375,19 @@ resolve_numeric(lxa_html_tokenizer_t *tokenizer, bool semicolon,
     if (cp == 0) {
         error = "null-character-reference";
         replace = true;
-    }
-    else if (cp > 0x10ffff) {
+    } else if (cp > 0x10ffff) {
         error = "character-reference-outside-unicode-range";
         replace = true;
-    }
-    else if (cp >= 0xd800 && cp <= 0xdfff) {
+    } else if (cp >= 0xd800 && cp <= 0xdfff) {
         error = "surrogate-character-reference";
         replace = true;
-    }
-    else if ((cp >= 0xfdd0 && cp <= 0xfdef)
-             || (cp & 0xfffe) == 0xfffe) {
+    } else if ((cp >= 0xfdd0 && cp <= 0xfdef)
+        || (cp & 0xfffe) == 0xfffe) {
         error = "noncharacter-character-reference";
-    }
-    else if (cp == '\r'
-             || (cp < 0x20 && cp != '\t'
-                 && cp != '\n' && cp != '\f')
-             || (cp >= 0x7f && cp <= 0x9f)) {
+    } else if (cp == '\r'
+        || (cp < 0x20 && cp != '\t'
+            && cp != '\n' && cp != '\f')
+        || (cp >= 0x7f && cp <= 0x9f)) {
         size_t j;
         error = "control-character-reference";
         for (j = 0; j < LIBLEXA_HTML_CHARREF_OVERRIDE_COUNT; j++) {
@@ -387,7 +401,7 @@ resolve_numeric(lxa_html_tokenizer_t *tokenizer, bool semicolon,
         /* End-state errors follow the semicolon, or point at the delimiter
          * that is about to be reconsumed. */
         result = emit_error(tokenizer, error,
-                            delimiter_offset + (semicolon ? 1 : 0));
+            delimiter_offset + (semicolon ? 1 : 0));
         if (result != LXA_HTML_OK) {
             return result;
         }
@@ -409,7 +423,7 @@ missing_numeric_digits(lxa_html_tokenizer_t *tokenizer, size_t offset)
 {
     uint8_t prefix[] = {'&', '#', tokenizer->reference_hex_marker};
     bool hex = tokenizer->state == STATE_REFERENCE_HEX_START
-               || tokenizer->state == STATE_REFERENCE_HEX;
+        || tokenizer->state == STATE_REFERENCE_HEX;
     lxa_span_t literal = {prefix, hex ? 3 : 2};
     lxa_html_result_t result = emit_error(
         tokenizer, "absence-of-digits-in-numeric-character-reference",
@@ -425,7 +439,7 @@ missing_numeric_digits(lxa_html_tokenizer_t *tokenizer, size_t offset)
 
 static lxa_html_result_t
 decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
-            bool in_name)
+    bool in_name)
 {
     lxa_span_t byte = {&c, 1};
     lxa_encoding_progress_t progress;
@@ -436,13 +450,13 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
         assert(!tokenizer->utf8_pending);
         if (tokenizer->utf8_pending) return LXA_HTML_INTERNAL;
         const lxa_encoding_t *utf8 = lxa_encoding_lookup(
-            (lxa_span_t){(const uint8_t *) "utf-8", 5});
+            (lxa_span_t) {(const uint8_t *) "utf-8", 5});
         lxa_status_t created = lxa_decoder_create_with_budget(utf8,
             LXA_ENCODING_REPLACE, &tokenizer->allocator, tokenizer->budget,
             &tokenizer->decoder);
         if (created != LXA_OK)
             return created == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                : budget_result(tokenizer, created, LXA_BUDGET_MEMORY);
+                                                  : budget_result(tokenizer, created, LXA_BUDGET_MEMORY);
         result = check_callback_budget(tokenizer);
         if (result != LXA_HTML_OK)
             return result;
@@ -452,8 +466,8 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
     if (status != LXA_ENCODING_OK
         && !(status == LXA_ENCODING_OUTPUT_FULL && progress.produced == 1)) {
         return status == LXA_ENCODING_NO_MEMORY ? LXA_HTML_NO_MEMORY
-             : status == LXA_ENCODING_OVERFLOW ? LXA_HTML_OVERFLOW
-             : LXA_HTML_BAD_ARGUMENT;
+            : status == LXA_ENCODING_OVERFLOW   ? LXA_HTML_OVERFLOW
+                                                : LXA_HTML_BAD_ARGUMENT;
     }
     *consumed = progress.consumed != 0;
     if (progress.produced == 0) {
@@ -463,7 +477,7 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
     tokenizer->utf8_pending = false;
     if (lxa_decoder_error_count(tokenizer->decoder) != errors) {
         result = emit_error(tokenizer, "invalid-utf-8",
-                            tokenizer->utf8_start);
+            tokenizer->utf8_start);
         if (result != LXA_HTML_OK) {
             return result;
         }
@@ -481,7 +495,8 @@ decode_byte(lxa_html_tokenizer_t *tokenizer, uint8_t c, bool *consumed,
         }
     }
     return tokenizer->state == STATE_BOGUS_DOCTYPE
-           ? LXA_HTML_OK : append_decoded_scalar(tokenizer, cp, in_name);
+        ? LXA_HTML_OK
+        : append_decoded_scalar(tokenizer, cp, in_name);
 }
 
 static lxa_html_result_t
@@ -502,14 +517,15 @@ finish_decoder(lxa_html_tokenizer_t *tokenizer, bool in_name)
     }
     if (lxa_decoder_error_count(tokenizer->decoder) != errors) {
         result = emit_error(tokenizer, "invalid-utf-8",
-                            tokenizer->utf8_start);
+            tokenizer->utf8_start);
         if (result != LXA_HTML_OK) {
             return result;
         }
     }
     if (progress.produced != 0) {
         return tokenizer->state == STATE_BOGUS_DOCTYPE
-               ? LXA_HTML_OK : append_decoded_scalar(tokenizer, cp, in_name);
+            ? LXA_HTML_OK
+            : append_decoded_scalar(tokenizer, cp, in_name);
     }
     return LXA_HTML_OK;
 }
@@ -554,10 +570,10 @@ pi_to_comment(lxa_html_tokenizer_t *tokenizer)
     lxa_span_t question = {(const uint8_t *) "?", 1};
     lxa_span_t target = {tokenizer->name.data, tokenizer->name.length};
     lxa_html_result_t result = buffer_append(tokenizer, &tokenizer->text,
-                                             question, LXA_BUDGET_TOKEN_BYTES);
+        question, LXA_BUDGET_TOKEN_BYTES);
     if (result == LXA_HTML_OK) {
         result = buffer_append(tokenizer, &tokenizer->text,
-                               target, LXA_BUDGET_TOKEN_BYTES);
+            target, LXA_BUDGET_TOKEN_BYTES);
     }
     if (result == LXA_HTML_OK) {
         lxa_buffer_clear(&tokenizer->name);
@@ -633,17 +649,17 @@ static lxa_html_result_t
 attribute_table_result(lxa_html_tokenizer_t *tokenizer, lxa_status_t status)
 {
     switch (status) {
-    case LXA_OK: return check_attribute_budget(tokenizer);
-    case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
-    case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
-    case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
-    case LXA_ERROR_LIMIT:
-        return budget_result(tokenizer, status,
-            tokenizer->attribute_names == NULL ? LXA_BUDGET_MEMORY
-            : lxa_table_limit_reason(tokenizer->attribute_names));
-    default:
-        assert(false);
-        return LXA_HTML_INTERNAL;
+        case LXA_OK: return check_attribute_budget(tokenizer);
+        case LXA_ERROR_NO_MEMORY: return LXA_HTML_NO_MEMORY;
+        case LXA_ERROR_ENTROPY: return LXA_HTML_ENTROPY;
+        case LXA_ERROR_OVERFLOW: return LXA_HTML_OVERFLOW;
+        case LXA_ERROR_LIMIT:
+            return budget_result(tokenizer, status,
+                tokenizer->attribute_names == NULL ? LXA_BUDGET_MEMORY
+                                                   : lxa_table_limit_reason(tokenizer->attribute_names));
+        default:
+            assert(false);
+            return LXA_HTML_INTERNAL;
     }
 }
 
@@ -659,7 +675,7 @@ push_attribute_descriptor(lxa_html_tokenizer_t *tokenizer,
     }
     if (status != LXA_OK)
         return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+                                             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
     if (vector->bytes.capacity != capacity) {
         lxa_html_result_t result = check_attribute_budget(tokenizer);
         if (result != LXA_HTML_OK) {
@@ -687,9 +703,8 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
             tokenizer->omitted_value_bytes -= tokenizer->attribute.value_length;
         }
         status = lxa_buffer_truncate(&tokenizer->attribute_bytes,
-                                      tokenizer->attribute.name_start);
-    }
-    else if (tokenizer->attribute_state == ATTRIBUTE_KEEP) {
+            tokenizer->attribute.name_start);
+    } else if (tokenizer->attribute_state == ATTRIBUTE_KEEP) {
         bool source = tokenizer->source_ranges && !tokenizer->end_tag;
         if (source) {
             lxa_html_result_t result = push_attribute_descriptor(tokenizer,
@@ -708,8 +723,7 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
         if (result != LXA_HTML_OK)
             return result;
         status = LXA_OK;
-    }
-    else {
+    } else {
         assert(false);
         return LXA_HTML_INTERNAL;
     }
@@ -719,7 +733,7 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
     }
     if (status != LXA_OK) {
         return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+                                             : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
     }
     tokenizer->attribute_state = ATTRIBUTE_NONE;
     return LXA_HTML_OK;
@@ -728,7 +742,7 @@ finish_attribute(lxa_html_tokenizer_t *tokenizer)
 #if LXA_HTML_BORROW_TREE_INPUT
 static lxa_html_result_t
 emit_tag_named(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset,
-               lxa_span_t name)
+    lxa_span_t name)
 #else
 #define emit_tag_named(tokenizer, self_closing, offset, ...) \
     emit_tag(tokenizer, self_closing, offset)
@@ -747,7 +761,7 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
     if (tokenizer->attribute_names != NULL) {
         size_t work;
         lxa_status_t status = lxa_table_clear_cost(tokenizer->attribute_names,
-                                                   &work);
+            &work);
         result = attribute_table_result(tokenizer, status);
         if (result == LXA_HTML_OK) {
             result = charge_work(tokenizer, work);
@@ -792,7 +806,7 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
             attribute_slot_t *slot;
             lxa_html_attribute_t view;
             lxa_status_t status = lxa_vector_at(&tokenizer->attribute_slots,
-                                                  i, (void **) &slot);
+                i, (void **) &slot);
             if (status != LXA_OK) {
                 return budget_result(tokenizer, status, LXA_BUDGET_COUNT);
             }
@@ -804,7 +818,8 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
             view.name.data = tokenizer->attribute_bytes.data + slot->name_start;
             view.name.length = slot->name_length;
             view.value.data = slot->value_start != SIZE_MAX
-                ? tokenizer->attribute_bytes.data + slot->value_start : NULL;
+                ? tokenizer->attribute_bytes.data + slot->value_start
+                : NULL;
             view.value.length = slot->value_start != SIZE_MAX ? slot->value_length : 0;
 #if LXA_HTML_BORROW_TREE_INPUT
             result = push_attribute_descriptor(tokenizer,
@@ -819,16 +834,16 @@ emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
         if (count != 0) {
             token.attributes = (const lxa_html_attribute_t *)
 #if LXA_HTML_BORROW_TREE_INPUT
-                               tokenizer->attribute_views.bytes.data;
+                                   tokenizer->attribute_views.bytes.data;
 #else
-                               tokenizer->attribute_slots.bytes.data;
+                                   tokenizer->attribute_slots.bytes.data;
 #endif
             if (tokenizer->source_ranges) {
                 bool valid = lxa_vector_length(&tokenizer->attribute_sources) == count;
                 assert(valid);
                 if (!valid) return LXA_HTML_INTERNAL;
                 token.attribute_sources = (const lxa_html_source_range_t *)
-                                          tokenizer->attribute_sources.bytes.data;
+                                              tokenizer->attribute_sources.bytes.data;
             }
         }
     }
@@ -860,7 +875,7 @@ static lxa_html_result_t
 emit_tag(lxa_html_tokenizer_t *tokenizer, bool self_closing, size_t offset)
 {
     return emit_tag_named(tokenizer, self_closing, offset,
-        (lxa_span_t){tokenizer->name.data, tokenizer->name.length});
+        (lxa_span_t) {tokenizer->name.data, tokenizer->name.length});
 }
 #endif
 
@@ -879,20 +894,18 @@ begin_attribute(lxa_html_tokenizer_t *tokenizer, size_t offset)
         return LXA_HTML_OVERFLOW;
     }
     status = lxa_budget_check_item_impl(tokenizer->budget,
-                                   LXA_BUDGET_ATTRS_PER_ELEMENT,
-                                   count, &reason);
+        LXA_BUDGET_ATTRS_PER_ELEMENT,
+        count, &reason);
     if (status != LXA_OK) {
         return budget_result(tokenizer, status, reason);
     }
     tokenizer->source_attribute_count = count;
     tokenizer->attribute = (attribute_slot_t) {0};
-    tokenizer->attribute.name_start = tokenizer->attribute.value_start
-                                    = tokenizer->attribute_bytes.length;
+    tokenizer->attribute.name_start = tokenizer->attribute.value_start = tokenizer->attribute_bytes.length;
     tokenizer->attribute_state = ATTRIBUTE_KEEP;
     if (tokenizer->source_ranges) {
         tokenizer->attribute_source = (lxa_html_source_range_t) {
-            .start = offset, .end = offset, .name_end = offset
-        };
+            .start = offset, .end = offset, .name_end = offset};
     }
     tokenizer->state = STATE_ATTRIBUTE_NAME;
     return LXA_HTML_OK;
@@ -902,7 +915,7 @@ static attribute_slot_t *
 current_attribute(lxa_html_tokenizer_t *tokenizer)
 {
     bool valid = tokenizer->attribute_state == ATTRIBUTE_KEEP
-                 || tokenizer->attribute_state == ATTRIBUTE_DISCARD;
+        || tokenizer->attribute_state == ATTRIBUTE_DISCARD;
     assert(valid);
     return valid ? &tokenizer->attribute : NULL;
 }
@@ -918,12 +931,12 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
         return LXA_HTML_INTERNAL;
     }
     status = lxa_size_add(name ? slot->name_length : slot->value_length,
-                          bytes.length, &component_length);
+        bytes.length, &component_length);
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
     status = lxa_size_add(tokenizer->attribute_bytes.length, bytes.length,
-                          &length);
+        &length);
     if (status != LXA_OK) {
         return LXA_HTML_OVERFLOW;
     }
@@ -934,10 +947,10 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
         return LXA_HTML_OVERFLOW;
     }
     status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
-                                   total, &reason);
+        total, &reason);
     if (status == LXA_OK && name) {
         status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
-                                       component_length, &reason);
+            component_length, &reason);
     }
     if (status != LXA_OK) {
         return budget_result(tokenizer, status, reason);
@@ -954,13 +967,13 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
         status = lxa_buffer_reserve(&tokenizer->attribute_bytes, length);
         if (status != LXA_OK)
             return status == LXA_ERROR_NO_MEMORY ? LXA_HTML_NO_MEMORY
-                : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
+                                                 : budget_result(tokenizer, status, LXA_BUDGET_MEMORY);
         /* Reservation can change shared item limits before byte publication. */
         status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_TOKEN_BYTES,
-                                           total, &reason);
+            total, &reason);
         if (status == LXA_OK && name)
             status = lxa_budget_check_item_impl(tokenizer->budget, LXA_BUDGET_NAME_BYTES,
-                                               component_length, &reason);
+                component_length, &reason);
         if (status != LXA_OK)
             return budget_result(tokenizer, status, reason);
         lxa_html_result_t result = check_callback_budget(tokenizer);
@@ -969,12 +982,11 @@ append_attribute(lxa_html_tokenizer_t *tokenizer, lxa_span_t bytes, bool name)
     }
     {
         lxa_html_result_t result = buffer_append_storage(tokenizer,
-                                      &tokenizer->attribute_bytes, bytes);
+            &tokenizer->attribute_bytes, bytes);
         if (result == LXA_HTML_OK) {
             if (name) {
                 slot->name_length = component_length;
-            }
-            else {
+            } else {
                 slot->value_length = component_length;
             }
         }
@@ -1010,7 +1022,7 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
             for (i = 0; i < count; i++) {
                 attribute_slot_t *prior;
                 status = lxa_vector_at(&tokenizer->attribute_slots, i,
-                                       (void **) &prior);
+                    (void **) &prior);
                 if (status != LXA_OK) {
                     assert(false);
                     return LXA_HTML_INTERNAL;
@@ -1018,8 +1030,8 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
                 status = lxa_table_set(tokenizer->attribute_names,
                     (lxa_span_t) {
                         tokenizer->attribute_bytes.data + prior->name_start,
-                        prior->name_length
-                    }, NULL, &duplicate, NULL);
+                        prior->name_length},
+                    NULL, &duplicate, NULL);
                 result = attribute_table_result(tokenizer, status);
                 if (result != LXA_HTML_OK) {
                     return result;
@@ -1033,8 +1045,8 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
         status = lxa_table_set(tokenizer->attribute_names,
             (lxa_span_t) {
                 tokenizer->attribute_bytes.data + slot->name_start,
-                slot->name_length
-            }, NULL, &duplicate, NULL);
+                slot->name_length},
+            NULL, &duplicate, NULL);
         result = attribute_table_result(tokenizer, status);
         if (result != LXA_HTML_OK) {
             return result;
@@ -1053,7 +1065,7 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
         lxa_html_result_t result;
         size_t work = 1;
         status = lxa_vector_at(&tokenizer->attribute_slots, i,
-                               (void **) &prior);
+            (void **) &prior);
         if (status != LXA_OK) {
             assert(false);
             return LXA_HTML_INTERNAL;
@@ -1068,8 +1080,9 @@ end_attribute_name(lxa_html_tokenizer_t *tokenizer, size_t offset)
         }
         if (prior->name_length == slot->name_length
             && memcmp(tokenizer->attribute_bytes.data + prior->name_start,
-                      tokenizer->attribute_bytes.data + slot->name_start,
-                      slot->name_length) == 0) {
+                   tokenizer->attribute_bytes.data + slot->name_start,
+                   slot->name_length)
+                == 0) {
             tokenizer->attribute_state = ATTRIBUTE_DISCARD;
             if (tokenizer->value_filter != NULL)
                 slot->value_start = SIZE_MAX;
@@ -1120,17 +1133,16 @@ append_utf8_run(lxa_html_tokenizer_t *tokenizer, lxa_span_t input,
         if (byte < 0x80) {
             size_t ascii;
             lxa_span_t run = limit_run(
-                (lxa_span_t){input.data + count, input.length - count}, bound, count);
+                (lxa_span_t) {input.data + count, input.length - count}, bound, count);
             lxa_html_result_t result = scan_run(tokenizer->state, run, &ascii);
             if (result != LXA_HTML_OK) return result;
             /* An ASCII append is indivisible at quota/allocation failure. */
             if (ascii == 0 || ascii > bound - count) break;
             count += ascii;
-        }
-        else {
+        } else {
             uint32_t scalar;
             size_t width = lxa_encoding_utf8_complete(
-                (lxa_span_t){input.data + count, bound - count}, &scalar);
+                (lxa_span_t) {input.data + count, bound - count}, &scalar);
             if (width == 0 || input_scalar_error(scalar) != NULL) break;
             last_scalar = count;
             count += width;
@@ -1139,8 +1151,8 @@ append_utf8_run(lxa_html_tokenizer_t *tokenizer, lxa_span_t input,
     if (count == 0) return LXA_HTML_OK;
     size_t remaining = count - 1; /* The feed loop already charges the first byte. */
     if (tokenizer->prepaid_input
-        ? lxa_budget_check_impl(tokenizer->budget, LXA_BUDGET_WORK, remaining, NULL) != LXA_OK
-        : !lxa_budget_accept_work_run_fits(tokenizer->budget, remaining))
+            ? lxa_budget_check_impl(tokenizer->budget, LXA_BUDGET_WORK, remaining, NULL) != LXA_OK
+            : !lxa_budget_accept_work_run_fits(tokenizer->budget, remaining))
         return LXA_HTML_OK;
     lxa_html_result_t result = account_run(tokenizer, remaining);
     if (result != LXA_HTML_OK) return result;
@@ -1182,22 +1194,21 @@ append_name(lxa_html_tokenizer_t *tokenizer, uint8_t c)
     character.data = &c;
     character.length = 1;
     return buffer_append(tokenizer, &tokenizer->name, character,
-                         LXA_BUDGET_NAME_BYTES);
+        LXA_BUDGET_NAME_BYTES);
 }
 
 static lxa_html_result_t
 flush_raw_candidate(lxa_html_tokenizer_t *tokenizer, bool slash)
 {
     lxa_span_t prefix = {
-        (const uint8_t *) (slash ? "</" : "<"), slash ? 2 : 1
-    };
+        (const uint8_t *) (slash ? "</" : "<"), slash ? 2 : 1};
     lxa_span_t candidate = {tokenizer->raw_candidate.data,
-                            tokenizer->raw_candidate.length};
+        tokenizer->raw_candidate.length};
     lxa_html_result_t result = buffer_append(tokenizer, &tokenizer->text,
-                                             prefix, LXA_BUDGET_TOKEN_BYTES);
+        prefix, LXA_BUDGET_TOKEN_BYTES);
     if (result == LXA_HTML_OK) {
         result = buffer_append(tokenizer, &tokenizer->text, candidate,
-                               LXA_BUDGET_TOKEN_BYTES);
+            LXA_BUDGET_TOKEN_BYTES);
     }
     if (result == LXA_HTML_OK) {
         lxa_buffer_clear(&tokenizer->raw_candidate);
@@ -1223,9 +1234,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
         return LXA_HTML_BAD_ARGUMENT;
     }
     if ((tokenizer->feed_started && tokenizer->prepaid_input != prepaid)
-        || (prepaid && (tokenizer->budget == &tokenizer->owned_budget
-            || (input.length != 0
-                && tokenizer->budget->used[LXA_BUDGET_INPUT] == 0)))) {
+        || (prepaid && (tokenizer->budget == &tokenizer->owned_budget || (input.length != 0 && tokenizer->budget->used[LXA_BUDGET_INPUT] == 0)))) {
         return LXA_HTML_BAD_ARGUMENT;
     }
     if (input.length > SIZE_MAX - tokenizer->offset) {
@@ -1302,8 +1311,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
                 || tokenizer->state == STATE_PI_OPEN
                 || tokenizer->state == STATE_PI_TARGET
                 || tokenizer->state == STATE_PI_AFTER_TARGET
-                || tokenizer->state == STATE_PI_DATA))
-        {
+                || tokenizer->state == STATE_PI_DATA)) {
             c = '\n';
             tokenizer->previous_cr = true;
         }
@@ -1320,7 +1328,7 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             && (!tokenizer->control_reported
                 || tokenizer->control_offset != tokenizer->offset + i)) {
             result = emit_error(tokenizer, "control-character-in-input-stream",
-                                tokenizer->offset + i);
+                tokenizer->offset + i);
             if (result != LXA_HTML_OK) {
                 goto fail;
             }
@@ -1328,7 +1336,8 @@ tokenizer_feed(lxa_html_tokenizer_t *tokenizer, lxa_span_t input, bool prepaid)
             tokenizer->control_reported = true;
         }
         switch (tokenizer->state) {
-#define LXA_HTML_STATE(name, id, action, scan, ...) case STATE_##name: __VA_ARGS__
+#define LXA_HTML_STATE(name, id, action, scan, ...) \
+    case STATE_##name: __VA_ARGS__
 #include "html/tokenizer_states.def"
 #undef LXA_HTML_STATE
         }
@@ -1349,7 +1358,7 @@ LXA_HTML_ENGINE_NAME(feed)(lxa_html_tokenizer_t *tokenizer, lxa_span_t input)
 
 lxa_html_result_t
 LXA_HTML_ENGINE_NAME(feed_prepaid)(lxa_html_tokenizer_t *tokenizer,
-                                lxa_span_t decoded_utf8)
+    lxa_span_t decoded_utf8)
 {
     return tokenizer_feed(tokenizer, decoded_utf8, true);
 }
@@ -1375,12 +1384,11 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
         bool end_tag = tokenizer->state == STATE_NAME_BEGIN;
         lxa_span_t prefix = {
             (const uint8_t *) (end_tag ? "</" : "<"),
-            end_tag ? 2 : 1
-        };
+            end_tag ? 2 : 1};
         result = emit_error(tokenizer, "eof-before-tag-name", tokenizer->offset);
         if (result == LXA_HTML_OK) {
             result = buffer_append(tokenizer, &tokenizer->text, prefix,
-                                   LXA_BUDGET_TOKEN_BYTES);
+                LXA_BUDGET_TOKEN_BYTES);
         }
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
@@ -1388,33 +1396,30 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
         }
         tokenizer->state = STATE_DATA;
         tokenizer->end_tag = false;
-    }
-    else if (eof_action(tokenizer->state) == EOF_DECLARATION_DASH
-             || eof_action(tokenizer->state) == EOF_COMMENT_OPEN) {
+    } else if (eof_action(tokenizer->state) == EOF_DECLARATION_DASH
+        || eof_action(tokenizer->state) == EOF_COMMENT_OPEN) {
         bool dash = tokenizer->state == STATE_COMMENT_OPEN;
         result = emit_error(tokenizer, "incorrectly-opened-comment",
-                            tokenizer->offset - (dash ? 1 : 0));
+            tokenizer->offset - (dash ? 1 : 0));
         if (result == LXA_HTML_OK && dash) {
             lxa_span_t character = {(const uint8_t *) "-", 1};
             result = buffer_append(tokenizer, &tokenizer->text,
-                                   character, LXA_BUDGET_TOKEN_BYTES);
+                character, LXA_BUDGET_TOKEN_BYTES);
         }
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
         }
         tokenizer->state = STATE_BOGUS_COMMENT;
-    }
-    else if (eof_action(tokenizer->state) == EOF_DECLARATION_PREFIX) {
+    } else if (eof_action(tokenizer->state) == EOF_DECLARATION_PREFIX) {
         lxa_span_t prefix = {
             (const uint8_t *) tokenizer->declaration,
-            tokenizer->declaration_length
-        };
+            tokenizer->declaration_length};
         result = emit_error(tokenizer, "incorrectly-opened-comment",
-                            tokenizer->offset - tokenizer->declaration_length);
+            tokenizer->offset - tokenizer->declaration_length);
         if (result == LXA_HTML_OK) {
             result = buffer_append(tokenizer, &tokenizer->text, prefix,
-                                   LXA_BUDGET_TOKEN_BYTES);
+                LXA_BUDGET_TOKEN_BYTES);
         }
         if (result == LXA_HTML_OK) {
             result = emit_comment(tokenizer);
@@ -1423,13 +1428,12 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_CDATA) {
+    } else if (eof_action(tokenizer->state) == EOF_CDATA) {
         lxa_span_t brackets = {
             (const uint8_t *) "]]",
-            tokenizer->state == STATE_CDATA ? 0
-            : tokenizer->state == STATE_CDATA_BRACKET ? 1 : 2
-        };
+            tokenizer->state == STATE_CDATA               ? 0
+                : tokenizer->state == STATE_CDATA_BRACKET ? 1
+                                                          : 2};
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -1440,7 +1444,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->utf8_pending = false;
         }
         result = buffer_append(tokenizer, &tokenizer->text, brackets,
-                               LXA_BUDGET_TOKEN_BYTES);
+            LXA_BUDGET_TOKEN_BYTES);
         if (result == LXA_HTML_OK) {
             result = emit_error(tokenizer, "eof-in-cdata", tokenizer->offset);
         }
@@ -1449,8 +1453,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
         tokenizer->state = STATE_DATA;
-    }
-    else if (eof_action(tokenizer->state) == EOF_BOGUS_DOCTYPE) {
+    } else if (eof_action(tokenizer->state) == EOF_BOGUS_DOCTYPE) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -1465,11 +1468,10 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_DOCTYPE_KEYWORD) {
+    } else if (eof_action(tokenizer->state) == EOF_DOCTYPE_KEYWORD) {
         result = emit_error(tokenizer,
-                            "invalid-character-sequence-after-doctype-name",
-                            tokenizer->doctype_keyword_offset);
+            "invalid-character-sequence-after-doctype-name",
+            tokenizer->doctype_keyword_offset);
         if (result == LXA_HTML_OK) {
             tokenizer->doctype_quirks = true;
             result = emit_doctype(tokenizer);
@@ -1478,11 +1480,10 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_DOCTYPE) {
+    } else if (eof_action(tokenizer->state) == EOF_DOCTYPE) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer,
-                        tokenizer->state == STATE_DOCTYPE_NAME);
+                tokenizer->state == STATE_DOCTYPE_NAME);
             if (result != LXA_HTML_OK) {
                 tokenizer->stopped = result;
                 return result;
@@ -1499,8 +1500,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_PI) {
+    } else if (eof_action(tokenizer->state) == EOF_PI) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -1511,7 +1511,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->utf8_pending = false;
         }
         result = emit_error(tokenizer, "eof-in-processing-instruction",
-                            tokenizer->offset);
+            tokenizer->offset);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
@@ -1528,35 +1528,30 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             return result;
         }
         tokenizer->state = tokenizer->reference_return_state;
-    }
-    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NAME) {
+    } else if (eof_action(tokenizer->state) == EOF_REFERENCE_NAME) {
         result = resolve_name(tokenizer, false, tokenizer->offset, 0);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_REFERENCE_LONG_NAME) {
+    } else if (eof_action(tokenizer->state) == EOF_REFERENCE_LONG_NAME) {
         tokenizer->state = tokenizer->reference_return_state;
-    }
-    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NO_DIGITS
-             || (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
-                 && !tokenizer->reference_digits)) {
+    } else if (eof_action(tokenizer->state) == EOF_REFERENCE_NO_DIGITS
+        || (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
+            && !tokenizer->reference_digits)) {
         result = missing_numeric_digits(tokenizer, tokenizer->offset);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
-             && tokenizer->reference_digits) {
+    } else if (eof_action(tokenizer->state) == EOF_REFERENCE_NUMBER
+        && tokenizer->reference_digits) {
         result = resolve_numeric(tokenizer, false, tokenizer->offset);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_BOGUS_COMMENT) {
+    } else if (eof_action(tokenizer->state) == EOF_BOGUS_COMMENT) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -1571,8 +1566,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->stopped = result;
             return result;
         }
-    }
-    else if (eof_action(tokenizer->state) == EOF_COMMENT) {
+    } else if (eof_action(tokenizer->state) == EOF_COMMENT) {
         if (tokenizer->utf8_pending) {
             result = finish_decoder(tokenizer, false);
             if (result != LXA_HTML_OK) {
@@ -1602,8 +1596,8 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->utf8_pending = false;
         }
         result = tokenizer->state == STATE_ATTRIBUTE_NAME
-                 ? end_attribute_name(tokenizer, tokenizer->offset)
-                 : LXA_HTML_OK;
+            ? end_attribute_name(tokenizer, tokenizer->offset)
+            : LXA_HTML_OK;
         if (result == LXA_HTML_OK) {
             result = emit_error(tokenizer, "eof-in-tag", tokenizer->offset);
         }
@@ -1625,7 +1619,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
     }
     if (eof_action(tokenizer->state) == EOF_RAW_CANDIDATE) {
         result = flush_raw_candidate(tokenizer,
-                    tokenizer->state != STATE_RAW_LESS_THAN);
+            tokenizer->state != STATE_RAW_LESS_THAN);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
@@ -1642,7 +1636,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
             tokenizer->utf8_pending = false;
         }
         result = emit_error(tokenizer, "eof-in-script-html-comment-like-text",
-                            tokenizer->offset);
+            tokenizer->offset);
         if (result != LXA_HTML_OK) {
             tokenizer->stopped = result;
             return result;
@@ -1671,8 +1665,7 @@ LXA_HTML_ENGINE_NAME(finish)(lxa_html_tokenizer_t *tokenizer)
     }
     if (result != LXA_HTML_OK) {
         tokenizer->stopped = result;
-    }
-    else {
+    } else {
         tokenizer->closed = true;
     }
     return result;

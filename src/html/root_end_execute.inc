@@ -44,7 +44,8 @@ LXA_ROOT_END_EXEC_NAME(LXA_ROOT_END_EXEC_VIEW *view, const lxa_html_token_t *tok
     if (LXA_ROOT_END_EXEC_MODE(view) == LXA_TREE_IN_BODY)
         return LXA_ROOT_END_EXEC_BODY(view, token);
     return LXA_ERROR_ARGUMENT;
-br_start: {
+br_start:
+    {
         lxa_html_token_t adjusted = *token;
         adjusted.kind = LXA_HTML_START_TAG;
         adjusted.attributes = NULL;

@@ -29,7 +29,7 @@ lxa_budget_maximum(const lxa_limits_t *limits, lxa_budget_kind_t kind)
 
 static inline lxa_status_t
 lxa_budget_check_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
-                 uint64_t amount, lxa_budget_kind_t *reason)
+    uint64_t amount, lxa_budget_kind_t *reason)
 {
     uint64_t used, limit;
     if (reason != NULL) {
@@ -57,7 +57,7 @@ lxa_budget_check_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
 
 static inline lxa_status_t
 lxa_budget_check_item_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
-                      uint64_t size, lxa_budget_kind_t *reason)
+    uint64_t size, lxa_budget_kind_t *reason)
 {
     if (reason != NULL) {
         *reason = LXA_BUDGET_COUNT;
@@ -77,7 +77,7 @@ lxa_budget_check_item_impl(const lxa_budget_t *budget, lxa_budget_kind_t kind,
 
 static inline lxa_status_t
 lxa_budget_charge_impl(lxa_budget_t *budget, lxa_budget_kind_t kind,
-                  uint64_t amount, lxa_budget_kind_t *reason)
+    uint64_t amount, lxa_budget_kind_t *reason)
 {
     lxa_status_t status;
     if (kind == LXA_BUDGET_INPUT) {
@@ -96,7 +96,7 @@ lxa_budget_charge_impl(lxa_budget_t *budget, lxa_budget_kind_t kind,
 /* Constant-kind charging uses the same checks as the installed APIs. */
 static inline lxa_status_t
 lxa_budget_charge_work(lxa_budget_t *budget, uint64_t amount,
-                       lxa_budget_kind_t *reason)
+    lxa_budget_kind_t *reason)
 {
     return lxa_budget_charge_impl(budget, LXA_BUDGET_WORK, amount, reason);
 }

@@ -28,7 +28,7 @@ lxa_allocator_t
 lxa_allocator_default(void)
 {
     lxa_allocator_t allocator = {NULL, runtime_allocate, runtime_resize,
-                                 runtime_release};
+        runtime_release};
     return allocator;
 }
 
@@ -36,7 +36,7 @@ static int
 allocator_valid(const lxa_allocator_t *allocator)
 {
     return allocator != NULL && allocator->allocate != NULL
-           && allocator->resize != NULL && allocator->release != NULL;
+        && allocator->resize != NULL && allocator->release != NULL;
 }
 
 lxa_status_t
@@ -55,7 +55,7 @@ lxa_alloc(const lxa_allocator_t *allocator, size_t size, void **out)
 
 lxa_status_t
 lxa_calloc(const lxa_allocator_t *allocator, size_t count, size_t size,
-           void **out)
+    void **out)
 {
     size_t bytes;
     lxa_status_t status;
@@ -95,7 +95,7 @@ lxa_resize(const lxa_allocator_t *allocator, void **ptr, size_t size)
 
 lxa_status_t
 lxa_resize_array(const lxa_allocator_t *allocator, void **ptr,
-                 size_t count, size_t item_size)
+    size_t count, size_t item_size)
 {
     size_t bytes;
     lxa_status_t status;

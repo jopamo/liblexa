@@ -17,8 +17,8 @@ LXA_ROOT_PART_CLOSE_NAME(const LXA_ROOT_PART_CLOSE_VIEW *view,
         if (status != LXA_OK) return status;
         if (ns != LXA_DOM_NS_HTML) continue;
         if ((group == LXA_HTML_TABLE_CELL
-             && (lxa_html_tree_name_equals(name, "td", 2)
-                 || lxa_html_tree_name_equals(name, "th", 2)))
+                && (lxa_html_tree_name_equals(name, "td", 2)
+                    || lxa_html_tree_name_equals(name, "th", 2)))
             || (group == LXA_HTML_TABLE_ROW && lxa_html_tree_name_equals(name, "tr", 2))
             || (group == LXA_HTML_TABLE_SECTION && lxa_html_tree_table_section(name))) {
             index = i;

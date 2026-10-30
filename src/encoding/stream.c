@@ -42,7 +42,7 @@ static const lxa_encoding_t encodings[] = {
     {liblexa_index_windows_1258, "windows-1258"},
     {liblexa_index_x_mac_cyrillic, "x-mac-cyrillic"},
     {NULL, "x-user-defined"}, /* algorithmic; no index */
-    {NULL, "replacement"}    /* decode only */
+    {NULL, "replacement"} /* decode only */
 };
 #define ENCODING_COUNT (sizeof(encodings) / sizeof(encodings[0]))
 static const lxa_encoding_t *const utf8_encoding = &encodings[0];
@@ -51,11 +51,9 @@ static const lxa_encoding_t *const replacement_encoding =
 static const lxa_encoding_t utf16le_encoding = {NULL, "utf-16le"};
 static const lxa_encoding_t utf16be_encoding = {NULL, "utf-16be"};
 static const lxa_encoding_t euc_kr_encoding = {
-    liblexa_index_euc_kr, "euc-kr"
-};
+    liblexa_index_euc_kr, "euc-kr"};
 static const lxa_encoding_t euc_jp_encoding = {
-    liblexa_index_jis0208, "euc-jp"
-};
+    liblexa_index_jis0208, "euc-jp"};
 
 struct lxa_decoder {
     lxa_allocator_t allocator;
@@ -138,13 +136,11 @@ lxa_encoding_lookup(lxa_span_t label)
     }
     if (ascii_equal(label.data + start, end - start, "utf-8")
         || ascii_equal(label.data + start, end - start, "utf8")
-        || ascii_equal(label.data + start, end - start, "unicode-1-1-utf-8"))
-    {
+        || ascii_equal(label.data + start, end - start, "unicode-1-1-utf-8")) {
         return utf8_encoding;
     }
     if (ascii_equal(label.data + start, end - start, "utf-16le")
-        || ascii_equal(label.data + start, end - start, "utf-16"))
-    {
+        || ascii_equal(label.data + start, end - start, "utf-16")) {
         return &utf16le_encoding;
     }
     if (ascii_equal(label.data + start, end - start, "utf-16be")) {
@@ -152,14 +148,12 @@ lxa_encoding_lookup(lxa_span_t label)
     }
     if (ascii_equal(label.data + start, end - start, "euc-kr")
         || ascii_equal(label.data + start, end - start, "ks_c_5601-1987")
-        || ascii_equal(label.data + start, end - start, "korean"))
-    {
+        || ascii_equal(label.data + start, end - start, "korean")) {
         return &euc_kr_encoding;
     }
     if (ascii_equal(label.data + start, end - start, "euc-jp")
         || ascii_equal(label.data + start, end - start, "cseucpkdfmtjapanese")
-        || ascii_equal(label.data + start, end - start, "x-euc-jp"))
-    {
+        || ascii_equal(label.data + start, end - start, "x-euc-jp")) {
         return &euc_jp_encoding;
     }
     if (ascii_equal(label.data + start, end - start, "windows-1252")
@@ -168,15 +162,13 @@ lxa_encoding_lookup(lxa_span_t label)
         || ascii_equal(label.data + start, end - start, "us-ascii")
         || ascii_equal(label.data + start, end - start, "ascii")
         || ascii_equal(label.data + start, end - start, "cp1252")
-        || ascii_equal(label.data + start, end - start, "x-cp1252"))
-    {
+        || ascii_equal(label.data + start, end - start, "x-cp1252")) {
         return canonical_encoding("windows-1252");
     }
     if (ascii_equal(label.data + start, end - start, "ibm866")
         || ascii_equal(label.data + start, end - start, "866")
         || ascii_equal(label.data + start, end - start, "cp866")
-        || ascii_equal(label.data + start, end - start, "csibm866"))
-    {
+        || ascii_equal(label.data + start, end - start, "csibm866")) {
         return canonical_encoding("ibm866");
     }
     for (i = 0; i < ENCODING_COUNT; i++) {
@@ -211,16 +203,16 @@ valid_mode(lxa_encoding_error_mode_t mode)
 
 lxa_status_t
 lxa_decoder_create(const lxa_encoding_t *encoding, lxa_encoding_error_mode_t mode,
-                   const lxa_allocator_t *allocator, lxa_decoder_t **out)
+    const lxa_allocator_t *allocator, lxa_decoder_t **out)
 {
     return lxa_decoder_create_with_budget(encoding, mode, allocator, NULL, out);
 }
 
 lxa_status_t
 lxa_decoder_create_with_budget(const lxa_encoding_t *encoding,
-                               lxa_encoding_error_mode_t mode,
-                               const lxa_allocator_t *allocator,
-                               lxa_budget_t *budget, lxa_decoder_t **out)
+    lxa_encoding_error_mode_t mode,
+    const lxa_allocator_t *allocator,
+    lxa_budget_t *budget, lxa_decoder_t **out)
 {
     lxa_decoder_t *decoder;
     lxa_status_t status;
@@ -236,7 +228,7 @@ lxa_decoder_create_with_budget(const lxa_encoding_t *encoding,
     }
     if (budget != NULL) {
         status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY,
-                                   sizeof(*decoder), NULL);
+            sizeof(*decoder), NULL);
         if (status != LXA_OK) {
             return status;
         }
@@ -267,16 +259,16 @@ lxa_decoder_create_with_budget(const lxa_encoding_t *encoding,
 
 lxa_status_t
 lxa_encoder_create(const lxa_encoding_t *encoding, lxa_encoding_error_mode_t mode,
-                   const lxa_allocator_t *allocator, lxa_encoder_t **out)
+    const lxa_allocator_t *allocator, lxa_encoder_t **out)
 {
     return lxa_encoder_create_with_budget(encoding, mode, allocator, NULL, out);
 }
 
 lxa_status_t
 lxa_encoder_create_with_budget(const lxa_encoding_t *encoding,
-                               lxa_encoding_error_mode_t mode,
-                               const lxa_allocator_t *allocator,
-                               lxa_budget_t *budget, lxa_encoder_t **out)
+    lxa_encoding_error_mode_t mode,
+    const lxa_allocator_t *allocator,
+    lxa_budget_t *budget, lxa_encoder_t **out)
 {
     lxa_encoder_t *encoder;
     lxa_status_t status;
@@ -293,7 +285,7 @@ lxa_encoder_create_with_budget(const lxa_encoding_t *encoding,
     }
     if (budget != NULL) {
         status = lxa_budget_charge(budget, LXA_BUDGET_MEMORY,
-                                   sizeof(*encoder), NULL);
+            sizeof(*encoder), NULL);
         if (status != LXA_OK) {
             return status;
         }
@@ -375,18 +367,20 @@ lxa_decoder_pending_bytes(const lxa_decoder_t *decoder)
     if (decoder == NULL) return 0;
     if (decoder->encoding == utf8_encoding && decoder->remaining != 0) {
         size_t width = decoder->byte < 0xe0 ? 2
-                     : decoder->byte < 0xf0 ? 3 : 4;
+            : decoder->byte < 0xf0          ? 3
+                                            : 4;
         return width - decoder->remaining;
     }
     if (decoder->encoding == &utf16le_encoding
         || decoder->encoding == &utf16be_encoding)
         return (decoder->have_byte ? 1u : 0u)
-             + (decoder->have_lead ? 2u : 0u)
-             + (decoder->have_replay ? 2u : 0u);
+            + (decoder->have_lead ? 2u : 0u)
+            + (decoder->have_replay ? 2u : 0u);
     if (decoder->encoding == &euc_kr_encoding)
         return decoder->kr_lead != 0 ? 1 : 0;
     if (decoder->encoding == &euc_jp_encoding)
-        return decoder->jp_lead == 0 ? 0 : decoder->jp_jis0212 ? 2 : 1;
+        return decoder->jp_lead == 0 ? 0 : decoder->jp_jis0212 ? 2
+                                                               : 1;
     return 0;
 }
 
@@ -416,7 +410,7 @@ lxa_encoder_destroy(lxa_encoder_t *encoder)
 
 static lxa_encoding_result_t
 bad_input(lxa_decoder_t *decoder, uint32_t *output,
-          lxa_encoding_progress_t *progress, size_t capacity)
+    lxa_encoding_progress_t *progress, size_t capacity)
 {
     if (decoder->mode == LXA_ENCODING_FATAL) {
         record_error(decoder);
@@ -434,7 +428,7 @@ bad_input(lxa_decoder_t *decoder, uint32_t *output,
 
 static lxa_encoding_result_t
 utf16_unit(lxa_decoder_t *decoder, uint16_t unit, uint32_t *output,
-           size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     lxa_encoding_result_t result;
     if (decoder->have_lead) {
@@ -468,8 +462,7 @@ utf16_unit(lxa_decoder_t *decoder, uint16_t unit, uint32_t *output,
         if (result != LXA_ENCODING_OK) {
             return result;
         }
-    }
-    else {
+    } else {
         if (progress->produced == capacity) {
             return LXA_ENCODING_OUTPUT_FULL;
         }
@@ -481,7 +474,7 @@ utf16_unit(lxa_decoder_t *decoder, uint16_t unit, uint32_t *output,
 
 static lxa_encoding_result_t
 utf16_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-           size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     while (decoder->have_replay || progress->consumed < input.length) {
         lxa_encoding_result_t result;
@@ -511,7 +504,7 @@ utf16_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
 static lxa_encoding_result_t
 euc_kr_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-            size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     while (progress->consumed < input.length) {
         uint8_t byte = input.data[progress->consumed];
@@ -519,7 +512,7 @@ euc_kr_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
             uint32_t cp = UINT32_MAX;
             if (byte >= 0x41 && byte <= 0xfe) {
                 size_t pointer = ((size_t) decoder->kr_lead - 0x81) * 190
-                                 + (byte - 0x41);
+                    + (byte - 0x41);
                 cp = euc_kr_encoding.index[pointer];
             }
             if (cp != UINT32_MAX) {
@@ -556,12 +549,10 @@ euc_kr_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
             }
             output[progress->produced++] = byte;
             progress->consumed++;
-        }
-        else if (byte >= 0x81 && byte <= 0xfe) {
+        } else if (byte >= 0x81 && byte <= 0xfe) {
             decoder->kr_lead = byte;
             progress->consumed++;
-        }
-        else {
+        } else {
             if (decoder->mode == LXA_ENCODING_FATAL) {
                 progress->consumed++;
                 record_error(decoder);
@@ -581,7 +572,7 @@ euc_kr_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
 static lxa_encoding_result_t
 euc_jp_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-            size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     while (progress->consumed < input.length) {
         uint8_t byte = input.data[progress->consumed];
@@ -596,10 +587,8 @@ euc_jp_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
             uint32_t cp = UINT32_MAX;
             if (lead == 0x8e && byte >= 0xa1 && byte <= 0xdf) {
                 cp = byte - 0xa1 + 0xff61;
-            }
-            else if (lead >= 0xa1 && lead <= 0xfe
-                     && byte >= 0xa1 && byte <= 0xfe)
-            {
+            } else if (lead >= 0xa1 && lead <= 0xfe
+                && byte >= 0xa1 && byte <= 0xfe) {
                 size_t pointer = ((size_t) lead - 0xa1) * 94 + byte - 0xa1;
                 cp = decoder->jp_jis0212
                     ? liblexa_index_jis0212[pointer]
@@ -641,14 +630,11 @@ euc_jp_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
             }
             output[progress->produced++] = byte;
             progress->consumed++;
-        }
-        else if (byte == 0x8e || byte == 0x8f
-                 || (byte >= 0xa1 && byte <= 0xfe))
-        {
+        } else if (byte == 0x8e || byte == 0x8f
+            || (byte >= 0xa1 && byte <= 0xfe)) {
             decoder->jp_lead = byte;
             progress->consumed++;
-        }
-        else {
+        } else {
             if (decoder->mode == LXA_ENCODING_FATAL) {
                 progress->consumed++;
                 record_error(decoder);
@@ -668,7 +654,7 @@ euc_jp_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
 static lxa_encoding_result_t
 utf8_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-           size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     while (progress->consumed < input.length) {
         uint8_t c = input.data[progress->consumed];
@@ -680,15 +666,13 @@ utf8_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
                     return LXA_ENCODING_OUTPUT_FULL;
                 }
                 output[progress->produced++] = c;
-            }
-            else if ((width = lxa_encoding_utf8_lead(c, &lower, &upper)) != 0) {
+            } else if ((width = lxa_encoding_utf8_lead(c, &lower, &upper)) != 0) {
                 decoder->byte = c;
                 decoder->scalar = c & (0x7fu >> width);
                 decoder->remaining = (unsigned) width - 1;
                 decoder->lower = lower;
                 decoder->upper = upper;
-            }
-            else {
+            } else {
                 /* This byte is the entire malformed sequence. */
                 if (decoder->mode == LXA_ENCODING_FATAL) {
                     progress->consumed++;
@@ -732,7 +716,7 @@ utf8_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
 lxa_encoding_result_t
 lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
-                 size_t capacity, lxa_encoding_progress_t *progress)
+    size_t capacity, lxa_encoding_progress_t *progress)
 {
     if (progress == NULL) {
         return LXA_ENCODING_INVALID_ARGUMENT;
@@ -740,8 +724,7 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
     progress->consumed = progress->produced = 0;
     if (decoder == NULL || decoder->failed || decoder->closed
         || (input.data == NULL && input.length != 0)
-        || (output == NULL && capacity != 0))
-    {
+        || (output == NULL && capacity != 0)) {
         return LXA_ENCODING_INVALID_ARGUMENT;
     }
 
@@ -749,8 +732,7 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
         return utf8_feed(decoder, input, output, capacity, progress);
     }
     if (decoder->encoding == &utf16le_encoding
-        || decoder->encoding == &utf16be_encoding)
-    {
+        || decoder->encoding == &utf16be_encoding) {
         return utf16_feed(decoder, input, output, capacity, progress);
     }
     if (decoder->encoding == &euc_kr_encoding) {
@@ -781,9 +763,8 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
     while (progress->consumed < input.length) {
         uint8_t c = input.data[progress->consumed];
-        uint32_t cp = c < 0x80 ? c :
-            decoder->encoding->index != NULL
-            ? decoder->encoding->index[c - 0x80] : 0xf700u + c;
+        uint32_t cp = c < 0x80 ? c : decoder->encoding->index != NULL ? decoder->encoding->index[c - 0x80]
+                                                                      : 0xf700u + c;
         if (cp != UINT32_MAX) {
             if (progress->produced == capacity) {
                 return LXA_ENCODING_OUTPUT_FULL;
@@ -811,7 +792,7 @@ lxa_decoder_feed(lxa_decoder_t *decoder, lxa_span_t input, uint32_t *output,
 
 lxa_encoding_result_t
 lxa_decoder_finish(lxa_decoder_t *decoder, uint32_t *output, size_t capacity,
-                   lxa_encoding_progress_t *progress)
+    lxa_encoding_progress_t *progress)
 {
     lxa_encoding_result_t result;
     if (progress == NULL) {
@@ -819,13 +800,11 @@ lxa_decoder_finish(lxa_decoder_t *decoder, uint32_t *output, size_t capacity,
     }
     progress->consumed = progress->produced = 0;
     if (decoder == NULL || decoder->failed || decoder->closed
-        || (output == NULL && capacity != 0))
-    {
+        || (output == NULL && capacity != 0)) {
         return LXA_ENCODING_INVALID_ARGUMENT;
     }
     if (decoder->encoding == &utf16le_encoding
-        || decoder->encoding == &utf16be_encoding)
-    {
+        || decoder->encoding == &utf16be_encoding) {
         lxa_span_t empty = {NULL, 0};
         result = utf16_feed(decoder, empty, output, capacity, progress);
         if (result != LXA_ENCODING_OK) {
@@ -873,25 +852,25 @@ utf16_write(uint8_t *out, uint16_t unit, bool big_endian)
 
 static uint32_t
 reverse_pointer(const liblexa_encoding_reverse *index, size_t count,
-                uint32_t cp)
+    uint32_t cp)
 {
     size_t lo = 0, hi = count;
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         if (index[mid].codepoint < cp) {
             lo = mid + 1;
-        }
-        else {
+        } else {
             hi = mid;
         }
     }
     return lo < count && index[lo].codepoint == cp
-           ? index[lo].pointer : UINT32_MAX;
+        ? index[lo].pointer
+        : UINT32_MAX;
 }
 
 lxa_encoding_result_t
 lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
-                 lxa_mut_span_t output, lxa_encoding_progress_t *progress)
+    lxa_mut_span_t output, lxa_encoding_progress_t *progress)
 {
     if (progress == NULL) {
         return LXA_ENCODING_INVALID_ARGUMENT;
@@ -899,8 +878,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
     progress->consumed = progress->produced = 0;
     if (encoder == NULL || encoder->failed || encoder->closed
         || (input == NULL && length != 0)
-        || (output.data == NULL && output.length != 0))
-    {
+        || (output.data == NULL && output.length != 0)) {
         return LXA_ENCODING_INVALID_ARGUMENT;
     }
     while (progress->consumed < length) {
@@ -912,21 +890,19 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             if (cp < 0x80 || cp == 0xa5 || cp == 0x203e) {
                 n = 1;
                 ascii = (uint8_t) (cp == 0xa5 ? 0x5c
-                                   : cp == 0x203e ? 0x7e : cp);
-            }
-            else if (cp >= 0xff61 && cp <= 0xff9f) {
+                        : cp == 0x203e        ? 0x7e
+                                              : cp);
+            } else if (cp >= 0xff61 && cp <= 0xff9f) {
                 n = 2;
-            }
-            else {
+            } else {
                 if (cp == 0x2212) {
                     cp = 0xff0d;
                 }
                 pointer = reverse_pointer(liblexa_index_jis0208_reverse,
-                                          LIBLEXA_INDEX_JIS0208_REVERSE_COUNT,
-                                          cp);
+                    LIBLEXA_INDEX_JIS0208_REVERSE_COUNT,
+                    cp);
                 if (pointer == UINT32_MAX
-                    && encoder->mode == LXA_ENCODING_FATAL)
-                {
+                    && encoder->mode == LXA_ENCODING_FATAL) {
                     progress->consumed++;
                     encoder->failed = true;
                     return LXA_ENCODING_MALFORMED;
@@ -940,12 +916,10 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             at = progress->produced;
             if (n == 1) {
                 output.data[at] = ascii;
-            }
-            else if (cp >= 0xff61 && cp <= 0xff9f) {
+            } else if (cp >= 0xff61 && cp <= 0xff9f) {
                 output.data[at] = 0x8e;
                 output.data[at + 1] = (uint8_t) (cp - 0xff61 + 0xa1);
-            }
-            else {
+            } else {
                 output.data[at] = (uint8_t) (pointer / 94 + 0xa1);
                 output.data[at + 1] = (uint8_t) (pointer % 94 + 0xa1);
             }
@@ -957,14 +931,12 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             uint32_t pointer = UINT32_MAX;
             if (cp < 0x80) {
                 n = 1;
-            }
-            else {
+            } else {
                 pointer = reverse_pointer(liblexa_index_euc_kr_reverse,
-                                          LIBLEXA_INDEX_EUC_KR_REVERSE_COUNT,
-                                          cp);
+                    LIBLEXA_INDEX_EUC_KR_REVERSE_COUNT,
+                    cp);
                 if (pointer == UINT32_MAX
-                    && encoder->mode == LXA_ENCODING_FATAL)
-                {
+                    && encoder->mode == LXA_ENCODING_FATAL) {
                     progress->consumed++;
                     encoder->failed = true;
                     return LXA_ENCODING_MALFORMED;
@@ -977,9 +949,10 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             at = progress->produced;
             if (n == 1) {
                 output.data[at] = (uint8_t) (pointer == UINT32_MAX
-                                              && cp >= 0x80 ? '?' : cp);
-            }
-            else {
+                            && cp >= 0x80
+                        ? '?'
+                        : cp);
+            } else {
                 output.data[at] = (uint8_t) (pointer / 190 + 0x81);
                 output.data[at + 1] = (uint8_t) (pointer % 190 + 0x41);
             }
@@ -988,8 +961,7 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             continue;
         }
         if (encoder->encoding == &utf16le_encoding
-            || encoder->encoding == &utf16be_encoding)
-        {
+            || encoder->encoding == &utf16be_encoding) {
             bool big_endian = encoder->encoding == &utf16be_encoding;
             if (!lxa_encoding_scalar_valid(cp)) {
                 if (encoder->mode == LXA_ENCODING_FATAL) {
@@ -1006,13 +978,12 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             at = progress->produced;
             if (n == 2) {
                 utf16_write(output.data + at, (uint16_t) cp, big_endian);
-            }
-            else {
+            } else {
                 cp -= 0x10000;
                 utf16_write(output.data + at,
-                            (uint16_t) (0xd800 | (cp >> 10)), big_endian);
+                    (uint16_t) (0xd800 | (cp >> 10)), big_endian);
                 utf16_write(output.data + at + 2,
-                            (uint16_t) (0xdc00 | (cp & 0x3ff)), big_endian);
+                    (uint16_t) (0xdc00 | (cp & 0x3ff)), big_endian);
             }
             progress->produced += n;
             progress->consumed++;
@@ -1022,13 +993,11 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
             uint32_t byte = UINT32_MAX;
             if (cp < 0x80) {
                 byte = cp;
-            }
-            else if (encoder->encoding->index == NULL) {
+            } else if (encoder->encoding->index == NULL) {
                 if (cp >= 0xf780 && cp <= 0xf7ff) {
                     byte = cp - 0xf700;
                 }
-            }
-            else {
+            } else {
                 size_t i;
                 for (i = 0; i < 128; i++) {
                     if (encoder->encoding->index[i] == cp) {
@@ -1072,15 +1041,14 @@ lxa_encoder_feed(lxa_encoder_t *encoder, const uint32_t *input, size_t length,
 
 lxa_encoding_result_t
 lxa_encoder_finish(lxa_encoder_t *encoder, lxa_mut_span_t output,
-                   lxa_encoding_progress_t *progress)
+    lxa_encoding_progress_t *progress)
 {
     if (progress == NULL) {
         return LXA_ENCODING_INVALID_ARGUMENT;
     }
     progress->consumed = progress->produced = 0;
     if (encoder == NULL || encoder->failed || encoder->closed
-        || (output.data == NULL && output.length != 0))
-    {
+        || (output.data == NULL && output.length != 0)) {
         return LXA_ENCODING_INVALID_ARGUMENT;
     }
     encoder->closed = true;

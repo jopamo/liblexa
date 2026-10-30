@@ -4,7 +4,7 @@
  */
 static inline lxa_status_t
 LXA_FOREIGN_BREAKOUT_PLAN_NAME(const LXA_FOREIGN_VIEW *view, size_t boundary,
-                              size_t *out)
+    size_t *out)
 {
     size_t keep = LXA_FOREIGN_LENGTH(view);
     while (keep > boundary) {
@@ -23,7 +23,7 @@ LXA_FOREIGN_BREAKOUT_PLAN_NAME(const LXA_FOREIGN_VIEW *view, size_t boundary,
 
 static inline lxa_status_t
 LXA_FOREIGN_END_PLAN_NAME(const LXA_FOREIGN_VIEW *view, size_t boundary,
-                          lxa_span_t name, lxa_html_foreign_end_plan_t *out)
+    lxa_span_t name, lxa_html_foreign_end_plan_t *out)
 {
     size_t i = LXA_FOREIGN_LENGTH(view);
     lxa_html_foreign_end_plan_t plan = {i, false};

@@ -34,7 +34,7 @@ static void
 release_memory(lxa_table_t *table, size_t bytes)
 {
     lxa_status_t status = lxa_budget_release(table->budget,
-                                              LXA_BUDGET_MEMORY, bytes);
+        LXA_BUDGET_MEMORY, bytes);
     assert(status == LXA_OK);
     (void) status;
 }
@@ -44,13 +44,14 @@ hash_key(lxa_table_t *table, lxa_span_t key, uint64_t *hash)
 {
     lxa_status_t status;
     status = lxa_budget_check_item(table->budget, LXA_BUDGET_NAME_BYTES,
-                                   key.length, &table->reason);
+        key.length, &table->reason);
     if (status != LXA_OK) {
         return status;
     }
     status = charge(table, LXA_BUDGET_WORK, key.length / 8 + 1);
     return status == LXA_OK ? lxa_siphash24(table->key, key.data,
-                                             key.length, hash) : status;
+                                  key.length, hash)
+                            : status;
 }
 
 /* At least one empty slot exists at the chosen load factor. A deleted slot
@@ -58,7 +59,7 @@ hash_key(lxa_table_t *table, lxa_span_t key, uint64_t *hash)
  */
 static lxa_status_t
 locate(lxa_table_t *table, lxa_span_t key, uint64_t hash,
-       size_t *index, bool *found)
+    size_t *index, bool *found)
 {
     size_t step, candidate = SIZE_MAX;
     *found = false;
@@ -81,11 +82,10 @@ locate(lxa_table_t *table, lxa_span_t key, uint64_t hash,
             if (candidate == SIZE_MAX) {
                 candidate = position;
             }
-        }
-        else if (slot->hash == hash && slot->length == key.length) {
+        } else if (slot->hash == hash && slot->length == key.length) {
             if (key.length != 0) {
                 status = charge(table, LXA_BUDGET_WORK,
-                                 key.length / 8 + (key.length % 8 != 0));
+                    key.length / 8 + (key.length % 8 != 0));
                 if (status != LXA_OK) {
                     return status;
                 }
@@ -104,7 +104,7 @@ locate(lxa_table_t *table, lxa_span_t key, uint64_t hash,
 
 static lxa_status_t
 prepare_slots(lxa_table_t *table, size_t capacity, slot_t **out,
-              size_t *bytes)
+    size_t *bytes)
 {
     lxa_status_t status = lxa_size_mul(capacity, sizeof(slot_t), bytes);
     if (status != LXA_OK) {
@@ -115,13 +115,13 @@ prepare_slots(lxa_table_t *table, size_t capacity, slot_t **out,
         return status;
     }
     status = lxa_calloc(&table->allocator, capacity, sizeof(slot_t),
-                        (void **) out);
+        (void **) out);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_MEMORY,
-                                       0, &table->reason);
+            0, &table->reason);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_WORK,
-                                       0, &table->reason);
+            0, &table->reason);
     if (status != LXA_OK) {
         lxa_free(&table->allocator, *out);
         *out = NULL;
@@ -153,7 +153,7 @@ grow(lxa_table_t *table, size_t capacity, size_t key_length)
         }
         for (step = 0; step < capacity; ++step) {
             size_t position = ((size_t) table->slots[i].hash + step)
-                              & (capacity - 1);
+                & (capacity - 1);
             status = charge(table, LXA_BUDGET_WORK, 1);
             if (status != LXA_OK) {
                 lxa_free(&table->allocator, next);
@@ -167,7 +167,7 @@ grow(lxa_table_t *table, size_t capacity, size_t key_length)
         }
     }
     status = lxa_budget_check_item(table->budget, LXA_BUDGET_NAME_BYTES,
-                                   key_length, &table->reason);
+        key_length, &table->reason);
     if (status != LXA_OK) {
         lxa_free(&table->allocator, next);
         release_memory(table, bytes);
@@ -184,9 +184,9 @@ grow(lxa_table_t *table, size_t capacity, size_t key_length)
 
 lxa_status_t
 lxa_table_create_with_budget(const lxa_allocator_t *allocator,
-                             lxa_budget_t *budget,
-                             lxa_entropy_callback_t entropy,
-                             void *entropy_context, lxa_table_t **out)
+    lxa_budget_t *budget,
+    lxa_entropy_callback_t entropy,
+    void *entropy_context, lxa_table_t **out)
 {
     lxa_table_t *table;
     lxa_budget_t local = {0};
@@ -289,7 +289,8 @@ lxa_table_clear(lxa_table_t *table)
     for (i = 0; i < table->capacity; ++i) {
         if (table->slots[i].live) {
             size_t bytes = table->slots[i].length != 0
-                           ? table->slots[i].length : 1;
+                ? table->slots[i].length
+                : 1;
             lxa_free(&table->allocator, table->slots[i].key);
             release_memory(table, bytes);
         }
@@ -323,7 +324,7 @@ lxa_table_length(const lxa_table_t *table)
 
 lxa_status_t
 lxa_table_find(const lxa_table_t *table, lxa_span_t key,
-               bool *found, void **value)
+    bool *found, void **value)
 {
     size_t index;
     uint64_t hash;
@@ -424,18 +425,18 @@ lxa_table_set_with_rollback(lxa_table_t *table, lxa_span_t key, void *value,
         }
     }
     status = lxa_budget_check_item(table->budget, LXA_BUDGET_NAME_BYTES,
-                                   key.length, &table->reason);
+        key.length, &table->reason);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_WORK,
-                                       0, &table->reason);
+            0, &table->reason);
     if (status == LXA_OK)
         status = lxa_budget_check_impl(table->budget, LXA_BUDGET_MEMORY,
-                                       0, &table->reason);
+            0, &table->reason);
     if (status != LXA_OK) {
         goto fail;
     }
     table->used += !table->slots[index].used;
-    table->slots[index] = (slot_t) {copy, key.length, hash, value, true, true};
+    table->slots[index] = (slot_t){copy, key.length, hash, value, true, true};
     ++table->count;
     if (inserted != NULL)
         *inserted = (lxa_table_insert_t){table, index, copy, value};
@@ -448,7 +449,7 @@ fail:
 
 lxa_status_t
 lxa_table_set(lxa_table_t *table, lxa_span_t key, void *value,
-              bool *replaced, void **previous)
+    bool *replaced, void **previous)
 {
     return lxa_table_set_with_rollback(table, key, value, replaced, previous, NULL);
 }
@@ -480,7 +481,7 @@ lxa_table_rollback_insert(lxa_table_t *table, lxa_table_insert_t *inserted)
 
 lxa_status_t
 lxa_table_delete(lxa_table_t *table, lxa_span_t key,
-                 bool *found, void **previous)
+    bool *found, void **previous)
 {
     size_t index;
     uint64_t hash;
