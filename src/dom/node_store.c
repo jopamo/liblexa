@@ -87,6 +87,13 @@ lxa_dom_record_identity(const lxa_dom_nodes_t *nodes,
 }
 
 static bool
+record_is_active(const lxa_dom_nodes_t *nodes, const lxa_dom_record_t *record)
+{
+    lxa_id_t id;
+    return record != NULL && lxa_dom_record_identity(nodes, record, &id) == LXA_OK;
+}
+
+static bool
 valid_kind(lxa_dom_kind_t kind)
 {
     return kind > LXA_DOM_KIND_INVALID && kind < LXA_DOM_KIND_COUNT;
@@ -488,8 +495,9 @@ lxa_dom_nodes_append_draft(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = record.payload = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
+    record.payload = LXA_ID_NONE;
     record.kind = (uint16_t) kind;
     record.generation = nodes->generation;
     status = push_record(nodes, &record);
@@ -570,7 +578,7 @@ typedef enum {
 #define LXA_RELATION_FINISH \
     do { \
         status = lxa_handle_pack(id, nodes->generation, &out->handle); \
-        if (status == LXA_OK) *related = (*lxa_dom_record_at(nodes, id)); \
+        if (status == LXA_OK) *related = *related_record; \
         return status; \
     } while (0)
 #define LXA_RELATION_NAME read_last_record
@@ -721,8 +729,8 @@ append_character(lxa_dom_nodes_t *nodes, lxa_dom_kind_t kind,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
     record.payload = payload_id;
     record.kind = (uint16_t) kind;
     record.generation = nodes->generation;
@@ -1126,8 +1134,8 @@ append_element(lxa_dom_nodes_t *nodes, lxa_span_t name,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
     record.kind = LXA_DOM_KIND_ELEMENT;
     record.payload = payload_id;
     record.generation = nodes->generation;
@@ -1406,9 +1414,9 @@ lxa_dom_nodes_bind_template(lxa_dom_nodes_t *nodes, lxa_dom_ref_t element,
     if (ns != LXA_DOM_NS_HTML || name.length != sizeof("template") - 1
         || memcmp(name.data, "template", sizeof("template") - 1) != 0
         || contents.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
-        || contents.parent != NULL || contents.prev != LXA_ID_NONE
-        || contents.next != LXA_ID_NONE || host.first_child != LXA_ID_NONE
-        || host.last_child != LXA_ID_NONE)
+        || contents.parent != NULL || contents.prev != NULL
+        || contents.next != NULL || host.first_child != NULL
+        || host.last_child != NULL)
         return LXA_ERROR_ARGUMENT;
     pair.element = (lxa_id_t) element.handle;
     pair.fragment = (lxa_id_t) fragment.handle;
@@ -1681,8 +1689,8 @@ append_attribute(lxa_dom_nodes_t *nodes, lxa_span_t name, lxa_span_t value,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
     record.kind = LXA_DOM_KIND_ATTRIBUTE;
     record.payload = payload_id;
     record.generation = nodes->generation;
@@ -2030,8 +2038,8 @@ lxa_dom_nodes_append_doctype(lxa_dom_nodes_t *nodes,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
     record.kind = LXA_DOM_KIND_DOCUMENT_TYPE;
     record.payload = payload_id;
     record.generation = nodes->generation;
@@ -2221,8 +2229,8 @@ lxa_dom_nodes_append_pi(lxa_dom_nodes_t *nodes, lxa_span_t target,
     }
     memset(&record, 0, sizeof(record));
     record.parent = NULL;
-    record.first_child = record.last_child = LXA_ID_NONE;
-    record.prev = record.next = LXA_ID_NONE;
+    record.first_child = record.last_child = NULL;
+    record.prev = record.next = NULL;
     record.kind = LXA_DOM_KIND_PROCESSING_INSTRUCTION;
     record.payload = payload_id;
     record.generation = nodes->generation;
@@ -2930,7 +2938,7 @@ lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
         if (record.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION) {
             lxa_span_t target, data;
             bool marker, matches;
-            if (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE)
+            if (record.first_child != NULL || record.last_child != NULL)
                 return LXA_ERROR_ARGUMENT;
             status = lxa_dom_nodes_pi_read(nodes, cursor, &target, &data);
             if (status != LXA_OK) return status;
@@ -2964,7 +2972,7 @@ lxa_dom_nodes_find_markers(lxa_dom_nodes_t *nodes, lxa_dom_ref_t scope,
         if (status != LXA_OK) return status;
         if (record.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION) {
             lxa_span_t target, data;
-            if (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE)
+            if (record.first_child != NULL || record.last_child != NULL)
                 return LXA_ERROR_ARGUMENT;
             status = lxa_dom_nodes_pi_read(nodes, cursor, &target, &data);
             if (status != LXA_OK) return status;
@@ -3560,30 +3568,27 @@ lxa_dom_nodes_clone_element(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
  * Callers finish hierarchy and budget checks before entry.
  */
 static void
-commit_append(lxa_dom_nodes_t *nodes, lxa_id_t parent, lxa_id_t child,
-    lxa_id_t old_tail)
+commit_append(lxa_dom_record_t *parent, lxa_dom_record_t *child,
+    lxa_dom_record_t *old_tail)
 {
-    lxa_dom_record_at(nodes, child)->parent = lxa_dom_record_at(nodes, parent);
-    lxa_dom_record_at(nodes, child)->prev = old_tail;
-    if (old_tail == LXA_ID_NONE) {
-        lxa_dom_record_at(nodes, parent)->first_child = child;
-    } else {
-        lxa_dom_record_at(nodes, old_tail)->next = child;
-    }
-    lxa_dom_record_at(nodes, parent)->last_child = child;
+    child->parent = parent;
+    child->prev = old_tail;
+    if (old_tail == NULL) parent->first_child = child;
+    else old_tail->next = child;
+    parent->last_child = child;
 }
 
 static void
-commit_insert(lxa_dom_nodes_t *nodes, lxa_id_t parent, lxa_id_t child,
-    lxa_id_t successor)
+commit_insert(lxa_dom_record_t *parent, lxa_dom_record_t *child,
+    lxa_dom_record_t *successor)
 {
-    lxa_id_t predecessor = lxa_dom_record_at(nodes, successor)->prev;
-    lxa_dom_record_at(nodes, child)->parent = lxa_dom_record_at(nodes, parent);
-    lxa_dom_record_at(nodes, child)->next = successor;
-    lxa_dom_record_at(nodes, child)->prev = predecessor;
-    lxa_dom_record_at(nodes, successor)->prev = child;
-    if (predecessor == LXA_ID_NONE) lxa_dom_record_at(nodes, parent)->first_child = child;
-    else lxa_dom_record_at(nodes, predecessor)->next = child;
+    lxa_dom_record_t *predecessor = successor->prev;
+    child->parent = parent;
+    child->next = successor;
+    child->prev = predecessor;
+    successor->prev = child;
+    if (predecessor == NULL) parent->first_child = child;
+    else predecessor->next = child;
 }
 
 lxa_status_t
@@ -3615,10 +3620,10 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
         || (child_copy.kind != LXA_DOM_KIND_TEXT
             && child_copy.kind != LXA_DOM_KIND_COMMENT)
         || child_copy.payload >= lxa_vector_length_sized(&nodes->characters, sizeof(lxa_dom_character_t))
-        || child_copy.parent != NULL || child_copy.prev != LXA_ID_NONE
-        || child_copy.next != LXA_ID_NONE
-        || (parent_copy.first_child == LXA_ID_NONE)
-            != (parent_copy.last_child == LXA_ID_NONE)) {
+        || child_copy.parent != NULL || child_copy.prev != NULL
+        || child_copy.next != NULL
+        || (parent_copy.first_child == NULL)
+            != (parent_copy.last_child == NULL)) {
         return LXA_ERROR_ARGUMENT;
     }
     /* Only fragment -> character is supported here: its child depth is one.
@@ -3629,19 +3634,19 @@ lxa_dom_nodes_append_text_child(lxa_dom_nodes_t *nodes,
         return status;
     }
     tail = NULL;
-    if (parent_copy.last_child != LXA_ID_NONE) {
-        if (parent_copy.last_child < nodes->retired
-            || parent_copy.last_child >= nodes->records.length
-            || parent_copy.last_child == child_id) {
+    if (parent_copy.last_child != NULL) {
+        if (!record_is_active(nodes, parent_copy.last_child)
+            || parent_copy.last_child == lxa_dom_record_at(nodes, child_id)) {
             return LXA_ERROR_ARGUMENT;
         }
-        tail = lxa_dom_record_at(nodes, parent_copy.last_child);
-        if (tail->next != LXA_ID_NONE || tail->parent != lxa_dom_record_at(nodes, parent_id)) {
+        tail = parent_copy.last_child;
+        if (tail->next != NULL || tail->parent != lxa_dom_record_at(nodes, parent_id)) {
             return LXA_ERROR_ARGUMENT;
         }
     }
     /* All validation is complete. No allocation occurs below. */
-    commit_append(nodes, parent_id, child_id, parent_copy.last_child);
+    commit_append(lxa_dom_record_at(nodes, parent_id),
+        lxa_dom_record_at(nodes, child_id), parent_copy.last_child);
     return LXA_OK;
 }
 
@@ -3677,20 +3682,20 @@ check_document_insertion(lxa_dom_nodes_t *nodes, lxa_id_t parent,
     const lxa_dom_record_t *host,
     lxa_dom_kind_t kind, lxa_id_t target)
 {
-    lxa_id_t sibling = host->first_child, previous = LXA_ID_NONE;
+    const lxa_dom_record_t *sibling = host->first_child, *previous = NULL;
     size_t length = nodes->records.length, linked = 0;
     bool past_target = false;
     if (!document_child_kind(kind)) return LXA_ERROR_ARGUMENT;
-    while (sibling != LXA_ID_NONE) {
+    while (sibling != NULL) {
         const lxa_dom_record_t *existing;
         lxa_status_t status;
-        if (sibling < nodes->retired || sibling >= length || ++linked > length)
+        if (!record_is_active(nodes, sibling) || ++linked > length)
             return LXA_ERROR_ARGUMENT;
         status = lxa_budget_charge_work(nodes->budget, 1,
             &nodes->limit_reason);
         if (status != LXA_OK) return status;
-        existing = lxa_dom_record_at(nodes, sibling);
-        if (sibling == target) past_target = true;
+        existing = sibling;
+        if (sibling->id == target) past_target = true;
         if (existing->parent != lxa_dom_record_at(nodes, parent) || existing->prev != previous
             || !document_child_kind(existing->kind)
             || (kind == LXA_DOM_KIND_ELEMENT
@@ -3759,10 +3764,10 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             && (target.parent != lxa_dom_record_at(nodes, parent_id)
                 || target_id < nodes->retired || target_id >= length))
         || (owned_leaf == NULL
-            && (leaf.parent != NULL || leaf.prev != LXA_ID_NONE
-                || leaf.next != LXA_ID_NONE || leaf.first_child != LXA_ID_NONE
-                || leaf.last_child != LXA_ID_NONE))
-        || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE)) {
+            && (leaf.parent != NULL || leaf.prev != NULL
+                || leaf.next != NULL || leaf.first_child != NULL
+                || leaf.last_child != NULL))
+        || (host.first_child == NULL) != (host.last_child == NULL)) {
         return LXA_ERROR_ARGUMENT;
     }
     status = check_template_parent(nodes, parent_id);
@@ -3777,19 +3782,19 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             target_id);
         if (status != LXA_OK) return status;
     }
-    if (host.last_child != LXA_ID_NONE) {
-        if (host.last_child < nodes->retired || host.last_child >= length
-            || lxa_dom_record_at(nodes, host.last_child)->parent != lxa_dom_record_at(nodes, parent_id)
-            || lxa_dom_record_at(nodes, host.last_child)->next != LXA_ID_NONE) {
+    if (host.last_child != NULL) {
+        if (!record_is_active(nodes, host.last_child)
+            || host.last_child->parent != lxa_dom_record_at(nodes, parent_id)
+            || host.last_child->next != NULL) {
             return LXA_ERROR_ARGUMENT;
         }
     }
     if (target_id != LXA_ID_NONE
-        && (target.prev == LXA_ID_NONE
-                ? host.first_child != target_id
-                : (target.prev < nodes->retired || target.prev >= length
-                      || lxa_dom_record_at(nodes, target.prev)->next != target_id
-                      || lxa_dom_record_at(nodes, target.prev)->parent != lxa_dom_record_at(nodes, parent_id)))) {
+        && (target.prev == NULL
+                ? host.first_child != lxa_dom_record_at(nodes, target_id)
+                : (!record_is_active(nodes, target.prev)
+                      || target.prev->next != lxa_dom_record_at(nodes, target_id)
+                      || target.prev->parent != lxa_dom_record_at(nodes, parent_id)))) {
         return LXA_ERROR_ARGUMENT;
     }
     if (proof != NULL && proof->owner == nodes && proof->epoch == nodes->epoch
@@ -3835,9 +3840,11 @@ construct_child(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         return status;
     }
     if (target_id == LXA_ID_NONE)
-        commit_append(nodes, parent_id, child_id, host.last_child);
+        commit_append(lxa_dom_record_at(nodes, parent_id),
+            lxa_dom_record_at(nodes, child_id), host.last_child);
     else
-        commit_insert(nodes, parent_id, child_id, target_id);
+        commit_insert(lxa_dom_record_at(nodes, parent_id),
+            lxa_dom_record_at(nodes, child_id), lxa_dom_record_at(nodes, target_id));
     if (proof != NULL) {
         *proof = anchored ? (lxa_dom_insertion_depth_t){
                                 nodes, nodes->epoch, nodes->depth_revision,
@@ -3940,7 +3947,7 @@ lxa_dom_nodes_insert_text(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK) return status;
     if (previous.handle != LXA_HANDLE_NONE) {
         if (record.parent != lxa_dom_record_at(nodes, (lxa_id_t) location->parent.handle)
-            || record.next != (location->before.handle == LXA_HANDLE_NONE ? LXA_ID_NONE : (lxa_id_t) location->before.handle))
+            || record.next != (location->before.handle == LXA_HANDLE_NONE ? NULL : lxa_dom_record_at(nodes, (lxa_id_t) location->before.handle)))
             return LXA_ERROR_ARGUMENT;
         if (record.kind == LXA_DOM_KIND_TEXT)
             return append_text_data(nodes, previous, bytes, &record);
@@ -3960,7 +3967,6 @@ static lxa_status_t
 attached_child_links(const lxa_dom_nodes_t *nodes, lxa_id_t child_id,
     const lxa_dom_record_t *moved)
 {
-    size_t length = nodes->records.length;
     lxa_id_t old_id;
     const lxa_dom_record_t *old = moved->parent;
     if (lxa_dom_record_identity(nodes, old, &old_id) != LXA_OK
@@ -3971,21 +3977,21 @@ attached_child_links(const lxa_dom_nodes_t *nodes, lxa_id_t child_id,
             && old->kind != LXA_DOM_KIND_ELEMENT)
         || (old->kind == LXA_DOM_KIND_ELEMENT
             && old->payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
-        || old->first_child == LXA_ID_NONE
-        || (old->first_child == LXA_ID_NONE) != (old->last_child == LXA_ID_NONE)
-        || (moved->prev == LXA_ID_NONE
-                ? old->first_child != child_id
-                : (moved->prev < nodes->retired || moved->prev >= length
-                      || lxa_dom_record_at(nodes, moved->prev)->next != child_id
-                      || lxa_dom_record_at(nodes, moved->prev)->parent != old))
-        || (moved->next == LXA_ID_NONE
-                ? old->last_child != child_id
-                : (moved->next < nodes->retired || moved->next >= length
-                      || lxa_dom_record_at(nodes, moved->next)->prev != child_id
-                      || lxa_dom_record_at(nodes, moved->next)->parent != old))
-        || moved->prev == child_id || moved->next == child_id
-        || (old->first_child == child_id) != (moved->prev == LXA_ID_NONE)
-        || (old->last_child == child_id) != (moved->next == LXA_ID_NONE))
+        || old->first_child == NULL
+        || (old->first_child == NULL) != (old->last_child == NULL)
+        || (moved->prev == NULL
+                ? old->first_child != lxa_dom_record_at(nodes, child_id)
+                : (!record_is_active(nodes, moved->prev)
+                      || moved->prev->next != lxa_dom_record_at(nodes, child_id)
+                      || moved->prev->parent != old))
+        || (moved->next == NULL
+                ? old->last_child != lxa_dom_record_at(nodes, child_id)
+                : (!record_is_active(nodes, moved->next)
+                      || moved->next->prev != lxa_dom_record_at(nodes, child_id)
+                      || moved->next->parent != old))
+        || moved->prev == lxa_dom_record_at(nodes, child_id) || moved->next == lxa_dom_record_at(nodes, child_id)
+        || (old->first_child == lxa_dom_record_at(nodes, child_id)) != (moved->prev == NULL)
+        || (old->last_child == lxa_dom_record_at(nodes, child_id)) != (moved->next == NULL))
         return LXA_ERROR_ARGUMENT;
     return LXA_OK;
 }
@@ -3995,10 +4001,10 @@ unlink_constructed(lxa_dom_nodes_t *nodes, const lxa_dom_record_t *moved)
 {
     invalidate_depth(nodes);
     lxa_dom_record_t *old = moved->parent;
-    if (moved->prev == LXA_ID_NONE) old->first_child = moved->next;
-    else lxa_dom_record_at(nodes, moved->prev)->next = moved->next;
-    if (moved->next == LXA_ID_NONE) old->last_child = moved->prev;
-    else lxa_dom_record_at(nodes, moved->next)->prev = moved->prev;
+    if (moved->prev == NULL) old->first_child = moved->next;
+    else moved->prev->next = moved->next;
+    if (moved->next == NULL) old->last_child = moved->prev;
+    else moved->next->prev = moved->prev;
 }
 
 typedef enum {
@@ -4149,8 +4155,8 @@ lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK) return status;
     if (!constructed_child_payload_valid(nodes, &moved)
         || (moved.kind != LXA_DOM_KIND_ELEMENT
-            && (moved.first_child != LXA_ID_NONE
-                || moved.last_child != LXA_ID_NONE)))
+            && (moved.first_child != NULL
+                || moved.last_child != NULL)))
         return LXA_ERROR_ARGUMENT;
     child_id = (lxa_id_t) child.handle;
     status = attached_child_links(nodes, child_id, &moved);
@@ -4176,7 +4182,7 @@ lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
             if (status == LXA_OK && affected) affected_select = select;
         }
     }
-    if (status == LXA_OK && (!option || moved.first_child != LXA_ID_NONE))
+    if (status == LXA_OK && (!option || moved.first_child != NULL))
         status = affected_selectedcontent_removal(nodes, child, &moved, &updates);
     if (status == LXA_OK && updates) {
         status = detach_content_transaction(nodes, child);
@@ -4189,8 +4195,8 @@ lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
 commit:
     unlink_constructed(nodes, &moved);
     lxa_dom_record_at(nodes, child_id)->parent = NULL;
-    lxa_dom_record_at(nodes, child_id)->prev = LXA_ID_NONE;
-    lxa_dom_record_at(nodes, child_id)->next = LXA_ID_NONE;
+    lxa_dom_record_at(nodes, child_id)->prev = NULL;
+    lxa_dom_record_at(nodes, child_id)->next = NULL;
     commit_select_reset(nodes, &plan);
 done:
     lxa_vector_destroy(&plan.options);
@@ -4320,7 +4326,8 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     lxa_dom_record_t host, moved, target, *old = NULL;
     select_view_t move = {.subtree = child, .parent = parent, .before = before, .kind = SELECT_MOVE};
     lxa_dom_ref_t external_owner = {0};
-    lxa_id_t host_id, child_id, old_id, target_id, cursor, predecessor;
+    lxa_id_t host_id, child_id, old_id, target_id, pending = LXA_ID_NONE;
+    lxa_dom_record_t *cursor, *predecessor, *host_record, *child_record, *target_record;
     size_t length, depth = 1, relative = 1, max_relative = 1;
     size_t visits = 0, ascents = 0, inert = 0;
     size_t new_depth;
@@ -4345,6 +4352,9 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     old_id = LXA_ID_NONE;
     target_id = before.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
                                                  : (lxa_id_t) before.handle;
+    host_record = lxa_dom_record_at(nodes, host_id);
+    child_record = lxa_dom_record_at(nodes, child_id);
+    target_record = target_id == LXA_ID_NONE ? NULL : lxa_dom_record_at(nodes, target_id);
     if ((host.kind != LXA_DOM_KIND_ELEMENT
             && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
             && (removing || host.kind != LXA_DOM_KIND_DOCUMENT))
@@ -4359,16 +4369,16 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
         || (host.kind == LXA_DOM_KIND_DOCUMENT
             && !document_child_kind(moved.kind))
         || (target_id != LXA_ID_NONE
-            && (target.parent != lxa_dom_record_at(nodes, host_id) || target_id < nodes->retired
+            && (target.parent != host_record || target_id < nodes->retired
                 || target_id >= length))
-        || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE))
+        || (host.first_child == NULL) != (host.last_child == NULL))
         return LXA_ERROR_ARGUMENT;
     if (removing) {
         status = attached_child_links(nodes, child_id, &moved);
         if (status != LXA_OK) return status;
         old_id = moved.parent->id;
-    } else if (moved.parent != NULL || moved.prev != LXA_ID_NONE
-        || moved.next != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
+    } else if (moved.parent != NULL || moved.prev != NULL
+        || moved.next != NULL) return LXA_ERROR_ARGUMENT;
     if (moved.kind == LXA_DOM_KIND_ELEMENT) {
         status = html_option(nodes, child, &root_option);
         if (status == LXA_OK)
@@ -4390,43 +4400,49 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             target_id);
         if (status != LXA_OK) return status;
     }
-    if ((host.last_child != LXA_ID_NONE
-            && (host.last_child < nodes->retired || host.last_child >= length
-                || lxa_dom_record_at(nodes, host.last_child)->next != LXA_ID_NONE
-                || lxa_dom_record_at(nodes, host.last_child)->parent != lxa_dom_record_at(nodes, host_id)))
+    if ((host.last_child != NULL
+            && (!record_is_active(nodes, host.last_child)
+                || host.last_child->next != NULL
+                || host.last_child->parent != host_record))
         || (target_id != LXA_ID_NONE
-            && (target.prev == LXA_ID_NONE
-                    ? host.first_child != target_id
-                    : (target.prev < nodes->retired || target.prev >= length
-                          || lxa_dom_record_at(nodes, target.prev)->next != target_id
-                          || lxa_dom_record_at(nodes, target.prev)->parent != lxa_dom_record_at(nodes, host_id)))))
+            && (target.prev == NULL
+                    ? host.first_child != target_record
+                    : (!record_is_active(nodes, target.prev)
+                          || target.prev->next != target_record
+                          || target.prev->parent != host_record))))
         return LXA_ERROR_ARGUMENT;
-    for (const lxa_dom_record_t *ancestor = lxa_dom_record_at(nodes, host_id);
-        ancestor != NULL; ancestor = ancestor->parent) {
-        lxa_id_t id;
-        if (lxa_dom_record_identity(nodes, ancestor, &id) != LXA_OK
-            || id == child_id || depth > length)
+    const lxa_dom_record_t *ancestor = host_record;
+    do {
+        if (!record_is_active(nodes, ancestor)
+            || ancestor == child_record || depth > length)
             return LXA_ERROR_ARGUMENT;
         status = lxa_budget_charge_work(nodes->budget, 1,
             &nodes->limit_reason);
         if (status != LXA_OK) return status;
-        if (ancestor->parent != NULL) {
+        ancestor = ancestor->parent;
+        if (ancestor != NULL) {
             status = lxa_size_add(depth, 1, &depth);
             if (status != LXA_OK) return status;
         }
-    }
+    } while (ancestor != NULL);
     /* Include associated fragments in depth checks, not lifecycle hooks.
      * Broken child/sibling rings stop at the number of allocated slots. */
-    cursor = child_id;
+    cursor = child_record;
     for (;;) {
         lxa_dom_record_t entry;
         lxa_dom_ref_t contents = {0};
         status = lxa_budget_charge_work(nodes->budget, 1,
             &nodes->limit_reason);
         if (status != LXA_OK) return status;
-        if (cursor < nodes->retired || cursor >= length || ++visits > length)
+        if (pending != LXA_ID_NONE) {
+            if (pending < nodes->retired || pending >= length)
+                return LXA_ERROR_ARGUMENT;
+            cursor = lxa_dom_record_at(nodes, pending);
+            pending = LXA_ID_NONE;
+        }
+        if (!record_is_active(nodes, cursor) || ++visits > length)
             return LXA_ERROR_ARGUMENT;
-        entry = (*lxa_dom_record_at(nodes, cursor));
+        entry = *cursor;
         if (relative > max_relative) max_relative = relative;
         if (entry.kind != LXA_DOM_KIND_ELEMENT
             && entry.kind != LXA_DOM_KIND_TEXT
@@ -4436,17 +4452,17 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT
             && (inert == 0 || entry.parent != NULL
-                || entry.prev != LXA_ID_NONE || entry.next != LXA_ID_NONE))
+                || entry.prev != NULL || entry.next != NULL))
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_PROCESSING_INSTRUCTION
             && (entry.payload >= lxa_vector_length_sized(&nodes->pis, sizeof(lxa_dom_pi_t))
-                || entry.first_child != LXA_ID_NONE
-                || entry.last_child != LXA_ID_NONE))
+                || entry.first_child != NULL
+                || entry.last_child != NULL))
             return LXA_ERROR_ARGUMENT;
         if (entry.kind == LXA_DOM_KIND_ELEMENT) {
             lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch};
             select_tag_t tag;
-            status = lxa_handle_pack(cursor, nodes->generation, &ref.handle);
+            status = lxa_handle_pack(cursor->id, nodes->generation, &ref.handle);
             if (status == LXA_OK && inert == 0)
                 status = select_tag(nodes, ref, &tag);
             if (status == LXA_OK && inert == 0 && tag == SELECT_SELECTEDCONTENT)
@@ -4458,58 +4474,57 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
                 status = lxa_dom_nodes_template_contents(nodes, ref, &contents);
             if (status != LXA_OK) return status;
         }
-        if ((entry.first_child == LXA_ID_NONE)
-            != (entry.last_child == LXA_ID_NONE))
+        if ((entry.first_child == NULL)
+            != (entry.last_child == NULL))
             return LXA_ERROR_ARGUMENT;
         if (contents.handle != LXA_HANDLE_NONE) {
-            if (entry.first_child != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
-            cursor = (lxa_id_t) contents.handle;
+            if (entry.first_child != NULL) return LXA_ERROR_ARGUMENT;
+            pending = (lxa_id_t) contents.handle;
             ++relative;
             ++inert;
             continue;
         }
-        if (entry.first_child != LXA_ID_NONE) {
-            lxa_id_t next = entry.first_child;
-            if (next < nodes->retired || next >= length
-                || lxa_dom_record_at(nodes, next)->parent != lxa_dom_record_at(nodes, cursor)
-                || lxa_dom_record_at(nodes, next)->prev != LXA_ID_NONE)
+        if (entry.first_child != NULL) {
+            lxa_dom_record_t *next = entry.first_child;
+            if (!record_is_active(nodes, next)
+                || next->parent != cursor
+                || next->prev != NULL)
                 return LXA_ERROR_ARGUMENT;
             cursor = next;
             ++relative;
             continue;
         }
-        while (cursor != child_id && lxa_dom_record_at(nodes, cursor)->next == LXA_ID_NONE) {
-            lxa_id_t up;
-            bool virtual_edge = lxa_dom_record_at(nodes, cursor)->kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT;
+        while (cursor != child_record && cursor->next == NULL) {
+            lxa_dom_record_t *up;
+            bool virtual_edge = cursor->kind == LXA_DOM_KIND_DOCUMENT_FRAGMENT;
             status = lxa_budget_charge_work(nodes->budget, 1,
                 &nodes->limit_reason);
             if (status != LXA_OK) return status;
             if (virtual_edge) {
                 lxa_dom_ref_t ref = {.document = nodes, .epoch = nodes->epoch}, owner;
-                status = lxa_handle_pack(cursor, nodes->generation, &ref.handle);
+                status = lxa_handle_pack(cursor->id, nodes->generation, &ref.handle);
                 if (status == LXA_OK) status = lxa_dom_nodes_template_owner(nodes, ref, &owner);
                 if (status != LXA_OK) return status;
                 if (owner.handle == LXA_HANDLE_NONE || inert == 0) return LXA_ERROR_ARGUMENT;
-                up = (lxa_id_t) owner.handle;
+                lxa_id_t owner_id = (lxa_id_t) owner.handle;
+                if (owner_id < nodes->retired || owner_id >= length)
+                    return LXA_ERROR_ARGUMENT;
+                up = lxa_dom_record_at(nodes, owner_id);
                 --inert;
             }
-            if (!virtual_edge) {
-                status = lxa_dom_record_identity(nodes,
-                    lxa_dom_record_at(nodes, cursor)->parent, &up);
-                if (status != LXA_OK) return status;
-            }
-            if (up < nodes->retired || up >= length || ++ascents > length
-                || (!virtual_edge && lxa_dom_record_at(nodes, up)->last_child != cursor))
+            if (!virtual_edge) up = cursor->parent;
+            if (!record_is_active(nodes, up) || ++ascents > length
+                || (!virtual_edge && up->last_child != cursor))
                 return LXA_ERROR_ARGUMENT;
             cursor = up;
             --relative;
         }
-        if (cursor == child_id) break;
+        if (cursor == child_record) break;
         {
-            lxa_id_t next = lxa_dom_record_at(nodes, cursor)->next;
-            if (next < nodes->retired || next >= length
-                || lxa_dom_record_at(nodes, next)->parent != lxa_dom_record_at(nodes, cursor)->parent
-                || lxa_dom_record_at(nodes, next)->prev != cursor)
+            lxa_dom_record_t *next = cursor->next;
+            if (!record_is_active(nodes, next)
+                || next->parent != cursor->parent
+                || next->prev != cursor)
                 return LXA_ERROR_ARGUMENT;
             cursor = next;
         }
@@ -4528,22 +4543,22 @@ place_constructed(lxa_dom_nodes_t *nodes, lxa_dom_ref_t parent,
     }
     if (removing && host_id == old_id
         && (target_id == child_id
-            || (target_id == LXA_ID_NONE && old->last_child == child_id)
-            || target_id == moved.next))
+            || (target_id == LXA_ID_NONE && old->last_child == child_record)
+            || target_record == moved.next))
         return LXA_OK;
     /* All remaining writes are allocation-free and cannot fail. */
     if (removing) unlink_constructed(nodes, &moved);
     predecessor = target_id == LXA_ID_NONE
-        ? lxa_dom_record_at(nodes, host_id)->last_child
-        : lxa_dom_record_at(nodes, target_id)->prev;
+        ? host_record->last_child
+        : target_record->prev;
     invalidate_depth(nodes);
-    lxa_dom_record_at(nodes, child_id)->parent = lxa_dom_record_at(nodes, host_id);
-    lxa_dom_record_at(nodes, child_id)->prev = predecessor;
-    lxa_dom_record_at(nodes, child_id)->next = target_id;
-    if (predecessor == LXA_ID_NONE) lxa_dom_record_at(nodes, host_id)->first_child = child_id;
-    else lxa_dom_record_at(nodes, predecessor)->next = child_id;
-    if (target_id == LXA_ID_NONE) lxa_dom_record_at(nodes, host_id)->last_child = child_id;
-    else lxa_dom_record_at(nodes, target_id)->prev = child_id;
+    child_record->parent = host_record;
+    child_record->prev = predecessor;
+    child_record->next = target_record;
+    if (predecessor == NULL) host_record->first_child = child_record;
+    else predecessor->next = child_record;
+    if (target_id == LXA_ID_NONE) host_record->last_child = child_record;
+    else target_record->prev = child_record;
     return LXA_OK;
 }
 
@@ -4572,7 +4587,7 @@ lxa_dom_nodes_insert_constructed_subtree(lxa_dom_nodes_t *nodes,
 
 typedef struct {
     lxa_dom_ref_t source, destination;
-    lxa_id_t next, previous, last;
+    lxa_dom_record_t *next, *previous, *last;
     size_t depth;
 } clone_children_frame_t;
 
@@ -4587,11 +4602,11 @@ clone_children_frame(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
     if (status != LXA_OK) return status;
     if ((record.kind != LXA_DOM_KIND_ELEMENT
             && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
-        || (record.first_child == LXA_ID_NONE)
-            != (record.last_child == LXA_ID_NONE))
+        || (record.first_child == NULL)
+            != (record.last_child == NULL))
         return LXA_ERROR_ARGUMENT;
     frame = (clone_children_frame_t){source, destination, record.first_child,
-        LXA_ID_NONE, record.last_child, depth};
+        NULL, record.last_child, depth};
     return lxa_vector_push(frames, &frame);
 }
 
@@ -4621,27 +4636,27 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
         status = lxa_budget_charge_work(nodes->budget, 1,
             &nodes->limit_reason);
         if (status != LXA_OK) break;
-        if (frame.next == LXA_ID_NONE) {
+        if (frame.next == NULL) {
             if (frame.previous != frame.last) status = LXA_ERROR_ARGUMENT;
             else lxa_vector_erase(&frames, top, 1);
             continue;
         }
-        if (frame.next < nodes->retired || frame.next >= length
+        if (!record_is_active(nodes, frame.next) || frame.next->id >= length
             || ++visits > length) {
             status = LXA_ERROR_ARGUMENT;
             break;
         }
-        status = lxa_handle_pack(frame.next, nodes->generation, &child.handle);
+        status = lxa_handle_pack(frame.next->id, nodes->generation, &child.handle);
         if (status == LXA_OK)
             status = lxa_dom_nodes_read(nodes, child, &child_record);
         if (status != LXA_OK) break;
         if (child_record.parent != lxa_dom_record_at(nodes, (lxa_id_t) frame.source.handle)
             || child_record.prev != frame.previous
-            || (child_record.first_child == LXA_ID_NONE)
-                != (child_record.last_child == LXA_ID_NONE)
+            || (child_record.first_child == NULL)
+                != (child_record.last_child == NULL)
             || (child_record.kind != LXA_DOM_KIND_ELEMENT
-                && (child_record.first_child != LXA_ID_NONE
-                    || child_record.last_child != LXA_ID_NONE))) {
+                && (child_record.first_child != NULL
+                    || child_record.last_child != NULL))) {
             status = LXA_ERROR_ARGUMENT;
             break;
         }
@@ -4705,10 +4720,10 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
             lxa_dom_ref_t fragment;
             status = lxa_dom_nodes_read(nodes, contents, &record);
             if (status == LXA_OK
-                && (child_record.first_child != LXA_ID_NONE
+                && (child_record.first_child != NULL
                     || record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
-                    || record.parent != NULL || record.prev != LXA_ID_NONE
-                    || record.next != LXA_ID_NONE || ++visits > length))
+                    || record.parent != NULL || record.prev != NULL
+                    || record.next != NULL || ++visits > length))
                 status = LXA_ERROR_ARGUMENT;
             if (status == LXA_OK) status = lxa_size_add(depth, 1, &depth);
             if (status == LXA_OK) {
@@ -4799,7 +4814,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
 {
     lxa_dom_record_t host, original, candidate = {0};
     lxa_dom_ref_t staging = {0};
-    lxa_id_t cursor, previous = LXA_ID_NONE;
+    const lxa_dom_record_t *cursor, *previous = NULL;
     size_t length, old_count = 0, roots = 0, depth = 0, work;
     bool copy_source, connected = false;
     lxa_vector_t removals = {0};
@@ -4813,20 +4828,20 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
             && host.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
         || (host.kind == LXA_DOM_KIND_ELEMENT
             && host.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
-        || (host.first_child == LXA_ID_NONE) != (host.last_child == LXA_ID_NONE))
+        || (host.first_child == NULL) != (host.last_child == NULL))
         return LXA_ERROR_ARGUMENT;
     status = check_template_parent(nodes, (lxa_id_t) target.handle);
     if (status != LXA_OK) return status;
     length = nodes->records.length;
     lxa_id_t host_parent = (lxa_id_t) target.handle;
-    for (cursor = host.first_child; cursor != LXA_ID_NONE;) {
+    for (cursor = host.first_child; cursor != NULL;) {
         lxa_dom_record_t child;
         status = lxa_budget_charge_work(nodes->budget, 1,
             &nodes->limit_reason);
         if (status != LXA_OK) return status;
-        if (cursor < nodes->retired || cursor >= length || ++old_count > length)
+        if (!record_is_active(nodes, cursor) || ++old_count > length)
             return LXA_ERROR_ARGUMENT;
-        child = (*lxa_dom_record_at(nodes, cursor));
+        child = *cursor;
         if (child.generation != nodes->generation
             || (child.kind != LXA_DOM_KIND_ELEMENT
                 && child.kind != LXA_DOM_KIND_TEXT
@@ -4849,10 +4864,10 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                 && original.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
             || (original.kind == LXA_DOM_KIND_ELEMENT
                 && original.payload >= lxa_vector_length_sized(&nodes->elements, sizeof(lxa_dom_element_t)))
-            || (original.first_child == LXA_ID_NONE)
-                != (original.last_child == LXA_ID_NONE))
+            || (original.first_child == NULL)
+                != (original.last_child == NULL))
             return LXA_ERROR_ARGUMENT;
-        copy_source = original.first_child != LXA_ID_NONE;
+        copy_source = original.first_child != NULL;
         if (copy_source) {
             status = child_copy_context(nodes, target, &depth, &connected);
             if (status == LXA_OK) status = lxa_dom_nodes_append_draft(nodes,
@@ -4933,28 +4948,28 @@ commit_child_replacement(lxa_dom_nodes_t *nodes, const child_replace_plan_t *pla
 {
     lxa_dom_ref_t target = plan->target, staging = plan->staging;
     lxa_dom_record_t host = plan->host, candidate = plan->candidate;
-    lxa_id_t cursor;
+    lxa_dom_record_t *cursor;
     invalidate_depth(nodes);
     /* All source reads and resource checks precede the link transfer. */
-    for (cursor = host.first_child; cursor != LXA_ID_NONE;) {
-        lxa_id_t next = lxa_dom_record_at(nodes, cursor)->next;
-        lxa_dom_record_at(nodes, cursor)->parent = NULL;
-        lxa_dom_record_at(nodes, cursor)->prev = lxa_dom_record_at(nodes, cursor)->next =
-            LXA_ID_NONE;
+    for (cursor = host.first_child; cursor != NULL;) {
+        lxa_dom_record_t *next = cursor->next;
+        cursor->parent = NULL;
+        cursor->prev = cursor->next =
+            NULL;
         cursor = next;
     }
-    for (cursor = staging.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
+    for (cursor = staging.handle == LXA_HANDLE_NONE ? NULL
                                                     : candidate.first_child;
-        cursor != LXA_ID_NONE;
-        cursor = lxa_dom_record_at(nodes, cursor)->next)
-        lxa_dom_record_at(nodes, cursor)->parent = lxa_dom_record_at(nodes, (lxa_id_t) target.handle);
+        cursor != NULL;
+        cursor = cursor->next)
+        cursor->parent = lxa_dom_record_at(nodes, (lxa_id_t) target.handle);
     lxa_dom_record_at(nodes, (lxa_id_t) target.handle)->first_child =
-        staging.handle == LXA_HANDLE_NONE ? LXA_ID_NONE : candidate.first_child;
+        staging.handle == LXA_HANDLE_NONE ? NULL : candidate.first_child;
     lxa_dom_record_at(nodes, (lxa_id_t) target.handle)->last_child =
-        staging.handle == LXA_HANDLE_NONE ? LXA_ID_NONE : candidate.last_child;
+        staging.handle == LXA_HANDLE_NONE ? NULL : candidate.last_child;
     if (staging.handle != LXA_HANDLE_NONE)
         lxa_dom_record_at(nodes, (lxa_id_t) staging.handle)->first_child =
-            lxa_dom_record_at(nodes, (lxa_id_t) staging.handle)->last_child = LXA_ID_NONE;
+            lxa_dom_record_at(nodes, (lxa_id_t) staging.handle)->last_child = NULL;
     if (plan->removals.bytes.length != 0) {
         const select_reset_plan_t *plans = (const select_reset_plan_t *) plan->removals.bytes.data;
         for (size_t i = 0; i < lxa_vector_length(&plan->removals); ++i)
@@ -4976,21 +4991,20 @@ destroy_child_replacement(child_replace_plan_t *plan)
 }
 
 typedef struct {
-    lxa_id_t id;
+    lxa_dom_record_t *target;
     lxa_dom_record_t record;
 } content_undo_t;
 
 static lxa_status_t
-save_content_record(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_id_t id)
+save_content_record(lxa_dom_nodes_t *nodes, lxa_vector_t *undo,
+    lxa_dom_record_t *record)
 {
     content_undo_t entry;
-    if (id == LXA_ID_NONE) return LXA_OK;
-    if (id < nodes->retired || id >= nodes->records.length)
-        return LXA_ERROR_ARGUMENT;
-    entry.id = id;
-    entry.record = (*lxa_dom_record_at(nodes, id));
-    lxa_status_t status = lxa_budget_charge_work(nodes->budget, 1,
-        &nodes->limit_reason);
+    if (record == NULL) return LXA_OK;
+    if (!record_is_active(nodes, record)) return LXA_ERROR_ARGUMENT;
+    entry.target = record;
+    entry.record = *record;
+    lxa_status_t status = lxa_budget_charge_work(nodes->budget, 1, &nodes->limit_reason);
     return status != LXA_OK ? status : lxa_vector_push(undo, &entry);
 }
 
@@ -5092,8 +5106,8 @@ reset_content_select(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_dom_ref_t s
     lxa_status_t status = plan_select_reset(nodes, select, LXA_HANDLE_NONE, NULL, &plan);
     const lxa_id_t *ids = (const lxa_id_t *) plan.options.bytes.data;
     for (size_t i = 0; status == LXA_OK && i < lxa_vector_length(&plan.options); ++i)
-        status = save_content_record(nodes, undo, ids[i]);
-    if (status == LXA_OK) status = save_content_record(nodes, undo, plan.choice);
+        status = save_content_record(nodes, undo, lxa_dom_record_at(nodes, ids[i]));
+    if (status == LXA_OK) status = save_content_record(nodes, undo, plan.choice == LXA_ID_NONE ? NULL : lxa_dom_record_at(nodes, plan.choice));
     if (status == LXA_OK) commit_select_reset(nodes, &plan);
     lxa_vector_destroy(&plan.options);
     return status;
@@ -5172,15 +5186,15 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
                 status = attached_child_links(nodes, (lxa_id_t) root.handle, &record);
             if (status == LXA_OK) status = collect_content_hooks(nodes, root, host, &frame.hooks);
             ((content_frame_t *) frames.bytes.data)[top].hooks = frame.hooks;
-            if (status == LXA_OK) status = save_content_record(nodes, &undo, record.parent->id);
-            if (status == LXA_OK) status = save_content_record(nodes, &undo, (lxa_id_t) root.handle);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, record.parent);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) root.handle));
             if (status == LXA_OK) status = save_content_record(nodes, &undo, record.prev);
             if (status == LXA_OK) status = save_content_record(nodes, &undo, record.next);
             if (status != LXA_OK) break;
             unlink_constructed(nodes, &record);
             lxa_dom_record_at(nodes, (lxa_id_t) root.handle)->parent = NULL;
             lxa_dom_record_at(nodes, (lxa_id_t) root.handle)->prev =
-                lxa_dom_record_at(nodes, (lxa_id_t) root.handle)->next = LXA_ID_NONE;
+                lxa_dom_record_at(nodes, (lxa_id_t) root.handle)->next = NULL;
             ((content_frame_t *) frames.bytes.data)[top].phase = CONTENT_HOOKS;
         } else if (frame.phase == CONTENT_HOOKS) {
             if (frame.hook == lxa_vector_length(&frame.hooks)) {
@@ -5216,11 +5230,11 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             status = lxa_dom_nodes_read(nodes, frame.destination, &parent);
             if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, frame.root, &root);
             if (status == LXA_OK
-                && (root.parent != NULL || root.prev != LXA_ID_NONE
-                    || root.next != LXA_ID_NONE))
+                && (root.parent != NULL || root.prev != NULL
+                    || root.next != NULL))
                 status = LXA_ERROR_ARGUMENT;
             if (status != LXA_OK) break;
-            lxa_id_t predecessor = parent.last_child;
+            lxa_dom_record_t *predecessor = parent.last_child;
             if (frame.before.handle != LXA_HANDLE_NONE) {
                 status = lxa_dom_nodes_read(nodes, frame.before, &successor);
                 if (status == LXA_OK
@@ -5230,20 +5244,21 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
                 predecessor = successor.prev;
             }
             if (status == LXA_OK)
-                status = save_content_record(nodes, &undo, (lxa_id_t) frame.destination.handle);
+                status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) frame.destination.handle));
             if (status == LXA_OK)
-                status = save_content_record(nodes, &undo, (lxa_id_t) frame.root.handle);
+                status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) frame.root.handle));
             if (status == LXA_OK) status = save_content_record(nodes, &undo, predecessor);
             if (status == LXA_OK && frame.before.handle != LXA_HANDLE_NONE)
-                status = save_content_record(nodes, &undo, (lxa_id_t) frame.before.handle);
+                status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) frame.before.handle));
             if (status != LXA_OK) break;
             invalidate_depth(nodes);
             if (frame.before.handle == LXA_HANDLE_NONE)
-                commit_append(nodes, (lxa_id_t) frame.destination.handle,
-                    (lxa_id_t) frame.root.handle, predecessor);
+                commit_append(lxa_dom_record_at(nodes, (lxa_id_t) frame.destination.handle),
+                    lxa_dom_record_at(nodes, (lxa_id_t) frame.root.handle), predecessor);
             else
-                commit_insert(nodes, (lxa_id_t) frame.destination.handle,
-                    (lxa_id_t) frame.root.handle, (lxa_id_t) frame.before.handle);
+                commit_insert(lxa_dom_record_at(nodes, (lxa_id_t) frame.destination.handle),
+                    lxa_dom_record_at(nodes, (lxa_id_t) frame.root.handle),
+                    lxa_dom_record_at(nodes, (lxa_id_t) frame.before.handle));
             status = html_option(nodes, frame.root, &option);
             if (status == LXA_OK)
                 status = option ? option_select(nodes, frame.root, NULL, &select)
@@ -5283,7 +5298,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             if (status == LXA_OK && connected) {
                 status = prepare_selectedcontent_connection(nodes, hook.context, &disabled, &select);
                 if (status == LXA_OK)
-                    status = save_content_record(nodes, &undo, (lxa_id_t) hook.context.handle);
+                    status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) hook.context.handle));
                 if (status == LXA_OK)
                     lxa_dom_record_at(nodes, (lxa_id_t) hook.context.handle)->flags =
                         disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
@@ -5316,7 +5331,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
             lxa_dom_ref_t staging = frame.copy.staging;
             status = lxa_dom_nodes_read(nodes, host, &record);
             if (status == LXA_OK
-                && (record.first_child != LXA_ID_NONE || record.last_child != LXA_ID_NONE))
+                && (record.first_child != NULL || record.last_child != NULL))
                 status = LXA_ERROR_ARGUMENT;
             if (status == LXA_OK && staging.handle != LXA_HANDLE_NONE) {
                 size_t depth;
@@ -5325,15 +5340,15 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
                 if (status == LXA_OK && connected)
                     status = disable_cloned_selectedcontent(nodes, staging);
             }
-            if (status == LXA_OK) status = save_content_record(nodes, &undo, (lxa_id_t) host.handle);
+            if (status == LXA_OK) status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) host.handle));
             if (status == LXA_OK && staging.handle != LXA_HANDLE_NONE)
-                status = save_content_record(nodes, &undo, (lxa_id_t) staging.handle);
-            for (lxa_id_t id = staging.handle == LXA_HANDLE_NONE ? LXA_ID_NONE
-                                                                 : frame.copy.candidate.first_child;
-                status == LXA_OK && id != LXA_ID_NONE;) {
-                status = save_content_record(nodes, &undo, id);
+                status = save_content_record(nodes, &undo, lxa_dom_record_at(nodes, (lxa_id_t) staging.handle));
+            for (lxa_dom_record_t *record = staging.handle == LXA_HANDLE_NONE ? NULL
+                                                                              : frame.copy.candidate.first_child;
+                status == LXA_OK && record != NULL;) {
+                status = save_content_record(nodes, &undo, record);
                 if (status == LXA_OK)
-                    id = lxa_dom_record_at(nodes, id)->next;
+                    record = record->next;
             }
             if (status != LXA_OK) break;
             frame.copy.host = record;
@@ -5354,7 +5369,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
     if (status != LXA_OK && undo.bytes.data != NULL) {
         const content_undo_t *entries = (const content_undo_t *) undo.bytes.data;
         for (size_t i = lxa_vector_length(&undo); i != 0; --i)
-            (*lxa_dom_record_at(nodes, entries[i - 1].id)) = entries[i - 1].record;
+            *entries[i - 1].target = entries[i - 1].record;
     }
     for (size_t i = 0; i < lxa_vector_length(&frames); ++i) {
         content_frame_t *frame = &((content_frame_t *) frames.bytes.data)[i];
@@ -5579,7 +5594,7 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     lxa_buffer_t *output, size_t max_output_bytes)
 {
     lxa_dom_record_t record;
-    lxa_id_t root_id, current;
+    const lxa_dom_record_t *root_record, *current;
     size_t start, visits = 0, length, max_visits;
     lxa_status_t status;
     if (nodes != NULL) {
@@ -5598,12 +5613,11 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
     if (status != LXA_OK) {
         return status;
     }
-    root_id = (lxa_id_t) root.handle;
-    current = root_id;
+    root_record = lxa_dom_record_at(nodes, (lxa_id_t) root.handle);
+    current = root_record;
     for (;;) {
         const lxa_dom_record_t *node;
-        if (visits++ >= max_visits || current < nodes->retired
-            || current >= length) {
+        if (visits++ >= max_visits || !record_is_active(nodes, current)) {
             status = LXA_ERROR_ARGUMENT;
             break;
         }
@@ -5612,18 +5626,18 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
         if (status != LXA_OK) {
             break;
         }
-        node = lxa_dom_record_at(nodes, current);
-        if (node->id != current || node->generation != nodes->generation
+        node = current;
+        if (node->generation != nodes->generation
             || !valid_kind((lxa_dom_kind_t) node->kind)) {
             status = LXA_ERROR_ARGUMENT;
             break;
         }
         if (node->kind == LXA_DOM_KIND_TEXT
-            || (current == root_id && node->kind == LXA_DOM_KIND_COMMENT)) {
+            || (current == root_record && node->kind == LXA_DOM_KIND_COMMENT)) {
             lxa_dom_ref_t ref = {nodes, nodes->epoch, LXA_HANDLE_NONE};
             lxa_span_t text;
             size_t next;
-            status = lxa_handle_pack(current, nodes->generation, &ref.handle);
+            status = lxa_handle_pack(current->id, nodes->generation, &ref.handle);
             if (status == LXA_OK) {
                 status = lxa_dom_nodes_character_read(nodes, ref, &text);
             }
@@ -5650,30 +5664,29 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
                 break;
             }
         }
-        if (node->first_child != LXA_ID_NONE) {
-            if (node->first_child >= length
-                || lxa_dom_record_at(nodes, node->first_child)->parent != lxa_dom_record_at(nodes, current)) {
+        if (node->first_child != NULL) {
+            if (!record_is_active(nodes, node->first_child)
+                || node->first_child->parent != current) {
                 status = LXA_ERROR_ARGUMENT;
                 break;
             }
             current = node->first_child;
             continue;
         }
-        while (current != root_id) {
-            node = lxa_dom_record_at(nodes, current);
-            if (node->next != LXA_ID_NONE) {
-                if (node->next >= length
-                    || lxa_dom_record_at(nodes, node->next)->parent != node->parent
-                    || lxa_dom_record_at(nodes, node->next)->prev != current) {
+        while (current != root_record) {
+            node = current;
+            if (node->next != NULL) {
+                if (!record_is_active(nodes, node->next)
+                    || node->next->parent != node->parent
+                    || node->next->prev != current) {
                     status = LXA_ERROR_ARGUMENT;
                     goto done;
                 }
                 current = node->next;
                 break;
             }
-            status = lxa_dom_record_identity(nodes, node->parent, &current);
-            if (status != LXA_OK) goto done;
-            if (current < nodes->retired || current >= length
+            current = node->parent;
+            if (!record_is_active(nodes, current)
                 || visits++ >= max_visits) {
                 status = LXA_ERROR_ARGUMENT;
                 goto done;
@@ -5684,7 +5697,7 @@ lxa_dom_nodes_text_content(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
                 goto done;
             }
         }
-        if (current == root_id) {
+        if (current == root_record) {
             status = LXA_OK;
             break;
         }
@@ -5793,12 +5806,12 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
         fragment = lxa_dom_record_at(nodes, pair->fragment);
         if (host->kind != LXA_DOM_KIND_ELEMENT
             || host->payload >= element_count
-            || host->first_child != LXA_ID_NONE
-            || host->last_child != LXA_ID_NONE
+            || host->first_child != NULL
+            || host->last_child != NULL
             || fragment->kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
             || fragment->parent != NULL
-            || fragment->prev != LXA_ID_NONE
-            || fragment->next != LXA_ID_NONE)
+            || fragment->prev != NULL
+            || fragment->next != NULL)
             goto done;
         element = &elements[host->payload];
         if (element->namespace_id != LXA_DOM_NS_HTML
@@ -5832,7 +5845,7 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
     for (i = nodes->retired; i < length; ++i) {
         const lxa_dom_record_t *node = lxa_dom_record_at(nodes, i);
         size_t steps = 0, document_elements = 0, document_doctypes = 0;
-        lxa_id_t child, previous = LXA_ID_NONE;
+        const lxa_dom_record_t *child, *previous = NULL;
         lxa_status_t visit = lxa_budget_charge_work(budget, 1, NULL);
         if (visit != LXA_OK) {
             status = visit;
@@ -6001,7 +6014,7 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
         }
         lxa_id_t parent_id;
         if (node->parent == NULL) {
-            if (node->prev != LXA_ID_NONE || node->next != LXA_ID_NONE) {
+            if (node->prev != NULL || node->next != NULL) {
                 goto done;
             }
         } else if (lxa_dom_record_identity(nodes, node->parent, &parent_id) != LXA_OK
@@ -6027,12 +6040,12 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
         }
         if ((node->kind == LXA_DOM_KIND_ELEMENT
                 && node->payload == LXA_ID_NONE
-                && node->first_child != LXA_ID_NONE)
+                && node->first_child != NULL)
             || (node->kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
                 && node->kind != LXA_DOM_KIND_DOCUMENT
                 && node->kind != LXA_DOM_KIND_ELEMENT
-                && (node->first_child != LXA_ID_NONE
-                    || node->last_child != LXA_ID_NONE))) {
+                && (node->first_child != NULL
+                    || node->last_child != NULL))) {
             goto done;
         }
         if (node->kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
@@ -6040,24 +6053,24 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
             && node->kind != LXA_DOM_KIND_ELEMENT) {
             continue;
         }
-        if ((node->first_child == LXA_ID_NONE)
-            != (node->last_child == LXA_ID_NONE)) {
+        if ((node->first_child == NULL)
+            != (node->last_child == NULL)) {
             goto done;
         }
         child = node->first_child;
-        while (child != LXA_ID_NONE) {
+        while (child != NULL) {
             const lxa_dom_record_t *entry;
             visit = lxa_budget_charge_work(budget, 1, NULL);
             if (visit != LXA_OK) {
                 status = visit;
                 goto done;
             }
-            if (child < nodes->retired || child >= length
-                || seen[child] != 0 || ++steps > length - nodes->retired) {
+            if (!record_is_active(nodes, child)
+                || seen[child->id] != 0 || ++steps > length - nodes->retired) {
                 goto done;
             }
-            seen[child] = 1;
-            entry = lxa_dom_record_at(nodes, child);
+            seen[child->id] = 1;
+            entry = child;
             if (node->kind == LXA_DOM_KIND_DOCUMENT
                 && ((entry->kind != LXA_DOM_KIND_ELEMENT
                         && entry->kind != LXA_DOM_KIND_COMMENT
@@ -6072,17 +6085,17 @@ lxa_dom_nodes_validate(const lxa_dom_nodes_t *nodes)
             }
             if (entry->parent != lxa_dom_record_at(nodes, i)
                 || entry->prev != previous
-                || (entry->next == LXA_ID_NONE) != (node->last_child == child)) {
+                || (entry->next == NULL) != (node->last_child == child)) {
                 goto done;
             }
-            if (entry->prev != LXA_ID_NONE
-                && (entry->prev < nodes->retired || entry->prev >= length
-                    || lxa_dom_record_at(nodes, entry->prev)->next != child)) {
+            if (entry->prev != NULL
+                && (!record_is_active(nodes, entry->prev)
+                    || entry->prev->next != child)) {
                 goto done;
             }
-            if (entry->next != LXA_ID_NONE
-                && (entry->next < nodes->retired || entry->next >= length
-                    || lxa_dom_record_at(nodes, entry->next)->prev != child)) {
+            if (entry->next != NULL
+                && (!record_is_active(nodes, entry->next)
+                    || entry->next->prev != child)) {
                 goto done;
             }
             previous = child;

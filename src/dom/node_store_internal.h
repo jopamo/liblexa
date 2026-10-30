@@ -11,12 +11,13 @@
  * payload; typed payload construction and tree publication are separate.
  * Record addresses survive growth, but not reset, reuse or destruction.
  * Typed payloads and strings still use relocatable storage.
- * Parent is NULL or an active record in the same store; id is its lookup slot.
+ * Links are NULL or active records in the same store.
+ * id identifies this record's lookup slot.
  * Reparenting changes topology without changing either record's address.
  */
 typedef struct lxa_dom_record {
     struct lxa_dom_record *parent;
-    lxa_id_t first_child, last_child, prev, next;
+    struct lxa_dom_record *first_child, *last_child, *prev, *next;
     lxa_id_t payload, id;
     uint16_t kind, flags;
     uint32_t generation;
@@ -68,7 +69,7 @@ lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nod
 lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t option);
 
-typedef char lxa_dom_record_size_matches_fields[sizeof(lxa_dom_record_t) == 32 + sizeof(lxa_dom_record_t *) ? 1 : -1];
+typedef char lxa_dom_record_size_matches_fields[sizeof(lxa_dom_record_t) == 16 + 5 * sizeof(lxa_dom_record_t *) ? 1 : -1];
 
 /* Copies a checked record. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,

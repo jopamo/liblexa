@@ -4,7 +4,8 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
 {
     LXA_RELATION_SETUP
     lxa_dom_record_t record;
-    lxa_id_t id, source_id;
+    lxa_id_t id;
+    const lxa_dom_record_t *related_record;
     lxa_status_t status;
     if (nodes != NULL) {
         nodes->limit_reason = LXA_BUDGET_COUNT;
@@ -18,14 +19,11 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
         return status;
     }
     switch (relation) {
-        case LXA_REL_FIRST: id = record.first_child; break;
-        case LXA_REL_NEXT: id = record.next; break;
-        case LXA_REL_LAST: id = record.last_child; break;
-        case LXA_REL_PREV: id = record.prev; break;
-        case LXA_REL_PARENT:
-            if (record.parent == NULL) return LXA_OK;
-            id = 0;
-            break;
+        case LXA_REL_FIRST: related_record = record.first_child; break;
+        case LXA_REL_NEXT: related_record = record.next; break;
+        case LXA_REL_LAST: related_record = record.last_child; break;
+        case LXA_REL_PREV: related_record = record.prev; break;
+        case LXA_REL_PARENT: related_record = record.parent; break;
         default: return LXA_ERROR_ARGUMENT;
     }
     if ((relation == LXA_REL_FIRST || relation == LXA_REL_LAST)
@@ -35,11 +33,11 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
         return LXA_ERROR_ARGUMENT;
     }
     if ((relation == LXA_REL_FIRST || relation == LXA_REL_LAST)
-        && (record.first_child == LXA_ID_NONE)
-            != (record.last_child == LXA_ID_NONE)) {
+        && (record.first_child == NULL)
+            != (record.last_child == NULL)) {
         return LXA_ERROR_ARGUMENT;
     }
-    if (id == LXA_ID_NONE) {
+    if (related_record == NULL) {
         return LXA_OK;
     }
     status = lxa_budget_charge_work(nodes->budget, 1,
@@ -47,41 +45,32 @@ LXA_RELATION_NAME(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
     if (status != LXA_OK) {
         return status;
     }
-    if (relation == LXA_REL_PARENT) {
-        status = lxa_dom_record_identity(nodes, record.parent, &id);
-        if (status != LXA_OK) return status;
-    }
-    if (id < nodes->retired || id >= nodes->records.length) {
-        return LXA_ERROR_ARGUMENT;
-    }
-    source_id = (lxa_id_t) source.handle;
-    const lxa_dom_record_t *related_record = relation == LXA_REL_PARENT
-        ? record.parent
-        : lxa_dom_record_at(nodes, id);
+    status = lxa_dom_record_identity(nodes, related_record, &id);
+    if (status != LXA_OK) return status;
+    const lxa_dom_record_t *source_record = lxa_dom_record_at(nodes, (lxa_id_t) source.handle);
     if (related_record->generation != nodes->generation) {
         return LXA_ERROR_ARGUMENT;
     }
     if ((relation == LXA_REL_FIRST
-            && (related_record->parent != lxa_dom_record_at(nodes, source_id)
-                || related_record->prev != LXA_ID_NONE))
+            && (related_record->parent != source_record
+                || related_record->prev != NULL))
         || (relation == LXA_REL_LAST
-            && (related_record->parent != lxa_dom_record_at(nodes, source_id)
-                || related_record->next != LXA_ID_NONE))
+            && (related_record->parent != source_record
+                || related_record->next != NULL))
         || (relation == LXA_REL_NEXT
             && (record.parent == NULL
                 || related_record->parent != record.parent
-                || related_record->prev != source_id))
+                || related_record->prev != source_record))
         || (relation == LXA_REL_PREV
             && (record.parent == NULL
                 || related_record->parent != record.parent
-                || related_record->next != source_id))
+                || related_record->next != source_record))
         || (relation == LXA_REL_PARENT
-            && (record.prev == LXA_ID_NONE
-                    ? related_record->first_child != source_id
-                    : (record.prev < nodes->retired
-                          || record.prev >= nodes->records.length
-                          || lxa_dom_record_at(nodes, record.prev)->next != source_id
-                          || lxa_dom_record_at(nodes, record.prev)->parent != related_record)))) {
+            && (record.prev == NULL
+                    ? related_record->first_child != source_record
+                    : (!record_is_active(nodes, record.prev)
+                          || record.prev->next != source_record
+                          || record.prev->parent != related_record)))) {
         return LXA_ERROR_ARGUMENT;
     }
     out->document = nodes;

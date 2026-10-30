@@ -161,11 +161,11 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             || lxa_dom_nodes_read(nodes, current, &record) != LXA_OK) {
             return LXA_ERROR_ARGUMENT;
         }
-        if ((record.first_child == LXA_ID_NONE)
-            != (record.last_child == LXA_ID_NONE)) {
+        if ((record.first_child == NULL)
+            != (record.last_child == NULL)) {
             return LXA_ERROR_ARGUMENT;
         }
-        if (record.first_child != LXA_ID_NONE
+        if (record.first_child != NULL
             && record.kind != LXA_DOM_KIND_DOCUMENT
             && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT
             && record.kind != LXA_DOM_KIND_ELEMENT)
@@ -180,10 +180,10 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             status = lxa_dom_nodes_element_namespace(nodes, current, &ns);
             if (status != LXA_OK) return status;
             void_element = ns == LXA_DOM_NS_HTML && is_void(name);
-            if (void_element && record.first_child != LXA_ID_NONE)
+            if (void_element && record.first_child != NULL)
                 return LXA_ERROR_ARGUMENT;
             if (entering && ns == LXA_DOM_NS_HTML && is_name(name, "template")) {
-                if (record.first_child != LXA_ID_NONE) return LXA_ERROR_ARGUMENT;
+                if (record.first_child != NULL) return LXA_ERROR_ARGUMENT;
                 status = lxa_dom_nodes_template_contents(nodes, current,
                     &template_fragment);
                 if (status != LXA_OK) return status;
@@ -260,7 +260,7 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
                     continue;
                 }
             }
-            if (!void_element && record.first_child != LXA_ID_NONE) {
+            if (!void_element && record.first_child != NULL) {
                 status = lxa_dom_nodes_first_child(nodes, current, &next);
                 if (status != LXA_OK) return status;
                 if (next.handle == LXA_HANDLE_NONE) return LXA_ERROR_ARGUMENT;
@@ -296,7 +296,7 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
         if (status != LXA_OK) return status;
         status = lxa_dom_nodes_read(nodes, next, &parent);
         if (status != LXA_OK) return status;
-        if (parent.last_child != (lxa_id_t) current.handle)
+        if (parent.last_child != lxa_dom_record_at(nodes, (lxa_id_t) current.handle))
             return LXA_ERROR_ARGUMENT;
         current = next;
         entering = false;
