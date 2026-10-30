@@ -150,7 +150,7 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
     if (nodes == NULL || write == NULL
         || lxa_dom_nodes_read(nodes, document, &record) != LXA_OK
         || record.kind != LXA_DOM_KIND_DOCUMENT
-        || record.parent != LXA_ID_NONE
+        || record.parent != NULL
         || lxa_size_mul(lxa_dom_nodes_length(nodes), 3, &maximum) != LXA_OK) {
         return LXA_ERROR_ARGUMENT;
     }
@@ -217,10 +217,13 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
                     break;
                 case LXA_DOM_KIND_TEXT:
                     status = lxa_dom_nodes_character_read(nodes, current, &bytes);
-                    if (status == LXA_OK && record.parent != LXA_ID_NONE) {
+                    if (status == LXA_OK && record.parent != NULL) {
                         lxa_dom_ref_t owner = current;
-                        status = lxa_handle_pack(record.parent, nodes->generation,
-                            &owner.handle);
+                        lxa_id_t parent_id;
+                        status = lxa_dom_record_identity(nodes, record.parent, &parent_id);
+                        if (status == LXA_OK)
+                            status = lxa_handle_pack(parent_id, nodes->generation,
+                                &owner.handle);
                         if (status == LXA_OK)
                             status = lxa_dom_nodes_read(nodes, owner, &parent);
                         if (status != LXA_OK) return status;
@@ -286,7 +289,10 @@ lxa_html_serialize_document(lxa_dom_nodes_t *nodes,
             continue;
         }
         next = current;
-        status = lxa_handle_pack(record.parent, nodes->generation, &next.handle);
+        lxa_id_t parent_id;
+        status = lxa_dom_record_identity(nodes, record.parent, &parent_id);
+        if (status == LXA_OK)
+            status = lxa_handle_pack(parent_id, nodes->generation, &next.handle);
         if (status != LXA_OK) return status;
         status = lxa_dom_nodes_read(nodes, next, &parent);
         if (status != LXA_OK) return status;

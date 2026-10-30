@@ -7,14 +7,17 @@
 #include "dom/shape.h"
 #include "dom/content_patch.h"
 
-/* The engine record contains IDs only. Drafts have no published links or
+/* Drafts have no published links or
  * payload; typed payload construction and tree publication are separate.
  * Record addresses survive growth, but not reset, reuse or destruction.
  * Typed payloads and strings still use relocatable storage.
+ * Parent is NULL or an active record in the same store; id is its lookup slot.
+ * Reparenting changes topology without changing either record's address.
  */
-typedef struct {
-    lxa_id_t parent, first_child, last_child, prev, next;
-    lxa_id_t payload;
+typedef struct lxa_dom_record {
+    struct lxa_dom_record *parent;
+    lxa_id_t first_child, last_child, prev, next;
+    lxa_id_t payload, id;
     uint16_t kind, flags;
     uint32_t generation;
 } lxa_dom_record_t;
@@ -65,7 +68,7 @@ lxa_status_t lxa_dom_nodes_clear_nonprimary_selectedcontent(lxa_dom_nodes_t *nod
 lxa_status_t lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t option);
 
-typedef char lxa_dom_record_size_must_be_32[sizeof(lxa_dom_record_t) == 32 ? 1 : -1];
+typedef char lxa_dom_record_size_matches_fields[sizeof(lxa_dom_record_t) == 32 + sizeof(lxa_dom_record_t *) ? 1 : -1];
 
 /* Copies a checked record. */
 lxa_status_t lxa_dom_nodes_read(const lxa_dom_nodes_t *nodes,
@@ -169,6 +172,11 @@ lxa_dom_record_at(const lxa_dom_nodes_t *nodes, lxa_id_t id)
 
 /* Reserve without publishing records. Earlier blocks remain owned on failure. */
 lxa_status_t lxa_dom_nodes_reserve_records(lxa_dom_nodes_t *nodes, size_t count);
+
+/* Check active-slot membership before dereferencing a stored pointer.
+ * NULL denotes no node. This does not extend a borrow across reset or mutation. */
+lxa_status_t lxa_dom_record_identity(const lxa_dom_nodes_t *nodes,
+    const lxa_dom_record_t *record, lxa_id_t *out);
 
 typedef enum {
     LXA_DOM_ATTR_NS_NONE,
