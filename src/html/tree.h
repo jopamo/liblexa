@@ -20,7 +20,7 @@
  * subsequent tokens are rejected. No fragment-context or script-execution API.
  */
 typedef struct {
-    lxa_dom_ref_t fragment;
+    lxa_dom_record_t *fragment;
     lxa_dom_content_patch_t patch;
     size_t element_count;
     lxa_html_template_mode_t insertion_mode;
@@ -55,7 +55,7 @@ enum {
 typedef struct {
     lxa_dom_nodes_t *nodes;
     lxa_dom_ref_t document, html, head, head_noscript, body, form;
-    lxa_dom_ref_t template_fragment; /* active virtual-template content */
+    lxa_dom_record_t *template_fragment; /* active virtual-template content */
     lxa_dom_content_patch_t template_patch;
     lxa_dom_ref_t text_element;
     lxa_dom_insertion_depth_t insertion_depth;
