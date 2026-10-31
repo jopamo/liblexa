@@ -3120,7 +3120,7 @@ select_display_size_one(lxa_span_t value)
 
 typedef struct {
     lxa_vector_t options;
-    lxa_id_t choice;
+    lxa_dom_record_t *choice;
 } select_reset_plan_t;
 
 typedef enum {
@@ -3134,7 +3134,7 @@ typedef struct {
     lxa_dom_ref_t subtree, parent, before;
     select_view_kind_t kind;
     bool prior_collapsed;
-    lxa_id_t prior_choice;
+    lxa_dom_record_t *prior_choice;
     size_t original_length;
     lxa_handle_t excluded;
 } select_view_t;
@@ -3298,21 +3298,21 @@ typedef struct {
     select_scan_kind_t kind;
     bool found_excluded;
     select_reset_plan_t *plan;
-    lxa_dom_ref_t last, first;
+    lxa_dom_record_t *last, *first;
     size_t selected;
     bool size_one;
 } select_reset_scan_t;
 
 static bool
-option_selected(const lxa_dom_record_t *record, lxa_id_t id,
+option_selected(const lxa_dom_record_t *record,
     const select_view_t *view)
 {
     bool selected = (record->flags & LXA_DOM_OPTION_SELECTED) != 0;
     if (view == NULL) return selected;
-    if (id < view->original_length) {
+    if (record->id < view->original_length) {
         /* Project preceding removals onto retained options, not new clones. */
         if (view->prior_collapsed) selected = false;
-        if (id == view->prior_choice) selected = true;
+        if (record == view->prior_choice) selected = true;
     }
     return selected;
 }
@@ -3322,31 +3322,29 @@ select_scan_option(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option,
     bool disabled_group, const select_view_t *view,
     select_reset_scan_t *scan)
 {
-    lxa_dom_record_t record;
+    lxa_dom_record_t *record;
     lxa_dom_ref_t attribute;
-    lxa_id_t id = (lxa_id_t) option.handle;
     lxa_status_t status = lxa_budget_charge_work(nodes->budget, 1,
         &nodes->limit_reason);
-    if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, option, &record);
+    if (status == LXA_OK) status = lxa_dom_nodes_resolve(nodes, option, &record);
     if (status != LXA_OK) return status;
-    if (option_selected(&record, id, view)) {
+    if (option_selected(record, view)) {
         if (scan->selected != 0) {
             if (scan->selected == 1) {
-                lxa_id_t previous = (lxa_id_t) scan->last.handle;
-                status = lxa_vector_push(&scan->plan->options, &previous);
+                status = lxa_vector_push(&scan->plan->options, &scan->last);
             }
             if (status == LXA_OK)
-                status = lxa_vector_push(&scan->plan->options, &id);
+                status = lxa_vector_push(&scan->plan->options, &record);
             if (status != LXA_OK) return status;
         }
         if (scan->selected < 2) ++scan->selected;
-        scan->last = option;
+        scan->last = record;
     }
-    if (scan->size_one && scan->first.handle == LXA_HANDLE_NONE && !disabled_group) {
+    if (scan->size_one && scan->first == NULL && !disabled_group) {
         status = lxa_dom_nodes_find_attribute(nodes, option,
             (lxa_span_t){(const uint8_t *) "disabled", 8}, &attribute);
         if (status != LXA_OK) return status;
-        if (attribute.handle == LXA_HANDLE_NONE) scan->first = option;
+        if (attribute.handle == LXA_HANDLE_NONE) scan->first = record;
     }
     return LXA_OK;
 }
@@ -3380,15 +3378,15 @@ scan_select_options(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
             && !(tag == SELECT_OPTGROUP && group.handle != LXA_HANDLE_NONE);
         if (tag == SELECT_OPTION) {
             if (scan->kind == SELECT_SCAN_FIRST_SELECTED) {
-                lxa_dom_record_t record;
+                lxa_dom_record_t *record;
                 status = lxa_budget_charge_work(nodes->budget, 1,
                     &nodes->limit_reason);
-                if (status == LXA_OK) status = lxa_dom_nodes_read(nodes, cursor, &record);
+                if (status == LXA_OK) status = lxa_dom_nodes_resolve(nodes, cursor, &record);
                 if (status != LXA_OK) break;
-                if ((record.flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY)) != 0)
+                if ((record->flags & ~(LXA_DOM_OPTION_SELECTED | LXA_DOM_OPTION_DIRTY)) != 0)
                     return LXA_ERROR_ARGUMENT;
-                if (option_selected(&record, (lxa_id_t) cursor.handle, move)) {
-                    scan->first = cursor;
+                if (option_selected(record, move)) {
+                    scan->first = record;
                     return LXA_OK;
                 }
             }
@@ -3463,8 +3461,8 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
     lxa_dom_ref_t attribute;
     select_reset_scan_t scan = {.plan = plan, .size_one = true};
     lxa_status_t status;
-    plan->choice = LXA_ID_NONE;
-    status = lxa_vector_init(&plan->options, &nodes->allocator, sizeof(lxa_id_t));
+    plan->choice = NULL;
+    status = lxa_vector_init(&plan->options, &nodes->allocator, sizeof(lxa_dom_record_t *));
     if (status == LXA_OK)
         status = lxa_vector_bind_budget(&plan->options, nodes->budget);
     if (status != LXA_OK) return status;
@@ -3484,10 +3482,10 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
     if (status != LXA_OK) return status;
     status = scan_select_options(nodes, select, excluded, move, &scan);
     if (status == LXA_OK) {
-        if (scan.selected > 1) plan->choice = (lxa_id_t) scan.last.handle;
+        if (scan.selected > 1) plan->choice = scan.last;
         else if (scan.selected == 0 && scan.size_one
-            && scan.first.handle != LXA_HANDLE_NONE)
-            plan->choice = (lxa_id_t) scan.first.handle;
+            && scan.first != NULL)
+            plan->choice = scan.first;
     }
     if (status == LXA_ERROR_LIMIT && nodes->limit_reason == LXA_BUDGET_COUNT)
         nodes->limit_reason = LXA_BUDGET_MEMORY;
@@ -3495,24 +3493,24 @@ plan_select_reset(lxa_dom_nodes_t *nodes, lxa_dom_ref_t select,
 }
 
 static void
-commit_select_reset(lxa_dom_nodes_t *nodes, const select_reset_plan_t *plan)
+commit_select_reset(const select_reset_plan_t *plan)
 {
     if (plan->options.bytes.length != 0) {
-        const lxa_id_t *ids = (const lxa_id_t *) plan->options.bytes.data;
+        lxa_dom_record_t *const *options = (lxa_dom_record_t *const *) plan->options.bytes.data;
         for (size_t i = 0; i < lxa_vector_length(&plan->options); ++i) {
-            if (ids[i] != plan->choice)
-                lxa_dom_record_at(nodes, ids[i])->flags &= (uint16_t) ~LXA_DOM_OPTION_SELECTED;
+            if (options[i] != plan->choice)
+                options[i]->flags &= (uint16_t) ~LXA_DOM_OPTION_SELECTED;
         }
     }
-    if (plan->choice != LXA_ID_NONE)
-        lxa_dom_record_at(nodes, plan->choice)->flags |= LXA_DOM_OPTION_SELECTED;
+    if (plan->choice != NULL)
+        plan->choice->flags |= LXA_DOM_OPTION_SELECTED;
 }
 
 lxa_status_t
 lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option)
 {
     lxa_dom_ref_t select;
-    select_reset_plan_t plan = {.choice = LXA_ID_NONE};
+    select_reset_plan_t plan = {.choice = NULL};
     select_tag_t tag;
     lxa_status_t status;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
@@ -3523,7 +3521,7 @@ lxa_dom_nodes_reset_option_select(lxa_dom_nodes_t *nodes, lxa_dom_ref_t option)
     status = option_select(nodes, option, NULL, &select);
     if (status != LXA_OK || select.handle == LXA_HANDLE_NONE) return status;
     status = plan_select_reset(nodes, select, LXA_HANDLE_NONE, NULL, &plan);
-    if (status == LXA_OK) commit_select_reset(nodes, &plan);
+    if (status == LXA_OK) commit_select_reset(&plan);
     lxa_vector_destroy(&plan.options);
     return status;
 }
@@ -4075,7 +4073,7 @@ selectedcontent_removal_clears_empty_target(lxa_dom_nodes_t *nodes,
     status = scan_select_options(nodes, select, parent.handle, NULL, &owned);
     if (status != LXA_OK || owned.found_excluded) return status;
     status = scan_select_options(nodes, select, LXA_HANDLE_NONE, removing, &selected);
-    if (status == LXA_OK) *empty = selected.first.handle == LXA_HANDLE_NONE;
+    if (status == LXA_OK) *empty = selected.first == NULL;
     return status;
 }
 
@@ -4089,7 +4087,7 @@ check_selectedcontent_child_removals(lxa_dom_nodes_t *nodes,
     if (status == LXA_OK) status = lxa_dom_nodes_first_child(nodes, parent, &root);
     while (status == LXA_OK && root.handle != LXA_HANDLE_NONE) {
         lxa_dom_ref_t cursor = root;
-        select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle, .prior_choice = LXA_ID_NONE};
+        select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle, .prior_choice = NULL};
         while (status == LXA_OK && cursor.handle != LXA_HANDLE_NONE) {
             select_tag_t tag;
             remove_hook_t hook;
@@ -4126,7 +4124,7 @@ affected_selectedcontent_removal(lxa_dom_nodes_t *nodes,
 {
     lxa_dom_ref_t parent = {nodes, nodes->epoch, 0}, select, target = {0}, cursor = element;
     lxa_dom_ref_t no_owner = {0};
-    select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = element.handle, .prior_choice = LXA_ID_NONE};
+    select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = element.handle, .prior_choice = NULL};
     size_t visits = 0, ascents = 0, length = nodes->records.length;
     lxa_id_t parent_id;
     lxa_status_t status = lxa_dom_record_identity(nodes, record->parent, &parent_id);
@@ -4157,7 +4155,7 @@ lxa_dom_nodes_detach_constructed_child(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t child)
 {
     lxa_dom_record_t moved;
-    select_reset_plan_t plan = {.choice = LXA_ID_NONE};
+    select_reset_plan_t plan = {.choice = NULL};
     lxa_dom_ref_t affected_select = {0};
     bool option, updates = false;
     lxa_id_t child_id;
@@ -4210,7 +4208,7 @@ commit:
     lxa_dom_record_at(nodes, child_id)->parent = NULL;
     lxa_dom_record_at(nodes, child_id)->prev = NULL;
     lxa_dom_record_at(nodes, child_id)->next = NULL;
-    commit_select_reset(nodes, &plan);
+    commit_select_reset(&plan);
 done:
     lxa_vector_destroy(&plan.options);
     return status;
@@ -4839,7 +4837,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
     size_t length, old_count = 0, roots = 0, depth = 0, work;
     bool copy_source, connected = false;
     lxa_vector_t removals = {0};
-    select_reset_plan_t reset = {.choice = LXA_ID_NONE};
+    select_reset_plan_t reset = {.choice = NULL};
     lxa_status_t status;
     if (nodes == NULL) return LXA_ERROR_ARGUMENT;
     nodes->limit_reason = LXA_BUDGET_COUNT;
@@ -4911,7 +4909,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK) return status;
     if (copy == CHILD_CONTENT_COPY) {
         lxa_dom_ref_t select;
-        select_view_t view = {.kind = SELECT_REPLACE_CHILDREN, .subtree = staging, .parent = target, .prior_choice = LXA_ID_NONE, .original_length = length};
+        select_view_t view = {.kind = SELECT_REPLACE_CHILDREN, .subtree = staging, .parent = target, .prior_choice = NULL, .original_length = length};
         select_reset_scan_t old_scan = {.kind = SELECT_SCAN_EXCLUSION};
         select_reset_scan_t new_scan = {.kind = SELECT_SCAN_EXCLUSION};
         status = option_select_at(nodes, target, NULL, &select);
@@ -4933,7 +4931,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                 if (status == LXA_OK)
                     status = scan_select_options(nodes, select, child.handle, NULL, &probe);
                 if (status == LXA_OK && probe.found_excluded) {
-                    select_reset_plan_t plan = {.choice = LXA_ID_NONE};
+                    select_reset_plan_t plan = {.choice = NULL};
                     select_view_t prefix = view;
                     prefix.kind = SELECT_REMOVE_PREFIX;
                     prefix.subtree = next;
@@ -4942,7 +4940,7 @@ prepare_child_replacement(lxa_dom_nodes_t *nodes,
                     if (status != LXA_OK) lxa_vector_destroy(&plan.options);
                     else {
                         if (plan.options.bytes.length != 0) view.prior_collapsed = true;
-                        if (plan.choice != LXA_ID_NONE) view.prior_choice = plan.choice;
+                        if (plan.choice != NULL) view.prior_choice = plan.choice;
                     }
                 }
                 child = next;
@@ -4990,9 +4988,9 @@ commit_child_replacement(lxa_dom_nodes_t *nodes, const child_replace_plan_t *pla
     if (plan->removals.bytes.length != 0) {
         const select_reset_plan_t *plans = (const select_reset_plan_t *) plan->removals.bytes.data;
         for (size_t i = 0; i < lxa_vector_length(&plan->removals); ++i)
-            commit_select_reset(nodes, &plans[i]);
+            commit_select_reset(&plans[i]);
     }
-    commit_select_reset(nodes, &plan->reset);
+    commit_select_reset(&plan->reset);
 }
 
 static void
@@ -5101,7 +5099,7 @@ collect_content_hooks(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
 {
     lxa_dom_ref_t old_owner, cursor = root;
     select_tag_t tag;
-    select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle, .prior_choice = LXA_ID_NONE};
+    select_view_t removing = {.kind = SELECT_UNCHANGED, .excluded = root.handle, .prior_choice = NULL};
     size_t visits = 0, ascents = 0, length = nodes->records.length;
     lxa_status_t status = select_tag(nodes, root, &tag);
     if (status == LXA_OK)
@@ -5132,13 +5130,13 @@ collect_content_hooks(lxa_dom_nodes_t *nodes, lxa_dom_ref_t root,
 static lxa_status_t
 reset_content_select(lxa_dom_nodes_t *nodes, lxa_vector_t *undo, lxa_dom_ref_t select)
 {
-    select_reset_plan_t plan = {.choice = LXA_ID_NONE};
+    select_reset_plan_t plan = {.choice = NULL};
     lxa_status_t status = plan_select_reset(nodes, select, LXA_HANDLE_NONE, NULL, &plan);
-    const lxa_id_t *ids = (const lxa_id_t *) plan.options.bytes.data;
+    lxa_dom_record_t *const *options = (lxa_dom_record_t *const *) plan.options.bytes.data;
     for (size_t i = 0; status == LXA_OK && i < lxa_vector_length(&plan.options); ++i)
-        status = save_content_record(nodes, undo, lxa_dom_record_at(nodes, ids[i]));
-    if (status == LXA_OK) status = save_content_record(nodes, undo, plan.choice == LXA_ID_NONE ? NULL : lxa_dom_record_at(nodes, plan.choice));
-    if (status == LXA_OK) commit_select_reset(nodes, &plan);
+        status = save_content_record(nodes, undo, options[i]);
+    if (status == LXA_OK) status = save_content_record(nodes, undo, plan.choice);
+    if (status == LXA_OK) commit_select_reset(&plan);
     lxa_vector_destroy(&plan.options);
     return status;
 }
@@ -5147,7 +5145,7 @@ static lxa_status_t
 push_content_copy(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
     lxa_dom_ref_t target, lxa_dom_ref_t source)
 {
-    content_frame_t frame = {.copy.reset.choice = LXA_ID_NONE,
+    content_frame_t frame = {.copy.reset.choice = NULL,
         .phase = CONTENT_REMOVE,
         .job = CONTENT_COPY_JOB};
     lxa_status_t status = prepare_child_replacement(nodes, target, source,
@@ -5166,7 +5164,7 @@ push_select_content_copy(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
     lxa_status_t status = enabled_selectedcontent(nodes, select, LXA_HANDLE_NONE, &target);
     if (status == LXA_OK && target.handle != LXA_HANDLE_NONE) {
         status = scan_select_options(nodes, select, LXA_HANDLE_NONE, NULL, &scan);
-        if (status == LXA_OK) status = push_content_copy(nodes, frames, target, scan.first);
+        if (status == LXA_OK) status = push_content_copy(nodes, frames, target, content_ref(nodes, scan.first));
     }
     return status;
 }
@@ -5187,7 +5185,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
         && (job == CONTENT_DETACH_JOB || job == CONTENT_REPARENT_JOB
             || job == CONTENT_INSERT_SUBTREE_JOB)) {
         /* Detach/place callers have already checked these input records. */
-        content_frame_t frame = {.copy.reset.choice = LXA_ID_NONE,
+        content_frame_t frame = {.copy.reset.choice = NULL,
             .root = lxa_dom_record_at(nodes, (lxa_id_t) target.handle),
             .destination = source.handle == LXA_HANDLE_NONE ? NULL
                                                             : lxa_dom_record_at(nodes, (lxa_id_t) source.handle),
@@ -5342,7 +5340,7 @@ run_content_transaction(lxa_dom_nodes_t *nodes, lxa_dom_ref_t target,
                     hook.context->flags =
                         disabled ? LXA_DOM_SELECTEDCONTENT_DISABLED : 0;
                 if (status == LXA_OK && select.handle != LXA_HANDLE_NONE) {
-                    content_frame_t connection = {.copy.reset.choice = LXA_ID_NONE,
+                    content_frame_t connection = {.copy.reset.choice = NULL,
                         .copy.target = lxa_dom_record_at(nodes, (lxa_id_t) select.handle),
                         .phase = CONTENT_COLLECT_CLEARS,
                         .job = CONTENT_CONNECTION_JOB};
@@ -5441,7 +5439,7 @@ static lxa_status_t
 replace_children_with_clones(lxa_dom_nodes_t *nodes,
     lxa_dom_ref_t target, lxa_dom_ref_t source, bool selectedcontent_copy)
 {
-    child_replace_plan_t plan = {.reset.choice = LXA_ID_NONE};
+    child_replace_plan_t plan = {.reset.choice = NULL};
     lxa_status_t status = prepare_child_replacement(nodes, target, source,
         selectedcontent_copy
             ? CHILD_CONTENT_COPY
@@ -5505,7 +5503,7 @@ lxa_dom_nodes_update_selectedcontent(lxa_dom_nodes_t *nodes,
     if (status != LXA_OK || target.handle == LXA_HANDLE_NONE) return status;
     status = scan_select_options(nodes, select, LXA_HANDLE_NONE, NULL, &scan);
     return status != LXA_OK ? status
-                            : replace_children_with_clones(nodes, target, scan.first, true);
+                            : replace_children_with_clones(nodes, target, content_ref(nodes, scan.first), true);
 }
 
 static lxa_status_t
