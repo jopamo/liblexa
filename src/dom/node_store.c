@@ -4600,7 +4600,7 @@ lxa_dom_nodes_insert_constructed_subtree(lxa_dom_nodes_t *nodes,
 }
 
 typedef struct {
-    lxa_dom_ref_t source, destination;
+    lxa_dom_record_t *source, *destination;
     lxa_dom_record_t *next, *previous, *last;
     size_t depth;
 } clone_children_frame_t;
@@ -4610,17 +4610,19 @@ clone_children_frame(lxa_dom_nodes_t *nodes, lxa_vector_t *frames,
     lxa_dom_ref_t source, lxa_dom_ref_t destination,
     size_t depth)
 {
-    lxa_dom_record_t record;
+    lxa_dom_record_t *record;
     clone_children_frame_t frame;
-    lxa_status_t status = lxa_dom_nodes_read(nodes, source, &record);
+    lxa_status_t status = lxa_dom_nodes_resolve(nodes, source, &record);
     if (status != LXA_OK) return status;
-    if ((record.kind != LXA_DOM_KIND_ELEMENT
-            && record.kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
-        || (record.first_child == NULL)
-            != (record.last_child == NULL))
+    if ((record->kind != LXA_DOM_KIND_ELEMENT
+            && record->kind != LXA_DOM_KIND_DOCUMENT_FRAGMENT)
+        || (record->first_child == NULL)
+            != (record->last_child == NULL))
         return LXA_ERROR_ARGUMENT;
-    frame = (clone_children_frame_t){source, destination, record.first_child,
-        NULL, record.last_child, depth};
+    /* Destination is freshly constructed; store callbacks cannot reset nodes. */
+    frame = (clone_children_frame_t){record,
+        lxa_dom_record_at(nodes, (lxa_id_t) destination.handle), record->first_child,
+        NULL, record->last_child, depth};
     return lxa_vector_push(frames, &frame);
 }
 
@@ -4664,7 +4666,7 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
         if (status == LXA_OK)
             status = lxa_dom_nodes_read(nodes, child, &child_record);
         if (status != LXA_OK) break;
-        if (child_record.parent != lxa_dom_record_at(nodes, (lxa_id_t) frame.source.handle)
+        if (child_record.parent != frame.source
             || child_record.prev != frame.previous
             || (child_record.first_child == NULL)
                 != (child_record.last_child == NULL)
@@ -4717,9 +4719,14 @@ clone_child_lists(lxa_dom_nodes_t *nodes, lxa_dom_ref_t source,
                 status = LXA_ERROR_ARGUMENT;
                 break;
         }
-        if (status == LXA_OK)
-            status = lxa_dom_nodes_append_constructed_child(nodes,
-                frame.destination, clone);
+        if (status == LXA_OK) {
+            lxa_dom_ref_t destination = {nodes, nodes->epoch, LXA_HANDLE_NONE};
+            status = lxa_handle_pack(frame.destination->id,
+                frame.destination->generation, &destination.handle);
+            if (status == LXA_OK)
+                status = lxa_dom_nodes_append_constructed_child(nodes,
+                    destination, clone);
+        }
         if (status == LXA_OK && option_lifecycle
             && child_record.kind == LXA_DOM_KIND_ELEMENT) {
             bool option;
