@@ -204,9 +204,12 @@ lxa_html_document_parse_report(const lxa_allocator_t *allocator,
                 result = LXA_HTML_CALLBACK_FAILURE;
         }
         if (status == LXA_OK && !retry) {
-            document->root = tree.document;
-            document->head = tree.head;
-            document->body = tree.body;
+            document->root = tree.document == NULL ? (lxa_dom_ref_t){0}
+                                                   : lxa_html_tree_ref(&tree, tree.document);
+            document->head = tree.head == NULL ? (lxa_dom_ref_t){0}
+                                               : lxa_html_tree_ref(&tree, tree.head);
+            document->body = tree.body == NULL ? (lxa_dom_ref_t){0}
+                                               : lxa_html_tree_ref(&tree, tree.body);
         }
         lxa_html_tokenizer_destroy(tokenizer);
         tokenizer = NULL;

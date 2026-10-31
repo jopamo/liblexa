@@ -13,8 +13,9 @@
  * frames save fragment, patch references, open-element boundary and insertion
  * mode; nodes and attributes belong to the store. Token callbacks update
  * text/CDATA feedback.
- * The store must outlive the tree. Record growth preserves borrowed pointers;
- * reset invalidates the tree. Check the captured epoch before record access
+ * The store owner is fixed until destruction and must outlive the tree.
+ * Record growth preserves borrowed pointers; reset invalidates the tree.
+ * Check the captured epoch before record access
  * and after token effects, including allocator and metadata callbacks.
  * The first failure is latched. Successful EOF completes construction and
  * subsequent tokens are rejected. No fragment-context or script-execution API.
@@ -54,10 +55,11 @@ enum {
 
 typedef struct {
     lxa_dom_nodes_t *nodes;
-    lxa_dom_ref_t document, html, head, head_noscript, body, form;
+    uint64_t epoch;
+    lxa_dom_record_t *document, *html, *head, *head_noscript, *body, *form;
     lxa_dom_record_t *template_fragment; /* active virtual-template content */
     lxa_dom_content_patch_t template_patch;
-    lxa_dom_ref_t text_element;
+    lxa_dom_record_t *text_element;
     lxa_dom_insertion_depth_t insertion_depth;
     lxa_html_open_entry_t fixed_depth[LXA_HTML_DEPTH_FIXED_COUNT];
     lxa_vector_t formatting; /* active entries and scope markers */
@@ -80,8 +82,8 @@ typedef struct {
 static inline bool
 lxa_html_tree_epoch_valid(const lxa_html_tree_t *tree)
 {
-    return tree->nodes != NULL && tree->document.document == tree->nodes
-        && tree->document.epoch == tree->nodes->epoch;
+    return tree->nodes != NULL && tree->document != NULL
+        && tree->epoch == tree->nodes->epoch;
 }
 
 /* Only records acquired by this tree may enter. Do not dereference a retained
@@ -89,7 +91,7 @@ lxa_html_tree_epoch_valid(const lxa_html_tree_t *tree)
 static inline lxa_dom_ref_t
 lxa_html_tree_ref(const lxa_html_tree_t *tree, const lxa_dom_record_t *node)
 {
-    lxa_dom_ref_t ref = {tree->nodes, tree->document.epoch, LXA_HANDLE_NONE};
+    lxa_dom_ref_t ref = {tree->nodes, tree->epoch, LXA_HANDLE_NONE};
     if (node != NULL && lxa_html_tree_epoch_valid(tree))
         (void) lxa_handle_pack(node->id, node->generation, &ref.handle);
     return ref;
